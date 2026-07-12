@@ -7,15 +7,14 @@ import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { type FileOperationEvent } from "@theia/filesystem/lib/common/files";
 import type URI from "@theia/core/lib/common/uri";
 import {
-  computeProgress,
+  computeEffectiveProgress,
   hasAuthoredAcceptanceCriteria,
   parseSpec,
   parseSpecPlan,
-  resolveCurrentStep,
   WORKFLOW_STEP_ORDER,
   type DriftReport,
+  type EffectiveWorkflowProgress,
   type PlanTask,
-  type WorkflowProgress,
   type WorkflowStep,
 } from "@spexr/spec";
 import { SPEC_VIEW_ID } from "./spec-view-contribution.js";
@@ -33,7 +32,7 @@ interface SpecEntry {
   readonly uri: string;
   readonly name: string;
   readonly title: string;
-  readonly progress: WorkflowProgress;
+  readonly progress: EffectiveWorkflowProgress;
   readonly planTasks: readonly PlanTask[];
 }
 
@@ -49,6 +48,8 @@ interface SpecPanelProps {
   readonly onRefresh: () => void;
   readonly onStepClick: (uri: string, step: WorkflowStep) => void;
   readonly onTaskToggle: (uri: string, taskId: string) => void;
+  readonly onForceStep: (uri: string, step: WorkflowStep) => void;
+  readonly onUnforceStep: (uri: string, step: WorkflowStep) => void;
 }
 
 @injectable()
@@ -165,18 +166,18 @@ export class SpexrSpecWidget extends ReactWidget {
       const planTasks = await this.loadPlanTasks(contextDir, slug);
       const hasPlan = planTasks.length > 0;
       const driftReport = await this.loadDriftReport(contextDir);
-      const currentStep = resolveCurrentStep(spec.frontmatter, {
+      const signals = {
         hasAcceptanceCriteria: hasAuthoredAcceptanceCriteria(spec.acceptanceCriteria),
         hasContext,
         hasClarifications,
         hasPlan,
         ...(driftReport ? { driftReport } : {}),
-      });
+      };
       return {
         uri: uri.toString(),
         name: filename,
         title: spec.frontmatter.title || filename,
-        progress: computeProgress(currentStep),
+        progress: computeEffectiveProgress(spec.frontmatter, signals),
         planTasks,
       };
     } catch {
@@ -184,7 +185,11 @@ export class SpexrSpecWidget extends ReactWidget {
         uri: uri.toString(),
         name: filename,
         title: filename,
-        progress: computeProgress("specify"),
+        progress: computeEffectiveProgress({ status: "draft" }, {
+          hasAcceptanceCriteria: false,
+          hasContext: false,
+          hasClarifications: false,
+        }),
         planTasks: [],
       };
     }
@@ -268,6 +273,14 @@ export class SpexrSpecWidget extends ReactWidget {
     void this.commands.executeCommand(SpexrCommands.SPEC_TOGGLE_TASK.id, uri, taskId);
   };
 
+  private readonly handleForceStep = (uri: string, step: WorkflowStep): void => {
+    void this.commands.executeCommand(SpexrCommands.SPEC_FORCE_STEP.id, uri, step);
+  };
+
+  private readonly handleUnforceStep = (uri: string, step: WorkflowStep): void => {
+    void this.commands.executeCommand(SpexrCommands.SPEC_UNFORCE_STEP.id, uri, step);
+  };
+
   protected render(): React.ReactNode {
     return (
       <SpecPanel
@@ -282,6 +295,8 @@ export class SpexrSpecWidget extends ReactWidget {
         onRefresh={this.handleRefresh}
         onStepClick={this.handleStepClick}
         onTaskToggle={this.handleTaskToggle}
+        onForceStep={this.handleForceStep}
+        onUnforceStep={this.handleUnforceStep}
       />
     );
   }
@@ -299,6 +314,8 @@ const SpecPanel: React.FC<SpecPanelProps> = ({
   onRefresh,
   onStepClick,
   onTaskToggle,
+  onForceStep,
+  onUnforceStep,
 }) => (
   <section className="spexr-spec-panel" aria-label="Specs">
     <header className="spexr-spec-panel__header">
@@ -351,6 +368,10 @@ const SpecPanel: React.FC<SpecPanelProps> = ({
                 onStepClick={(step) => onStepClick(spec.uri, step)}
                 planTasks={spec.planTasks}
                 onTaskToggle={(taskId) => onTaskToggle(spec.uri, taskId)}
+                forcedSteps={spec.progress.forcedSteps}
+                unverifiedForcedSteps={spec.progress.unverifiedForcedSteps}
+                onForceStep={(step) => onForceStep(spec.uri, step)}
+                onUnforceStep={(step) => onUnforceStep(spec.uri, step)}
               />
               <div className="spexr-spec-list__actions">
                 {isComplete ? (
