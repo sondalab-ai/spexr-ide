@@ -475,9 +475,18 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
     const contextDir = specsDir.resolve(".context").resolve(slug);
     const hasContext = await this.hasAnyEntry(contextDir);
     const hasClarifications = await this.exists(contextDir.resolve("clarifications.md"));
-    const hasPlan = await this.exists(contextDir.resolve("_plan.md"));
+    const hasPlan = (await this.loadPlanTaskCount(contextDir, slug)) > 0;
     const driftReport = await this.loadPersistedDriftReport(contextDir);
     return { hasContext, hasClarifications, hasPlan, ...(driftReport ? { driftReport } : {}) };
+  }
+
+  private async loadPlanTaskCount(contextDir: URI, slug: string): Promise<number> {
+    try {
+      const file = await this.fileService.read(contextDir.resolve("_plan.md"));
+      return parseSpecPlan(file.value, slug).tasks.length;
+    } catch {
+      return 0;
+    }
   }
 
   private async loadPersistedDriftReport(contextDir: URI): Promise<DriftReport | undefined> {

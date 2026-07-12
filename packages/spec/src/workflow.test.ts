@@ -314,3 +314,43 @@ describe("computeEffectiveProgress", () => {
     expect(progress.unverifiedForcedSteps).toEqual([]);
   });
 });
+
+describe("forceCompleteStep + unforceStep sequences (built via the real API, not hand-constructed frontmatter)", () => {
+  const SIGNALS_NONE = { hasAcceptanceCriteria: false, hasContext: false, hasClarifications: false };
+
+  it("builds forcedSteps as a chain by repeated forceCompleteStep calls", () => {
+    const r1 = forceCompleteStep({ status: "draft" }, SIGNALS_NONE, "specify");
+    expect(r1).toEqual({ ok: true, forcedSteps: ["specify"] });
+
+    const r2 = forceCompleteStep({ status: "draft", forcedSteps: r1.forcedSteps }, SIGNALS_NONE, "context");
+    expect(r2).toEqual({ ok: true, forcedSteps: ["specify", "context"] });
+
+    const r3 = forceCompleteStep({ status: "draft", forcedSteps: r2.forcedSteps }, SIGNALS_NONE, "clarify");
+    expect(r3).toEqual({ ok: true, forcedSteps: ["specify", "context", "clarify"] });
+
+    expect(effectiveCurrentStep({ status: "draft", forcedSteps: r3.forcedSteps }, SIGNALS_NONE)).toBe("plan");
+  });
+
+  it("unwinds the chain in LIFO order via repeated unforceStep calls", () => {
+    const u1 = unforceStep({ forcedSteps: ["specify", "context", "clarify"] }, "clarify");
+    expect(u1).toEqual({ ok: true, forcedSteps: ["specify", "context"] });
+
+    const blocked = unforceStep({ forcedSteps: u1.forcedSteps }, "specify");
+    expect(blocked.ok).toBe(false);
+
+    const u2 = unforceStep({ forcedSteps: u1.forcedSteps }, "context");
+    expect(u2).toEqual({ ok: true, forcedSteps: ["specify"] });
+
+    const u3 = unforceStep({ forcedSteps: u2.forcedSteps }, "specify");
+    expect(u3).toEqual({ ok: true, forcedSteps: [] });
+  });
+
+  it("forces from wherever the natural signals already are, not necessarily from specify", () => {
+    const signalsAhead = { hasAcceptanceCriteria: true, hasContext: true, hasClarifications: false };
+    expect(effectiveCurrentStep({ status: "draft" }, signalsAhead)).toBe("clarify");
+
+    const result = forceCompleteStep({ status: "draft" }, signalsAhead, "clarify");
+    expect(result).toEqual({ ok: true, forcedSteps: ["clarify"] });
+    expect(effectiveCurrentStep({ status: "draft", forcedSteps: result.forcedSteps }, signalsAhead)).toBe("plan");
+  });
+});

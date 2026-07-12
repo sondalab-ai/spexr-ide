@@ -223,8 +223,10 @@ export interface ForceStepResult {
 /**
  * Force the current step complete regardless of its auto-completion signal.
  * Only the step `effectiveCurrentStep` currently reports as current can be
- * forced — this keeps `forcedSteps` a contiguous prefix of WORKFLOW_STEP_ORDER
- * by construction, so no separate predecessor check is needed.
+ * forced — so each new entry is always the step immediately after the natural
+ * step or the previous forced entry, keeping `forcedSteps` a monotonically
+ * increasing run (not necessarily starting at `specify`, since natural
+ * signals may already be ahead) with no separate predecessor check needed.
  */
 export function forceCompleteStep(
   frontmatter: Pick<SpecFrontmatter, "status" | "workflowStep" | "forcedSteps">,
