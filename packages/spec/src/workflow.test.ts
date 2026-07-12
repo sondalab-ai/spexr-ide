@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeEffectiveProgress,
   computeProgress,
+  effectiveCurrentStep,
+  forceCompleteStep,
   hasAuthoredAcceptanceCriteria,
   resolveCurrentStep,
+  unforceStep,
   WORKFLOW_STEP_EXPERT,
 } from "./workflow.js";
 import type { AcceptanceCriterion } from "./types.js";
@@ -210,5 +214,103 @@ describe("WORKFLOW_STEP_EXPERT", () => {
 
   it("maps implement to the software-engineering expert", () => {
     expect(WORKFLOW_STEP_EXPERT.implement).toBe("software-engineering");
+  });
+});
+
+describe("effectiveCurrentStep", () => {
+  const SIGNALS_NONE = { hasAcceptanceCriteria: false, hasContext: false, hasClarifications: false };
+
+  it("matches resolveCurrentStep when nothing is forced", () => {
+    expect(
+      effectiveCurrentStep({ status: "draft" }, SIGNALS_NONE),
+    ).toBe("specify");
+  });
+
+  it("advances past a forced step", () => {
+    expect(
+      effectiveCurrentStep(
+        { status: "draft", forcedSteps: ["specify"] },
+        SIGNALS_NONE,
+      ),
+    ).toBe("context");
+  });
+
+  it("does not regress when natural signals are already ahead of the forced step", () => {
+    expect(
+      effectiveCurrentStep(
+        { status: "draft", forcedSteps: ["specify"] },
+        { hasAcceptanceCriteria: true, hasContext: true, hasClarifications: true },
+      ),
+    ).toBe("plan");
+  });
+
+  it("returns done when forcing the last step", () => {
+    expect(
+      effectiveCurrentStep(
+        { status: "validated", forcedSteps: ["specify", "context", "clarify", "plan", "implement", "validate", "ship"] },
+        { hasAcceptanceCriteria: true, hasContext: true, hasClarifications: true },
+      ),
+    ).toBe("done");
+  });
+});
+
+describe("forceCompleteStep", () => {
+  const SIGNALS_NONE = { hasAcceptanceCriteria: false, hasContext: false, hasClarifications: false };
+
+  it("forces the current step", () => {
+    const result = forceCompleteStep({ status: "draft" }, SIGNALS_NONE, "specify");
+    expect(result).toEqual({ ok: true, forcedSteps: ["specify"] });
+  });
+
+  it("rejects forcing a step that is not current", () => {
+    const result = forceCompleteStep({ status: "draft" }, SIGNALS_NONE, "plan");
+    expect(result.ok).toBe(false);
+    expect(result.forcedSteps).toEqual([]);
+    expect(result.error).toMatch(/not the current step/);
+  });
+
+  it("rejects forcing when the spec is already done", () => {
+    const result = forceCompleteStep({ status: "archived" }, SIGNALS_NONE, "ship");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/already complete/);
+  });
+});
+
+describe("unforceStep", () => {
+  it("removes the last forced step", () => {
+    const result = unforceStep({ forcedSteps: ["specify", "context"] }, "context");
+    expect(result).toEqual({ ok: true, forcedSteps: ["specify"] });
+  });
+
+  it("rejects undoing a step that is not the last forced one", () => {
+    const result = unforceStep({ forcedSteps: ["specify", "context"] }, "specify");
+    expect(result.ok).toBe(false);
+    expect(result.forcedSteps).toEqual(["specify", "context"]);
+    expect(result.error).toMatch(/not the most recently forced/);
+  });
+
+  it("rejects undoing when nothing is forced", () => {
+    const result = unforceStep({ forcedSteps: [] }, "specify");
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("computeEffectiveProgress", () => {
+  it("flags a forced step whose signal has not fired as unverified", () => {
+    const progress = computeEffectiveProgress(
+      { status: "draft", forcedSteps: ["specify"] },
+      { hasAcceptanceCriteria: false, hasContext: false, hasClarifications: false },
+    );
+    expect(progress.currentStep).toBe("context");
+    expect(progress.forcedSteps).toEqual(["specify"]);
+    expect(progress.unverifiedForcedSteps).toEqual(["specify"]);
+  });
+
+  it("does not flag a forced step once its own signal independently fires", () => {
+    const progress = computeEffectiveProgress(
+      { status: "draft", forcedSteps: ["specify"] },
+      { hasAcceptanceCriteria: true, hasContext: false, hasClarifications: false },
+    );
+    expect(progress.unverifiedForcedSteps).toEqual([]);
   });
 });

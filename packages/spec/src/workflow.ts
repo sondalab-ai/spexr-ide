@@ -200,3 +200,86 @@ export function persistedStateForStep(
 ): { status?: SpecStatus; workflowStep: WorkflowStep } {
   return STEP_PERSISTED[step];
 }
+
+export function effectiveCurrentStep(
+  frontmatter: Pick<SpecFrontmatter, "status" | "workflowStep" | "forcedSteps">,
+  signals: WorkflowSignals,
+): WorkflowStep | "done" {
+  const natural = resolveCurrentStep(frontmatter, signals);
+  const forced = frontmatter.forcedSteps ?? [];
+  if (forced.length === 0) return natural;
+  const forcedIdx = WORKFLOW_STEP_ORDER.indexOf(forced[forced.length - 1]!);
+  const naturalIdx = natural === "done" ? WORKFLOW_STEP_ORDER.length : WORKFLOW_STEP_ORDER.indexOf(natural);
+  const idx = Math.max(naturalIdx, forcedIdx + 1);
+  return idx >= WORKFLOW_STEP_ORDER.length ? "done" : WORKFLOW_STEP_ORDER[idx]!;
+}
+
+export interface ForceStepResult {
+  readonly ok: boolean;
+  readonly forcedSteps: readonly WorkflowStep[];
+  readonly error?: string;
+}
+
+/**
+ * Force the current step complete regardless of its auto-completion signal.
+ * Only the step `effectiveCurrentStep` currently reports as current can be
+ * forced — this keeps `forcedSteps` a contiguous prefix of WORKFLOW_STEP_ORDER
+ * by construction, so no separate predecessor check is needed.
+ */
+export function forceCompleteStep(
+  frontmatter: Pick<SpecFrontmatter, "status" | "workflowStep" | "forcedSteps">,
+  signals: WorkflowSignals,
+  step: WorkflowStep,
+): ForceStepResult {
+  const forced = frontmatter.forcedSteps ?? [];
+  const current = effectiveCurrentStep(frontmatter, signals);
+  if (step !== current) {
+    const label = WORKFLOW_STEP_LABEL[step];
+    return {
+      ok: false,
+      forcedSteps: forced,
+      error:
+        current === "done"
+          ? `Cannot force "${label}" — spec is already complete.`
+          : `Cannot force "${label}" — it is not the current step.`,
+    };
+  }
+  return { ok: true, forcedSteps: [...forced, step] };
+}
+
+/** Undo a force — only the most recently forced step can be undone (stack). */
+export function unforceStep(
+  frontmatter: Pick<SpecFrontmatter, "forcedSteps">,
+  step: WorkflowStep,
+): ForceStepResult {
+  const forced = frontmatter.forcedSteps ?? [];
+  const last = forced[forced.length - 1];
+  if (last !== step) {
+    return {
+      ok: false,
+      forcedSteps: forced,
+      error: `Cannot undo "${WORKFLOW_STEP_LABEL[step]}" — it is not the most recently forced step.`,
+    };
+  }
+  return { ok: true, forcedSteps: forced.slice(0, -1) };
+}
+
+export interface EffectiveWorkflowProgress extends WorkflowProgress {
+  readonly forcedSteps: readonly WorkflowStep[];
+  /** Forced steps whose own auto-completion signal still hasn't fired — drives the stepper's warning icon. */
+  readonly unverifiedForcedSteps: readonly WorkflowStep[];
+}
+
+export function computeEffectiveProgress(
+  frontmatter: Pick<SpecFrontmatter, "status" | "workflowStep" | "forcedSteps">,
+  signals: WorkflowSignals,
+): EffectiveWorkflowProgress {
+  const natural = resolveCurrentStep(frontmatter, signals);
+  const naturalIdx = natural === "done" ? WORKFLOW_STEP_ORDER.length : WORKFLOW_STEP_ORDER.indexOf(natural);
+  const forcedSteps = frontmatter.forcedSteps ?? [];
+  const progress = computeProgress(effectiveCurrentStep(frontmatter, signals));
+  const unverifiedForcedSteps = forcedSteps.filter(
+    (step) => naturalIdx <= WORKFLOW_STEP_ORDER.indexOf(step),
+  );
+  return { ...progress, forcedSteps, unverifiedForcedSteps };
+}
