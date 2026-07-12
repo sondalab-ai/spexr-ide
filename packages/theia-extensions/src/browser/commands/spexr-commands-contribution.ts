@@ -16,6 +16,7 @@ import { FileDialogService } from "@theia/filesystem/lib/browser/file-dialog/fil
 import URI from "@theia/core/lib/common/uri";
 import {
   computeProgress,
+  forceCompleteStep,
   hasAuthoredAcceptanceCriteria,
   parseSpec,
   parseSpecPlan,
@@ -24,6 +25,7 @@ import {
   resolveCurrentStep,
   serializeSpecPlan,
   togglePlanTask,
+  unforceStep as unforceWorkflowStep,
   WORKFLOW_STEP_EXPERT,
   WORKFLOW_STEP_LABEL,
   WORKFLOW_STEP_ORDER,
@@ -148,6 +150,14 @@ export const SpexrCommands = {
   SPEC_TOGGLE_TASK: {
     id: "spexr.spec.toggleTask",
     label: "Spexr: Toggle plan task",
+  } satisfies Command,
+  SPEC_FORCE_STEP: {
+    id: "spexr.spec.forceStep",
+    label: "Spexr: Force-complete workflow step",
+  } satisfies Command,
+  SPEC_UNFORCE_STEP: {
+    id: "spexr.spec.unforceStep",
+    label: "Spexr: Undo forced workflow step",
   } satisfies Command,
 } as const;
 
@@ -363,6 +373,14 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
     commands.registerCommand(SpexrCommands.SPEC_TOGGLE_TASK, {
       execute: (rawUri: unknown, rawTaskId: unknown) =>
         this.togglePlanTask(this.resolveSpecUri(rawUri), typeof rawTaskId === "string" ? rawTaskId : undefined),
+    });
+    commands.registerCommand(SpexrCommands.SPEC_FORCE_STEP, {
+      execute: (rawUri: unknown, rawStep: unknown) =>
+        this.forceStep(this.resolveSpecUri(rawUri), this.coerceWorkflowStep(rawStep)),
+    });
+    commands.registerCommand(SpexrCommands.SPEC_UNFORCE_STEP, {
+      execute: (rawUri: unknown, rawStep: unknown) =>
+        this.unforceStep(this.resolveSpecUri(rawUri), this.coerceWorkflowStep(rawStep)),
     });
   }
 
@@ -616,6 +634,55 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
       await this.fileService.create(planUri, serializeSpecPlan(updated), { overwrite: true });
     } catch (err) {
       this.messages.error(`Failed to toggle task: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async forceStep(uri: URI | undefined, step: WorkflowStep | undefined): Promise<void> {
+    if (!uri || !step) return;
+    try {
+      const file = await this.fileService.read(uri);
+      const spec = parseSpec(file.value, uri.toString());
+      const fsSignals = await this.loadWorkflowSignals(uri, spec.frontmatter.slug);
+      const signals = {
+        ...fsSignals,
+        hasAcceptanceCriteria: hasAuthoredAcceptanceCriteria(spec.acceptanceCriteria),
+      };
+      const result = forceCompleteStep(spec.frontmatter, signals, step);
+      if (!result.ok) {
+        this.messages.warn(result.error!);
+        return;
+      }
+      await this.persistForcedSteps(uri, result.forcedSteps);
+    } catch (err) {
+      this.messages.error(`Failed to force step: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async unforceStep(uri: URI | undefined, step: WorkflowStep | undefined): Promise<void> {
+    if (!uri || !step) return;
+    try {
+      const file = await this.fileService.read(uri);
+      const spec = parseSpec(file.value, uri.toString());
+      const result = unforceWorkflowStep(spec.frontmatter, step);
+      if (!result.ok) {
+        this.messages.warn(result.error!);
+        return;
+      }
+      await this.persistForcedSteps(uri, result.forcedSteps);
+    } catch (err) {
+      this.messages.error(`Failed to undo forced step: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async persistForcedSteps(uri: URI, forcedSteps: readonly WorkflowStep[]): Promise<void> {
+    const current = await this.fileService.read(uri);
+    const today = new Date().toISOString().slice(0, 10);
+    const next = patchFrontmatter(current.value, {
+      forcedSteps: forcedSteps.length > 0 ? forcedSteps : null,
+      updatedAt: today,
+    });
+    if (next !== current.value) {
+      await this.fileService.write(uri, next);
     }
   }
 
