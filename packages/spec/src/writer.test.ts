@@ -41,4 +41,15 @@ describe("patchFrontmatter", () => {
     const next = patchFrontmatter(SAMPLE, { status: "ready" });
     expect(next.endsWith("## Goal\n\nBody.\n")).toBe(true);
   });
+
+  it("adds forcedSteps as an array", () => {
+    const next = patchFrontmatter(SAMPLE, { forcedSteps: ["specify", "context"] });
+    expect(next).toMatch(/forcedSteps: \[specify, context\]/);
+  });
+
+  it("removes forcedSteps when null", () => {
+    const withForced = patchFrontmatter(SAMPLE, { forcedSteps: ["plan"] });
+    const removed = patchFrontmatter(withForced, { forcedSteps: null });
+    expect(removed).not.toMatch(/forcedSteps:/);
+  });
 });

@@ -40,6 +40,7 @@ export interface SpecFrontmatter {
   readonly createdAt?: string;
   readonly updatedAt?: string;
   readonly relatedSpecs?: readonly string[];
+  readonly forcedSteps?: readonly WorkflowStep[];
 }
 
 export interface AcceptanceCriterion {

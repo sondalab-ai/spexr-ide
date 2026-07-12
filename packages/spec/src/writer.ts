@@ -4,6 +4,7 @@ import type { SpecStatus, WorkflowStep } from "./types.js";
 export interface FrontmatterPatch {
   readonly status?: SpecStatus;
   readonly workflowStep?: WorkflowStep | null;
+  readonly forcedSteps?: readonly WorkflowStep[] | null;
   readonly updatedAt?: string;
 }
 
@@ -20,6 +21,11 @@ export function patchFrontmatter(raw: string, patch: FrontmatterPatch): string {
     delete data.workflowStep;
   } else if (patch.workflowStep !== undefined) {
     data.workflowStep = patch.workflowStep;
+  }
+  if (patch.forcedSteps === null) {
+    delete data.forcedSteps;
+  } else if (patch.forcedSteps !== undefined) {
+    data.forcedSteps = patch.forcedSteps;
   }
   if (patch.updatedAt !== undefined) data.updatedAt = patch.updatedAt;
 

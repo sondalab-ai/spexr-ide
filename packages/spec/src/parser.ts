@@ -67,6 +67,13 @@ function readFrontmatter(data: Record<string, unknown>): SpecFrontmatter {
     ...(Array.isArray(data.relatedSpecs)
       ? { relatedSpecs: data.relatedSpecs.filter((v): v is string => typeof v === "string") }
       : {}),
+    ...(Array.isArray(data.forcedSteps)
+      ? {
+          forcedSteps: data.forcedSteps.filter(
+            (v): v is WorkflowStep => typeof v === "string" && VALID_WORKFLOW_STEPS.has(v as WorkflowStep),
+          ),
+        }
+      : {}),
   };
 }
 
