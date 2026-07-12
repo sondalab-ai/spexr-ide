@@ -1336,7 +1336,7 @@ code {
   width: 14px;
   height: 14px;
   font-size: 10px;
-  color: var(--spexr-color-warning, #d9822b);
+  color: var(--spexr-status-warning, var(--spexr-accent-default));
 }
 
 .spexr-stepper__btn {
