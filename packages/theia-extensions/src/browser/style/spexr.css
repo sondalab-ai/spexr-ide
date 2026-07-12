@@ -1295,21 +1295,22 @@ code {
 
 .spexr-stepper__overlay {
   position: absolute;
-  top: -6px;
+  top: 3px;
   display: none;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border-radius: 999px;
   border: 1px solid var(--spexr-border-default);
   background: var(--spexr-bg-surface-raised);
   color: var(--spexr-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   cursor: pointer;
   z-index: 1;
+  box-shadow: var(--spexr-shadow-sm);
 }
 
 .spexr-stepper__item:hover .spexr-stepper__overlay {
@@ -1317,25 +1318,25 @@ code {
 }
 
 .spexr-stepper__overlay--force {
-  right: -6px;
+  right: 3px;
   border-color: var(--spexr-accent-default);
   color: var(--spexr-accent-default);
 }
 
 .spexr-stepper__overlay--undo {
-  left: -6px;
+  left: 3px;
 }
 
 .spexr-stepper__warning {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: 3px;
+  right: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  font-size: 10px;
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
   color: var(--spexr-status-warning, var(--spexr-accent-default));
 }
 
