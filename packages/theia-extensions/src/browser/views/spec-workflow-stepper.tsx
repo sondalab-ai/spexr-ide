@@ -82,7 +82,10 @@ const StepButton: React.FC<{
         </span>
         <span className="spexr-stepper__label">{label}</span>
       </button>
-      {state === "current" && onForceStep ? (
+      {/* "ship" is excluded: spec-widget.tsx already treats currentStep === "ship" as
+          isComplete (shows the Retrospective action), so offering a force-complete
+          icon there would contradict a step the UI already presents as done. */}
+      {state === "current" && step !== "ship" && onForceStep ? (
         <button
           type="button"
           className="spexr-stepper__overlay spexr-stepper__overlay--force"
