@@ -64,64 +64,68 @@ const StepButton: React.FC<{
 
   return (
     <li className={`spexr-stepper__item spexr-stepper__item--${state}`}>
-      <button
-        ref={btnRef}
-        type="button"
-        className="spexr-stepper__btn"
-        onClick={() => onStepClick(step)}
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        onFocus={show}
-        onBlur={hide}
-        disabled={busy}
-        aria-current={state === "current" ? "step" : undefined}
-        aria-label={`${label} — ${hint}`}
-      >
-        <span className="spexr-stepper__num" aria-hidden>
-          {state === "done" ? "✓" : String(index + 1)}
-        </span>
-        <span className="spexr-stepper__label">{label}</span>
-      </button>
-      {/* "ship" is excluded: spec-widget.tsx already treats currentStep === "ship" as
-          isComplete (shows the Retrospective action), so offering a force-complete
-          icon there would contradict a step the UI already presents as done. */}
-      {state === "current" && step !== "ship" && onForceStep ? (
+      <div className="spexr-stepper__stack">
         <button
+          ref={btnRef}
           type="button"
-          className="spexr-stepper__overlay spexr-stepper__overlay--force"
-          onClick={(e) => {
-            e.stopPropagation();
-            onForceStep(step);
-          }}
-          title="Force this step complete"
-          aria-label={`Force ${label} complete`}
+          className="spexr-stepper__btn"
+          onClick={() => onStepClick(step)}
+          onMouseEnter={show}
+          onMouseLeave={hide}
+          onFocus={show}
+          onBlur={hide}
+          disabled={busy}
+          aria-current={state === "current" ? "step" : undefined}
+          aria-label={`${label} — ${hint}`}
         >
-          ✔
+          <span className="spexr-stepper__num" aria-hidden>
+            {state === "done" ? "✓" : String(index + 1)}
+          </span>
+          <span className="spexr-stepper__label">{label}</span>
         </button>
-      ) : null}
-      {isLastForced && onUnforceStep ? (
-        <button
-          type="button"
-          className="spexr-stepper__overlay spexr-stepper__overlay--undo"
-          onClick={(e) => {
-            e.stopPropagation();
-            onUnforceStep(step);
-          }}
-          title="Undo forced completion"
-          aria-label={`Undo forced completion of ${label}`}
-        >
-          ↺
-        </button>
-      ) : null}
-      {isUnverified ? (
-        <span
-          className="spexr-stepper__warning"
-          title="Marked complete manually — automatic check for this step has not passed."
-          aria-label={`${label} was marked complete manually and has not passed its automatic check`}
-        >
-          ⚠
-        </span>
-      ) : null}
+        <div className="spexr-stepper__actions">
+          {/* "ship" is excluded: spec-widget.tsx already treats currentStep === "ship" as
+              isComplete (shows the Retrospective action), so offering a force-complete
+              icon there would contradict a step the UI already presents as done. */}
+          {state === "current" && step !== "ship" && onForceStep ? (
+            <button
+              type="button"
+              className="spexr-stepper__overlay spexr-stepper__overlay--force"
+              onClick={(e) => {
+                e.stopPropagation();
+                onForceStep(step);
+              }}
+              title="Force this step complete"
+              aria-label={`Force ${label} complete`}
+            >
+              ✔
+            </button>
+          ) : null}
+          {isLastForced && onUnforceStep ? (
+            <button
+              type="button"
+              className="spexr-stepper__overlay spexr-stepper__overlay--undo"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnforceStep(step);
+              }}
+              title="Undo forced completion"
+              aria-label={`Undo forced completion of ${label}`}
+            >
+              ↺
+            </button>
+          ) : null}
+          {isUnverified ? (
+            <span
+              className="spexr-stepper__warning"
+              title="Marked complete manually — automatic check for this step has not passed."
+              aria-label={`${label} was marked complete manually and has not passed its automatic check`}
+            >
+              ⚠
+            </span>
+          ) : null}
+        </div>
+      </div>
       {pos
         ? createPortal(
             <div

@@ -1277,6 +1277,7 @@ code {
 
 .spexr-stepper__item {
   display: flex;
+  align-items: flex-start;
   position: relative;
 }
 
@@ -1293,9 +1294,24 @@ code {
   display: none;
 }
 
+.spexr-stepper__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Reserves space below every button (even when no icon renders) so the row
+   of steps doesn't jump in height when a hover-only icon appears. */
+.spexr-stepper__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 22px;
+  margin-top: 4px;
+}
+
 .spexr-stepper__overlay {
-  position: absolute;
-  top: 2px;
   display: none;
   align-items: center;
   justify-content: center;
@@ -1308,7 +1324,6 @@ code {
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  z-index: 1;
   box-shadow: var(--spexr-shadow-md);
   transition:
     transform var(--spexr-motion-fast) var(--spexr-ease),
@@ -1325,21 +1340,16 @@ code {
 }
 
 .spexr-stepper__overlay--force {
-  right: 2px;
   background: var(--spexr-accent-default);
   color: var(--spexr-text-on-accent);
 }
 
 .spexr-stepper__overlay--undo {
-  left: 2px;
   background: var(--spexr-text-primary);
   color: var(--spexr-bg-canvas);
 }
 
 .spexr-stepper__warning {
-  position: absolute;
-  top: 2px;
-  right: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
