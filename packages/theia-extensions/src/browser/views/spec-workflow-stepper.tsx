@@ -1,5 +1,6 @@
 import * as React from "react";
 import { createPortal } from "@theia/core/shared/react-dom";
+import { ConfirmDialog } from "@theia/core/lib/browser/dialogs";
 import {
   WORKFLOW_STEP_HINT,
   WORKFLOW_STEP_LABEL,
@@ -116,13 +117,22 @@ const StepButton: React.FC<{
             </button>
           ) : null}
           {isUnverified ? (
-            <span
+            <button
+              type="button"
               className="spexr-stepper__warning"
-              title="Marked complete manually — automatic check for this step has not passed."
-              aria-label={`${label} was marked complete manually and has not passed its automatic check`}
+              onClick={(e) => {
+                e.stopPropagation();
+                void new ConfirmDialog({
+                  title: `${label} — marked complete manually`,
+                  msg: `This step was force-completed by a manual override. Its automatic check has not independently verified it yet — for example, an expected file is still missing, or the drift check hasn't run clean. If you're confident the work is actually done, no action is needed: this warning clears on its own once the automatic check catches up. Otherwise, use the rollback icon to undo the override.`,
+                  ok: "Got it",
+                }).open();
+              }}
+              title="Marked complete manually — automatic check for this step has not passed. Click for details."
+              aria-label={`${label} was marked complete manually and has not passed its automatic check. Click for details.`}
             >
               ⚠
-            </span>
+            </button>
           ) : null}
         </div>
       </div>

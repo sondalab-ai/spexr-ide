@@ -1330,13 +1330,8 @@ code {
     box-shadow var(--spexr-motion-fast) var(--spexr-ease);
 }
 
-.spexr-stepper__item:hover .spexr-stepper__overlay {
+.spexr-stepper__item:hover .spexr-stepper__overlay--force {
   display: inline-flex;
-}
-
-.spexr-stepper__overlay:hover {
-  transform: scale(1.12);
-  box-shadow: var(--spexr-shadow-lg);
 }
 
 .spexr-stepper__overlay--force {
@@ -1344,9 +1339,24 @@ code {
   color: var(--spexr-text-on-accent);
 }
 
+.spexr-stepper__overlay--force:hover {
+  box-shadow:
+    var(--spexr-shadow-lg),
+    0 0 0 6px color-mix(in srgb, var(--spexr-accent-default) 35%, transparent);
+}
+
+/* Always visible (not hover-gated) — undoing a force is a correction the
+   user should be able to reach without first re-discovering the step. */
 .spexr-stepper__overlay--undo {
+  display: inline-flex;
   background: var(--spexr-text-primary);
   color: var(--spexr-bg-canvas);
+}
+
+.spexr-stepper__overlay--undo:hover {
+  box-shadow:
+    var(--spexr-shadow-lg),
+    0 0 0 6px color-mix(in srgb, var(--spexr-text-primary) 25%, transparent);
 }
 
 .spexr-stepper__warning {
@@ -1355,13 +1365,22 @@ code {
   justify-content: center;
   width: 18px;
   height: 18px;
+  padding: 0;
   border-radius: 999px;
   border: 2px solid var(--spexr-bg-canvas);
   background: var(--spexr-status-warning);
   color: var(--spexr-text-on-accent);
   font-size: 11px;
   font-weight: 700;
+  cursor: pointer;
   box-shadow: var(--spexr-shadow-md);
+  transition: box-shadow var(--spexr-motion-fast) var(--spexr-ease);
+}
+
+.spexr-stepper__warning:hover {
+  box-shadow:
+    var(--spexr-shadow-lg),
+    0 0 0 6px color-mix(in srgb, var(--spexr-status-warning) 35%, transparent);
 }
 
 .spexr-stepper__btn {
