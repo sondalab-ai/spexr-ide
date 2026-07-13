@@ -1311,7 +1311,11 @@ code {
   margin-top: 4px;
 }
 
-.spexr-stepper__overlay {
+/* Shared badge base for all three action icons (force / undo / warning) —
+   identical size, shape, border, and shadow so they read as one family;
+   only the fill color carries meaning. */
+.spexr-stepper__overlay,
+.spexr-stepper__warning {
   display: none;
   align-items: center;
   justify-content: center;
@@ -1320,14 +1324,15 @@ code {
   padding: 0;
   border-radius: 999px;
   border: 2px solid var(--spexr-bg-canvas);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--spexr-text-on-accent);
+  font-size: 13px;
+  font-weight: 800;
   line-height: 1;
   cursor: pointer;
   box-shadow: var(--spexr-shadow-md);
   transition:
-    transform var(--spexr-motion-fast) var(--spexr-ease),
-    box-shadow var(--spexr-motion-fast) var(--spexr-ease);
+    box-shadow var(--spexr-motion-fast) var(--spexr-ease),
+    background var(--spexr-motion-fast) var(--spexr-ease);
 }
 
 .spexr-stepper__item:hover .spexr-stepper__overlay--force {
@@ -1336,7 +1341,6 @@ code {
 
 .spexr-stepper__overlay--force {
   background: var(--spexr-accent-default);
-  color: var(--spexr-text-on-accent);
 }
 
 .spexr-stepper__overlay--force:hover {
@@ -1349,32 +1353,18 @@ code {
    user should be able to reach without first re-discovering the step. */
 .spexr-stepper__overlay--undo {
   display: inline-flex;
-  background: var(--spexr-text-primary);
-  color: var(--spexr-bg-canvas);
+  background: var(--spexr-text-secondary);
 }
 
 .spexr-stepper__overlay--undo:hover {
   box-shadow:
     var(--spexr-shadow-lg),
-    0 0 0 6px color-mix(in srgb, var(--spexr-text-primary) 25%, transparent);
+    0 0 0 6px color-mix(in srgb, var(--spexr-text-secondary) 35%, transparent);
 }
 
 .spexr-stepper__warning {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 999px;
-  border: 2px solid var(--spexr-bg-canvas);
   background: var(--spexr-status-warning);
-  color: var(--spexr-text-on-accent);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: var(--spexr-shadow-md);
-  transition: box-shadow var(--spexr-motion-fast) var(--spexr-ease);
 }
 
 .spexr-stepper__warning:hover {

@@ -124,8 +124,9 @@ const StepButton: React.FC<{
                 e.stopPropagation();
                 void new ConfirmDialog({
                   title: `${label} — marked complete manually`,
-                  msg: `This step was force-completed by a manual override. Its automatic check has not independently verified it yet — for example, an expected file is still missing, or the drift check hasn't run clean. If you're confident the work is actually done, no action is needed: this warning clears on its own once the automatic check catches up. Otherwise, use the rollback icon to undo the override.`,
+                  msg: "Its automatic check hasn't passed yet (e.g. an expected file is missing, or drift isn't clean). If the work is actually done, no action needed — the warning clears once the check catches up. Otherwise, use the rollback icon to undo.",
                   ok: "Got it",
+                  maxWidth: 380,
                 }).open();
               }}
               title="Marked complete manually — automatic check for this step has not passed. Click for details."
