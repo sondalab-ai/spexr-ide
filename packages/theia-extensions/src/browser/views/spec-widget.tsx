@@ -273,12 +273,21 @@ export class SpexrSpecWidget extends ReactWidget {
     void this.commands.executeCommand(SpexrCommands.SPEC_TOGGLE_TASK.id, uri, taskId);
   };
 
+  // Force/unforce re-validate against a fresh disk read inside the command; if
+  // this widget's rendered snapshot has drifted from disk, the command rejects
+  // and no file write fires — so an onDidRunOperation refresh never comes and
+  // the stale icon lingers. Always refresh after the command settles to keep
+  // the stepper in sync with disk regardless of the command's outcome.
   private readonly handleForceStep = (uri: string, step: WorkflowStep): void => {
-    void this.commands.executeCommand(SpexrCommands.SPEC_FORCE_STEP.id, uri, step);
+    void this.commands
+      .executeCommand(SpexrCommands.SPEC_FORCE_STEP.id, uri, step)
+      .then(() => this.refreshSpecs());
   };
 
   private readonly handleUnforceStep = (uri: string, step: WorkflowStep): void => {
-    void this.commands.executeCommand(SpexrCommands.SPEC_UNFORCE_STEP.id, uri, step);
+    void this.commands
+      .executeCommand(SpexrCommands.SPEC_UNFORCE_STEP.id, uri, step)
+      .then(() => this.refreshSpecs());
   };
 
   protected render(): React.ReactNode {
