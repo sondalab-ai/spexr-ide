@@ -17,8 +17,8 @@ export interface SpecWorkflowStepperProps {
   readonly busy?: boolean;
   readonly planTasks?: readonly PlanTask[];
   readonly onTaskToggle?: (taskId: string) => void;
-  readonly forcedSteps?: readonly WorkflowStep[];
   readonly unverifiedForcedSteps?: readonly WorkflowStep[];
+  readonly undoableStep?: WorkflowStep;
   readonly onForceStep?: (step: WorkflowStep) => void;
   readonly onUnforceStep?: (step: WorkflowStep) => void;
 }
@@ -85,10 +85,7 @@ const StepButton: React.FC<{
           <span className="spexr-stepper__label">{label}</span>
         </button>
         <div className="spexr-stepper__actions">
-          {/* "ship" is excluded: spec-widget.tsx already treats currentStep === "ship" as
-              isComplete (shows the Retrospective action), so offering a force-complete
-              icon there would contradict a step the UI already presents as done. */}
-          {state === "current" && step !== "ship" && onForceStep ? (
+          {state === "current" && onForceStep ? (
             <button
               type="button"
               className="spexr-stepper__overlay spexr-stepper__overlay--force"
@@ -165,16 +162,15 @@ export const SpecWorkflowStepper: React.FC<SpecWorkflowStepperProps> = ({
   busy = false,
   planTasks,
   onTaskToggle,
-  forcedSteps,
   unverifiedForcedSteps,
+  undoableStep,
   onForceStep,
   onUnforceStep,
 }) => (
   <>
     <ol className="spexr-stepper" role="list" aria-label="Spec workflow">
       {WORKFLOW_STEP_ORDER.map((step, index) => {
-        const forced = forcedSteps ?? [];
-        const isLastForced = forced.length > 0 && forced[forced.length - 1] === step;
+        const isLastForced = step === undoableStep;
         const isUnverified = (unverifiedForcedSteps ?? []).includes(step);
         return (
           <StepButton

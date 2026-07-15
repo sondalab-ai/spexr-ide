@@ -354,8 +354,7 @@ const SpecPanel: React.FC<SpecPanelProps> = ({
     {specs.length > 0 ? (
       <ul className="spexr-spec-list" role="list">
         {specs.map((spec) => {
-          const isComplete =
-            spec.progress.currentStep === "ship" || spec.progress.currentStep === "done";
+          const isComplete = spec.progress.currentStep === "done";
           return (
           <li key={spec.uri} className="spexr-spec-list__item">
             <div className="spexr-spec-list__row">
@@ -368,8 +367,10 @@ const SpecPanel: React.FC<SpecPanelProps> = ({
                 onStepClick={(step) => onStepClick(spec.uri, step)}
                 planTasks={spec.planTasks}
                 onTaskToggle={(taskId) => onTaskToggle(spec.uri, taskId)}
-                forcedSteps={spec.progress.forcedSteps}
                 unverifiedForcedSteps={spec.progress.unverifiedForcedSteps}
+                {...(spec.progress.undoableForcedStep
+                  ? { undoableStep: spec.progress.undoableForcedStep }
+                  : {})}
                 onForceStep={(step) => onForceStep(spec.uri, step)}
                 onUnforceStep={(step) => onUnforceStep(spec.uri, step)}
               />
