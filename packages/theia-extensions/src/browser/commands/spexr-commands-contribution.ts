@@ -16,6 +16,7 @@ import { FileDialogService } from "@theia/filesystem/lib/browser/file-dialog/fil
 import URI from "@theia/core/lib/common/uri";
 import {
   computeProgress,
+  effectiveCurrentStep,
   forceCompleteStep,
   hasAuthoredAcceptanceCriteria,
   parseSpec,
@@ -663,7 +664,11 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
         this.messages.warn(result.error!);
         return;
       }
-      await this.persistForcedSteps(uri, result.forcedSteps);
+      const effective = effectiveCurrentStep(
+        { ...spec.frontmatter, forcedSteps: result.forcedSteps },
+        signals,
+      );
+      await this.persistForcedSteps(uri, result.forcedSteps, effective);
     } catch (err) {
       this.messages.error(`Failed to force step: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -680,17 +685,39 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
         this.messages.warn(result.error!);
         return;
       }
-      await this.persistForcedSteps(uri, result.forcedSteps);
+      const fsSignals = await this.loadWorkflowSignals(uri, spec.frontmatter.slug);
+      const signals = {
+        ...fsSignals,
+        hasAcceptanceCriteria: hasAuthoredAcceptanceCriteria(spec.acceptanceCriteria),
+      };
+      const effective = effectiveCurrentStep(
+        { ...spec.frontmatter, forcedSteps: result.forcedSteps },
+        signals,
+      );
+      await this.persistForcedSteps(uri, result.forcedSteps, effective);
     } catch (err) {
       this.messages.error(`Failed to undo forced step: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  private async persistForcedSteps(uri: URI, forcedSteps: readonly WorkflowStep[]): Promise<void> {
+  /**
+   * Persist the new forcedSteps list, and keep the frontmatter's own
+   * `workflowStep` field in sync with the resulting effective step so the two
+   * persistence channels don't drift (a reader using only the natural
+   * progression then sees the same position the forced overlay computes).
+   * When the spec is effectively "done", workflowStep is left untouched —
+   * "done" is not a step, and it is derived from status, not workflowStep.
+   */
+  private async persistForcedSteps(
+    uri: URI,
+    forcedSteps: readonly WorkflowStep[],
+    effective: WorkflowStep | "done",
+  ): Promise<void> {
     const current = await this.fileService.read(uri);
     const today = new Date().toISOString().slice(0, 10);
     const next = patchFrontmatter(current.value, {
       forcedSteps: forcedSteps.length > 0 ? forcedSteps : null,
+      ...(effective !== "done" ? { workflowStep: effective } : {}),
       updatedAt: today,
     });
     if (next !== current.value) {
