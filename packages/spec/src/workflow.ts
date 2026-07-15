@@ -270,6 +270,15 @@ export interface EffectiveWorkflowProgress extends WorkflowProgress {
   readonly forcedSteps: readonly WorkflowStep[];
   /** Forced steps whose own auto-completion signal still hasn't fired — drives the stepper's warning icon. */
   readonly unverifiedForcedSteps: readonly WorkflowStep[];
+  /**
+   * The single step whose force can currently be undone from the UI, or
+   * `undefined` when none should be offered. Only the most recently forced
+   * step is undoable (stack semantics), and only while it is still
+   * load-bearing — i.e. the natural signal has not independently caught up to
+   * it. A forced step the natural progression has already passed is vestigial:
+   * undoing it changes nothing, so no undo affordance is shown.
+   */
+  readonly undoableForcedStep: WorkflowStep | undefined;
 }
 
 export function computeEffectiveProgress(
@@ -283,5 +292,8 @@ export function computeEffectiveProgress(
   const unverifiedForcedSteps = forcedSteps.filter(
     (step) => naturalIdx <= WORKFLOW_STEP_ORDER.indexOf(step),
   );
-  return { ...progress, forcedSteps, unverifiedForcedSteps };
+  const lastForced = forcedSteps[forcedSteps.length - 1];
+  const undoableForcedStep =
+    lastForced !== undefined && unverifiedForcedSteps.includes(lastForced) ? lastForced : undefined;
+  return { ...progress, forcedSteps, unverifiedForcedSteps, undoableForcedStep };
 }

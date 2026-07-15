@@ -313,6 +313,34 @@ describe("computeEffectiveProgress", () => {
     );
     expect(progress.unverifiedForcedSteps).toEqual([]);
   });
+
+  it("exposes the last forced step as undoable while it is still load-bearing", () => {
+    const progress = computeEffectiveProgress(
+      { status: "draft", forcedSteps: ["specify", "context"] },
+      { hasAcceptanceCriteria: false, hasContext: false, hasClarifications: false },
+    );
+    expect(progress.undoableForcedStep).toBe("context");
+  });
+
+  it("offers no undo when the last forced step is vestigial (natural signal already past it)", () => {
+    // status shipped ⇒ resolveCurrentStep returns "done" regardless of forcedSteps,
+    // so a leftover forcedSteps:[ship] is vestigial and must not show an undo affordance.
+    const progress = computeEffectiveProgress(
+      { status: "shipped", workflowStep: "ship", forcedSteps: ["ship"] },
+      { hasAcceptanceCriteria: true, hasContext: true, hasClarifications: true },
+    );
+    expect(progress.currentStep).toBe("done");
+    expect(progress.unverifiedForcedSteps).toEqual([]);
+    expect(progress.undoableForcedStep).toBeUndefined();
+  });
+
+  it("offers no undo when there are no forced steps", () => {
+    const progress = computeEffectiveProgress(
+      { status: "draft" },
+      { hasAcceptanceCriteria: false, hasContext: false, hasClarifications: false },
+    );
+    expect(progress.undoableForcedStep).toBeUndefined();
+  });
 });
 
 describe("forceCompleteStep + unforceStep sequences (built via the real API, not hand-constructed frontmatter)", () => {
