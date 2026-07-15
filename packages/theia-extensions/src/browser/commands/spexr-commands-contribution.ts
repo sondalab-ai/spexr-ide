@@ -637,6 +637,7 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
       const { slug } = spec.frontmatter;
       const specsDir = uri.parent;
       const planUri = specsDir.resolve(SPEC_CONTEXT_DIR).resolve(slug).resolve("_plan.md");
+      await this.flushDirtyEditor(planUri);
       const planFile = await this.fileService.read(planUri);
       const doc = parseSpecPlan(planFile.value, slug);
       const updated = togglePlanTask(doc, taskId);
@@ -649,6 +650,7 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
   private async forceStep(uri: URI | undefined, step: WorkflowStep | undefined): Promise<void> {
     if (!uri || !step) return;
     try {
+      await this.flushDirtyEditor(uri);
       const file = await this.fileService.read(uri);
       const spec = parseSpec(file.value, uri.toString());
       const fsSignals = await this.loadWorkflowSignals(uri, spec.frontmatter.slug);
@@ -670,6 +672,7 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
   private async unforceStep(uri: URI | undefined, step: WorkflowStep | undefined): Promise<void> {
     if (!uri || !step) return;
     try {
+      await this.flushDirtyEditor(uri);
       const file = await this.fileService.read(uri);
       const spec = parseSpec(file.value, uri.toString());
       const result = unforceWorkflowStep(spec.frontmatter, step);
