@@ -640,8 +640,15 @@ code {
 }
 
 .spexr-spec-lint__ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--spexr-text-xs);
-  color: var(--theia-editorInfo-foreground);
+  color: var(--spexr-status-success, var(--theia-editorInfo-foreground));
+}
+
+.spexr-spec-lint__ok .codicon {
+  font-size: 13px;
 }
 
 .spexr-spec-lint__group {
@@ -1335,6 +1342,14 @@ code {
     background var(--spexr-motion-fast) var(--spexr-ease);
 }
 
+/* Codicon glyph inside a badge: size to the badge, override the codicon
+   font's default 16px so it sits crisp and centered in the 20px circle. */
+.spexr-stepper__overlay .codicon,
+.spexr-stepper__warning .codicon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 .spexr-stepper__item:hover .spexr-stepper__overlay--force {
   display: inline-flex;
 }
@@ -1414,6 +1429,11 @@ code {
   background: var(--spexr-bg-canvas);
   color: var(--spexr-text-muted);
   border: 1px solid var(--spexr-border-subtle);
+}
+
+.spexr-stepper__num .codicon {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .spexr-stepper__label {

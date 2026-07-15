@@ -80,7 +80,7 @@ const StepButton: React.FC<{
           aria-label={`${label} — ${hint}`}
         >
           <span className="spexr-stepper__num" aria-hidden>
-            {state === "done" ? "✓" : String(index + 1)}
+            {state === "done" ? <span className="codicon codicon-check" /> : String(index + 1)}
           </span>
           <span className="spexr-stepper__label">{label}</span>
         </button>
@@ -96,7 +96,7 @@ const StepButton: React.FC<{
               title="Force this step complete"
               aria-label={`Force ${label} complete`}
             >
-              ✔
+              <span className="codicon codicon-check" aria-hidden />
             </button>
           ) : null}
           {isLastForced && onUnforceStep ? (
@@ -110,7 +110,7 @@ const StepButton: React.FC<{
               title="Undo forced completion"
               aria-label={`Undo forced completion of ${label}`}
             >
-              ↺
+              <span className="codicon codicon-discard" aria-hidden />
             </button>
           ) : null}
           {isUnverified ? (
@@ -129,7 +129,7 @@ const StepButton: React.FC<{
               title="Marked complete manually — automatic check for this step has not passed. Click for details."
               aria-label={`${label} was marked complete manually and has not passed its automatic check. Click for details.`}
             >
-              ⚠
+              <span className="codicon codicon-warning" aria-hidden />
             </button>
           ) : null}
         </div>

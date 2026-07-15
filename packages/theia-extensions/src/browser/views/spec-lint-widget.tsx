@@ -211,7 +211,9 @@ const SpecLintPanel: React.FC<SpecLintPanelProps> = ({ state, onSelect }) => {
     <section className="spexr-spec-lint" aria-label="Spec validation">
       <header className="spexr-spec-lint__header">
         {total === 0 ? (
-          <span className="spexr-spec-lint__ok">✓ No issues found</span>
+          <span className="spexr-spec-lint__ok">
+            <span className="codicon codicon-check" aria-hidden /> No issues found
+          </span>
         ) : (
           <span className="spexr-spec-lint__summary">{summaryText(report)}</span>
         )}

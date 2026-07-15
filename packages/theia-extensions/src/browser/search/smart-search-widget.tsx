@@ -412,7 +412,7 @@ export class SmartSearchWidget extends ReactWidget {
               title="Regenerate all descriptions"
               aria-label="Regenerate all descriptions"
             >
-              ↻
+              <span className="codicon codicon-refresh" aria-hidden />
             </button>
           </div>
         )}
