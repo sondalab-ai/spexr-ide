@@ -181,17 +181,11 @@ export class SpexrSpecWidget extends ReactWidget {
         planTasks,
       };
     } catch {
-      return {
-        uri: uri.toString(),
-        name: filename,
-        title: filename,
-        progress: computeEffectiveProgress({ status: "draft" }, {
-          hasAcceptanceCriteria: false,
-          hasContext: false,
-          hasClarifications: false,
-        }),
-        planTasks: [],
-      };
+      // Not a parseable spec (no slug/title frontmatter) — e.g. a design doc
+      // living under docs/superpowers/specs/ whose NNNN- filename happens to
+      // match SPEC_SLUG_RE. Skip it rather than rendering a fallback stepper
+      // that would crash on force/unforce (which re-parse and rethrow).
+      return undefined;
     }
   }
 
