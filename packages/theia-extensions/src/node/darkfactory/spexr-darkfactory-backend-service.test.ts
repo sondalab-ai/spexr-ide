@@ -1,54 +1,50 @@
 import { describe, expect, it } from "vitest";
 import { SpexrDarkfactoryBackendService } from "./spexr-darkfactory-backend-service.js";
 
-const IDLE_WINDOW = 12 * 3_600_000;
+const NOW = 100 * 3_600_000;
 
-function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]>) {
+function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]> = {}) {
   return new SpexrDarkfactoryBackendService({
     projectsDir: "/PD",
-    now: () => 100 * 3_600_000,
-    idleWindowMs: IDLE_WINDOW,
-    listTranscripts: () => Promise.resolve([
-      {
-        sessionId: "s1", transcriptPath: "/PD/-proj/s1.jsonl", mtimeMs: 99 * 3_600_000,
-        readLines: () => Promise.resolve([`{"cwd":"/Users/x/src/proj","gitBranch":"main","type":"user","message":{"role":"user","content":"do X"}}`]),
-      },
-    ]),
-    openTranscriptPaths: () => Promise.resolve(new Set<string>()),
-    generator: { generate: async () => null, summarize: async () => null, isAvailable: () => false },
+    now: () => NOW,
+    listTranscripts: () =>
+      Promise.resolve([
+        {
+          sessionId: "s1",
+          transcriptPath: "/PD/-proj/s1.jsonl",
+          mtimeMs: NOW - 5_000,
+          readLines: () =>
+            Promise.resolve([
+              `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
+            ]),
+        },
+      ]),
+    liveProjectDirs: () => Promise.resolve(new Set(["/Users/x/src/proj"])),
     ...over,
   });
 }
 
-describe("SpexrDarkfactoryBackendService", () => {
-  it("listAgents maps a transcript to an idle AgentSession", async () => {
-    const agents = await svc({}).listAgents();
-    expect(agents).toHaveLength(1);
-    expect(agents[0]).toMatchObject({
-      sessionId: "s1", projectPath: "/Users/x/src/proj", projectName: "proj",
-      gitBranch: "main", state: "idle", lastPrompt: "do X", turnCount: 1,
+describe("SpexrDarkfactoryBackendService v2", () => {
+  it("listTiles builds a working tile with a distilled action", async () => {
+    const tiles = await svc().listTiles();
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0]).toMatchObject({
+      sessionId: "s1",
+      projectName: "proj",
+      state: "working",
+      actionLine: "Editing auth.ts",
+      tool: "Edit",
     });
+    expect(typeof tiles[0]!.accentId).toBe("number");
   });
 
-  it("summarize falls back to heuristic when the model is unavailable", async () => {
-    const s = svc({});
-    await s.listAgents();
-    const summary = await s.summarize("s1");
-    expect(summary).toEqual({ sessionId: "s1", text: "do X", fromModel: false });
-  });
+  it("planFocus returns readonly-follow for a working session, resume-terminal for an idle one", async () => {
+    const s = svc();
+    await s.listTiles();
+    expect((await s.planFocus("s1")).kind).toBe("readonly-follow"); // working elsewhere
 
-  it("model summary is used and cached per mtime", async () => {
-    let calls = 0;
-    const s = svc({
-      generator: {
-        generate: async () => null,
-        isAvailable: () => true,
-        summarize: async () => { calls++; return "doing X"; },
-      },
-    });
-    await s.listAgents();
-    expect(await s.summarize("s1")).toEqual({ sessionId: "s1", text: "doing X", fromModel: true });
-    await s.summarize("s1");
-    expect(calls).toBe(1); // cached
+    const idle = svc({ liveProjectDirs: () => Promise.resolve(new Set()) });
+    await idle.listTiles();
+    expect((await idle.planFocus("s1")).kind).toBe("resume-terminal");
   });
 });
