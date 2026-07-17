@@ -1,6 +1,6 @@
 import { injectable } from "@theia/core/shared/inversify";
 import { AbstractViewContribution } from "@theia/core/lib/browser";
-import { SpexrDarkfactoryWidget } from "./darkfactory-widget.js";
+import { SpexrDarkfactoryWidget } from "./darkfactory-wall-widget.js";
 
 export const DARKFACTORY_VIEW_ID = SpexrDarkfactoryWidget.ID;
 

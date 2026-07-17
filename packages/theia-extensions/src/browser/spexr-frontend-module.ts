@@ -78,7 +78,7 @@ import { SmartSearchWidget } from "./search/smart-search-widget.js";
 import { SpexrSearchServiceProxy, SEARCH_SERVICE_PATH } from "./search/smart-search-service.js";
 import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/smart-search-client.js";
 import { DescriptionJobStatusBarContribution } from "./search/description-job-status-bar-contribution.js";
-import { SpexrDarkfactoryWidget } from "./darkfactory/darkfactory-widget.js";
+import { SpexrDarkfactoryWidget } from "./darkfactory/darkfactory-wall-widget.js";
 import { SpexrDarkfactoryViewContribution } from "./darkfactory/darkfactory-view-contribution.js";
 import {
   SpexrDarkfactoryServiceProxy,
