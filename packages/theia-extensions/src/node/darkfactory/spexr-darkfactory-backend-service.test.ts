@@ -5,13 +5,13 @@ const NOW = 100 * 3_600_000;
 
 function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]> = {}) {
   return new SpexrDarkfactoryBackendService({
-    projectsDir: "/PD",
     now: () => NOW,
     listTranscripts: () =>
       Promise.resolve([
         {
           sessionId: "s1",
           transcriptPath: "/PD/-proj/s1.jsonl",
+          configDir: "/Users/x/.claude",
           mtimeMs: NOW - 5_000,
           readLines: () =>
             Promise.resolve([
@@ -45,6 +45,8 @@ describe("SpexrDarkfactoryBackendService v2", () => {
 
     const idle = svc({ liveProjectDirs: () => Promise.resolve(new Set()) });
     await idle.listTiles();
-    expect((await idle.planFocus("s1")).kind).toBe("resume-terminal");
+    const plan = await idle.planFocus("s1");
+    expect(plan.kind).toBe("resume-terminal");
+    expect(plan.configDir).toBe("/Users/x/.claude");
   });
 });

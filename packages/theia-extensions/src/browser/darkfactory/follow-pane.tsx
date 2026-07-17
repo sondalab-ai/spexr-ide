@@ -17,6 +17,7 @@ export class SpexrDarkfactoryFollowWidget extends ReactWidget {
 
   private sessionId: string | undefined;
   private projectPath = "";
+  private configDir = "";
   private projectName = "";
   private scrollback = "";
 
@@ -39,11 +40,12 @@ export class SpexrDarkfactoryFollowWidget extends ReactWidget {
   }
 
   /** Re-target the pane to a session; stops the previous follow. */
-  async follow(sessionId: string, projectPath: string, projectName: string): Promise<void> {
+  async follow(sessionId: string, projectPath: string, configDir: string, projectName: string): Promise<void> {
     if (this.sessionId === sessionId) return;
     this.stopCurrent();
     this.sessionId = sessionId;
     this.projectPath = projectPath;
+    this.configDir = configDir;
     this.projectName = projectName;
     this.scrollback = "";
     this.update();
@@ -73,7 +75,9 @@ export class SpexrDarkfactoryFollowWidget extends ReactWidget {
             className="spexr-button spexr-button--primary"
             onClick={() =>
               this.sessionId &&
-              void this.terminals.openResume(this.sessionId, this.projectPath, true).catch(() => {})
+              void this.terminals
+                .openResume(this.sessionId, this.projectPath, this.configDir, true)
+                .catch(() => {})
             }
           >
             Fork &amp; take over

@@ -33,6 +33,8 @@ export interface AgentTile {
 export interface FocusPlan {
   sessionId: string;
   projectPath: string;
+  /** Config dir that owns the session; passed as CLAUDE_CONFIG_DIR when resuming. */
+  configDir: string;
   kind: FocusKind;
 }
 

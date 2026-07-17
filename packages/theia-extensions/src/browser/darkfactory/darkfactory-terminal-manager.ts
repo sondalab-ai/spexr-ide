@@ -49,10 +49,11 @@ export class SpexrDarkfactoryTerminalManager {
 
   /**
    * Open (or reveal) an interactive terminal that resumes `sessionId` in
-   * `projectPath`. `fork` uses `--fork-session` to branch from the session's
-   * history when the original is live elsewhere.
+   * `projectPath`, against the config dir that owns the session. `fork` uses
+   * `--fork-session` to branch from the history when the original is live
+   * elsewhere.
    */
-  async openResume(sessionId: string, projectPath: string, fork: boolean): Promise<void> {
+  async openResume(sessionId: string, projectPath: string, configDir: string, fork: boolean): Promise<void> {
     if (!isSessionId(sessionId) || !projectPath) return;
 
     const existing = this.widgets.get(sessionId);
@@ -68,7 +69,7 @@ export class SpexrDarkfactoryTerminalManager {
       iconClass: "codicon codicon-sparkle",
       ...this.resolveShell(buildResumeArgs(sessionId, fork)),
       cwd: projectPath,
-      env: this.configEnv(),
+      env: this.configEnv(configDir),
       destroyTermOnClose: false,
     });
     await term.start();
@@ -96,8 +97,12 @@ export class SpexrDarkfactoryTerminalManager {
     return exe ? { shellPath: exe, shellArgs: resumeArgs } : { shellArgs: resumeArgs };
   }
 
-  private configEnv(): { [k: string]: string | null } {
-    const dir = (this.preferences.get<string>(SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE) ?? "").trim();
+  /**
+   * CLAUDE_CONFIG_DIR for the resume. The session's own config dir wins (so the
+   * CLI finds the conversation); otherwise fall back to the SPEXR preference.
+   */
+  private configEnv(configDir: string): { [k: string]: string | null } {
+    const dir = configDir.trim() || (this.preferences.get<string>(SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE) ?? "").trim();
     return dir ? { CLAUDE_CONFIG_DIR: dir } : {};
   }
 }

@@ -76,10 +76,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   protected async openFocus(tile: AgentTile): Promise<void> {
     const plan = await this.service.planFocus(tile.sessionId);
     if (plan.kind === "resume-terminal") {
-      await this.terminals.openResume(plan.sessionId, plan.projectPath, false);
+      await this.terminals.openResume(plan.sessionId, plan.projectPath, plan.configDir, false);
       return;
     }
-    await this.followPane.follow(plan.sessionId, plan.projectPath, tile.projectName);
+    await this.followPane.follow(plan.sessionId, plan.projectPath, plan.configDir, tile.projectName);
     await this.shell.addWidget(this.followPane, { area: "main" });
     await this.shell.activateWidget(this.followPane.id);
   }

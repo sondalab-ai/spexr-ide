@@ -1,8 +1,8 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { homedir } from "node:os";
 import { join, basename } from "node:path";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
+import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
 import { parseTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
@@ -24,13 +24,15 @@ const PALETTE_SIZE = 8;
 export interface TranscriptRef {
   sessionId: string;
   transcriptPath: string;
+  /** Config dir that owns this session (for `claude --resume`). */
+  configDir: string;
   mtimeMs: number;
   readLines(): Promise<string[]>;
 }
 
 /** Constructor seams so the service is unit-testable without a real home dir. */
 export interface DarkfactoryDeps {
-  projectsDir?: string;
+  configDirs?: string[];
   now?: () => number;
   workingWindowMs?: number;
   listTranscripts?: () => Promise<TranscriptRef[]>;
@@ -41,20 +43,21 @@ export interface DarkfactoryDeps {
 interface SessionMeta {
   transcriptPath: string;
   projectPath: string;
+  configDir: string;
   state: AgentTile["state"];
   mtimeMs: number;
 }
 
 @injectable()
 export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
-  private readonly projectsDir: string;
+  private readonly configDirs: string[];
   private readonly now: () => number;
   private readonly workingWindowMs: number;
   private readonly listTranscripts: () => Promise<TranscriptRef[]>;
   private readonly liveDirs: () => Promise<Set<string> | null>;
 
   private client?: SpexrDarkfactoryClient;
-  private wallWatcher?: FSWatcher;
+  private readonly wallWatchers: FSWatcher[] = [];
   private readonly index = new Map<string, SessionMeta>();
   /** sessionId → { watcher, offset } for active read-only follows. */
   private readonly follows = new Map<string, { watcher: FSWatcher; offset: number }>();
@@ -62,7 +65,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   // @unmanaged(): inversify must not manage this optional test seam.
   constructor(@unmanaged() deps?: DarkfactoryDeps) {
     const d = deps ?? {};
-    this.projectsDir = d.projectsDir ?? join(homedir(), ".claude", "projects");
+    this.configDirs = d.configDirs ?? defaultConfigDirs();
     this.now = d.now ?? Date.now;
     this.workingWindowMs = d.workingWindowMs ?? WORKING_WINDOW_MS;
     this.listTranscripts = d.listTranscripts ?? (() => this.scanDisk());
@@ -102,6 +105,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       this.index.set(ref.sessionId, {
         transcriptPath: ref.transcriptPath,
         projectPath: cwd,
+        configDir: ref.configDir,
         state,
         mtimeMs: ref.mtimeMs,
       });
@@ -130,9 +134,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   async planFocus(sessionId: string): Promise<FocusPlan> {
     const meta = this.index.get(sessionId);
     const projectPath = meta?.projectPath ?? "";
+    const configDir = meta?.configDir ?? "";
     // A "working" session is live elsewhere → follow read-only; else resume.
     const kind = meta?.state === "working" ? "readonly-follow" : "resume-terminal";
-    return { sessionId, projectPath, kind };
+    return { sessionId, projectPath, configDir, kind };
   }
 
   async startFollow(sessionId: string): Promise<void> {
@@ -169,20 +174,19 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   private ensureWatching(): void {
-    if (this.wallWatcher) return;
-    try {
-      // NOTE: `recursive` is implemented only on macOS and Windows; on Linux it
-      // throws and is swallowed here, so live push-refresh is inert there (the
-      // wall still refreshes on its own listTiles calls). Known follow-up.
-      this.wallWatcher = watch(
-        this.projectsDir,
-        { recursive: true },
-        debounce(() => {
-          void this.pushTiles();
-        }, 400),
-      );
-    } catch {
-      /* directory missing (or recursive unsupported) → no live push */
+    if (this.wallWatchers.length) return;
+    const onChange = debounce(() => {
+      void this.pushTiles();
+    }, 400);
+    for (const dir of this.configDirs) {
+      try {
+        // NOTE: `recursive` is implemented only on macOS and Windows; on Linux it
+        // throws and is swallowed here, so live push-refresh is inert there (the
+        // wall still refreshes on its own listTiles calls). Known follow-up.
+        this.wallWatchers.push(watch(projectsDirOf(dir), { recursive: true }, onChange));
+      } catch {
+        /* directory missing (or recursive unsupported) → no live push for it */
+      }
     }
   }
 
@@ -195,43 +199,48 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   private async scanDisk(): Promise<TranscriptRef[]> {
-    let projectDirs: string[];
-    try {
-      projectDirs = await readdir(this.projectsDir);
-    } catch {
-      return []; // ~/.claude/projects missing
-    }
     const refs: TranscriptRef[] = [];
-    for (const dir of projectDirs) {
-      const full = join(this.projectsDir, dir);
-      let files: string[];
+    for (const configDir of this.configDirs) {
+      const projectsDir = projectsDirOf(configDir);
+      let projectDirs: string[];
       try {
-        files = await readdir(full);
+        projectDirs = await readdir(projectsDir);
       } catch {
-        continue;
+        continue; // this config dir has no projects
       }
-      for (const f of files) {
-        if (!f.endsWith(".jsonl")) continue;
-        const transcriptPath = join(full, f);
-        let mtimeMs: number;
+      for (const dir of projectDirs) {
+        const full = join(projectsDir, dir);
+        let files: string[];
         try {
-          mtimeMs = (await stat(transcriptPath)).mtimeMs;
+          files = await readdir(full);
         } catch {
           continue;
         }
-        refs.push({
-          sessionId: f.replace(/\.jsonl$/, ""),
-          transcriptPath,
-          mtimeMs,
-          readLines: () => readFileLines(transcriptPath),
-        });
+        for (const f of files) {
+          if (!f.endsWith(".jsonl")) continue;
+          const transcriptPath = join(full, f);
+          let mtimeMs: number;
+          try {
+            mtimeMs = (await stat(transcriptPath)).mtimeMs;
+          } catch {
+            continue;
+          }
+          refs.push({
+            sessionId: f.replace(/\.jsonl$/, ""),
+            transcriptPath,
+            configDir,
+            mtimeMs,
+            readLines: () => readFileLines(transcriptPath),
+          });
+        }
       }
     }
     return refs;
   }
 
   dispose(): void {
-    this.wallWatcher?.close();
+    for (const w of this.wallWatchers) w.close();
+    this.wallWatchers.length = 0;
     for (const { watcher } of this.follows.values()) watcher.close();
     this.follows.clear();
   }
