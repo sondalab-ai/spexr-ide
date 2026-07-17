@@ -90,7 +90,10 @@ export class SpexrDarkfactoryTerminalManager {
   private resolveShell(resumeArgs: string[]): { shellPath?: string; shellArgs: string[] } {
     const command = (this.preferences.get<string>(SPEXR_CLAUDE_LAUNCH_COMMAND_PREFERENCE) ?? "").trim();
     if (command) {
-      const line = [command, ...resumeArgs.map(shellQuote)].join(" ");
+      // `; exec $SHELL` keeps the terminal alive after claude exits (e.g. a resume
+      // that can't find the conversation) so the tab shows the error instead of
+      // vanishing.
+      const line = `${[command, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
       return { shellArgs: ["-i", "-l", "-c", line] };
     }
     const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();

@@ -2385,11 +2385,12 @@ code {
 .spexr-df-card[data-state="done"] .spexr-df-card__led { background: var(--spexr-border-default); }
 @keyframes spexr-df-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 .spexr-df-card__project {
+  flex: 1 1 auto; min-width: 0;
   font-size: var(--spexr-text-lg, 1.05rem); font-weight: 700; letter-spacing: -0.01em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .spexr-df-card__branch {
-  flex: 0 1 auto; min-width: 0; font-family: var(--theia-code-font-family);
+  flex: 0 1 auto; min-width: 0; max-width: 130px; font-family: var(--theia-code-font-family);
   font-size: var(--spexr-text-xs); color: var(--spexr-text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

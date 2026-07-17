@@ -7,6 +7,12 @@ export interface ParsedTranscript {
   userTurns: number;
   lastPrompt: string;
   lastTool?: string;
+  /**
+   * True for interactive TUI sessions (they emit `mode`/`permission-mode` or a
+   * SessionStart hook). SDK / `-p` one-shot sessions don't — used to filter the
+   * automated subagent flood out of the wall.
+   */
+  interactive: boolean;
 }
 
 /** Text of a user message whose `content` is a string or an array of blocks. */
@@ -35,7 +41,7 @@ function toolName(content: unknown): string | undefined {
  * do not match a known shape, are skipped — never throw.
  */
 export function parseTranscript(lines: string[]): ParsedTranscript {
-  const out: ParsedTranscript = { userTurns: 0, lastPrompt: "" };
+  const out: ParsedTranscript = { userTurns: 0, lastPrompt: "", interactive: false };
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -47,9 +53,13 @@ export function parseTranscript(lines: string[]): ParsedTranscript {
     }
     if (typeof e.cwd === "string") out.cwd = e.cwd;
     if (typeof e.gitBranch === "string") out.gitBranch = e.gitBranch;
-    if (e.type === "mode" && typeof e.mode === "string") out.mode = e.mode;
+    if (e.type === "mode" && typeof e.mode === "string") {
+      out.mode = e.mode;
+      out.interactive = true;
+    }
     if (e.type === "permission-mode" && typeof e.permissionMode === "string") {
       out.permissionMode = e.permissionMode;
+      out.interactive = true;
     }
     const msg = e.message as { role?: string; content?: unknown } | undefined;
     if (msg?.role === "user") {

@@ -86,11 +86,12 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const newestByProject = new Map<string, number>();
     for (const ref of refs) {
       const lines = await ref.readLines();
-      const cwd = parseTranscript(lines).cwd;
-      if (!cwd) continue; // no real project path → skip
-      parsed.set(ref.sessionId, { ref, lines, cwd });
-      const prev = newestByProject.get(cwd);
-      if (prev === undefined || ref.mtimeMs > prev) newestByProject.set(cwd, ref.mtimeMs);
+      const p = parseTranscript(lines);
+      if (!p.cwd) continue; // no real project path → skip
+      if (!p.interactive) continue; // SDK / one-shot subagent session → not followable
+      parsed.set(ref.sessionId, { ref, lines, cwd: p.cwd });
+      const prev = newestByProject.get(p.cwd);
+      if (prev === undefined || ref.mtimeMs > prev) newestByProject.set(p.cwd, ref.mtimeMs);
     }
 
     this.index.clear();

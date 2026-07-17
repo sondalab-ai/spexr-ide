@@ -15,6 +15,7 @@ function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendS
           mtimeMs: NOW - 5_000,
           readLines: () =>
             Promise.resolve([
+              `{"type":"mode","mode":"normal"}`,
               `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
             ]),
         },

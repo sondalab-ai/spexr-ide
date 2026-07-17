@@ -20,6 +20,7 @@ describe("parseTranscript", () => {
     expect(p.userTurns).toBe(2);
     expect(p.lastPrompt).toBe("now run tests");
     expect(p.lastTool).toBe("Edit");
+    expect(p.interactive).toBe(true);
   });
 
   it("empty transcript yields safe defaults", () => {
@@ -27,5 +28,15 @@ describe("parseTranscript", () => {
     expect(p.cwd).toBeUndefined();
     expect(p.userTurns).toBe(0);
     expect(p.lastPrompt).toBe("");
+    expect(p.interactive).toBe(false);
+  });
+
+  it("SDK/one-shot session without a mode entry is not interactive", () => {
+    const p = parseTranscript([
+      `{"type":"queue-operation","operation":"enqueue"}`,
+      `{"cwd":"/x","type":"user","message":{"role":"user","content":"review this"}}`,
+    ]);
+    expect(p.interactive).toBe(false);
+    expect(p.cwd).toBe("/x");
   });
 });

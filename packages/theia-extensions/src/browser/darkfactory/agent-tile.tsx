@@ -42,7 +42,6 @@ export function AgentTileCard(props: {
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
         <span className="spexr-df-card__project">{tile.projectName}</span>
-        {tile.gitBranch && <span className="spexr-df-card__branch">{tile.gitBranch}</span>}
         <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
       </span>
 
@@ -64,6 +63,11 @@ export function AgentTileCard(props: {
         <span className="spexr-df-card__now">{tile.actionLine}</span>
         <StatusPill tile={tile} />
         <span className="spexr-df-card__meta">
+          {tile.gitBranch && (
+            <span className="spexr-df-card__branch" title={tile.gitBranch}>
+              {tile.gitBranch}
+            </span>
+          )}
           <span className="spexr-df-card__perm" title={permissionLabel(tile.permissionMode)}>
             <i className={`codicon ${PERMISSION_ICON[tile.permissionMode ?? "default"] ?? "codicon-question"}`} />
           </span>
