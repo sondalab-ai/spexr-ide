@@ -85,9 +85,9 @@ export function parseTranscript(lines: string[]): ParsedTranscript {
       const text = userText(msg.content);
       if (typeof text === "string" && isGenuinePrompt(e.isMeta === true, text)) {
         out.userTurns++;
-        const clean = text.replace(/\s+/g, " ").trim().slice(0, 200);
-        out.lastPrompt = clean;
-        if (!out.goal) out.goal = clean;
+        const clean = text.replace(/\s+/g, " ").trim();
+        out.lastPrompt = clean.slice(0, 200);
+        if (!out.goal) out.goal = clean.slice(0, 2000); // full-ish for expand
       }
     } else if (msg?.role === "assistant") {
       const tool = toolName(msg.content);

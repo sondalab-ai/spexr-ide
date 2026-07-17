@@ -1,12 +1,6 @@
 import * as React from "@theia/core/shared/react";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
-import { permissionLabel, modeLabel, stateLabel, relativeTime } from "./darkfactory-format.js";
-
-const PERMISSION_ICON: Record<string, string> = {
-  auto: "codicon-check-all",
-  plan: "codicon-map",
-  default: "codicon-question",
-};
+import { permissionLabel, stateLabel, relativeTime } from "./darkfactory-format.js";
 
 /** The single most important status word for a tile, with its visual class. */
 function statusOf(tile: AgentTile): { label: string; kind: string } {
@@ -15,15 +9,23 @@ function statusOf(tile: AgentTile): { label: string; kind: string } {
   return { label: stateLabel(tile.state), kind: tile.state };
 }
 
-/** Full agent card: state, goal (anchor), recent-actions trail, meta. */
+/** Compact, self-explanatory permission phrase. */
+function permShort(mode: string | undefined): string {
+  return mode === "auto" ? "auto-approve" : mode === "plan" ? "plan mode" : "asks each time";
+}
+
+/** Full agent card: state, goal (anchor, expandable), recent-actions trail, textual meta. */
 export function AgentTileCard(props: {
   tile: AgentTile;
   now: number;
   onOpen: (t: AgentTile) => void;
 }): React.ReactElement {
   const { tile, now, onOpen } = props;
+  const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
   const primary = tile.goal || tile.actionLine;
+  const expandable = primary.length > 90;
+
   return (
     <button
       className="spexr-df-card"
@@ -42,10 +44,24 @@ export function AgentTileCard(props: {
         <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
       </span>
 
-      {primary && <span className="spexr-df-card__goal">{primary}</span>}
+      {primary && (
+        <span className={`spexr-df-card__goal${expanded ? " is-expanded" : ""}`}>{primary}</span>
+      )}
+      {expandable && (
+        <span
+          className="spexr-df-card__more"
+          role="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
+        >
+          {expanded ? "Show less" : "Show full prompt"}
+        </span>
+      )}
 
       {tile.recentActions.length > 0 && (
-        <span className="spexr-df-card__trail">
+        <span className="spexr-df-card__trail" title={tile.recentActions.join("  →  ")}>
           {tile.recentActions.map((a, i) => (
             <React.Fragment key={i}>
               {i > 0 && <span className="spexr-df-card__sep">›</span>}
@@ -57,15 +73,17 @@ export function AgentTileCard(props: {
 
       <span className="spexr-df-card__meta">
         {tile.gitBranch && (
-          <span className="spexr-df-card__branch" title={tile.gitBranch}>
+          <span className="spexr-df-card__branch" title={`Branch: ${tile.gitBranch}`}>
+            <i className="codicon codicon-git-branch" />
             {tile.gitBranch}
           </span>
         )}
         <span className="spexr-df-card__perm" title={permissionLabel(tile.permissionMode)}>
-          <i className={`codicon ${PERMISSION_ICON[tile.permissionMode ?? "default"] ?? "codicon-question"}`} />
+          {permShort(tile.permissionMode)}
         </span>
-        {modeLabel(tile.mode) && <em>{modeLabel(tile.mode)}</em>}
-        <span className="spexr-df-card__turns">{tile.turnCount}⟳</span>
+        <span className="spexr-df-card__turns" title={`${tile.turnCount} turns in this session`}>
+          {tile.turnCount} turns
+        </span>
       </span>
     </button>
   );

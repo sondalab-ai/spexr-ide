@@ -38,20 +38,39 @@ function formatToolLine(name: string, input: Record<string, unknown> | undefined
   return target !== undefined ? { line: line.slice(0, 80), target } : { line: line.slice(0, 80) };
 }
 
-/** Short chip form for the recent-actions trail, e.g. "Edit auth.ts", "Bash pnpm test". */
+/** Trivial shell programs that carry no signal in a trail. */
+const TRIVIAL_BASH = new Set(["cd", "ls", "pwd", "echo", "export", "cat", "which", "clear", "true", ":", "set", "env", "source"]);
+
+/** Strip leading `VAR=value` env assignments from a shell command. */
+function stripEnv(cmd: string): string {
+  return cmd.replace(/^(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)+/, "").trim();
+}
+
+/** Program + subcommand of a shell command, e.g. "git push", "gh pr", "pnpm test". */
+function bashLabel(cmd: string): { program: string; label: string } {
+  const c = stripEnv(cmd);
+  const toks = c.split(/\s+/).filter(Boolean);
+  const program = toks[0] ?? "";
+  const meaningful = toks.slice(0, 3).filter((t) => !t.startsWith("-")).slice(0, 2);
+  return { program, label: meaningful.join(" ") || program };
+}
+
+/** Short chip form for the recent-actions trail, e.g. "Edit auth.ts", "Bash git push". */
 function formatChip(name: string, input: Record<string, unknown> | undefined): string {
+  if (name === "Bash") {
+    const cmd = typeof input?.command === "string" ? input.command : "";
+    return `Bash ${bashLabel(cmd).label}`.slice(0, 32);
+  }
   const target = toolTarget(name, input);
   return (target ? `${name} ${target}` : name).slice(0, 32);
 }
-
-/** Trivial shell commands that carry no signal in a trail. */
-const TRIVIAL_BASH = /^\s*(cd|ls|pwd|echo|export|cat|which|clear|true|:)\b/;
 
 /** True when a tool call is too low-signal to show in the trail. */
 function isTrivial(name: string, input: Record<string, unknown> | undefined): boolean {
   if (name !== "Bash") return false;
   const cmd = typeof input?.command === "string" ? input.command : "";
-  return TRIVIAL_BASH.test(cmd);
+  const { program } = bashLabel(cmd);
+  return program === "" || TRIVIAL_BASH.has(program);
 }
 
 /** Distil the last meaningful transcript entry into one human action line. */
