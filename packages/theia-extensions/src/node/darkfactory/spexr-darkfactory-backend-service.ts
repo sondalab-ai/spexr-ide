@@ -7,6 +7,7 @@ import { parseTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
 import { distillAction } from "./action-distiller.js";
+import { guessNeedsYou } from "./needs-you.js";
 import { buildTurnsText, type TurnEntry } from "./turns.js";
 import type {
   AgentTile,
@@ -97,6 +98,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       const state = classifySession(cwd, ref.mtimeMs, isNewest, live, now, this.workingWindowMs);
       const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
       const action = distillAction(entries);
+      const needsYou = guessNeedsYou(entries, state === "working", ref.mtimeMs, now);
       this.index.set(ref.sessionId, {
         transcriptPath: ref.transcriptPath,
         projectPath: cwd,
@@ -109,7 +111,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         projectPath: cwd,
         projectName: basename(cwd),
         state,
-        needsYou: false,
+        needsYou,
         needsYouCertain: false,
         actionLine: action.line,
         lastActivityMs: ref.mtimeMs,
