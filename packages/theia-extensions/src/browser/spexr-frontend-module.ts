@@ -268,6 +268,9 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
 
   // --- Darkfactory ---
   bindViewContribution(bind, SpexrDarkfactoryViewContribution);
+  // Default-visible tab, pinned alongside Welcome/Specs/Agent across Theia's
+  // Electron-wide shell-layout cache (see reveal-on-restore.ts).
+  bind(SpexrRevealOnRestore).toService(SpexrDarkfactoryViewContribution);
   bind(SpexrDarkfactoryWidget).toSelf();
   bind(WidgetFactory)
     .toDynamicValue((ctx) => ({
