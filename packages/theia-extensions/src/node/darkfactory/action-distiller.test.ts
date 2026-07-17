@@ -34,6 +34,17 @@ describe("action-distiller", () => {
     expect(recentActions(entries, 2)).toEqual(["Edit b.ts", "Bash pnpm test"]);
   });
 
+  test("recentActions drops trivial shell commands and consecutive duplicates", () => {
+    const entries = [
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "cd /x" } }] } },
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: "/x/a.ts" } }] } },
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: "/x/a.ts" } }] } },
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "ls -la" } }] } },
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm build" } }] } },
+    ];
+    expect(recentActions(entries, 5)).toEqual(["Read a.ts", "Bash pnpm build"]);
+  });
+
   test("lastActionFailed true when the latest tool_result is an error", () => {
     const ok = [{ message: { role: "user", content: [{ type: "tool_result", is_error: false }] } }];
     const bad = [{ message: { role: "user", content: [{ type: "tool_result", is_error: true }] } }];

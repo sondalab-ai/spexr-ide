@@ -8,44 +8,41 @@ const PERMISSION_ICON: Record<string, string> = {
   default: "codicon-question",
 };
 
-function StatusPill(props: { tile: AgentTile }): React.ReactElement | null {
-  const { tile } = props;
-  if (tile.lastFailed) return <span className="spexr-df-pill spexr-df-pill--error">Failed</span>;
-  if (tile.needsYou) {
-    return (
-      <span className="spexr-df-pill spexr-df-pill--attn">
-        {tile.needsYouCertain ? "Needs you" : "Maybe waiting"}
-      </span>
-    );
-  }
-  return null;
+/** The single most important status word for a tile, with its visual class. */
+function statusOf(tile: AgentTile): { label: string; kind: string } {
+  if (tile.lastFailed) return { label: "Failed", kind: "error" };
+  if (tile.needsYou) return { label: tile.needsYouCertain ? "Needs you" : "Waiting", kind: "attn" };
+  return { label: stateLabel(tile.state), kind: tile.state };
 }
 
-/** Full agent card: goal, recent-actions trail, current action, status. */
+/** Full agent card: state, goal (anchor), recent-actions trail, meta. */
 export function AgentTileCard(props: {
   tile: AgentTile;
   now: number;
   onOpen: (t: AgentTile) => void;
 }): React.ReactElement {
   const { tile, now, onOpen } = props;
+  const status = statusOf(tile);
+  const primary = tile.goal || tile.actionLine;
   return (
     <button
       className="spexr-df-card"
       data-state={tile.state}
-      data-needs-you={tile.needsYou ? "1" : "0"}
-      data-needs-you-certain={tile.needsYouCertain ? "1" : "0"}
-      data-failed={tile.lastFailed ? "1" : "0"}
+      data-status={status.kind}
       style={{ ["--tile-accent" as string]: `var(--spexr-df-accent-${tile.accentId})` }}
       onClick={() => onOpen(tile)}
-      title={`${tile.projectPath}`}
+      title={tile.projectPath}
     >
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
         <span className="spexr-df-card__project">{tile.projectName}</span>
+        <span className="spexr-df-card__status" data-kind={status.kind}>
+          {status.label}
+        </span>
         <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
       </span>
 
-      {tile.goal && <span className="spexr-df-card__goal">{tile.goal}</span>}
+      {primary && <span className="spexr-df-card__goal">{primary}</span>}
 
       {tile.recentActions.length > 0 && (
         <span className="spexr-df-card__trail">
@@ -58,22 +55,17 @@ export function AgentTileCard(props: {
         </span>
       )}
 
-      <span className="spexr-df-card__foot">
-        {tile.tool && <span className="spexr-df-card__chip">{tile.tool}</span>}
-        <span className="spexr-df-card__now">{tile.actionLine}</span>
-        <StatusPill tile={tile} />
-        <span className="spexr-df-card__meta">
-          {tile.gitBranch && (
-            <span className="spexr-df-card__branch" title={tile.gitBranch}>
-              {tile.gitBranch}
-            </span>
-          )}
-          <span className="spexr-df-card__perm" title={permissionLabel(tile.permissionMode)}>
-            <i className={`codicon ${PERMISSION_ICON[tile.permissionMode ?? "default"] ?? "codicon-question"}`} />
+      <span className="spexr-df-card__meta">
+        {tile.gitBranch && (
+          <span className="spexr-df-card__branch" title={tile.gitBranch}>
+            {tile.gitBranch}
           </span>
-          {modeLabel(tile.mode) && <em>{modeLabel(tile.mode)}</em>}
-          <span className="spexr-df-card__turns">{tile.turnCount}⟳</span>
+        )}
+        <span className="spexr-df-card__perm" title={permissionLabel(tile.permissionMode)}>
+          <i className={`codicon ${PERMISSION_ICON[tile.permissionMode ?? "default"] ?? "codicon-question"}`} />
         </span>
+        {modeLabel(tile.mode) && <em>{modeLabel(tile.mode)}</em>}
+        <span className="spexr-df-card__turns">{tile.turnCount}⟳</span>
       </span>
     </button>
   );
@@ -86,21 +78,24 @@ export function AgentCondensedRow(props: {
   onOpen: (t: AgentTile) => void;
 }): React.ReactElement {
   const { tile, now, onOpen } = props;
+  const status = statusOf(tile);
   return (
     <button
       className="spexr-df-row"
       data-state={tile.state}
-      data-needs-you={tile.needsYou ? "1" : "0"}
-      data-failed={tile.lastFailed ? "1" : "0"}
+      data-status={status.kind}
       style={{ ["--tile-accent" as string]: `var(--spexr-df-accent-${tile.accentId})` }}
       onClick={() => onOpen(tile)}
-      title={`${tile.projectPath} · ${stateLabel(tile.state)}`}
+      title={`${tile.projectPath} · ${status.label}`}
     >
       <span className="spexr-df-row__led" />
       <span className="spexr-df-row__project">{tile.projectName}</span>
-      <span className="spexr-df-row__action">{tile.actionLine}</span>
-      {tile.lastFailed && <span className="spexr-df-pill spexr-df-pill--error">Failed</span>}
-      {tile.needsYou && !tile.lastFailed && <span className="spexr-df-pill spexr-df-pill--attn">Waiting</span>}
+      <span className="spexr-df-row__action">{tile.goal || tile.actionLine}</span>
+      {(tile.lastFailed || tile.needsYou) && (
+        <span className="spexr-df-row__status" data-kind={status.kind}>
+          {status.label}
+        </span>
+      )}
       <time className="spexr-df-row__time">{relativeTime(tile.lastActivityMs, now)}</time>
     </button>
   );

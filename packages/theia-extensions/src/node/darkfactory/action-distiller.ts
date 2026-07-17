@@ -44,6 +44,16 @@ function formatChip(name: string, input: Record<string, unknown> | undefined): s
   return (target ? `${name} ${target}` : name).slice(0, 32);
 }
 
+/** Trivial shell commands that carry no signal in a trail. */
+const TRIVIAL_BASH = /^\s*(cd|ls|pwd|echo|export|cat|which|clear|true|:)\b/;
+
+/** True when a tool call is too low-signal to show in the trail. */
+function isTrivial(name: string, input: Record<string, unknown> | undefined): boolean {
+  if (name !== "Bash") return false;
+  const cmd = typeof input?.command === "string" ? input.command : "";
+  return TRIVIAL_BASH.test(cmd);
+}
+
 /** Distil the last meaningful transcript entry into one human action line. */
 export function distillAction(entries: DistillEntry[]): DistilledAction {
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -70,7 +80,11 @@ export function distillAction(entries: DistillEntry[]): DistilledAction {
   return { line: "No activity yet" };
 }
 
-/** The last `n` tool calls, chronological, as short chips (e.g. ["Read x", "Edit y", "Bash z"]). */
+/**
+ * The last `n` meaningful tool calls, chronological, as short chips
+ * (e.g. ["Read x", "Edit y", "Bash pnpm test"]). Trivial shell commands
+ * (cd/ls/echo…) and consecutive duplicates are dropped.
+ */
 export function recentActions(entries: DistillEntry[], n: number): string[] {
   const chips: string[] = [];
   for (const e of entries) {
@@ -78,7 +92,10 @@ export function recentActions(entries: DistillEntry[], n: number): string[] {
     if (!Array.isArray(content)) continue;
     for (const b of content) {
       const block = b as { type?: string; name?: string; input?: Record<string, unknown> };
-      if (block.type === "tool_use" && block.name) chips.push(formatChip(block.name, block.input));
+      if (block.type !== "tool_use" || !block.name) continue;
+      if (isTrivial(block.name, block.input)) continue;
+      const chip = formatChip(block.name, block.input);
+      if (chip !== chips[chips.length - 1]) chips.push(chip);
     }
   }
   return chips.slice(-n);

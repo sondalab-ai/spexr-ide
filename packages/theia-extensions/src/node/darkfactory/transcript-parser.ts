@@ -5,6 +5,8 @@ export interface ParsedTranscript {
   mode?: string;
   permissionMode?: string;
   userTurns: number;
+  /** First genuine human instruction — the session's goal (injected/meta skipped). */
+  goal: string;
   lastPrompt: string;
   lastTool?: string;
   /**
@@ -26,6 +28,23 @@ function userText(content: unknown): string | undefined {
   return undefined;
 }
 
+/** Injected/system prompt prefixes that are not the user's own instruction. */
+const INJECTION_PREFIXES = [
+  "Base directory for this skill",
+  "## Context",
+  "[Request interrupted",
+  "Caveat:",
+  "<",
+];
+
+/** True when a user message is a genuine typed instruction (not injected/meta). */
+function isGenuinePrompt(isMeta: boolean, text: string): boolean {
+  if (isMeta) return false;
+  const t = text.trim();
+  if (!t) return false;
+  return !INJECTION_PREFIXES.some((p) => t.startsWith(p));
+}
+
 /** Name of the last `tool_use` block in an assistant message, if any. */
 function toolName(content: unknown): string | undefined {
   if (!Array.isArray(content)) return undefined;
@@ -41,7 +60,7 @@ function toolName(content: unknown): string | undefined {
  * do not match a known shape, are skipped — never throw.
  */
 export function parseTranscript(lines: string[]): ParsedTranscript {
-  const out: ParsedTranscript = { userTurns: 0, lastPrompt: "", interactive: false };
+  const out: ParsedTranscript = { userTurns: 0, goal: "", lastPrompt: "", interactive: false };
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -64,9 +83,11 @@ export function parseTranscript(lines: string[]): ParsedTranscript {
     const msg = e.message as { role?: string; content?: unknown } | undefined;
     if (msg?.role === "user") {
       const text = userText(msg.content);
-      if (typeof text === "string") {
+      if (typeof text === "string" && isGenuinePrompt(e.isMeta === true, text)) {
         out.userTurns++;
-        out.lastPrompt = text.replace(/\s+/g, " ").trim().slice(0, 200);
+        const clean = text.replace(/\s+/g, " ").trim().slice(0, 200);
+        out.lastPrompt = clean;
+        if (!out.goal) out.goal = clean;
       }
     } else if (msg?.role === "assistant") {
       const tool = toolName(msg.content);

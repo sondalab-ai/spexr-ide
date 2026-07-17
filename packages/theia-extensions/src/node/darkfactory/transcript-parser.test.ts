@@ -21,6 +21,19 @@ describe("parseTranscript", () => {
     expect(p.lastPrompt).toBe("now run tests");
     expect(p.lastTool).toBe("Edit");
     expect(p.interactive).toBe(true);
+    expect(p.goal).toBe("refactor auth"); // first genuine prompt
+  });
+
+  it("goal skips injected/meta prompts and takes the first genuine one", () => {
+    const p = parseTranscript([
+      `{"type":"mode","mode":"normal"}`,
+      `{"isMeta":true,"message":{"role":"user","content":"<local-command-caveat>hooks</local-command-caveat>"}}`,
+      `{"message":{"role":"user","content":"<command-name>/clear</command-name>"}}`,
+      `{"message":{"role":"user","content":"Base directory for this skill: /x/SKILL.md"}}`,
+      `{"message":{"role":"user","content":"build the darkfactory view"}}`,
+      `{"message":{"role":"user","content":"[Request interrupted by user for tool use]"}}`,
+    ]);
+    expect(p.goal).toBe("build the darkfactory view");
   });
 
   it("empty transcript yields safe defaults", () => {

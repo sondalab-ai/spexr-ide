@@ -123,7 +123,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYou,
         needsYouCertain: false,
         lastFailed: lastActionFailed(entries),
-        goal: p.lastPrompt,
+        goal: p.goal || p.lastPrompt,
         actionLine: action.line,
         recentActions: recentActions(entries, 4),
         lastActivityMs: ref.mtimeMs,
