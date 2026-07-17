@@ -8,7 +8,10 @@ import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrDarkfactoryFollowWidget } from "./follow-pane.js";
 import { sortTiles } from "./darkfactory-format.js";
-import { AgentTileCard } from "./agent-tile.js";
+import { AgentTileCard, AgentCondensedRow } from "./agent-tile.js";
+
+/** How many top-priority sessions render as full cards; the rest are condensed rows. */
+const CARD_LIMIT = 10;
 
 /** Machine-wide monitoring wall of every Claude Code session ("agent"). */
 @injectable()
@@ -54,20 +57,27 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         <div className="spexr-df-empty">No Claude agents found. Start a session to see it here.</div>
       );
     }
+    const open = (tile: AgentTile): void =>
+      void this.openFocus(tile).catch(() => {
+        /* ignore */
+      });
+    const cards = tiles.slice(0, CARD_LIMIT);
+    const condensed = tiles.slice(CARD_LIMIT);
     return (
-      <div className="spexr-df-wall">
-        {tiles.map((t) => (
-          <AgentTileCard
-            key={t.sessionId}
-            tile={t}
-            now={now}
-            onOpen={(tile) =>
-              void this.openFocus(tile).catch(() => {
-                /* ignore */
-              })
-            }
-          />
-        ))}
+      <div className="spexr-df-root">
+        <div className="spexr-df-grid">
+          {cards.map((t) => (
+            <AgentTileCard key={t.sessionId} tile={t} now={now} onOpen={open} />
+          ))}
+        </div>
+        {condensed.length > 0 && (
+          <div className="spexr-df-condensed">
+            <div className="spexr-df-condensed__label">{condensed.length} more</div>
+            {condensed.map((t) => (
+              <AgentCondensedRow key={t.sessionId} tile={t} now={now} onOpen={open} />
+            ))}
+          </div>
+        )}
       </div>
     );
   }
