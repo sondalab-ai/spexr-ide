@@ -9,13 +9,16 @@ import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js"
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
 import { guessNeedsYou } from "./needs-you.js";
 import { buildTurnsText, type TurnEntry } from "./turns.js";
-import type { DescriptionGenerator } from "../search/description-format.js";
+import { parseSessionSummary, type DescriptionGenerator } from "../search/description-format.js";
 import type {
+  AgentSummary,
   AgentTile,
   FocusPlan,
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
 } from "../../common/darkfactory-protocol.js";
+
+const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
 const WORKING_WINDOW_MS = 45_000;
 const FOLLOW_TURNS = 8;
@@ -67,8 +70,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private client?: SpexrDarkfactoryClient;
   private readonly wallWatchers: FSWatcher[] = [];
   private readonly index = new Map<string, SessionMeta>();
-  /** sessionId → { mtimeMs, text } AI-summary cache, invalidated on transcript change. */
-  private readonly summaryCache = new Map<string, { mtimeMs: number; text: string }>();
+  /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
+  private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
   private readonly follows = new Map<string, { watcher: FSWatcher; offset: number }>();
 
@@ -85,23 +88,23 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   /**
-   * One-line AI description of what a session is about, via the local model.
-   * Cached by `sessionId + mtime`; returns "" when the model is unavailable.
+   * Two-level AI description (now + overview) of a session, via the local model.
+   * Cached by `sessionId + mtime`; returns empty fields when the model is unavailable.
    */
-  async summarize(sessionId: string): Promise<string> {
+  async summarize(sessionId: string): Promise<AgentSummary> {
     const meta = this.index.get(sessionId);
-    if (!meta) return "";
+    if (!meta) return EMPTY_SUMMARY;
     const cached = this.summaryCache.get(sessionId);
-    if (cached && cached.mtimeMs === meta.mtimeMs) return cached.text;
-    let text = "";
+    if (cached && cached.mtimeMs === meta.mtimeMs) return cached.summary;
+    let summary = EMPTY_SUMMARY;
     if (this.generator?.isAvailable()) {
       const lines = await readFileLines(meta.transcriptPath);
       const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
-      const t = await this.generator.summarize(buildTurnsText(entries, SUMMARY_TURNS));
-      text = t ?? "";
+      const raw = await this.generator.summarize(buildTurnsText(entries, SUMMARY_TURNS));
+      if (raw) summary = parseSessionSummary(raw);
     }
-    this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, text });
-    return text;
+    this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, summary });
+    return summary;
   }
 
   setClient(client: SpexrDarkfactoryClient): void {

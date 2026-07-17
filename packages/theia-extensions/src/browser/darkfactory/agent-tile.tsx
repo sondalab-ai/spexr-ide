@@ -1,5 +1,5 @@
 import * as React from "@theia/core/shared/react";
-import type { AgentTile } from "../../common/darkfactory-protocol.js";
+import type { AgentSummary, AgentTile } from "../../common/darkfactory-protocol.js";
 import { stateLabel, relativeTime } from "./darkfactory-format.js";
 
 /** The single most important status word for a tile, with its visual class. */
@@ -9,11 +9,11 @@ function statusOf(tile: AgentTile): { label: string; kind: string } {
   return { label: stateLabel(tile.state), kind: tile.state };
 }
 
-/** Full agent card: state, goal (anchor, expandable), AI description, recent-actions trail. */
+/** Full agent card: goal (anchor, expandable), then AI now/overview lines, then branch. */
 export function AgentTileCard(props: {
   tile: AgentTile;
   now: number;
-  summary?: { text: string; loading: boolean } | undefined;
+  summary?: { summary: AgentSummary; loading: boolean } | undefined;
   onOpen: (t: AgentTile) => void;
 }): React.ReactElement {
   const { tile, now, summary, onOpen } = props;
@@ -62,10 +62,15 @@ export function AgentTileCard(props: {
           Summarizing…
         </span>
       )}
-      {summary && !summary.loading && summary.text && (
-        <span className="spexr-df-card__ai" title={summary.text}>
+      {summary && !summary.loading && summary.summary.now && (
+        <span className="spexr-df-card__ai" title={summary.summary.now}>
           <i className="codicon codicon-sparkle" />
-          {summary.text}
+          {summary.summary.now}
+        </span>
+      )}
+      {summary && !summary.loading && summary.summary.overview && (
+        <span className="spexr-df-card__overview" title={summary.summary.overview}>
+          {summary.summary.overview}
         </span>
       )}
 

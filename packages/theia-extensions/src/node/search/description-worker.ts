@@ -57,7 +57,9 @@ async function handle(req: WorkerRequest): Promise<void> {
     const msgs = out[0]?.generated_text;
     const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : undefined;
     const raw = typeof last?.content === "string" ? last.content : "";
-    const text = cleanGenerated(raw);
+    // Summaries are multi-line (Now:/Overview:) and parsed by the caller; only the
+    // single-line file description goes through cleanGenerated.
+    const text = kind === "summary" ? raw.trim() : cleanGenerated(raw);
     post({ id, type: "done", text: text.length > 0 ? text : null });
   } catch {
     post({ id, type: "error" });

@@ -21,16 +21,56 @@ export const DESCRIPTION_SYSTEM_PROMPT =
   "When unsure, stay generic rather than guess specifics. Reply with only the sentence, max 15 words, " +
   "no preamble, no markdown. Do not begin with 'This file' or 'This'.";
 
-export const SUMMARY_MAX_NEW_TOKENS = 32;
+export const SUMMARY_MAX_NEW_TOKENS = 80;
 
+// NOTE: no concrete example clause here on purpose — a small model echoes a
+// memorable example verbatim when the session context is thin, which produced
+// bogus "refactoring the auth middleware" summaries. Keep the guidance abstract.
 export const SUMMARY_SYSTEM_PROMPT =
-  "You are given the last few turns of a coding-assistant session. Reply with a single present-tense " +
-  "clause describing what the assistant is currently doing, max 12 words, no preamble, no markdown, " +
-  "no trailing period. Example: 'refactoring the auth middleware to fix token expiry'.";
+  "You are given the goal and recent events of a coding-assistant session. Reply with EXACTLY two lines, " +
+  "no preamble, no markdown, no trailing period:\n" +
+  "Now: <present-tense clause, max 12 words, what the assistant is doing in the most recent events>\n" +
+  "Overview: <one clause, max 16 words, what the whole session is trying to accomplish>\n" +
+  "Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies. " +
+  "Do not begin either line with 'The' or 'This'.";
 
-/** User message for a session summary. */
+/** User message for a two-level session summary. */
 export function buildSummaryPrompt(turnsText: string): string {
-  return `Session turns:\n${turnsText}\n\nWhat is the assistant currently doing?`;
+  return `Goal and recent events:\n${turnsText}\n\nWrite the "Now:" and "Overview:" lines.`;
+}
+
+/** A parsed two-level session summary. */
+export interface SessionSummary {
+  now: string;
+  overview: string;
+}
+
+function cleanClause(s: string): string {
+  return s
+    .replace(/^["'`*\s]+|["'`*\s.]+$/g, "")
+    .replace(/^(?:the|this)\s+/i, "")
+    .trim();
+}
+
+/**
+ * Parse the model's two-line reply into { now, overview }. Robust to missing
+ * labels: an unlabelled single line becomes `now`; a label-only reply yields
+ * empty fields rather than throwing.
+ */
+export function parseSessionSummary(raw: string): SessionSummary {
+  const lines = raw.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  let now = "";
+  let overview = "";
+  for (const line of lines) {
+    const m = /^(now|overview)\s*[:\-]\s*(.*)$/i.exec(line);
+    if (m) {
+      if (m[1]!.toLowerCase() === "now") now = cleanClause(m[2]!);
+      else overview = cleanClause(m[2]!);
+    } else if (!now && !overview) {
+      now = cleanClause(line); // unlabelled fallback → treat as the "now" line
+    }
+  }
+  return { now, overview };
 }
 
 /** Produces a one-sentence, whole-file description, or null if unavailable. */

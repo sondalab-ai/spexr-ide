@@ -2,7 +2,7 @@ import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
 import { ApplicationShell } from "@theia/core/lib/browser";
-import type { AgentTile, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
+import type { AgentSummary, AgentTile, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
@@ -26,7 +26,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   private tiles: AgentTile[] = [];
   /** sessionId → AI description state, filled asynchronously. */
-  private readonly summaries = new Map<string, { ms: number; text: string; loading: boolean }>();
+  private readonly summaries = new Map<string, { ms: number; summary: AgentSummary; loading: boolean }>();
 
   @postConstruct()
   protected init(): void {
@@ -58,15 +58,17 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const t of sortTiles(tiles).slice(0, CARD_LIMIT)) {
       const have = this.summaries.get(t.sessionId);
       if (!have || have.ms !== t.lastActivityMs) {
-        this.summaries.set(t.sessionId, { ms: t.lastActivityMs, text: "", loading: true });
+        this.summaries.set(t.sessionId, { ms: t.lastActivityMs, summary: { now: "", overview: "" }, loading: true });
         void this.loadSummary(t);
       }
     }
   }
 
   private async loadSummary(tile: AgentTile): Promise<void> {
-    const text = await this.service.summarize(tile.sessionId).catch(() => "");
-    this.summaries.set(tile.sessionId, { ms: tile.lastActivityMs, text, loading: false });
+    const summary = await this.service
+      .summarize(tile.sessionId)
+      .catch((): AgentSummary => ({ now: "", overview: "" }));
+    this.summaries.set(tile.sessionId, { ms: tile.lastActivityMs, summary, loading: false });
     this.update();
   }
 

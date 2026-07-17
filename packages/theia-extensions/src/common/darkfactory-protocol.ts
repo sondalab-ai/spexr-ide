@@ -35,6 +35,14 @@ export interface AgentTile {
   accentId: number;
 }
 
+/** Two-level AI description of a session, from the local model. */
+export interface AgentSummary {
+  /** Present-tense clause: what the agent is doing right now. */
+  now: string;
+  /** One sentence: what the whole session is trying to accomplish. */
+  overview: string;
+}
+
 /** How the frontend should open a session in the focus pane. */
 export interface FocusPlan {
   sessionId: string;
@@ -47,8 +55,8 @@ export interface FocusPlan {
 /** Backend service consumed by the Darkfactory wall. */
 export interface SpexrDarkfactoryService {
   listTiles(): Promise<AgentTile[]>;
-  /** One-line AI description of what the session is about (local model, cached, "" if unavailable). */
-  summarize(sessionId: string): Promise<string>;
+  /** Two-level AI description (now + overview) from the local model; cached, empty fields if unavailable. */
+  summarize(sessionId: string): Promise<AgentSummary>;
   /** Decide whether a session opens as an interactive resume terminal or a read-only follow. */
   planFocus(sessionId: string): Promise<FocusPlan>;
   /** Begin streaming transcript turns for a read-only follow; idempotent per session. */
