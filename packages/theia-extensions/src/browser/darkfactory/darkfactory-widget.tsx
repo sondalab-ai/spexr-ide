@@ -30,8 +30,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.title.closable = true;
     this.title.iconClass = "codicon codicon-server-process";
     this.addClass("spexr-darkfactory");
-    this.client.onAgentsChanged$((agents) => this.setAgents(agents));
-    void this.refresh();
+    this.toDispose.push(this.client.onAgentsChanged$((agents) => this.setAgents(agents)));
+    this.refresh().catch(() => { /* ignore */ });
   }
 
   private async refresh(): Promise<void> {
@@ -41,7 +41,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private setAgents(agents: AgentSession[]): void {
     this.agents = agents;
     this.update();
-    for (const a of agents) void this.loadSummary(a);
+    for (const a of agents) this.loadSummary(a).catch(() => { /* ignore */ });
   }
 
   private async loadSummary(a: AgentSession): Promise<void> {
@@ -70,11 +70,14 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               <span className="spexr-df-actions">
                 <button
                   className="spexr-button spexr-button--primary"
-                  onClick={() => void this.openInSpexr(g.projectPath)}
+                  onClick={() => this.openInSpexr(g.projectPath).catch(() => { /* ignore */ })}
                 >
                   Open in SPEXR
                 </button>
-                <button className="spexr-button" onClick={() => void this.service.revealInFileManager(g.projectPath)}>
+                <button
+                  className="spexr-button"
+                  onClick={() => this.service.revealInFileManager(g.projectPath).catch(() => { /* ignore */ })}
+                >
                   Reveal
                 </button>
                 <button className="spexr-button" onClick={() => void this.clipboard.writeText(g.projectPath)}>

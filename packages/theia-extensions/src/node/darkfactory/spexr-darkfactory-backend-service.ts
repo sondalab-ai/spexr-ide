@@ -48,6 +48,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly index = new Map<string, { transcriptPath: string; mtimeMs: number; lastPrompt: string }>();
   /** sessionId → { mtimeMs, summary } cache. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
+  /** Project paths seen during the last scan; guards `revealInFileManager` against arbitrary RPC-supplied paths. */
+  private readonly knownProjects = new Set<string>();
 
   // @inject via DI in production; the object form is used by tests.
   constructor(
@@ -75,11 +77,13 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const now = this.now();
     const agents: AgentSession[] = [];
     this.index.clear();
+    this.knownProjects.clear();
     for (const ref of refs) {
       const parsed = parseTranscript(await ref.readLines());
       if (!parsed.cwd) continue; // no real project path → skip
       const state = classifyState(ref.transcriptPath, ref.mtimeMs, open, now, this.idleWindowMs);
       this.index.set(ref.sessionId, { transcriptPath: ref.transcriptPath, mtimeMs: ref.mtimeMs, lastPrompt: parsed.lastPrompt });
+      this.knownProjects.add(parsed.cwd);
       if (state === "archived" && !includeArchived) continue;
       agents.push({
         sessionId: ref.sessionId, transcriptPath: ref.transcriptPath,
@@ -113,6 +117,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async revealInFileManager(projectPath: string): Promise<void> {
+    // Guard against spawning a file-manager process on an arbitrary RPC-supplied path:
+    // only reveal paths this service actually discovered during a scan.
+    if (!this.knownProjects.has(projectPath)) return;
     const { execFile } = await import("node:child_process");
     const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
     await new Promise<void>((resolve) => execFile(cmd, [projectPath], () => resolve()));
@@ -121,10 +128,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private ensureWatching(): void {
     if (this.watcher) return;
     try {
+      // NOTE: `recursive: true` is only implemented on macOS and Windows in Node's fs.watch;
+      // on Linux it throws synchronously, which is swallowed by the catch below. Live
+      // push-refresh is therefore inert on Linux — the widget still works via its own
+      // `listAgents` calls, it just won't auto-refresh on file changes there.
       this.watcher = watch(this.projectsDir, { recursive: true }, debounce(async () => {
-        this.client?.onAgentsChanged(await this.listAgents());
+        try {
+          this.client?.onAgentsChanged(await this.listAgents());
+        } catch {
+          // ignore: a failed rescan on a watch event isn't worth surfacing to the user.
+        }
       }, 400));
-    } catch { /* directory missing → nothing to watch */ }
+    } catch { /* directory missing (or platform lacks recursive watch, e.g. Linux) → nothing to watch */ }
   }
 
   private async scanDisk(): Promise<TranscriptRef[]> {
