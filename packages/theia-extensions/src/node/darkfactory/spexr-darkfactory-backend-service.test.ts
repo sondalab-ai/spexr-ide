@@ -6,6 +6,7 @@ const NOW = 100 * 3_600_000;
 function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]> = {}) {
   return new SpexrDarkfactoryBackendService({
     now: () => NOW,
+    resumableConfigDir: "/Users/x/.claude",
     listTranscripts: () =>
       Promise.resolve([
         {
@@ -49,5 +50,14 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     const plan = await idle.planFocus("s1");
     expect(plan.kind).toBe("resume-terminal");
     expect(plan.configDir).toBe("/Users/x/.claude");
+  });
+
+  it("planFocus falls back to readonly-follow when the session's config dir isn't resumable", async () => {
+    const s = svc({
+      liveProjectDirs: () => Promise.resolve(new Set()),
+      resumableConfigDir: "/Users/x/.claude-perso", // session is in /Users/x/.claude
+    });
+    await s.listTiles();
+    expect((await s.planFocus("s1")).kind).toBe("readonly-follow");
   });
 });

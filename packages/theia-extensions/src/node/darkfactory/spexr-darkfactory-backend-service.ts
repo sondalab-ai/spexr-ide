@@ -33,6 +33,8 @@ export interface TranscriptRef {
 /** Constructor seams so the service is unit-testable without a real home dir. */
 export interface DarkfactoryDeps {
   configDirs?: string[];
+  /** Config dir the launch command actually resumes against (env CLAUDE_CONFIG_DIR). */
+  resumableConfigDir?: string;
   now?: () => number;
   workingWindowMs?: number;
   listTranscripts?: () => Promise<TranscriptRef[]>;
@@ -51,6 +53,7 @@ interface SessionMeta {
 @injectable()
 export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly configDirs: string[];
+  private readonly resumableConfigDir: string;
   private readonly now: () => number;
   private readonly workingWindowMs: number;
   private readonly listTranscripts: () => Promise<TranscriptRef[]>;
@@ -66,6 +69,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   constructor(@unmanaged() deps?: DarkfactoryDeps) {
     const d = deps ?? {};
     this.configDirs = d.configDirs ?? defaultConfigDirs();
+    this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
     this.workingWindowMs = d.workingWindowMs ?? WORKING_WINDOW_MS;
     this.listTranscripts = d.listTranscripts ?? (() => this.scanDisk());
@@ -139,8 +143,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const meta = this.index.get(sessionId);
     const projectPath = meta?.projectPath ?? "";
     const configDir = meta?.configDir ?? "";
-    // A "working" session is live elsewhere → follow read-only; else resume.
-    const kind = meta?.state === "working" ? "readonly-follow" : "resume-terminal";
+    // Follow read-only when the session is live elsewhere OR when it lives in a
+    // config dir the launch command can't resume against (the resume would fail
+    // with "no conversation"). Otherwise open an interactive resume terminal.
+    const resumable = !!meta && meta.configDir === this.resumableConfigDir;
+    const kind = meta?.state === "working" || !resumable ? "readonly-follow" : "resume-terminal";
     return { sessionId, projectPath, configDir, kind };
   }
 
