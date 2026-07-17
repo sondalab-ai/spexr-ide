@@ -78,6 +78,16 @@ import { SmartSearchWidget } from "./search/smart-search-widget.js";
 import { SpexrSearchServiceProxy, SEARCH_SERVICE_PATH } from "./search/smart-search-service.js";
 import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/smart-search-client.js";
 import { DescriptionJobStatusBarContribution } from "./search/description-job-status-bar-contribution.js";
+import { SpexrDarkfactoryWidget } from "./darkfactory/darkfactory-widget.js";
+import { SpexrDarkfactoryViewContribution } from "./darkfactory/darkfactory-view-contribution.js";
+import {
+  SpexrDarkfactoryServiceProxy,
+  DARKFACTORY_SERVICE_PATH,
+} from "./darkfactory/darkfactory-service-proxy.js";
+import {
+  SpexrDarkfactoryClientDispatcher,
+  SpexrDarkfactoryClientToken,
+} from "./darkfactory/darkfactory-client.js";
 
 /**
  * Frontend contributions for SPEXR. Theia handles DI via Inversify and
@@ -255,4 +265,23 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(CommandContribution).toService(SpexrSmartSearchContribution);
   bind(DescriptionJobStatusBarContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(DescriptionJobStatusBarContribution);
+
+  // --- Darkfactory ---
+  bindViewContribution(bind, SpexrDarkfactoryViewContribution);
+  bind(SpexrDarkfactoryWidget).toSelf();
+  bind(WidgetFactory)
+    .toDynamicValue((ctx) => ({
+      id: SpexrDarkfactoryWidget.ID,
+      createWidget: () => ctx.container.get(SpexrDarkfactoryWidget),
+    }))
+    .inSingletonScope();
+  bind(SpexrDarkfactoryClientDispatcher).toSelf().inSingletonScope();
+  bind(SpexrDarkfactoryClientToken).toService(SpexrDarkfactoryClientDispatcher);
+  bind(SpexrDarkfactoryServiceProxy)
+    .toDynamicValue((ctx) => {
+      const connection = ctx.container.get(WebSocketConnectionProvider);
+      const client = ctx.container.get(SpexrDarkfactoryClientDispatcher);
+      return connection.createProxy(DARKFACTORY_SERVICE_PATH, client);
+    })
+    .inSingletonScope();
 });
