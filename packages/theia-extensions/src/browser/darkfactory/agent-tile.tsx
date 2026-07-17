@@ -13,7 +13,7 @@ function statusOf(tile: AgentTile): { label: string; kind: string } {
 export function AgentTileCard(props: {
   tile: AgentTile;
   now: number;
-  summary?: string | undefined;
+  summary?: { text: string; loading: boolean } | undefined;
   onOpen: (t: AgentTile) => void;
 }): React.ReactElement {
   const { tile, now, summary, onOpen } = props;
@@ -56,10 +56,16 @@ export function AgentTileCard(props: {
         </span>
       )}
 
-      {summary && (
+      {summary?.loading && (
+        <span className="spexr-df-card__ai is-loading" title="Local model summarizing the session…">
+          <i className="codicon codicon-sparkle" />
+          Summarizing…
+        </span>
+      )}
+      {summary && !summary.loading && summary.text && (
         <span className="spexr-df-card__ai" title="Local-model summary of the session">
           <i className="codicon codicon-sparkle" />
-          {summary}
+          {summary.text}
         </span>
       )}
 

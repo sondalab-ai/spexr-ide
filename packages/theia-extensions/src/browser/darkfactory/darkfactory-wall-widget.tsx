@@ -25,8 +25,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(ApplicationShell) private readonly shell!: ApplicationShell;
 
   private tiles: AgentTile[] = [];
-  /** sessionId → { ms, text } AI descriptions, filled asynchronously. */
-  private readonly summaries = new Map<string, { ms: number; text: string }>();
+  /** sessionId → AI description state, filled asynchronously. */
+  private readonly summaries = new Map<string, { ms: number; text: string; loading: boolean }>();
 
   @postConstruct()
   protected init(): void {
@@ -52,16 +52,17 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // AI descriptions only for the top cards (not the condensed rows).
     for (const t of sortTiles(tiles).slice(0, CARD_LIMIT)) {
       const have = this.summaries.get(t.sessionId);
-      if (!have || have.ms !== t.lastActivityMs) void this.loadSummary(t);
+      if (!have || have.ms !== t.lastActivityMs) {
+        this.summaries.set(t.sessionId, { ms: t.lastActivityMs, text: "", loading: true });
+        void this.loadSummary(t);
+      }
     }
   }
 
   private async loadSummary(tile: AgentTile): Promise<void> {
     const text = await this.service.summarize(tile.sessionId).catch(() => "");
-    if (text) {
-      this.summaries.set(tile.sessionId, { ms: tile.lastActivityMs, text });
-      this.update();
-    }
+    this.summaries.set(tile.sessionId, { ms: tile.lastActivityMs, text, loading: false });
+    this.update();
   }
 
   protected render(): React.ReactNode {
@@ -86,7 +87,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               key={t.sessionId}
               tile={t}
               now={now}
-              summary={this.summaries.get(t.sessionId)?.text}
+              summary={this.summaries.get(t.sessionId)}
               onOpen={open}
             />
           ))}
