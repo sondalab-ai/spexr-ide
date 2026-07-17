@@ -88,6 +88,7 @@ import {
   SpexrDarkfactoryClientDispatcher,
   SpexrDarkfactoryClientToken,
 } from "./darkfactory/darkfactory-client.js";
+import { SpexrDarkfactoryTerminalManager } from "./darkfactory/darkfactory-terminal-manager.js";
 
 /**
  * Frontend contributions for SPEXR. Theia handles DI via Inversify and
@@ -278,6 +279,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       createWidget: () => ctx.container.get(SpexrDarkfactoryWidget),
     }))
     .inSingletonScope();
+  bind(SpexrDarkfactoryTerminalManager).toSelf().inSingletonScope();
   bind(SpexrDarkfactoryClientDispatcher).toSelf().inSingletonScope();
   bind(SpexrDarkfactoryClientToken).toService(SpexrDarkfactoryClientDispatcher);
   bind(SpexrDarkfactoryServiceProxy)
