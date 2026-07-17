@@ -8,6 +8,9 @@ import {
   GEN_MODEL_ID,
   MAX_NEW_TOKENS,
   DESCRIPTION_SYSTEM_PROMPT,
+  SUMMARY_MAX_NEW_TOKENS,
+  SUMMARY_SYSTEM_PROMPT,
+  buildSummaryPrompt,
   buildPrompt,
   cleanGenerated,
   type WorkerRequest,
@@ -38,15 +41,18 @@ function post(msg: WorkerResponse): void {
 }
 
 async function handle(req: WorkerRequest): Promise<void> {
-  const { id, relPath, content } = req;
+  const { id, kind, relPath, content } = req;
   try {
     const pipe = await getPipe();
+    const system = kind === "summary" ? SUMMARY_SYSTEM_PROMPT : DESCRIPTION_SYSTEM_PROMPT;
+    const user = kind === "summary" ? buildSummaryPrompt(content) : buildPrompt(relPath, content);
+    const maxTokens = kind === "summary" ? SUMMARY_MAX_NEW_TOKENS : MAX_NEW_TOKENS;
     const out = await pipe(
       [
-        { role: "system", content: DESCRIPTION_SYSTEM_PROMPT },
-        { role: "user", content: buildPrompt(relPath, content) },
+        { role: "system", content: system },
+        { role: "user", content: user },
       ],
-      { max_new_tokens: MAX_NEW_TOKENS, do_sample: false },
+      { max_new_tokens: maxTokens, do_sample: false },
     );
     const msgs = out[0]?.generated_text;
     const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : undefined;

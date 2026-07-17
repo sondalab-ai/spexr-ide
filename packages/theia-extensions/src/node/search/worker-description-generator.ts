@@ -53,6 +53,16 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
     });
   }
 
+  summarize(turnsText: string): Promise<string | null> {
+    const worker = this.ensureWorker();
+    if (!worker) return Promise.resolve(null);
+    const id = ++this.seq;
+    return new Promise<string | null>((resolve) => {
+      this.pending.set(id, { resolve });
+      worker.postMessage({ id, kind: "summary", relPath: "", content: turnsText });
+    });
+  }
+
   dispose(): void {
     this.worker?.terminate();
     this.worker = undefined;

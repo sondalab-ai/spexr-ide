@@ -21,9 +21,22 @@ export const DESCRIPTION_SYSTEM_PROMPT =
   "When unsure, stay generic rather than guess specifics. Reply with only the sentence, max 15 words, " +
   "no preamble, no markdown. Do not begin with 'This file' or 'This'.";
 
+export const SUMMARY_MAX_NEW_TOKENS = 32;
+
+export const SUMMARY_SYSTEM_PROMPT =
+  "You are given the last few turns of a coding-assistant session. Reply with a single present-tense " +
+  "clause describing what the assistant is currently doing, max 12 words, no preamble, no markdown, " +
+  "no trailing period. Example: 'refactoring the auth middleware to fix token expiry'.";
+
+/** User message for a session summary. */
+export function buildSummaryPrompt(turnsText: string): string {
+  return `Session turns:\n${turnsText}\n\nWhat is the assistant currently doing?`;
+}
+
 /** Produces a one-sentence, whole-file description, or null if unavailable. */
 export interface DescriptionGenerator {
   generate(relPath: string, content: string): Promise<string | null>;
+  summarize(turnsText: string): Promise<string | null>;
   isAvailable(): boolean;
   dispose?(): void;
 }
@@ -33,6 +46,7 @@ export const DescriptionGeneratorToken = Symbol("DescriptionGenerator");
 /** host → worker */
 export interface WorkerRequest {
   id: number;
+  kind?: "description" | "summary";
   relPath: string;
   content: string;
 }

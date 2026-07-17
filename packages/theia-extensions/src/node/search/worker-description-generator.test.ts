@@ -70,6 +70,15 @@ describe("WorkerDescriptionGenerator", () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
+  it("summarize posts a summary request and resolves with worker text", async () => {
+    const fake = new FakeWorker();
+    const gen = new WorkerDescriptionGenerator(() => fake);
+    const p = gen.summarize("user: fix auth");
+    expect(fake.requests[0]!.kind).toBe("summary");
+    fake.emit({ id: fake.requests[0]!.id, type: "done", text: "fixing auth" });
+    expect(await p).toBe("fixing auth");
+  });
+
   it("resolves via inversify DI without binding the unmanaged factory", () => {
     const container = new Container();
     container.bind(DescriptionGeneratorToken).to(WorkerDescriptionGenerator);
