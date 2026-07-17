@@ -19,7 +19,7 @@ import type {
 
 const WORKING_WINDOW_MS = 45_000;
 const FOLLOW_TURNS = 8;
-const SUMMARY_TURNS = 10;
+const SUMMARY_TURNS = 14;
 const PALETTE_SIZE = 8;
 
 /** One transcript file discovered on disk; `readLines` is lazy. */
@@ -163,6 +163,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         ...(p.mode !== undefined ? { mode: p.mode } : {}),
         ...(p.permissionMode !== undefined ? { permissionMode: p.permissionMode } : {}),
       });
+    }
+    // Evict AI-summary entries for sessions that no longer exist on disk, so the
+    // cache tracks live sessions instead of growing unbounded over the process life.
+    for (const id of this.summaryCache.keys()) {
+      if (!this.index.has(id)) this.summaryCache.delete(id);
     }
     return tiles;
   }

@@ -38,7 +38,7 @@ const INJECTION_PREFIXES = [
 ];
 
 /** True when a user message is a genuine typed instruction (not injected/meta). */
-function isGenuinePrompt(isMeta: boolean, text: string): boolean {
+export function isGenuinePrompt(isMeta: boolean, text: string): boolean {
   if (isMeta) return false;
   const t = text.trim();
   if (!t) return false;

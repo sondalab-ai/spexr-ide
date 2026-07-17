@@ -55,6 +55,20 @@ function bashLabel(cmd: string): { program: string; label: string } {
   return { program, label: meaningful.join(" ") || program };
 }
 
+/**
+ * Human phrase for a tool call, richer than a chip — keeps the full-ish target so
+ * the summary model can ground on *what* is being touched: "Edit auth.ts",
+ * "Bash: pnpm --filter x test", "Grep authToken", "Read config.yml".
+ */
+export function describeToolUse(name: string, input: Record<string, unknown> | undefined): string {
+  if (name === "Bash") {
+    const cmd = typeof input?.command === "string" ? stripEnv(input.command) : "";
+    return cmd ? `Bash: ${cmd.slice(0, 80)}` : "Bash";
+  }
+  const target = toolTarget(name, input);
+  return target ? `${name} ${target}` : name;
+}
+
 /** Short chip form for the recent-actions trail, e.g. "Edit auth.ts", "Bash git push". */
 function formatChip(name: string, input: Record<string, unknown> | undefined): string {
   if (name === "Bash") {

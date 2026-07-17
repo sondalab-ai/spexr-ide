@@ -49,6 +49,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private setTiles(tiles: AgentTile[]): void {
     this.tiles = tiles;
     this.update();
+    // Drop cached descriptions for sessions no longer on the wall (no unbounded growth).
+    const live = new Set(tiles.map((t) => t.sessionId));
+    for (const id of this.summaries.keys()) {
+      if (!live.has(id)) this.summaries.delete(id);
+    }
     // AI descriptions only for the top cards (not the condensed rows).
     for (const t of sortTiles(tiles).slice(0, CARD_LIMIT)) {
       const have = this.summaries.get(t.sessionId);
