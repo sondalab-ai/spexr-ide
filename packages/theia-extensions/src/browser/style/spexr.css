@@ -2390,11 +2390,12 @@ code {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .spexr-df-card__branch {
-  display: inline-flex; align-items: center; gap: 3px;
-  flex: 0 1 auto; min-width: 0; max-width: 150px; font-family: var(--theia-code-font-family);
-  font-size: var(--spexr-text-xs); color: var(--spexr-text-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0;
+  font-family: var(--theia-code-font-family); font-size: var(--spexr-text-xs);
+  color: var(--spexr-text-muted);
 }
+.spexr-df-card__branch .codicon { flex: none; font-size: 0.9em; }
+.spexr-df-card__branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spexr-df-card__time { margin-left: auto; flex: none; font-size: var(--spexr-text-xs); color: var(--spexr-text-muted); }
 
 .spexr-df-card__goal {
@@ -2408,10 +2409,10 @@ code {
 }
 .spexr-df-card__more:hover { color: var(--tile-accent); }
 .spexr-df-card__ai {
-  font-size: var(--spexr-text-sm); font-style: italic; color: var(--spexr-text-muted);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: var(--spexr-text-sm); line-height: 1.4; color: var(--spexr-text-primary);
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
 }
-.spexr-df-card__ai .codicon { color: var(--tile-accent); font-style: normal; margin-right: 4px; font-size: 0.9em; }
+.spexr-df-card__ai .codicon { color: var(--tile-accent); margin-right: 5px; font-size: 0.9em; }
 .spexr-df-card__ai.is-loading { opacity: 0.7; animation: spexr-df-aipulse 1.3s ease-in-out infinite; }
 @keyframes spexr-df-aipulse { 0%,100% { opacity: 0.45; } 50% { opacity: 0.85; } }
 .spexr-df-card__trail {

@@ -63,29 +63,16 @@ export function AgentTileCard(props: {
         </span>
       )}
       {summary && !summary.loading && summary.text && (
-        <span className="spexr-df-card__ai" title="Local-model summary of the session">
+        <span className="spexr-df-card__ai" title={summary.text}>
           <i className="codicon codicon-sparkle" />
           {summary.text}
         </span>
       )}
 
-      {tile.recentActions.length > 0 && (
-        <span className="spexr-df-card__trail" title={tile.recentActions.join("  →  ")}>
-          {tile.recentActions.map((a, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <span className="spexr-df-card__sep">›</span>}
-              <span className="spexr-df-card__step">{a}</span>
-            </React.Fragment>
-          ))}
-        </span>
-      )}
-
       {tile.gitBranch && (
-        <span className="spexr-df-card__meta">
-          <span className="spexr-df-card__branch" title={`Branch: ${tile.gitBranch}`}>
-            <i className="codicon codicon-git-branch" />
-            {tile.gitBranch}
-          </span>
+        <span className="spexr-df-card__branch" title={tile.gitBranch}>
+          <i className="codicon codicon-git-branch" />
+          <span className="spexr-df-card__branch-name">{tile.gitBranch}</span>
         </span>
       )}
     </button>
