@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SpexrDarkfactoryBackendService } from "./spexr-darkfactory-backend-service.js";
+import { SpexrDarkfactoryBackendService, stitchBoundedLines } from "./spexr-darkfactory-backend-service.js";
 
 const NOW = 100 * 3_600_000;
 
@@ -77,6 +77,20 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     const s = svc();
     await s.listTiles();
     expect(await s.summarize("s1")).toEqual({ now: "", overview: "" });
+  });
+
+  it("stitchBoundedLines returns whole lines untouched when not truncated", () => {
+    expect(stitchBoundedLines("a\nb\nc", "", false)).toEqual(["a", "b", "c"]);
+  });
+
+  it("stitchBoundedLines drops the partial line at each cut and skips the middle", () => {
+    // head ends mid-line ("par"), tail starts mid-line ("tial") — both dropped.
+    expect(stitchBoundedLines('{"a":1}\n{"b":2}\npar', 'tial\n{"y":9}\n{"z":10}', true)).toEqual([
+      '{"a":1}',
+      '{"b":2}',
+      '{"y":9}',
+      '{"z":10}',
+    ]);
   });
 
   it("planFocus falls back to readonly-follow when the session's config dir isn't resumable", async () => {

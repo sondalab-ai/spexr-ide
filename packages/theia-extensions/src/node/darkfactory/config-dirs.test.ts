@@ -1,24 +1,44 @@
 import { describe, expect, test } from "vitest";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { configDirs, projectsDirOf } from "./config-dirs.js";
 
-const DEFAULT = join(homedir(), ".claude");
+const HOME = "/home/u";
+const DEFAULT = join(HOME, ".claude");
+
+/** Discover against a fake home whose `.claude*` dirs each map to a has-projects flag. */
+function cfg(env: NodeJS.ProcessEnv, entries: Record<string, boolean>) {
+  return configDirs(env, {
+    home: HOME,
+    listHome: () => Object.keys(entries),
+    hasProjects: (dir) => entries[basename(dir)] === true,
+  });
+}
 
 describe("config-dirs", () => {
-  test("default is ~/.claude when no env override", () => {
-    expect(configDirs({})).toEqual([DEFAULT]);
+  test("default is ~/.claude when nothing else is discovered", () => {
+    expect(cfg({}, {})).toEqual([DEFAULT]);
   });
 
-  test("adds CLAUDE_CONFIG_DIR when set", () => {
-    expect(configDirs({ CLAUDE_CONFIG_DIR: "/Users/x/.claude-perso" })).toEqual([
+  test("adaptively discovers a `.claude-perso` alias dir that has projects", () => {
+    expect(cfg({}, { ".claude": true, ".claude-perso": true })).toEqual([
       DEFAULT,
-      "/Users/x/.claude-perso",
+      join(HOME, ".claude-perso"),
+    ]);
+  });
+
+  test("ignores `.claude*` dirs without a projects subdir and unrelated dirs", () => {
+    expect(cfg({}, { ".claude-backup": false, ".config": true })).toEqual([DEFAULT]);
+  });
+
+  test("adds CLAUDE_CONFIG_DIR when set, deduped against discovery", () => {
+    expect(cfg({ CLAUDE_CONFIG_DIR: join(HOME, ".claude-perso") }, { ".claude-perso": true })).toEqual([
+      DEFAULT,
+      join(HOME, ".claude-perso"),
     ]);
   });
 
   test("dedupes when the override equals the default", () => {
-    expect(configDirs({ CLAUDE_CONFIG_DIR: DEFAULT })).toEqual([DEFAULT]);
+    expect(cfg({ CLAUDE_CONFIG_DIR: DEFAULT }, {})).toEqual([DEFAULT]);
   });
 
   test("projectsDirOf appends /projects", () => {

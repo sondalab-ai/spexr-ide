@@ -1,6 +1,6 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { join, basename } from "node:path";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, open, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
 import { parseTranscript } from "./transcript-parser.js";
@@ -24,6 +24,16 @@ const WORKING_WINDOW_MS = 45_000;
 const FOLLOW_TURNS = 8;
 const SUMMARY_TURNS = 14;
 const PALETTE_SIZE = 8;
+/**
+ * Only the most-recently-active sessions are read on each scan. Transcript
+ * history runs to hundreds of files, some tens of MB; reading them all on every
+ * filewatcher tick stalled the backend event loop. The wall only surfaces recent
+ * work anyway, so cap the parse to this many newest sessions.
+ */
+const RECENT_LIMIT = 60;
+/** Bytes read from the head (goal/cwd/interactive markers) and tail (recent activity). */
+const HEAD_BYTES = 32_768;
+const TAIL_BYTES = 98_304;
 
 /** One transcript file discovered on disk; `readLines` is lazy. */
 export interface TranscriptRef {
@@ -98,7 +108,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     if (cached && cached.mtimeMs === meta.mtimeMs) return cached.summary;
     let summary = EMPTY_SUMMARY;
     if (this.generator?.isAvailable()) {
-      const lines = await readFileLines(meta.transcriptPath);
+      const lines = await readBoundedLines(meta.transcriptPath);
       const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
       const raw = await this.generator.summarize(buildTurnsText(entries, SUMMARY_TURNS));
       if (raw) summary = parseSessionSummary(raw);
@@ -113,26 +123,29 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
-    const [refs, live] = await Promise.all([this.listTranscripts(), this.liveDirs()]);
+    const [allRefs, live] = await Promise.all([this.listTranscripts(), this.liveDirs()]);
     const now = this.now();
+    // Only read the newest sessions — history is huge and reading it all stalls
+    // the event loop; the wall only shows recent work.
+    const refs = [...allRefs].sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, RECENT_LIMIT);
     // Parse each transcript once; track the newest transcript mtime per project
     // so "working" is attributed to a single session per project.
-    const parsed = new Map<string, { ref: TranscriptRef; lines: string[]; cwd: string }>();
+    const parsed = new Map<string, { ref: TranscriptRef; lines: string[]; parsed: ReturnType<typeof parseTranscript> }>();
     const newestByProject = new Map<string, number>();
     for (const ref of refs) {
       const lines = await ref.readLines();
       const p = parseTranscript(lines);
       if (!p.cwd) continue; // no real project path → skip
       if (!p.interactive) continue; // SDK / one-shot subagent session → not followable
-      parsed.set(ref.sessionId, { ref, lines, cwd: p.cwd });
+      parsed.set(ref.sessionId, { ref, lines, parsed: p });
       const prev = newestByProject.get(p.cwd);
       if (prev === undefined || ref.mtimeMs > prev) newestByProject.set(p.cwd, ref.mtimeMs);
     }
 
     this.index.clear();
     const tiles: AgentTile[] = [];
-    for (const { ref, lines, cwd } of parsed.values()) {
-      const p = parseTranscript(lines);
+    for (const { ref, lines, parsed: p } of parsed.values()) {
+      const cwd = p.cwd!;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
       const state = classifySession(cwd, ref.mtimeMs, isNewest, live, now, this.workingWindowMs);
       const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
@@ -277,7 +290,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             transcriptPath,
             configDir,
             mtimeMs,
-            readLines: () => readFileLines(transcriptPath),
+            readLines: () => readBoundedLines(transcriptPath),
           });
         }
       }
@@ -306,6 +319,51 @@ async function readFileLines(path: string): Promise<string[]> {
     return (await readFile(path, "utf8")).split("\n");
   } catch {
     return [];
+  }
+}
+
+/**
+ * Stitch bounded head/tail reads back into whole JSON lines. When `truncated`,
+ * the line straddling each cut is partial, so drop the head's last line and the
+ * tail's first line; the middle of the transcript is intentionally skipped.
+ */
+export function stitchBoundedLines(head: string, tail: string, truncated: boolean): string[] {
+  if (!truncated) return head.split("\n");
+  const headLines = head.split("\n");
+  headLines.pop();
+  const tailLines = tail.split("\n");
+  tailLines.shift();
+  return [...headLines, ...tailLines];
+}
+
+/**
+ * Read only the head and tail of a transcript (not the whole file — some run to
+ * tens of MB). The head carries cwd/goal/interactive markers, the tail carries
+ * recent activity; that is everything the wall and summary need.
+ */
+async function readBoundedLines(path: string): Promise<string[]> {
+  let fh;
+  try {
+    fh = await open(path, "r");
+  } catch {
+    return [];
+  }
+  try {
+    const { size } = await fh.stat();
+    if (size <= HEAD_BYTES + TAIL_BYTES) {
+      const buf = Buffer.alloc(size);
+      await fh.read(buf, 0, size, 0);
+      return stitchBoundedLines(buf.toString("utf8"), "", false);
+    }
+    const headBuf = Buffer.alloc(HEAD_BYTES);
+    await fh.read(headBuf, 0, HEAD_BYTES, 0);
+    const tailBuf = Buffer.alloc(TAIL_BYTES);
+    await fh.read(tailBuf, 0, TAIL_BYTES, size - TAIL_BYTES);
+    return stitchBoundedLines(headBuf.toString("utf8"), tailBuf.toString("utf8"), true);
+  } catch {
+    return [];
+  } finally {
+    await fh.close();
   }
 }
 
