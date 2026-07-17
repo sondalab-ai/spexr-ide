@@ -6,7 +6,7 @@ import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js
 import { parseTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
-import { distillAction } from "./action-distiller.js";
+import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
 import { guessNeedsYou } from "./needs-you.js";
 import { buildTurnsText, type TurnEntry } from "./turns.js";
 import type {
@@ -117,7 +117,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         state,
         needsYou,
         needsYouCertain: false,
+        lastFailed: lastActionFailed(entries),
+        goal: p.lastPrompt,
         actionLine: action.line,
+        recentActions: recentActions(entries, 4),
         lastActivityMs: ref.mtimeMs,
         turnCount: p.userTurns,
         accentId: hashToIndex(cwd, PALETTE_SIZE),

@@ -16,8 +16,14 @@ export interface AgentTile {
   needsYou: boolean;
   /** False when `needsYou` is a best-effort guess (external agent). */
   needsYouCertain: boolean;
+  /** True when the most recent tool result was an error. */
+  lastFailed: boolean;
+  /** What the agent is working on — the latest user instruction. */
+  goal: string;
   /** One-line distilled current action. */
   actionLine: string;
+  /** Recent tool calls, chronological, as short chips. */
+  recentActions: string[];
   tool?: string;
   target?: string;
   gitBranch?: string;

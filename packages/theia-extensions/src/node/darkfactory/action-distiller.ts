@@ -30,6 +30,20 @@ function toolTarget(name: string, input: Record<string, unknown> | undefined): s
   return undefined;
 }
 
+/** Compact "Verb target" for a tool call, e.g. "Editing auth.ts", "Running: pnpm test". */
+function formatToolLine(name: string, input: Record<string, unknown> | undefined): { line: string; target?: string } {
+  const target = toolTarget(name, input);
+  const verb = VERB[name] ?? name;
+  const line = name === "Bash" && target ? `Running: ${target}` : target ? `${verb} ${target}` : verb;
+  return target !== undefined ? { line: line.slice(0, 80), target } : { line: line.slice(0, 80) };
+}
+
+/** Short chip form for the recent-actions trail, e.g. "Edit auth.ts", "Bash pnpm test". */
+function formatChip(name: string, input: Record<string, unknown> | undefined): string {
+  const target = toolTarget(name, input);
+  return (target ? `${name} ${target}` : name).slice(0, 32);
+}
+
 /** Distil the last meaningful transcript entry into one human action line. */
 export function distillAction(entries: DistillEntry[]): DistilledAction {
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -43,10 +57,8 @@ export function distillAction(entries: DistillEntry[]): DistilledAction {
     for (let j = content.length - 1; j >= 0; j--) {
       const b = content[j] as { type?: string; name?: string; text?: string; input?: Record<string, unknown> };
       if (b.type === "tool_use" && b.name) {
-        const target = toolTarget(b.name, b.input);
-        const verb = VERB[b.name] ?? `${b.name}`;
-        const line = b.name === "Bash" && target ? `Running: ${target}` : target ? `${verb} ${target}` : verb;
-        const out: DistilledAction = { line: line.slice(0, 80), tool: b.name };
+        const { line, target } = formatToolLine(b.name, b.input);
+        const out: DistilledAction = { line, tool: b.name };
         if (target !== undefined) out.target = target;
         return out;
       }
@@ -56,4 +68,31 @@ export function distillAction(entries: DistillEntry[]): DistilledAction {
     }
   }
   return { line: "No activity yet" };
+}
+
+/** The last `n` tool calls, chronological, as short chips (e.g. ["Read x", "Edit y", "Bash z"]). */
+export function recentActions(entries: DistillEntry[], n: number): string[] {
+  const chips: string[] = [];
+  for (const e of entries) {
+    const content = e.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      const block = b as { type?: string; name?: string; input?: Record<string, unknown> };
+      if (block.type === "tool_use" && block.name) chips.push(formatChip(block.name, block.input));
+    }
+  }
+  return chips.slice(-n);
+}
+
+/** True when the most recent tool_result in the transcript is an error. */
+export function lastActionFailed(entries: DistillEntry[]): boolean {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const content = entries[i]?.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (let j = content.length - 1; j >= 0; j--) {
+      const b = content[j] as { type?: string; is_error?: boolean };
+      if (b.type === "tool_result") return b.is_error === true;
+    }
+  }
+  return false;
 }

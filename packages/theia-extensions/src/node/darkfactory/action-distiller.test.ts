@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { distillAction } from "./action-distiller.js";
+import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
 
 describe("action-distiller", () => {
   test("last tool_use → verb + target", () => {
@@ -23,5 +23,22 @@ describe("action-distiller", () => {
 
   test("empty transcript → neutral line", () => {
     expect(distillAction([]).line).toBe("No activity yet");
+  });
+
+  test("recentActions returns the last N tool calls as chips, chronological", () => {
+    const entries = [
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: "/x/a.ts" } }] } },
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/b.ts" } }] } },
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+    ];
+    expect(recentActions(entries, 2)).toEqual(["Edit b.ts", "Bash pnpm test"]);
+  });
+
+  test("lastActionFailed true when the latest tool_result is an error", () => {
+    const ok = [{ message: { role: "user", content: [{ type: "tool_result", is_error: false }] } }];
+    const bad = [{ message: { role: "user", content: [{ type: "tool_result", is_error: true }] } }];
+    expect(lastActionFailed(ok)).toBe(false);
+    expect(lastActionFailed(bad)).toBe(true);
+    expect(lastActionFailed([])).toBe(false);
   });
 });
