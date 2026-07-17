@@ -25,6 +25,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(ApplicationShell) private readonly shell!: ApplicationShell;
 
   private tiles: AgentTile[] = [];
+  /** sessionId → { ms, text } AI descriptions, filled asynchronously. */
+  private readonly summaries = new Map<string, { ms: number; text: string }>();
 
   @postConstruct()
   protected init(): void {
@@ -47,6 +49,19 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private setTiles(tiles: AgentTile[]): void {
     this.tiles = tiles;
     this.update();
+    // AI descriptions only for the top cards (not the condensed rows).
+    for (const t of sortTiles(tiles).slice(0, CARD_LIMIT)) {
+      const have = this.summaries.get(t.sessionId);
+      if (!have || have.ms !== t.lastActivityMs) void this.loadSummary(t);
+    }
+  }
+
+  private async loadSummary(tile: AgentTile): Promise<void> {
+    const text = await this.service.summarize(tile.sessionId).catch(() => "");
+    if (text) {
+      this.summaries.set(tile.sessionId, { ms: tile.lastActivityMs, text });
+      this.update();
+    }
   }
 
   protected render(): React.ReactNode {
@@ -67,7 +82,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       <div className="spexr-df-root">
         <div className="spexr-df-grid">
           {cards.map((t) => (
-            <AgentTileCard key={t.sessionId} tile={t} now={now} onOpen={open} />
+            <AgentTileCard
+              key={t.sessionId}
+              tile={t}
+              now={now}
+              summary={this.summaries.get(t.sessionId)?.text}
+              onOpen={open}
+            />
           ))}
         </div>
         {condensed.length > 0 && (

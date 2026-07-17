@@ -6,7 +6,7 @@ import { SpexrAgentBackendService } from "./spexr-agent-backend-service.js";
 import { SpexrGitBackendService } from "./spexr-git-backend-service.js";
 import { SEARCH_SERVICE_PATH, type SpexrSearchClient } from "../common/search-protocol.js";
 import { EmbedderToken, TransformersEmbedder } from "./search/embedding-model.js";
-import { DescriptionGeneratorToken } from "./search/description-format.js";
+import { DescriptionGeneratorToken, type DescriptionGenerator } from "./search/description-format.js";
 import { WorkerDescriptionGenerator } from "./search/worker-description-generator.js";
 import { SpexrSearchBackendService } from "./search/spexr-search-backend-service.js";
 import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common/darkfactory-protocol.js";
@@ -42,7 +42,14 @@ export default new ContainerModule((bind) => {
     })
     .inSingletonScope();
 
-  bind(SpexrDarkfactoryBackendService).toSelf().inSingletonScope();
+  bind(SpexrDarkfactoryBackendService)
+    .toDynamicValue(
+      (ctx) =>
+        new SpexrDarkfactoryBackendService({
+          generator: ctx.container.get<DescriptionGenerator>(DescriptionGeneratorToken),
+        }),
+    )
+    .inSingletonScope();
   bind(ConnectionHandler)
     .toDynamicValue((ctx) => {
       const service = ctx.container.get(SpexrDarkfactoryBackendService);

@@ -9,6 +9,7 @@ import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js"
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
 import { guessNeedsYou } from "./needs-you.js";
 import { buildTurnsText, type TurnEntry } from "./turns.js";
+import type { DescriptionGenerator } from "../search/description-format.js";
 import type {
   AgentTile,
   FocusPlan,
@@ -18,6 +19,7 @@ import type {
 
 const WORKING_WINDOW_MS = 45_000;
 const FOLLOW_TURNS = 8;
+const SUMMARY_TURNS = 10;
 const PALETTE_SIZE = 8;
 
 /** One transcript file discovered on disk; `readLines` is lazy. */
@@ -39,6 +41,8 @@ export interface DarkfactoryDeps {
   workingWindowMs?: number;
   listTranscripts?: () => Promise<TranscriptRef[]>;
   liveProjectDirs?: () => Promise<Set<string> | null>;
+  /** Local model used to infer a one-line session description. */
+  generator?: DescriptionGenerator;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -59,9 +63,12 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly listTranscripts: () => Promise<TranscriptRef[]>;
   private readonly liveDirs: () => Promise<Set<string> | null>;
 
+  private readonly generator: DescriptionGenerator | undefined;
   private client?: SpexrDarkfactoryClient;
   private readonly wallWatchers: FSWatcher[] = [];
   private readonly index = new Map<string, SessionMeta>();
+  /** sessionId → { mtimeMs, text } AI-summary cache, invalidated on transcript change. */
+  private readonly summaryCache = new Map<string, { mtimeMs: number; text: string }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
   private readonly follows = new Map<string, { watcher: FSWatcher; offset: number }>();
 
@@ -74,6 +81,27 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.workingWindowMs = d.workingWindowMs ?? WORKING_WINDOW_MS;
     this.listTranscripts = d.listTranscripts ?? (() => this.scanDisk());
     this.liveDirs = d.liveProjectDirs ?? (() => defaultLiveProjectDirs());
+    this.generator = d.generator;
+  }
+
+  /**
+   * One-line AI description of what a session is about, via the local model.
+   * Cached by `sessionId + mtime`; returns "" when the model is unavailable.
+   */
+  async summarize(sessionId: string): Promise<string> {
+    const meta = this.index.get(sessionId);
+    if (!meta) return "";
+    const cached = this.summaryCache.get(sessionId);
+    if (cached && cached.mtimeMs === meta.mtimeMs) return cached.text;
+    let text = "";
+    if (this.generator?.isAvailable()) {
+      const lines = await readFileLines(meta.transcriptPath);
+      const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+      const t = await this.generator.summarize(buildTurnsText(entries, SUMMARY_TURNS));
+      text = t ?? "";
+    }
+    this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, text });
+    return text;
   }
 
   setClient(client: SpexrDarkfactoryClient): void {

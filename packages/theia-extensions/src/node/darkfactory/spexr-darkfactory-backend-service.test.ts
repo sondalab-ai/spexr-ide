@@ -52,6 +52,30 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect(plan.configDir).toBe("/Users/x/.claude");
   });
 
+  it("summarize uses the local model and caches by mtime", async () => {
+    let calls = 0;
+    const s = svc({
+      generator: {
+        generate: async () => null,
+        isAvailable: () => true,
+        summarize: async () => {
+          calls++;
+          return "migrating the browse-blueprints modal to the design system";
+        },
+      },
+    });
+    await s.listTiles();
+    expect(await s.summarize("s1")).toBe("migrating the browse-blueprints modal to the design system");
+    await s.summarize("s1");
+    expect(calls).toBe(1); // cached by mtime
+  });
+
+  it("summarize returns empty string when no model is available", async () => {
+    const s = svc();
+    await s.listTiles();
+    expect(await s.summarize("s1")).toBe("");
+  });
+
   it("planFocus falls back to readonly-follow when the session's config dir isn't resumable", async () => {
     const s = svc({
       liveProjectDirs: () => Promise.resolve(new Set()),

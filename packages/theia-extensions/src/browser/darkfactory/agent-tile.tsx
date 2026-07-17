@@ -1,6 +1,6 @@
 import * as React from "@theia/core/shared/react";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
-import { permissionLabel, stateLabel, relativeTime } from "./darkfactory-format.js";
+import { stateLabel, relativeTime } from "./darkfactory-format.js";
 
 /** The single most important status word for a tile, with its visual class. */
 function statusOf(tile: AgentTile): { label: string; kind: string } {
@@ -9,18 +9,14 @@ function statusOf(tile: AgentTile): { label: string; kind: string } {
   return { label: stateLabel(tile.state), kind: tile.state };
 }
 
-/** Compact, self-explanatory permission phrase. */
-function permShort(mode: string | undefined): string {
-  return mode === "auto" ? "auto-approve" : mode === "plan" ? "plan mode" : "asks each time";
-}
-
-/** Full agent card: state, goal (anchor, expandable), recent-actions trail, textual meta. */
+/** Full agent card: state, goal (anchor, expandable), AI description, recent-actions trail. */
 export function AgentTileCard(props: {
   tile: AgentTile;
   now: number;
+  summary?: string | undefined;
   onOpen: (t: AgentTile) => void;
 }): React.ReactElement {
-  const { tile, now, onOpen } = props;
+  const { tile, now, summary, onOpen } = props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
   const primary = tile.goal || tile.actionLine;
@@ -60,6 +56,13 @@ export function AgentTileCard(props: {
         </span>
       )}
 
+      {summary && (
+        <span className="spexr-df-card__ai" title="Local-model summary of the session">
+          <i className="codicon codicon-sparkle" />
+          {summary}
+        </span>
+      )}
+
       {tile.recentActions.length > 0 && (
         <span className="spexr-df-card__trail" title={tile.recentActions.join("  →  ")}>
           {tile.recentActions.map((a, i) => (
@@ -71,20 +74,14 @@ export function AgentTileCard(props: {
         </span>
       )}
 
-      <span className="spexr-df-card__meta">
-        {tile.gitBranch && (
+      {tile.gitBranch && (
+        <span className="spexr-df-card__meta">
           <span className="spexr-df-card__branch" title={`Branch: ${tile.gitBranch}`}>
             <i className="codicon codicon-git-branch" />
             {tile.gitBranch}
           </span>
-        )}
-        <span className="spexr-df-card__perm" title={permissionLabel(tile.permissionMode)}>
-          {permShort(tile.permissionMode)}
         </span>
-        <span className="spexr-df-card__turns" title={`${tile.turnCount} turns in this session`}>
-          {tile.turnCount} turns
-        </span>
-      </span>
+      )}
     </button>
   );
 }
