@@ -1,4 +1,4 @@
-import type { AgentSession, AgentState } from "../../common/darkfactory-protocol.js";
+import type { AgentTile, AgentState } from "../../common/darkfactory-protocol.js";
 
 /** Coarse "time ago" bucket for a past epoch-ms timestamp. */
 export function relativeTime(ms: number, now: number): string {
@@ -13,37 +13,41 @@ export function relativeTime(ms: number, now: number): string {
 
 /** Human label for a session state. */
 export function stateLabel(state: AgentState): string {
-  return state === "live" ? "Live" : state === "idle" ? "Idle" : "Archived";
+  return state === "working" ? "Working" : state === "idle" ? "Idle" : "Done";
 }
 
-/** CSS custom property carrying the status colour for a state. */
-export function stateColor(state: AgentState): string {
-  return state === "live"
-    ? "var(--spexr-df-live)"
-    : state === "idle"
-      ? "var(--spexr-df-idle)"
-      : "var(--spexr-df-archived)";
+const STATE_RANK: Record<AgentState, number> = { working: 0, idle: 1, done: 2 };
+
+/** Lower = higher attention. Needs-you always outranks state. */
+export function attentionRank(state: AgentState, needsYou: boolean): number {
+  return (needsYou ? 0 : 1) * 10 + STATE_RANK[state];
 }
 
-/** Sessions of one project, in first-seen order. */
-export interface ProjectGroup {
-  projectPath: string;
-  projectName: string;
-  sessions: AgentSession[];
+/** Needs-you → working → idle → done, then most-recently-active first. */
+export function sortTiles(tiles: AgentTile[]): AgentTile[] {
+  return [...tiles].sort(
+    (a, b) =>
+      attentionRank(a.state, a.needsYou) - attentionRank(b.state, b.needsYou) ||
+      b.lastActivityMs - a.lastActivityMs,
+  );
 }
 
-/** Cluster sessions by project path, preserving first-seen order of both groups and sessions. */
-export function groupByProject(agents: AgentSession[]): ProjectGroup[] {
-  const groups: ProjectGroup[] = [];
-  const byPath = new Map<string, ProjectGroup>();
-  for (const a of agents) {
-    let g = byPath.get(a.projectPath);
-    if (!g) {
-      g = { projectPath: a.projectPath, projectName: a.projectName, sessions: [] };
-      byPath.set(a.projectPath, g);
-      groups.push(g);
-    }
-    g.sessions.push(a);
+/** Human label for a permission mode; never a bare token. */
+export function permissionLabel(mode: string | undefined): string {
+  switch (mode) {
+    case "auto":
+      return "Auto-approve tools";
+    case "plan":
+      return "Plan mode";
+    case "default":
+      return "Ask each time";
+    default:
+      return mode ? mode : "Ask each time";
   }
-  return groups;
+}
+
+/** Human label for a non-default `mode`; undefined for the default so it stays hidden. */
+export function modeLabel(mode: string | undefined): string | undefined {
+  if (!mode || mode === "normal") return undefined;
+  return mode.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
