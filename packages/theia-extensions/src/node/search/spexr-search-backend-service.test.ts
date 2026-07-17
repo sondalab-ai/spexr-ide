@@ -25,6 +25,8 @@ class FakeGenerator implements DescriptionGenerator {
   async generate(relPath: string, _content: string): Promise<string | null> {
     return this.fn(relPath);
   }
+
+  async summarize(): Promise<string | null> { return null; }
 }
 
 const noopGenerator = (): FakeGenerator => new FakeGenerator(() => "");

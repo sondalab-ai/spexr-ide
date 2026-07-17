@@ -17,4 +17,9 @@ describe("buildTurnsText", () => {
   it("returns an empty string for no entries", () => {
     expect(buildTurnsText([], 5)).toBe("");
   });
+
+  it("keeps a legitimate turn whose content ends in a colon", () => {
+    const entries = [{ message: { role: "user", content: "Steps:" } }];
+    expect(buildTurnsText(entries, 1)).toBe("user: Steps:");
+  });
 });

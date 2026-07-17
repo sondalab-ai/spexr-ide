@@ -26,6 +26,8 @@ class FakeGenerator implements DescriptionGenerator {
     this.beforeResolve?.();
     return `desc:${relPath}`;
   }
+
+  async summarize(): Promise<string | null> { return null; }
 }
 
 interface JobEnv {

@@ -28,7 +28,8 @@ export function buildTurnsText(entries: TurnEntry[], maxTurns: number): string {
   const turns = entries
     .filter((e) => e.message?.role === "user" || e.message?.role === "assistant")
     .slice(-maxTurns)
-    .map((e) => `${e.message!.role}: ${renderContent(e.message!.content)}`.trim())
-    .filter((l) => !l.endsWith(":"));
+    .map((e) => ({ role: e.message!.role, content: renderContent(e.message!.content) }))
+    .filter((t) => t.content.length > 0)
+    .map((t) => `${t.role}: ${t.content}`.trim());
   return turns.join("\n");
 }
