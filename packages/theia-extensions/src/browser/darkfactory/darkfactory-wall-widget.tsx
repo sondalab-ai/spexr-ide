@@ -25,8 +25,16 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(ApplicationShell) private readonly shell!: ApplicationShell;
 
   private tiles: AgentTile[] = [];
-  /** sessionId → AI description state, filled asynchronously. */
-  private readonly summaries = new Map<string, { ms: number; summary: AgentSummary; loading: boolean }>();
+  /**
+   * sessionId → AI description state, filled asynchronously. `loading` drives the
+   * spinner (only before the first result); `pending` guards against queueing a
+   * second inference while one is in flight. A settled `summary` is kept visible
+   * across `mtime` churn so an active session never blanks back to the spinner.
+   */
+  private readonly summaries = new Map<
+    string,
+    { ms: number; summary: AgentSummary; loading: boolean; pending: boolean }
+  >();
 
   @postConstruct()
   protected init(): void {
@@ -57,18 +65,27 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // AI descriptions only for the top cards (not the condensed rows).
     for (const t of sortTiles(tiles).slice(0, CARD_LIMIT)) {
       const have = this.summaries.get(t.sessionId);
-      if (!have || have.ms !== t.lastActivityMs) {
-        this.summaries.set(t.sessionId, { ms: t.lastActivityMs, summary: { now: "", overview: "" }, loading: true });
-        void this.loadSummary(t);
-      }
+      if (have && have.ms === t.lastActivityMs) continue; // already up to date
+      if (have?.pending) continue; // an inference is already running; it will refresh
+      this.summaries.set(t.sessionId, {
+        ms: t.lastActivityMs,
+        summary: have?.summary ?? { now: "", overview: "" }, // keep the last good text visible
+        loading: !have?.summary.now, // spinner only until we have something to show
+        pending: true,
+      });
+      void this.loadSummary(t);
     }
   }
 
   private async loadSummary(tile: AgentTile): Promise<void> {
+    const dispatchedMs = tile.lastActivityMs;
     const summary = await this.service
       .summarize(tile.sessionId)
       .catch((): AgentSummary => ({ now: "", overview: "" }));
-    this.summaries.set(tile.sessionId, { ms: tile.lastActivityMs, summary, loading: false });
+    const prev = this.summaries.get(tile.sessionId);
+    // Keep the last good text if this run came back empty (model busy/unavailable).
+    const next = summary.now || summary.overview ? summary : prev?.summary ?? summary;
+    this.summaries.set(tile.sessionId, { ms: dispatchedMs, summary: next, loading: false, pending: false });
     this.update();
   }
 

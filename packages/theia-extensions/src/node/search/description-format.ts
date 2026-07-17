@@ -21,7 +21,7 @@ export const DESCRIPTION_SYSTEM_PROMPT =
   "When unsure, stay generic rather than guess specifics. Reply with only the sentence, max 15 words, " +
   "no preamble, no markdown. Do not begin with 'This file' or 'This'.";
 
-export const SUMMARY_MAX_NEW_TOKENS = 80;
+export const SUMMARY_MAX_NEW_TOKENS = 64;
 
 // NOTE: no concrete example clause here on purpose — a small model echoes a
 // memorable example verbatim when the session context is thin, which produced
