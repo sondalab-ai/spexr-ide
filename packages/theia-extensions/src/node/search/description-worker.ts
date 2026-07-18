@@ -49,10 +49,17 @@ function getPipe(): Promise<TextGenPipeline> {
   if (!pipePromise) {
     env.allowRemoteModels = false;
     env.localModelPath = modelsDir;
-    pipePromise = pipeline("text-generation", GEN_MODEL_ID, {
-      dtype: "q4",
-      session_options: { intraOpNumThreads: INTRA_OP_THREADS, interOpNumThreads: 1 },
-    }) as unknown as Promise<TextGenPipeline>;
+    const t0 = Date.now();
+    console.error(`[darkfactory worker] loading model (intraOpThreads=${INTRA_OP_THREADS})…`);
+    pipePromise = (
+      pipeline("text-generation", GEN_MODEL_ID, {
+        dtype: "q4",
+        session_options: { intraOpNumThreads: INTRA_OP_THREADS, interOpNumThreads: 1 },
+      }) as unknown as Promise<TextGenPipeline>
+    ).then((p) => {
+      console.error(`[darkfactory worker] model loaded in ${Date.now() - t0}ms`);
+      return p;
+    });
   }
   return pipePromise;
 }
@@ -63,17 +70,22 @@ function post(msg: WorkerResponse): void {
 
 async function handle(req: WorkerRequest): Promise<void> {
   const { id, kind, relPath, content } = req;
+  const t0 = Date.now();
   try {
     const pipe = await getPipe();
     const system = kind === "summary" ? SUMMARY_SYSTEM_PROMPT : DESCRIPTION_SYSTEM_PROMPT;
     const user = kind === "summary" ? buildSummaryPrompt(content) : buildPrompt(relPath, content);
     const maxTokens = kind === "summary" ? SUMMARY_MAX_NEW_TOKENS : MAX_NEW_TOKENS;
+    const tInfer = Date.now();
     const out = await pipe(
       [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
       { max_new_tokens: maxTokens, do_sample: false },
+    );
+    console.error(
+      `[darkfactory worker] ${kind ?? "description"} done: total ${Date.now() - t0}ms, inference ${Date.now() - tInfer}ms`,
     );
     const msgs = out[0]?.generated_text;
     const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : undefined;
@@ -82,7 +94,8 @@ async function handle(req: WorkerRequest): Promise<void> {
     // single-line file description goes through cleanGenerated.
     const text = kind === "summary" ? raw.trim() : cleanGenerated(raw);
     post({ id, type: "done", text: text.length > 0 ? text : null });
-  } catch {
+  } catch (err) {
+    console.error(`[darkfactory worker] inference failed after ${Date.now() - t0}ms:`, err);
     post({ id, type: "error" });
   }
 }

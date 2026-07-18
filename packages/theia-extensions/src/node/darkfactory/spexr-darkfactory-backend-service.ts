@@ -78,6 +78,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
   private readonly generator: DescriptionGenerator | undefined;
   private client?: SpexrDarkfactoryClient;
+  private loopMonitor?: ReturnType<typeof setInterval>;
   private readonly wallWatchers: FSWatcher[] = [];
   private readonly index = new Map<string, SessionMeta>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
@@ -120,6 +121,23 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   setClient(client: SpexrDarkfactoryClient): void {
     this.client = client;
     this.ensureWatching();
+    this.startLoopMonitor();
+  }
+
+  /**
+   * Diagnostic: log when the backend event loop was blocked well past the tick
+   * interval, so a real main-thread stall (vs. a mere websocket drop) is visible
+   * and attributable in time.
+   */
+  private startLoopMonitor(): void {
+    if (this.loopMonitor) return;
+    let last = Date.now();
+    this.loopMonitor = setInterval(() => {
+      const lag = Date.now() - last - 1000;
+      if (lag > 750) console.error(`[darkfactory] backend event loop blocked ~${lag}ms`);
+      last = Date.now();
+    }, 1000);
+    this.loopMonitor.unref?.();
   }
 
   async listTiles(): Promise<AgentTile[]> {
@@ -299,6 +317,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   dispose(): void {
+    if (this.loopMonitor) clearInterval(this.loopMonitor);
     for (const w of this.wallWatchers) w.close();
     this.wallWatchers.length = 0;
     for (const { watcher } of this.follows.values()) watcher.close();
