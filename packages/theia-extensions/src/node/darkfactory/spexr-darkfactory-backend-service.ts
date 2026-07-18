@@ -4,10 +4,9 @@ import { readdir, readFile, open, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
 import { parseTranscript } from "./transcript-parser.js";
-import { classifySession, isTurnOpen } from "./session-state.js";
+import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
-import { guessNeedsYou } from "./needs-you.js";
 import { buildTurnsText, type TurnEntry } from "./turns.js";
 import { parseSessionSummary, type DescriptionGenerator } from "../search/description-format.js";
 import type {
@@ -162,9 +161,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       const cwd = p.cwd!;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
       const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
-      const state = classifySession(cwd, ref.mtimeMs, isNewest, live, now, isTurnOpen(entries));
+      const { state, needsYou, needsYouCertain } = classifySession(cwd, ref.mtimeMs, isNewest, live, now, entries);
       const action = distillAction(entries);
-      const needsYou = guessNeedsYou(entries, state === "working", ref.mtimeMs, now);
       this.index.set(ref.sessionId, {
         transcriptPath: ref.transcriptPath,
         projectPath: cwd,
@@ -179,7 +177,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         projectName: basename(cwd),
         state,
         needsYou,
-        needsYouCertain: false,
+        needsYouCertain,
         lastFailed: lastActionFailed(entries),
         goal: p.goal || p.lastPrompt,
         actionLine: action.line,

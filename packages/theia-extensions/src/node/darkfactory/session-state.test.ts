@@ -1,60 +1,84 @@
 import { describe, expect, test } from "vitest";
-import { classifySession, isTurnOpen } from "./session-state.js";
+import { classifySession } from "./session-state.js";
 
 const NOW = 1_000_000_000_000;
-const OPEN = true;
-const CLOSED = false;
+const LIVE = new Set(["/p"]);
 
-describe("isTurnOpen", () => {
-  test("true: last entry is a user message (prompt or tool_result to act on)", () => {
-    expect(isTurnOpen([{ message: { role: "user", content: "hi" } }])).toBe(true);
+const userMsg = [{ message: { role: "user", content: "go" } }];
+const toolUse = (name: string) => [
+  { message: { role: "assistant", content: [{ type: "text", text: "…" }, { type: "tool_use", name }] } },
+];
+const endedTurn = [{ message: { role: "assistant", content: [{ type: "text", text: "done" }] } }];
+
+describe("classifySession — live sessions are working or needs-you, never idle", () => {
+  test("working: turn is acting (last entry a user message)", () => {
+    expect(classifySession("/p", NOW - 10_000, true, LIVE, NOW, userMsg)).toEqual({
+      state: "working",
+      needsYou: false,
+      needsYouCertain: false,
+    });
   });
 
-  test("true: last assistant entry ends in a tool_use (tool running / permission pending)", () => {
-    const entries = [
-      { message: { role: "assistant", content: [{ type: "text", text: "let me" }, { type: "tool_use", name: "Bash" }] } },
-    ];
-    expect(isTurnOpen(entries)).toBe(true);
+  test("working: a non-permission tool is running", () => {
+    expect(classifySession("/p", NOW - 10_000, true, LIVE, NOW, toolUse("Read")).state).toBe("working");
   });
 
-  test("false: assistant ended its turn with a text reply (waiting on the human)", () => {
-    const entries = [{ message: { role: "assistant", content: [{ type: "text", text: "done" }] } }];
-    expect(isTurnOpen(entries)).toBe(false);
+  test("working stays through a several-minute gap (a long tool/inference)", () => {
+    expect(classifySession("/p", NOW - 5 * 60_000, true, LIVE, NOW, userMsg).state).toBe("working");
   });
 
-  test("false: no entries", () => {
-    expect(isTurnOpen([])).toBe(false);
+  test("dormant: a live process with no write for >10min is idle, not working (no zombie pulse)", () => {
+    expect(classifySession("/p", NOW - 30 * 60_000, true, LIVE, NOW, userMsg)).toEqual({
+      state: "idle",
+      needsYou: false,
+      needsYouCertain: false,
+    });
+  });
+
+  test("needs-you (certain): a permission tool has stalled", () => {
+    expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, toolUse("Bash"))).toEqual({
+      state: "idle",
+      needsYou: true,
+      needsYouCertain: true,
+    });
+  });
+
+  test("working: a permission tool that has not yet settled is still running", () => {
+    expect(classifySession("/p", NOW - 500, true, LIVE, NOW, toolUse("Bash")).needsYou).toBe(false);
+  });
+
+  test("needs-you (uncertain): the assistant ended its turn", () => {
+    expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, endedTurn)).toEqual({
+      state: "idle",
+      needsYou: true,
+      needsYouCertain: false,
+    });
+  });
+
+  test("trailing meta entries are skipped when reading the turn", () => {
+    const withMeta = [...endedTurn, { isMeta: true, message: { role: "user", content: "<reminder>" } }];
+    expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, withMeta).needsYou).toBe(true);
   });
 });
 
-describe("classifySession", () => {
-  const openTurn = () => new Set(["/p"]);
-
-  test("working: live process, newest transcript, turn open", () => {
-    expect(classifySession("/p", NOW - 10_000, true, openTurn(), NOW, OPEN)).toBe("working");
-  });
-
-  test("working stays even when the last write is old, as long as the turn is open", () => {
-    expect(classifySession("/p", NOW - 5 * 60_000, true, openTurn(), NOW, OPEN)).toBe("working");
-  });
-
-  test("idle: live and newest but the assistant ended its turn (not working)", () => {
-    expect(classifySession("/p", NOW - 10_000, true, openTurn(), NOW, CLOSED)).toBe("idle");
-  });
-
-  test("idle: recent write but no live process in project", () => {
-    expect(classifySession("/p", NOW - 10_000, true, new Set(), NOW, OPEN)).toBe("idle");
+describe("classifySession — no live process", () => {
+  test("idle: recent write, no live process (paused session)", () => {
+    expect(classifySession("/p", NOW - 10_000, true, new Set(), NOW, userMsg)).toEqual({
+      state: "idle",
+      needsYou: false,
+      needsYouCertain: false,
+    });
   });
 
   test("idle: live process but this session is not the newest in its project", () => {
-    expect(classifySession("/p", NOW - 10_000, false, openTurn(), NOW, OPEN)).toBe("idle");
+    expect(classifySession("/p", NOW - 10_000, false, LIVE, NOW, userMsg).state).toBe("idle");
   });
 
   test("done: old write, no live process", () => {
-    expect(classifySession("/p", NOW - 20 * 3_600_000, true, new Set(), NOW, OPEN)).toBe("done");
+    expect(classifySession("/p", NOW - 20 * 3_600_000, true, new Set(), NOW, userMsg).state).toBe("done");
   });
 
   test("null liveDirs (scan failed) never yields working", () => {
-    expect(classifySession("/p", NOW - 1_000, true, null, NOW, OPEN)).toBe("idle");
+    expect(classifySession("/p", NOW - 1_000, true, null, NOW, userMsg).state).toBe("idle");
   });
 });

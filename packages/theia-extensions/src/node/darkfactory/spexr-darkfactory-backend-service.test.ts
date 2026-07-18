@@ -18,6 +18,7 @@ function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendS
             Promise.resolve([
               `{"type":"mode","mode":"normal"}`,
               `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
+              `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
             ]),
         },
       ]),
