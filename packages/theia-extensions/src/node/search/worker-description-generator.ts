@@ -1,5 +1,5 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { Worker } from "node:worker_threads";
+import { fork } from "node:child_process";
 import { resolveModelsDir, resolveWorkerPath } from "./models-dir.js";
 import type {
   DescriptionGenerator,
@@ -7,7 +7,7 @@ import type {
   WorkerResponse,
 } from "./description-format.js";
 
-/** Minimal surface of a worker thread used by the host (for test fakes). */
+/** Minimal surface of the model worker used by the host (for test fakes). */
 export interface WorkerLike {
   postMessage(msg: WorkerRequest): void;
   on(event: "message", cb: (msg: WorkerResponse) => void): void;
@@ -15,10 +15,24 @@ export interface WorkerLike {
   terminate(): unknown;
 }
 
+/**
+ * Fork the model worker as its own OS process (not a worker_thread) so its native
+ * onnxruntime work never touches the backend's process — see description-worker's
+ * header. `ELECTRON_RUN_AS_NODE` makes the Electron binary run the script as
+ * plain Node (the same pattern Theia uses for its forked backends); the models
+ * dir is passed by env since forks have no `workerData`.
+ */
 function defaultWorkerFactory(): WorkerLike {
-  return new Worker(resolveWorkerPath(), {
-    workerData: { modelsDir: resolveModelsDir() },
-  }) as unknown as WorkerLike;
+  const child = fork(resolveWorkerPath(), [], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SPEXR_MODELS_DIR: resolveModelsDir() },
+    stdio: ["ignore", "inherit", "inherit", "ipc"],
+  });
+  return {
+    postMessage: (msg) => void child.send(msg),
+    on: (event: "message" | "error" | "exit", cb: (arg: never) => void) =>
+      void child.on(event, cb as (arg: unknown) => void),
+    terminate: () => child.kill(),
+  } as WorkerLike;
 }
 
 interface Pending {

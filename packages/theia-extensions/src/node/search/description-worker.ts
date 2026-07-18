@@ -1,14 +1,16 @@
-// Runs the text-generation model in a dedicated worker thread. Receives
-// WorkerRequest messages, runs inference, then posts a final cleaned description
-// (or an error). One request at a time: the parent serializes anyway.
+// Runs the text-generation model in a SEPARATE child process (forked, not a
+// worker thread). Receives WorkerRequest messages over IPC, runs inference, then
+// posts a final cleaned description (or an error). One request at a time: the
+// parent serializes anyway.
 //
-// A worker thread shares the process with the backend, and onnxruntime defaults
-// its intra-op pool to one thread PER CORE — so sustained inference pinned all
-// cores and starved the backend event loop, which the frontend then reported as
-// "offline". Cap the pool to half the cores (see getPipe) to keep the backend
-// responsive; the inference is only marginally slower.
+// Why a child process, not a worker_thread: a worker thread shares the backend's
+// process, and onnxruntime's native inference — even with its pool capped —
+// degraded the Electron backend↔frontend IPC of that process into a permanent
+// "offline" (the backend's JS loop stayed responsive, yet the socket starved).
+// Isolating the model in its own process keeps the backend doing zero native
+// work, so the connection stays healthy. The intra-op pool is still capped (see
+// getPipe) to leave cores for the rest of the machine.
 import { cpus } from "node:os";
-import { parentPort, workerData } from "node:worker_threads";
 import { env, pipeline } from "@huggingface/transformers";
 import {
   GEN_MODEL_ID,
@@ -23,8 +25,7 @@ import {
   type WorkerResponse,
 } from "./description-format.js";
 
-const port = parentPort;
-const modelsDir: string = workerData?.modelsDir;
+const modelsDir: string = process.env.SPEXR_MODELS_DIR ?? "";
 
 // Surface JS-level crashes in the backend output (the host only sees the exit).
 process.on("uncaughtException", (err) => {
@@ -65,7 +66,7 @@ function getPipe(): Promise<TextGenPipeline> {
 }
 
 function post(msg: WorkerResponse): void {
-  port?.postMessage(msg);
+  process.send?.(msg);
 }
 
 async function handle(req: WorkerRequest): Promise<void> {
@@ -102,6 +103,6 @@ async function handle(req: WorkerRequest): Promise<void> {
 
 // Serialize requests: chain each onto the previous so only one inference runs.
 let chain: Promise<void> = Promise.resolve();
-port?.on("message", (req: WorkerRequest) => {
+process.on("message", (req: WorkerRequest) => {
   chain = chain.then(() => handle(req));
 });
