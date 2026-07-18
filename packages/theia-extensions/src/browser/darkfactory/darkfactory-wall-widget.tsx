@@ -2,7 +2,7 @@ import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
 import { ApplicationShell } from "@theia/core/lib/browser";
-import type { AgentSummary, AgentTile, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
+import type { AgentSummary, AgentTile, FollowEvent, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
@@ -26,6 +26,9 @@ const SUMMARY_EAGER = 5;
  * others. Small, so supervision stays near real-time.
  */
 const MIN_REFRESH_GAP_MS = 10_000;
+
+/** Cap the pinned follow buffer so a long-running session cannot grow it without bound. */
+const FOLLOW_BUFFER = 400;
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
@@ -76,7 +79,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   /** The session lifted into the expanded pinned card, with its live follow buffer. */
   private pinnedSessionId: string | undefined;
-  private pinnedScrollback = "";
+  private pinnedEvents: FollowEvent[] = [];
 
   @postConstruct()
   protected init(): void {
@@ -88,9 +91,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.addClass("spexr-darkfactory");
     this.toDispose.push(this.client.onTilesChanged$((tiles) => this.setTiles(tiles)));
     this.toDispose.push(
-      this.client.onFollowChunk$(({ sessionId, turns }) => {
+      this.client.onFollowChunk$(({ sessionId, events }) => {
         if (sessionId !== this.pinnedSessionId) return;
-        this.pinnedScrollback += (this.pinnedScrollback ? "\n" : "") + turns;
+        this.pinnedEvents = [...this.pinnedEvents, ...events].slice(-FOLLOW_BUFFER);
         this.update();
       }),
     );
@@ -108,7 +111,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     }
     this.stopFollow();
     this.pinnedSessionId = tile.sessionId;
-    this.pinnedScrollback = "";
+    this.pinnedEvents = [];
     this.update();
     void this.service.startFollow(tile.sessionId).catch(() => {
       /* ignore */
@@ -118,7 +121,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private unpin(): void {
     this.stopFollow();
     this.pinnedSessionId = undefined;
-    this.pinnedScrollback = "";
+    this.pinnedEvents = [];
     this.update();
   }
 
@@ -224,7 +227,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             tile={pinned}
             now={now}
             summary={this.summaries.get(pinned.sessionId)}
-            scrollback={this.pinnedScrollback}
+            events={this.pinnedEvents}
             onClose={() => this.unpin()}
             onOpenTerminal={openTerminal}
           />

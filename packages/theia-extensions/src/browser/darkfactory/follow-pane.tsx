@@ -1,10 +1,14 @@
 import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
-import type { SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
+import type { FollowEvent, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+import { FollowTranscript } from "./agent-tile.js";
+
+/** Cap the follow buffer so a long-running session cannot grow it without bound. */
+const FOLLOW_BUFFER = 400;
 
 /** Read-only live view of one session's transcript, for agents live elsewhere. */
 @injectable()
@@ -19,7 +23,7 @@ export class SpexrDarkfactoryFollowWidget extends ReactWidget {
   private projectPath = "";
   private configDir = "";
   private projectName = "";
-  private scrollback = "";
+  private events: FollowEvent[] = [];
 
   @postConstruct()
   protected init(): void {
@@ -30,9 +34,9 @@ export class SpexrDarkfactoryFollowWidget extends ReactWidget {
     this.title.iconClass = "codicon codicon-eye";
     this.addClass("spexr-df-follow");
     this.toDispose.push(
-      this.client.onFollowChunk$(({ sessionId, turns }) => {
+      this.client.onFollowChunk$(({ sessionId, events }) => {
         if (sessionId !== this.sessionId) return;
-        this.scrollback += (this.scrollback ? "\n" : "") + turns;
+        this.events = [...this.events, ...events].slice(-FOLLOW_BUFFER);
         this.update();
       }),
     );
@@ -47,7 +51,7 @@ export class SpexrDarkfactoryFollowWidget extends ReactWidget {
     this.projectPath = projectPath;
     this.configDir = configDir;
     this.projectName = projectName;
-    this.scrollback = "";
+    this.events = [];
     this.update();
     await this.service.startFollow(sessionId).catch(() => {
       /* ignore */
@@ -83,7 +87,9 @@ export class SpexrDarkfactoryFollowWidget extends ReactWidget {
             Fork &amp; take over
           </button>
         </header>
-        <pre className="spexr-df-follow__scroll">{this.scrollback || "Waiting for activity…"}</pre>
+        <div className="spexr-df-follow__scroll">
+          <FollowTranscript events={this.events} />
+        </div>
       </div>
     );
   }

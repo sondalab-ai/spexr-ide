@@ -1,5 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { buildTurnsText } from "./turns.js";
+import { buildTurnsText, buildFollowEvents } from "./turns.js";
+
+describe("buildFollowEvents", () => {
+  it("splits each prompt, reply, tool call, and result into its own typed event", () => {
+    const entries = [
+      { message: { role: "user", content: "fix the auth bug" } },
+      { message: { role: "assistant", content: [{ type: "text", text: "On it." }, { type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+      { message: { role: "user", content: [{ type: "tool_result", content: "2 passing" }] } },
+      { message: { role: "user", content: [{ type: "tool_result", is_error: true, content: "boom" }] } },
+    ];
+    expect(buildFollowEvents(entries, 10)).toEqual([
+      { kind: "prompt", text: "fix the auth bug" },
+      { kind: "assistant", text: "On it." },
+      { kind: "tool", text: "pnpm test" },
+      { kind: "result", text: "2 passing" },
+      { kind: "error", text: "boom" },
+    ]);
+  });
+
+  it("keeps the raw shell command for Bash (not the shortened digest form)", () => {
+    const entries = [
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "git commit -m 'x' && git push" } }] } },
+    ];
+    expect(buildFollowEvents(entries, 10)[0]).toEqual({ kind: "tool", text: "git commit -m 'x' && git push" });
+  });
+
+  it("drops injected/meta prompts and caps to the last N events", () => {
+    const entries = [
+      { isMeta: true, message: { role: "user", content: "<reminder>" } },
+      { message: { role: "assistant", content: [{ type: "text", text: "a" }] } },
+      { message: { role: "assistant", content: [{ type: "text", text: "b" }] } },
+    ];
+    expect(buildFollowEvents(entries, 1)).toEqual([{ kind: "assistant", text: "b" }]);
+  });
+});
 
 describe("buildTurnsText", () => {
   it("renders tool_use with its target and keeps the last N events plus the goal", () => {

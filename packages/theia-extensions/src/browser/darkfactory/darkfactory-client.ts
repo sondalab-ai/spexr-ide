@@ -1,6 +1,6 @@
 import { injectable } from "@theia/core/shared/inversify";
 import { Emitter, type Event } from "@theia/core/lib/common/event";
-import type { SpexrDarkfactoryClient, AgentTile } from "../../common/darkfactory-protocol.js";
+import type { SpexrDarkfactoryClient, AgentTile, FollowEvent } from "../../common/darkfactory-protocol.js";
 
 export const SpexrDarkfactoryClientToken = Symbol("SpexrDarkfactoryClientDispatcher");
 
@@ -13,14 +13,14 @@ export class SpexrDarkfactoryClientDispatcher implements SpexrDarkfactoryClient 
   private readonly tiles = new Emitter<AgentTile[]>();
   readonly onTilesChanged$: Event<AgentTile[]> = this.tiles.event;
 
-  private readonly follow = new Emitter<{ sessionId: string; turns: string }>();
-  readonly onFollowChunk$: Event<{ sessionId: string; turns: string }> = this.follow.event;
+  private readonly follow = new Emitter<{ sessionId: string; events: FollowEvent[] }>();
+  readonly onFollowChunk$: Event<{ sessionId: string; events: FollowEvent[] }> = this.follow.event;
 
   onTilesChanged(tiles: AgentTile[]): void {
     this.tiles.fire(tiles);
   }
 
-  onFollowChunk(sessionId: string, turns: string): void {
-    this.follow.fire({ sessionId, turns });
+  onFollowChunk(sessionId: string, events: FollowEvent[]): void {
+    this.follow.fire({ sessionId, events });
   }
 }

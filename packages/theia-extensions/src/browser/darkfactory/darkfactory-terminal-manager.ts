@@ -62,14 +62,15 @@ export class SpexrDarkfactoryTerminalManager {
       return;
     }
 
+    const dir = this.resolveConfigDir(configDir);
     const term = await this.terminalService.newTerminal({
       id: `spexr-df-${sessionId}`,
       title: baseName(projectPath),
       useServerTitle: false,
       iconClass: "codicon codicon-sparkle",
-      ...this.resolveShell(buildResumeArgs(sessionId, fork)),
+      ...this.resolveShell(buildResumeArgs(sessionId, fork), dir),
       cwd: projectPath,
-      env: this.configEnv(configDir),
+      env: dir ? { CLAUDE_CONFIG_DIR: dir } : {},
       destroyTermOnClose: false,
     });
     await term.start();
@@ -86,14 +87,21 @@ export class SpexrDarkfactoryTerminalManager {
   /**
    * With a custom launch command set, run it through the interactive login shell
    * (so aliases/functions resolve); otherwise spawn the resolved executable.
+   *
+   * The login shell re-sources the user's profile, which often re-exports
+   * CLAUDE_CONFIG_DIR (e.g. an alias pinning ~/.claude-perso) and thereby clobbers
+   * the env we set — so a session living in a different config dir resumes against
+   * the wrong one and fails with "No conversation found". Re-exporting `dir` inside
+   * the `-c` line, after the profile has run, makes the session's dir win.
    */
-  private resolveShell(resumeArgs: string[]): { shellPath?: string; shellArgs: string[] } {
+  private resolveShell(resumeArgs: string[], dir: string): { shellPath?: string; shellArgs: string[] } {
     const command = (this.preferences.get<string>(SPEXR_CLAUDE_LAUNCH_COMMAND_PREFERENCE) ?? "").trim();
     if (command) {
+      const exportDir = dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}; ` : "";
       // `; exec $SHELL` keeps the terminal alive after claude exits (e.g. a resume
       // that can't find the conversation) so the tab shows the error instead of
       // vanishing.
-      const line = `${[command, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
+      const line = `${exportDir}${[command, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
       return { shellArgs: ["-i", "-l", "-c", line] };
     }
     const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
@@ -104,8 +112,7 @@ export class SpexrDarkfactoryTerminalManager {
    * CLAUDE_CONFIG_DIR for the resume. The session's own config dir wins (so the
    * CLI finds the conversation); otherwise fall back to the SPEXR preference.
    */
-  private configEnv(configDir: string): { [k: string]: string | null } {
-    const dir = configDir.trim() || (this.preferences.get<string>(SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE) ?? "").trim();
-    return dir ? { CLAUDE_CONFIG_DIR: dir } : {};
+  private resolveConfigDir(configDir: string): string {
+    return configDir.trim() || (this.preferences.get<string>(SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE) ?? "").trim();
   }
 }

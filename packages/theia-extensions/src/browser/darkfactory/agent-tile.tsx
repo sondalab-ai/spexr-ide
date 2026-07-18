@@ -1,6 +1,33 @@
 import * as React from "@theia/core/shared/react";
-import type { AgentSummary, AgentTile } from "../../common/darkfactory-protocol.js";
+import type { AgentSummary, AgentTile, FollowEvent } from "../../common/darkfactory-protocol.js";
 import { stateLabel, relativeTime } from "./darkfactory-format.js";
+
+/** Terminal-like prefix glyph per follow-event kind. */
+const FOLLOW_PREFIX: Record<FollowEvent["kind"], string> = {
+  prompt: "❯",
+  assistant: "●",
+  tool: "$",
+  result: "",
+  error: "✗",
+};
+
+/** Render the read-only follow as distinct, terminal-styled lines (prompts, replies, commands, output). */
+export function FollowTranscript(props: { events: FollowEvent[] }): React.ReactElement {
+  const { events } = props;
+  if (events.length === 0) {
+    return <div className="spexr-df-term spexr-df-term--empty">Waiting for activity…</div>;
+  }
+  return (
+    <div className="spexr-df-term">
+      {events.map((e, i) => (
+        <div key={i} className="spexr-df-term__line" data-kind={e.kind}>
+          {FOLLOW_PREFIX[e.kind] && <span className="spexr-df-term__glyph">{FOLLOW_PREFIX[e.kind]}</span>}
+          <span className="spexr-df-term__text">{e.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Capitalize the first letter (prompts often start lowercase). */
 function capitalize(s: string): string {
@@ -99,11 +126,11 @@ export function AgentPinnedCard(props: {
   tile: AgentTile;
   now: number;
   summary?: { summary: AgentSummary; loading: boolean } | undefined;
-  scrollback: string;
+  events: FollowEvent[];
   onClose: () => void;
   onOpenTerminal: (t: AgentTile) => void;
 }): React.ReactElement {
-  const { tile, now, summary, scrollback, onClose, onOpenTerminal } = props;
+  const { tile, now, summary, events, onClose, onOpenTerminal } = props;
   const status = statusOf(tile);
   return (
     <section
@@ -129,7 +156,9 @@ export function AgentPinnedCard(props: {
           <span className="spexr-df-card__ai-text">{summary.summary.now}</span>
         </span>
       )}
-      <pre className="spexr-df-pinned__scroll">{scrollback || "Waiting for activity…"}</pre>
+      <div className="spexr-df-pinned__scroll">
+        <FollowTranscript events={events} />
+      </div>
       <footer className="spexr-df-pinned__foot">
         <span className="spexr-df-pinned__tag">
           <i className="codicon codicon-eye" /> read-only live view

@@ -1,5 +1,6 @@
 import { describeToolUse } from "./action-distiller.js";
 import { isGenuinePrompt } from "./transcript-parser.js";
+import type { FollowEvent } from "../../common/darkfactory-protocol.js";
 
 /** One transcript entry, loosely typed (`isMeta` and `message` are read). */
 export interface TurnEntry {
@@ -100,4 +101,59 @@ export function buildTurnsText(entries: TurnEntry[], maxEvents: number): string 
   const goal = events.find((l) => l.startsWith("user: "));
   if (goal && !tail.includes(goal)) tail.unshift(goal);
   return tail.join("\n");
+}
+
+/** Follow-view text for a tool call: the raw shell command for Bash, else "Name target". */
+function toolText(name: string, input: Record<string, unknown> | undefined): string {
+  if (name === "Bash") {
+    const cmd = typeof input?.command === "string" ? input.command.trim() : "";
+    return cmd ? cmd.slice(0, 600) : "Bash";
+  }
+  return describeToolUse(name, input);
+}
+
+/**
+ * Render transcript entries into typed {@link FollowEvent}s for the read-only
+ * follow — unlike {@link buildTurnsText} (a compact single-line-per-turn digest
+ * for the model), this keeps each prompt, assistant reply, tool call, and tool
+ * result as its own event so the UI can lay them out like a terminal. Keeps the
+ * last `maxEvents` events; the follow streams incrementally so this only caps the
+ * initial backfill.
+ */
+export function buildFollowEvents(entries: TurnEntry[], maxEvents: number): FollowEvent[] {
+  const events: FollowEvent[] = [];
+  for (const e of entries) {
+    const msg = e.message;
+    const content = msg?.content;
+
+    if (msg?.role === "assistant") {
+      if (Array.isArray(content)) {
+        for (const b of content) {
+          const block = b as { type?: string; text?: string; name?: string; input?: Record<string, unknown> };
+          if (block.type === "text" && block.text?.trim()) events.push({ kind: "assistant", text: collapse(block.text) });
+          else if (block.type === "tool_use" && block.name) events.push({ kind: "tool", text: toolText(block.name, block.input) });
+        }
+      } else {
+        const t = textOf(content);
+        if (t) events.push({ kind: "assistant", text: t });
+      }
+      continue;
+    }
+
+    if (msg?.role === "user") {
+      if (Array.isArray(content) && content.some((b) => (b as { type?: string }).type === "tool_result")) {
+        for (const b of content) {
+          const block = b as { type?: string; is_error?: boolean; content?: unknown };
+          if (block.type !== "tool_result") continue;
+          const isError = block.is_error === true;
+          const snip = collapse(resultText(block.content)).slice(0, isError ? 400 : 200);
+          if (snip) events.push({ kind: isError ? "error" : "result", text: snip });
+        }
+      } else {
+        const t = textOf(content);
+        if (t && isGenuinePrompt(e.isMeta === true, t)) events.push({ kind: "prompt", text: t.slice(0, 2000) });
+      }
+    }
+  }
+  return events.slice(-maxEvents);
 }

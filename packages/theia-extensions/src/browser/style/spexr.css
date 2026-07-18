@@ -2384,10 +2384,34 @@ code {
   padding: var(--spexr-space-3);
   background: color-mix(in srgb, var(--spexr-text-primary) 4%, transparent);
   border-radius: var(--spexr-radius-sm, 6px);
-  font-family: var(--theia-code-font-family); font-size: var(--spexr-text-xs); line-height: 1.45;
-  color: var(--spexr-text-secondary, var(--spexr-text-primary));
-  white-space: pre-wrap; overflow-wrap: anywhere;
 }
+
+/* Terminal-like read-only follow: one styled line per event. */
+.spexr-df-term {
+  font-family: var(--theia-code-font-family); font-size: var(--spexr-text-xs); line-height: 1.5;
+  color: var(--spexr-text-secondary, var(--spexr-text-primary));
+}
+.spexr-df-term--empty { color: var(--spexr-text-muted); font-style: italic; }
+.spexr-df-term__line {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 1px 0; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.spexr-df-term__glyph { flex: none; width: 1ch; text-align: center; opacity: 0.9; user-select: none; }
+.spexr-df-term__text { min-width: 0; }
+/* Prompt: the human's instruction — accented, prominent, spaced above. */
+.spexr-df-term__line[data-kind="prompt"] { margin-top: var(--spexr-space-2); color: var(--spexr-text-primary); font-weight: 600; }
+.spexr-df-term__line[data-kind="prompt"] .spexr-df-term__glyph { color: var(--tile-accent); }
+/* Assistant prose. */
+.spexr-df-term__line[data-kind="assistant"] { color: var(--spexr-text-primary); }
+.spexr-df-term__line[data-kind="assistant"] .spexr-df-term__glyph { color: var(--tile-accent); }
+/* Tool call: a command — monospace headline, distinct tint. */
+.spexr-df-term__line[data-kind="tool"] { color: var(--spexr-text-secondary, var(--spexr-text-primary)); }
+.spexr-df-term__line[data-kind="tool"] .spexr-df-term__glyph { color: var(--spexr-accent, var(--tile-accent)); font-weight: 700; }
+.spexr-df-term__line[data-kind="tool"] .spexr-df-term__text { color: var(--tile-accent); }
+/* Tool output: dimmed, indented under its command. */
+.spexr-df-term__line[data-kind="result"] { color: var(--spexr-text-muted); padding-left: calc(1ch + 8px); }
+/* Error output: red. */
+.spexr-df-term__line[data-kind="error"] { color: var(--spexr-status-danger, #e5484d); }
 .spexr-df-pinned__foot { display: flex; align-items: center; gap: var(--spexr-space-3); }
 .spexr-df-pinned__tag {
   display: inline-flex; align-items: center; gap: 5px;

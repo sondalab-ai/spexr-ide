@@ -43,6 +43,17 @@ export interface AgentSummary {
   overview: string;
 }
 
+/** One rendered line of a read-only follow, tagged so the UI can style it like a terminal. */
+export interface FollowEvent {
+  /**
+   * prompt = a genuine user instruction; assistant = the agent's prose;
+   * tool = a tool call (a shell command or file/search op); result = a tool's
+   * output; error = a failed tool result.
+   */
+  kind: "prompt" | "assistant" | "tool" | "result" | "error";
+  text: string;
+}
+
 /** How the frontend should open a session in the focus pane. */
 export interface FocusPlan {
   sessionId: string;
@@ -67,5 +78,6 @@ export interface SpexrDarkfactoryService {
 /** Push channel: backend → frontend. */
 export interface SpexrDarkfactoryClient {
   onTilesChanged(tiles: AgentTile[]): void;
-  onFollowChunk(sessionId: string, turns: string): void;
+  /** Incremental read-only follow output, as typed events (newest transcript entries). */
+  onFollowChunk(sessionId: string, events: FollowEvent[]): void;
 }

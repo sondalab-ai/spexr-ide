@@ -7,7 +7,7 @@ import { parseTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
-import { buildTurnsText, type TurnEntry } from "./turns.js";
+import { buildTurnsText, buildFollowEvents, type TurnEntry } from "./turns.js";
 import { parseSessionSummary, type DescriptionGenerator } from "../search/description-format.js";
 import type {
   AgentSummary,
@@ -19,7 +19,8 @@ import type {
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
-const FOLLOW_TURNS = 8;
+/** Follow backfill cap: how many recent events the read-only view seeds with. */
+const FOLLOW_EVENTS = 40;
 const SUMMARY_TURNS = 14;
 const PALETTE_SIZE = 8;
 /**
@@ -224,8 +225,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       entry.offset = lines.length;
       if (fresh.length === 0) return;
       const entries = fresh.map(parseLine).filter((e): e is TurnEntry => !!e);
-      const turns = buildTurnsText(entries, FOLLOW_TURNS);
-      if (turns) this.client?.onFollowChunk(sessionId, turns);
+      const events = buildFollowEvents(entries, FOLLOW_EVENTS);
+      if (events.length) this.client?.onFollowChunk(sessionId, events);
     };
     let watcher: FSWatcher;
     try {
