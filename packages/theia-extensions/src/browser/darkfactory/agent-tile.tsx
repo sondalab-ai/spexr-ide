@@ -46,7 +46,9 @@ export function AgentTileCard(props: {
       </span>
 
       {primary && (
-        <span className={`spexr-df-card__goal${expanded ? " is-expanded" : ""}`}>{primary}</span>
+        <span className={`spexr-df-card__goal${expandable && !expanded ? " is-clamped" : ""}`}>
+          {primary}
+        </span>
       )}
       {expandable && (
         <span
