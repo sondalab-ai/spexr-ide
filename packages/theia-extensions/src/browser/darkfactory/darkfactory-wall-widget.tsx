@@ -15,10 +15,30 @@ const CARD_LIMIT = 10;
 
 /**
  * How many top sessions get an AI summary. Each summary is a ~13s local-model
- * inference that runs in the backend process, so this is deliberately small and
- * computed once per session (never re-triggered) — see setTiles.
+ * inference (in a separate worker process), so keep this small.
  */
 const SUMMARY_EAGER = 5;
+
+/**
+ * Minimum gap between re-summarizing the same working session. The model runs
+ * out-of-process now, so refreshing an active session no longer risks the old
+ * "offline" — but each inference is ~13s, so throttle it rather than re-running
+ * on every transcript write.
+ */
+const REFRESH_MS = 45_000;
+
+const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
+
+/** Cached summary plus the bookkeeping that throttles refreshes of a live session. */
+interface SummaryState {
+  summary: AgentSummary;
+  /** Show the "Summarizing…" placeholder — only on the first compute, so a refresh keeps the old text. */
+  loading: boolean;
+  /** Session mtime this summary reflects; a refresh fires only once new activity passes it. */
+  mtime: number;
+  /** Timestamp of the last request/completion; anchors the {@link REFRESH_MS} throttle. */
+  at: number;
+}
 
 /** Machine-wide monitoring wall of every Claude Code session ("agent"). */
 @injectable()
@@ -32,8 +52,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(ApplicationShell) private readonly shell!: ApplicationShell;
 
   private tiles: AgentTile[] = [];
-  /** sessionId → AI description state, filled asynchronously (computed once per session). */
-  private readonly summaries = new Map<string, { summary: AgentSummary; loading: boolean }>();
+  /** sessionId → AI summary state, filled asynchronously and refreshed for live sessions. */
+  private readonly summaries = new Map<string, SummaryState>();
   /** Sessions awaiting a summary; drained one inference at a time by {@link drainSummaries}. */
   private readonly summaryQueue: string[] = [];
   private summaryRunning = false;
@@ -64,17 +84,34 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const id of this.summaries.keys()) {
       if (!live.has(id)) this.summaries.delete(id);
     }
-    // Enqueue the top sessions for a summary ONCE. We deliberately do not
-    // re-trigger on mtime changes: an active session rewrites its transcript
-    // every few seconds, and re-inferring each time kept the local model running
-    // in the backend process forever, degrading the Electron IPC into a permanent
-    // "offline". A stale-but-stable description is the right trade-off.
+    // First compute for a newly-seen session; then keep a WORKING session's summary
+    // fresh — re-summarize once its transcript has advanced past what we last saw
+    // and the throttle window has elapsed. Idle/done sessions are computed once.
+    const now = Date.now();
     for (const t of sortTiles(tiles).slice(0, SUMMARY_EAGER)) {
-      if (this.summaries.has(t.sessionId)) continue; // already computed or queued
-      this.summaries.set(t.sessionId, { summary: { now: "", overview: "" }, loading: true });
-      this.summaryQueue.push(t.sessionId);
+      const cur = this.summaries.get(t.sessionId);
+      if (!cur) {
+        this.enqueueSummary(t.sessionId, t.lastActivityMs, true);
+        continue;
+      }
+      const advanced = t.state === "working" && t.lastActivityMs > cur.mtime && now - cur.at > REFRESH_MS;
+      if (advanced && !this.summaryQueue.includes(t.sessionId)) {
+        this.enqueueSummary(t.sessionId, t.lastActivityMs, false);
+      }
     }
     void this.drainSummaries();
+  }
+
+  /** Queue a session for (re)summarizing. `firstCompute` shows the placeholder; a refresh keeps the old text. */
+  private enqueueSummary(id: string, mtime: number, firstCompute: boolean): void {
+    const cur = this.summaries.get(id);
+    this.summaries.set(id, {
+      summary: cur?.summary ?? EMPTY_SUMMARY,
+      loading: firstCompute,
+      mtime,
+      at: Date.now(),
+    });
+    if (!this.summaryQueue.includes(id)) this.summaryQueue.push(id);
   }
 
   /** Compute queued summaries one inference at a time (the model is serialized anyway). */
@@ -84,12 +121,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     try {
       let id: string | undefined;
       while ((id = this.summaryQueue.shift()) !== undefined) {
-        if (!this.summaries.has(id)) continue; // session left the wall
-        const summary = await this.service
-          .summarize(id)
-          .catch((): AgentSummary => ({ now: "", overview: "" }));
-        if (!this.summaries.has(id)) continue;
-        this.summaries.set(id, { summary, loading: false });
+        const pending = this.summaries.get(id);
+        if (!pending) continue; // session left the wall
+        const summary = await this.service.summarize(id).catch((): AgentSummary => EMPTY_SUMMARY);
+        const prev = this.summaries.get(id);
+        if (!prev) continue; // pruned while inferring
+        // Anchor the throttle on completion so a slow inference does not immediately re-fire.
+        this.summaries.set(id, { summary, loading: false, mtime: prev.mtime, at: Date.now() });
         this.update();
       }
     } finally {

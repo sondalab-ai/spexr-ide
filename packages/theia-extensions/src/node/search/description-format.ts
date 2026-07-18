@@ -21,7 +21,11 @@ export const DESCRIPTION_SYSTEM_PROMPT =
   "When unsure, stay generic rather than guess specifics. Reply with only the sentence, max 15 words, " +
   "no preamble, no markdown. Do not begin with 'This file' or 'This'.";
 
-export const SUMMARY_MAX_NEW_TOKENS = 64;
+// Headroom over the two bounded clauses (~28 words ≈ 55 tokens): the small model
+// often exceeds its word limits, and a cap that clips the Overview mid-sentence
+// reads as a truncated summary. Greedy decoding still stops at EOS, so concise
+// replies are unaffected — only verbose ones use the extra budget.
+export const SUMMARY_MAX_NEW_TOKENS = 110;
 
 // NOTE: no concrete example clause here on purpose — a small model echoes a
 // memorable example verbatim when the session context is thin, which produced
