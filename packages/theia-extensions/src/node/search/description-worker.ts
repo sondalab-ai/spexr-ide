@@ -1,7 +1,13 @@
-// Runs the text-generation model in a dedicated worker thread so inference never
-// stalls the backend event loop. Receives WorkerRequest messages, runs inference,
-// then posts a final cleaned description (or an error). One request at a time:
-// the model is single-threaded and the parent serializes anyway.
+// Runs the text-generation model in a dedicated worker thread. Receives
+// WorkerRequest messages, runs inference, then posts a final cleaned description
+// (or an error). One request at a time: the parent serializes anyway.
+//
+// A worker thread shares the process with the backend, and onnxruntime defaults
+// its intra-op pool to one thread PER CORE — so sustained inference pinned all
+// cores and starved the backend event loop, which the frontend then reported as
+// "offline". Cap the pool to half the cores (see getPipe) to keep the backend
+// responsive; the inference is only marginally slower.
+import { cpus } from "node:os";
 import { parentPort, workerData } from "node:worker_threads";
 import { env, pipeline } from "@huggingface/transformers";
 import {
@@ -27,11 +33,17 @@ type TextGenPipeline = (
 
 let pipePromise: Promise<TextGenPipeline> | undefined;
 
+// Leave at least half the cores for the backend event loop (see file header).
+const INTRA_OP_THREADS = Math.max(1, Math.floor(cpus().length / 2));
+
 function getPipe(): Promise<TextGenPipeline> {
   if (!pipePromise) {
     env.allowRemoteModels = false;
     env.localModelPath = modelsDir;
-    pipePromise = pipeline("text-generation", GEN_MODEL_ID, { dtype: "q4" }) as unknown as Promise<TextGenPipeline>;
+    pipePromise = pipeline("text-generation", GEN_MODEL_ID, {
+      dtype: "q4",
+      session_options: { intraOpNumThreads: INTRA_OP_THREADS, interOpNumThreads: 1 },
+    }) as unknown as Promise<TextGenPipeline>;
   }
   return pipePromise;
 }
