@@ -2390,6 +2390,7 @@ code {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .spexr-df-card__branch {
+  margin-top: auto; /* pin to the bottom regardless of how tall the other content is */
   display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0;
   font-family: var(--theia-code-font-family); font-size: var(--spexr-text-xs);
   color: var(--spexr-text-muted);
@@ -2399,7 +2400,10 @@ code {
 .spexr-df-card__time { margin-left: auto; flex: none; font-size: var(--spexr-text-xs); color: var(--spexr-text-muted); }
 
 .spexr-df-card__goal {
-  font-size: var(--spexr-text-md, 0.95rem); line-height: 1.35; color: var(--spexr-text-primary);
+  font-size: var(--spexr-text-sm); line-height: 1.35; color: var(--spexr-text-secondary, var(--spexr-text-muted));
+  padding: var(--spexr-space-2) var(--spexr-space-3);
+  background: color-mix(in srgb, var(--spexr-text-primary) 6%, transparent);
+  border-radius: var(--spexr-radius-sm, 6px);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   overflow-wrap: anywhere;
 }

@@ -2,6 +2,11 @@ import * as React from "@theia/core/shared/react";
 import type { AgentSummary, AgentTile } from "../../common/darkfactory-protocol.js";
 import { stateLabel, relativeTime } from "./darkfactory-format.js";
 
+/** Capitalize the first letter (prompts often start lowercase). */
+function capitalize(s: string): string {
+  return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 /** The single most important status word for a tile, with its visual class. */
 function statusOf(tile: AgentTile): { label: string; kind: string } {
   if (tile.lastFailed) return { label: "Failed", kind: "error" };
@@ -19,7 +24,7 @@ export function AgentTileCard(props: {
   const { tile, now, summary, onOpen } = props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
-  const primary = tile.goal || tile.actionLine;
+  const primary = capitalize(tile.goal || tile.actionLine);
   const expandable = primary.length > 90;
 
   return (
