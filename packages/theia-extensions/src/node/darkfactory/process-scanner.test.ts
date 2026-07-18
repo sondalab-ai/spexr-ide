@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { parseClaudePids, parseCwd, liveProjectDirs } from "./process-scanner.js";
+import { parseClaudePids, parseCwd, liveProjectDirs, lsofCwdArgs } from "./process-scanner.js";
 
 describe("process-scanner", () => {
+  test("lsofCwdArgs ANDs the pid and cwd selectors with -a (else lsof ORs → cwd '/')", () => {
+    expect(lsofCwdArgs(2098)).toEqual(["-a", "-p", "2098", "-d", "cwd", "-Fn"]);
+  });
+
   test("parseClaudePids keeps pids whose comm is exactly 'claude'", () => {
     const ps = ["  PID COMM", " 2098 claude", " 2175 node", " 2624 claude"].join("\n");
     expect(parseClaudePids(ps)).toEqual([2098, 2624]);

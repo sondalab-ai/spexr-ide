@@ -24,6 +24,15 @@ export function parseCwd(lsofStdout: string): string | undefined {
   return undefined;
 }
 
+/**
+ * `lsof` args to read one pid's cwd. `-a` ANDs the -p (pid) and -d (fd)
+ * selectors; without it lsof ORs them and lists the cwd of EVERY process, so
+ * {@link parseCwd} picks a bogus first match ("/").
+ */
+export function lsofCwdArgs(pid: number): string[] {
+  return ["-a", "-p", String(pid), "-d", "cwd", "-Fn"];
+}
+
 function run(cmd: string, args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 8 << 20 }, (err, stdout) => {
@@ -40,7 +49,7 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<string> {
 export async function liveProjectDirs(deps?: ScannerDeps, timeoutMs = 1500): Promise<Set<string> | null> {
   const runPs = deps?.runPs ?? (() => run("ps", ["-Ao", "pid,comm"], timeoutMs));
   const runLsofCwd =
-    deps?.runLsofCwd ?? ((pid: number) => run("lsof", ["-p", String(pid), "-d", "cwd", "-Fn"], timeoutMs));
+    deps?.runLsofCwd ?? ((pid: number) => run("lsof", lsofCwdArgs(pid), timeoutMs));
   try {
     const pids = parseClaudePids(await runPs());
     const dirs = new Set<string>();
