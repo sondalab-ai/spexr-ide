@@ -46,10 +46,13 @@ export interface SessionSummary {
 }
 
 function cleanClause(s: string): string {
-  return s
+  const cleaned = s
     .replace(/^["'`*\s]+|["'`*\s.]+$/g, "")
     .replace(/^(?:the|this)\s+/i, "")
     .trim();
+  // Capitalize the first letter: the model often lowercases the clause ("assistant
+  // is fixing…"), which reads as unformatted noise in the card.
+  return cleaned.length > 0 ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : cleaned;
 }
 
 /**

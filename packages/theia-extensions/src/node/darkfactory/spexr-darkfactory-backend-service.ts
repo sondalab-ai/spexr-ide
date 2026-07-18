@@ -4,7 +4,7 @@ import { readdir, readFile, open, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
 import { parseTranscript } from "./transcript-parser.js";
-import { classifySession } from "./session-state.js";
+import { classifySession, isTurnOpen } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
 import { guessNeedsYou } from "./needs-you.js";
@@ -20,7 +20,6 @@ import type {
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
-const WORKING_WINDOW_MS = 45_000;
 const FOLLOW_TURNS = 8;
 const SUMMARY_TURNS = 14;
 const PALETTE_SIZE = 8;
@@ -51,7 +50,6 @@ export interface DarkfactoryDeps {
   /** Config dir the launch command actually resumes against (env CLAUDE_CONFIG_DIR). */
   resumableConfigDir?: string;
   now?: () => number;
-  workingWindowMs?: number;
   listTranscripts?: () => Promise<TranscriptRef[]>;
   liveProjectDirs?: () => Promise<Set<string> | null>;
   /** Local model used to infer a one-line session description. */
@@ -72,7 +70,6 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly configDirs: string[];
   private readonly resumableConfigDir: string;
   private readonly now: () => number;
-  private readonly workingWindowMs: number;
   private readonly listTranscripts: () => Promise<TranscriptRef[]>;
   private readonly liveDirs: () => Promise<Set<string> | null>;
 
@@ -92,7 +89,6 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.configDirs = d.configDirs ?? defaultConfigDirs();
     this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
-    this.workingWindowMs = d.workingWindowMs ?? WORKING_WINDOW_MS;
     this.listTranscripts = d.listTranscripts ?? (() => this.scanDisk());
     this.liveDirs = d.liveProjectDirs ?? (() => defaultLiveProjectDirs());
     this.generator = d.generator;
@@ -165,8 +161,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     for (const { ref, lines, parsed: p } of parsed.values()) {
       const cwd = p.cwd!;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
-      const state = classifySession(cwd, ref.mtimeMs, isNewest, live, now, this.workingWindowMs);
       const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+      const state = classifySession(cwd, ref.mtimeMs, isNewest, live, now, isTurnOpen(entries));
       const action = distillAction(entries);
       const needsYou = guessNeedsYou(entries, state === "working", ref.mtimeMs, now);
       this.index.set(ref.sessionId, {

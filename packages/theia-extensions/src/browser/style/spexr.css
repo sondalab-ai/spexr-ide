@@ -2401,6 +2401,7 @@ code {
 .spexr-df-card__goal {
   font-size: var(--spexr-text-md, 0.95rem); line-height: 1.35; color: var(--spexr-text-primary);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .spexr-df-card__goal.is-expanded { display: block; overflow: visible; -webkit-line-clamp: unset; }
 .spexr-df-card__more {
@@ -2409,16 +2410,20 @@ code {
 }
 .spexr-df-card__more:hover { color: var(--tile-accent); }
 .spexr-df-card__ai {
-  font-size: var(--spexr-text-sm); line-height: 1.4; color: var(--spexr-text-primary);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: flex; align-items: flex-start; gap: 5px;
+  font-size: var(--spexr-text-md, 0.95rem); line-height: 1.4; color: var(--spexr-text-primary);
 }
-.spexr-df-card__ai .codicon { color: var(--tile-accent); margin-right: 5px; font-size: 0.9em; }
+.spexr-df-card__ai .codicon { color: var(--tile-accent); font-size: 0.9em; flex: none; margin-top: 0.22em; }
+.spexr-df-card__ai-text {
+  min-width: 0; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
 .spexr-df-card__ai.is-loading { opacity: 0.7; animation: spexr-df-aipulse 1.3s ease-in-out infinite; }
 @keyframes spexr-df-aipulse { 0%,100% { opacity: 0.45; } 50% { opacity: 0.85; } }
 .spexr-df-card__overview {
   margin-top: -2px; padding-left: calc(0.9em + 5px);
   font-size: var(--spexr-text-xs); line-height: 1.35; font-style: italic;
-  color: var(--spexr-text-muted);
+  color: var(--spexr-text-muted); overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .spexr-df-card__trail {

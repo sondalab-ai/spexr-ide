@@ -65,7 +65,7 @@ export function AgentTileCard(props: {
       {summary && !summary.loading && summary.summary.now && (
         <span className="spexr-df-card__ai" title={summary.summary.now}>
           <i className="codicon codicon-sparkle" />
-          {summary.summary.now}
+          <span className="spexr-df-card__ai-text">{summary.summary.now}</span>
         </span>
       )}
       {summary && !summary.loading && summary.summary.overview && (

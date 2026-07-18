@@ -136,24 +136,30 @@ describe("SUMMARY_SYSTEM_PROMPT", () => {
 describe("parseSessionSummary", () => {
   it("splits labelled Now/Overview lines and strips punctuation", () => {
     const s = parseSessionSummary("Now: editing the auth module.\nOverview: adding OAuth support to the API.");
-    expect(s).toEqual({ now: "editing the auth module", overview: "adding OAuth support to the API" });
+    expect(s).toEqual({ now: "Editing the auth module", overview: "Adding OAuth support to the API" });
   });
 
   it("is case-insensitive and tolerates a dash separator", () => {
     expect(parseSessionSummary("NOW - running tests\nOVERVIEW - fixing the parser")).toEqual({
-      now: "running tests",
-      overview: "fixing the parser",
+      now: "Running tests",
+      overview: "Fixing the parser",
     });
   });
 
   it("treats an unlabelled single line as the now clause", () => {
     expect(parseSessionSummary("refactoring the wall widget")).toEqual({
-      now: "refactoring the wall widget",
+      now: "Refactoring the wall widget",
       overview: "",
     });
   });
 
-  it("strips a leading 'The'/'This' the model may add", () => {
-    expect(parseSessionSummary("Now: The agent edits the parser").now).toBe("agent edits the parser");
+  it("strips a leading 'The'/'This' the model may add, then capitalizes", () => {
+    expect(parseSessionSummary("Now: The agent edits the parser").now).toBe("Agent edits the parser");
+  });
+
+  it("capitalizes a lowercase clause the model emits", () => {
+    expect(parseSessionSummary("Now: assistant is fixing the offline bug").now).toBe(
+      "Assistant is fixing the offline bug",
+    );
   });
 });

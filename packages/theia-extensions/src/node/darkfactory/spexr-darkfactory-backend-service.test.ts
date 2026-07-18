@@ -66,8 +66,8 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     });
     await s.listTiles();
     expect(await s.summarize("s1")).toEqual({
-      now: "editing the modal list component",
-      overview: "migrating browse-blueprints to the design system",
+      now: "Editing the modal list component",
+      overview: "Migrating browse-blueprints to the design system",
     });
     await s.summarize("s1");
     expect(calls).toBe(1); // cached by mtime
