@@ -12,6 +12,8 @@ const SETTLE_MS = 2_000;
 const STALE_MS = 10 * 60_000;
 /** Tools whose use pauses the agent on a permission prompt. */
 const PERMISSION_TOOLS = new Set(["Bash", "Edit", "Write", "WebFetch"]);
+/** Permission modes that auto-approve tools, so a pending tool_use is work, not a prompt. */
+const AUTO_APPROVE_MODES = new Set(["auto", "bypassPermissions"]);
 
 interface StateEntry {
   isMeta?: boolean;
@@ -30,27 +32,39 @@ export interface SessionStatus {
 
 type Turn = "acting" | "permission" | "ended" | "unknown";
 
+/** A genuine conversation message (not injected meta, not a typed metadata record). */
+function isRealMessage(e: StateEntry | undefined): boolean {
+  const role = e?.message?.role;
+  return !e?.isMeta && (role === "user" || role === "assistant");
+}
+
 /**
- * Where a live session's turn stands, from its last real transcript entry:
- * - acting: last entry is a user message (a prompt or a tool_result to act on) or
- *   an assistant `tool_use` for a non-permission tool → the agent is doing work.
- * - permission: last entry is an assistant `tool_use` for a permission tool → the
- *   agent may be blocked on a prompt (confirmed only once it has stalled).
- * - ended: last entry is an assistant text reply → the turn is over, awaiting the human.
- * Trailing meta entries (injected reminders) are skipped — they are not real turns.
+ * Where a live session's turn stands, from its last real conversation message:
+ * - acting: a user message (a prompt or a tool_result to act on), an assistant
+ *   `tool_use` for a non-permission tool, or a still-streaming assistant message
+ *   (last block is `thinking`) → the agent is doing work.
+ * - permission: an assistant `tool_use` for a permission tool → the agent may be
+ *   blocked on a prompt (confirmed only once it has stalled).
+ * - ended: an assistant `text` reply → the turn is over, awaiting the human.
+ *
+ * Non-message trailing entries are skipped: injected meta, and the typed metadata
+ * records Claude Code appends after the final reply (last-prompt, ai-title, mode,
+ * permission-mode, system). Without this, a finished turn's trailing metadata
+ * masks the assistant's closing text and the session looks like it is still working.
  */
 function lastTurn(entries: StateEntry[]): Turn {
   let i = entries.length - 1;
-  while (i >= 0 && entries[i]!.isMeta) i--;
+  while (i >= 0 && !isRealMessage(entries[i])) i--;
   const last = entries[i]?.message;
   if (!last) return "unknown";
   if (last.role === "user") return "acting";
-  if (last.role !== "assistant" || !Array.isArray(last.content)) return "unknown";
+  if (!Array.isArray(last.content)) return "unknown";
   const tail = last.content[last.content.length - 1] as { type?: string; name?: string };
   if (tail?.type === "tool_use") {
     return tail.name && PERMISSION_TOOLS.has(tail.name) ? "permission" : "acting";
   }
-  return "ended";
+  if (tail?.type === "text") return "ended";
+  return "acting"; // thinking / partial block → still generating
 }
 
 /**
@@ -72,14 +86,17 @@ export function classifySession(
   liveDirs: Set<string> | null,
   nowMs: number,
   entries: StateEntry[],
+  permissionMode?: string,
 ): SessionStatus {
   const live = !!liveDirs?.has(projectPath) && isNewestInProject;
   const gap = nowMs - mtimeMs;
   if (live && gap <= STALE_MS) {
     const turn = lastTurn(entries);
     // A live session that awaits the human is not "working" (no green pulse); the
-    // needsYou flag drives the attention styling instead.
-    if (turn === "permission" && gap >= SETTLE_MS) return { state: "idle", needsYou: true, needsYouCertain: true };
+    // needsYou flag drives the attention styling instead. Under an auto-approving
+    // permission mode a pending tool_use is not a prompt — the agent is working.
+    const blocked = turn === "permission" && !AUTO_APPROVE_MODES.has(permissionMode ?? "");
+    if (blocked && gap >= SETTLE_MS) return { state: "idle", needsYou: true, needsYouCertain: true };
     if (turn === "ended") return { state: "idle", needsYou: true, needsYouCertain: false };
     return { state: "working", needsYou: false, needsYouCertain: false };
   }

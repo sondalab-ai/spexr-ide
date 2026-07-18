@@ -161,7 +161,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       const cwd = p.cwd!;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
       const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
-      const { state, needsYou, needsYouCertain } = classifySession(cwd, ref.mtimeMs, isNewest, live, now, entries);
+      const { state, needsYou, needsYouCertain } = classifySession(cwd, ref.mtimeMs, isNewest, live, now, entries, p.permissionMode);
       const action = distillAction(entries);
       this.index.set(ref.sessionId, {
         transcriptPath: ref.transcriptPath,

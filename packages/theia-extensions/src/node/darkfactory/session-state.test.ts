@@ -35,11 +35,19 @@ describe("classifySession — live sessions are working or needs-you, never idle
     });
   });
 
-  test("needs-you (certain): a permission tool has stalled", () => {
-    expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, toolUse("Bash"))).toEqual({
+  test("needs-you (certain): a permission tool has stalled under default mode", () => {
+    expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, toolUse("Bash"), "default")).toEqual({
       state: "idle",
       needsYou: true,
       needsYouCertain: true,
+    });
+  });
+
+  test("working: a stalled permission tool under auto-approve mode is not a prompt", () => {
+    expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, toolUse("Bash"), "auto")).toEqual({
+      state: "working",
+      needsYou: false,
+      needsYouCertain: false,
     });
   });
 
@@ -58,6 +66,27 @@ describe("classifySession — live sessions are working or needs-you, never idle
   test("trailing meta entries are skipped when reading the turn", () => {
     const withMeta = [...endedTurn, { isMeta: true, message: { role: "user", content: "<reminder>" } }];
     expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, withMeta).needsYou).toBe(true);
+  });
+
+  test("a finished turn is not 'working' despite trailing metadata records", () => {
+    // Claude Code appends typed metadata (no message) after the closing reply.
+    const withMeta = [
+      ...endedTurn,
+      { type: "last-prompt" },
+      { type: "ai-title" },
+      { type: "mode" },
+      { type: "permission-mode" },
+    ] as { message?: { role?: string; content?: unknown }; isMeta?: boolean }[];
+    expect(classifySession("/p", NOW - 4_000, true, LIVE, NOW, withMeta)).toEqual({
+      state: "idle",
+      needsYou: true,
+      needsYouCertain: false,
+    });
+  });
+
+  test("working: a still-streaming assistant message (last block thinking)", () => {
+    const streaming = [{ message: { role: "assistant", content: [{ type: "thinking", text: "…" }] } }];
+    expect(classifySession("/p", NOW - 3_000, true, LIVE, NOW, streaming).state).toBe("working");
   });
 });
 
