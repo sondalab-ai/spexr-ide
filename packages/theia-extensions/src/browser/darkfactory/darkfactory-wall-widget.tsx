@@ -13,6 +13,13 @@ import { AgentTileCard, AgentCondensedRow } from "./agent-tile.js";
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
 
+/**
+ * How many top sessions get an AI summary. Each summary is a ~13s local-model
+ * inference that runs in the backend process, so this is deliberately small and
+ * computed once per session (never re-triggered) — see setTiles.
+ */
+const SUMMARY_EAGER = 5;
+
 /** Machine-wide monitoring wall of every Claude Code session ("agent"). */
 @injectable()
 export class SpexrDarkfactoryWidget extends ReactWidget {
@@ -25,16 +32,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(ApplicationShell) private readonly shell!: ApplicationShell;
 
   private tiles: AgentTile[] = [];
-  /**
-   * sessionId → AI description state, filled asynchronously. `loading` drives the
-   * spinner (only before the first result); `pending` guards against queueing a
-   * second inference while one is in flight. A settled `summary` is kept visible
-   * across `mtime` churn so an active session never blanks back to the spinner.
-   */
-  private readonly summaries = new Map<
-    string,
-    { ms: number; summary: AgentSummary; loading: boolean; pending: boolean }
-  >();
+  /** sessionId → AI description state, filled asynchronously (computed once per session). */
+  private readonly summaries = new Map<string, { summary: AgentSummary; loading: boolean }>();
+  /** Sessions awaiting a summary; drained one inference at a time by {@link drainSummaries}. */
+  private readonly summaryQueue: string[] = [];
+  private summaryRunning = false;
 
   @postConstruct()
   protected init(): void {
@@ -62,31 +64,37 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const id of this.summaries.keys()) {
       if (!live.has(id)) this.summaries.delete(id);
     }
-    // AI descriptions only for the top cards (not the condensed rows).
-    for (const t of sortTiles(tiles).slice(0, CARD_LIMIT)) {
-      const have = this.summaries.get(t.sessionId);
-      if (have && have.ms === t.lastActivityMs) continue; // already up to date
-      if (have?.pending) continue; // an inference is already running; it will refresh
-      this.summaries.set(t.sessionId, {
-        ms: t.lastActivityMs,
-        summary: have?.summary ?? { now: "", overview: "" }, // keep the last good text visible
-        loading: !have?.summary.now, // spinner only until we have something to show
-        pending: true,
-      });
-      void this.loadSummary(t);
+    // Enqueue the top sessions for a summary ONCE. We deliberately do not
+    // re-trigger on mtime changes: an active session rewrites its transcript
+    // every few seconds, and re-inferring each time kept the local model running
+    // in the backend process forever, degrading the Electron IPC into a permanent
+    // "offline". A stale-but-stable description is the right trade-off.
+    for (const t of sortTiles(tiles).slice(0, SUMMARY_EAGER)) {
+      if (this.summaries.has(t.sessionId)) continue; // already computed or queued
+      this.summaries.set(t.sessionId, { summary: { now: "", overview: "" }, loading: true });
+      this.summaryQueue.push(t.sessionId);
     }
+    void this.drainSummaries();
   }
 
-  private async loadSummary(tile: AgentTile): Promise<void> {
-    const dispatchedMs = tile.lastActivityMs;
-    const summary = await this.service
-      .summarize(tile.sessionId)
-      .catch((): AgentSummary => ({ now: "", overview: "" }));
-    const prev = this.summaries.get(tile.sessionId);
-    // Keep the last good text if this run came back empty (model busy/unavailable).
-    const next = summary.now || summary.overview ? summary : prev?.summary ?? summary;
-    this.summaries.set(tile.sessionId, { ms: dispatchedMs, summary: next, loading: false, pending: false });
-    this.update();
+  /** Compute queued summaries one inference at a time (the model is serialized anyway). */
+  private async drainSummaries(): Promise<void> {
+    if (this.summaryRunning) return;
+    this.summaryRunning = true;
+    try {
+      let id: string | undefined;
+      while ((id = this.summaryQueue.shift()) !== undefined) {
+        if (!this.summaries.has(id)) continue; // session left the wall
+        const summary = await this.service
+          .summarize(id)
+          .catch((): AgentSummary => ({ now: "", overview: "" }));
+        if (!this.summaries.has(id)) continue;
+        this.summaries.set(id, { summary, loading: false });
+        this.update();
+      }
+    } finally {
+      this.summaryRunning = false;
+    }
   }
 
   protected render(): React.ReactNode {
