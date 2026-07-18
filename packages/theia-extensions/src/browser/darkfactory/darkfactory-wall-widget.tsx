@@ -20,24 +20,40 @@ const CARD_LIMIT = 10;
 const SUMMARY_EAGER = 5;
 
 /**
- * Minimum gap between re-summarizing the same working session. The model runs
- * out-of-process now, so refreshing an active session no longer risks the old
- * "offline" — but each inference is ~13s, so throttle it rather than re-running
- * on every transcript write.
+ * Floor between two refreshes of the same working session. Not a fixed cadence —
+ * refreshes are driven by *what changed* (see {@link shouldRefresh}); this only
+ * stops one churning session from monopolizing the single model and starving the
+ * others. Small, so supervision stays near real-time.
  */
-const REFRESH_MS = 45_000;
+const MIN_REFRESH_GAP_MS = 10_000;
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
-/** Cached summary plus the bookkeeping that throttles refreshes of a live session. */
+/** Cached summary plus the snapshot that decides when it is worth re-inferring. */
 interface SummaryState {
   summary: AgentSummary;
   /** Show the "Summarizing…" placeholder — only on the first compute, so a refresh keeps the old text. */
   loading: boolean;
-  /** Session mtime this summary reflects; a refresh fires only once new activity passes it. */
+  /** Session mtime this summary reflects. */
   mtime: number;
-  /** Timestamp of the last request/completion; anchors the {@link REFRESH_MS} throttle. */
+  /** User-turn count when summarized — a new turn is a new instruction, worth a refresh. */
+  turnCount: number;
+  /** Distilled action when summarized — a changed action means the agent moved on. */
+  action: string;
+  /** Timestamp of the last request/completion; anchors the {@link MIN_REFRESH_GAP_MS} floor. */
   at: number;
+}
+
+/**
+ * A working session is worth re-summarizing when the agent has meaningfully moved
+ * — a new user turn, or a different distilled action — not merely because the
+ * transcript grew (streamed text, repeated same-tool calls). The floor keeps the
+ * single model fair across sessions.
+ */
+function shouldRefresh(tile: AgentTile, cur: SummaryState, now: number): boolean {
+  if (tile.state !== "working") return false;
+  if (now - cur.at < MIN_REFRESH_GAP_MS) return false;
+  return tile.turnCount > cur.turnCount || tile.actionLine !== cur.action;
 }
 
 /** Machine-wide monitoring wall of every Claude Code session ("agent"). */
@@ -85,33 +101,34 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       if (!live.has(id)) this.summaries.delete(id);
     }
     // First compute for a newly-seen session; then keep a WORKING session's summary
-    // fresh — re-summarize once its transcript has advanced past what we last saw
-    // and the throttle window has elapsed. Idle/done sessions are computed once.
+    // fresh, but only when the agent has meaningfully moved (see shouldRefresh).
+    // Idle/done sessions are computed once.
     const now = Date.now();
     for (const t of sortTiles(tiles).slice(0, SUMMARY_EAGER)) {
       const cur = this.summaries.get(t.sessionId);
       if (!cur) {
-        this.enqueueSummary(t.sessionId, t.lastActivityMs, true);
+        this.enqueueSummary(t, true);
         continue;
       }
-      const advanced = t.state === "working" && t.lastActivityMs > cur.mtime && now - cur.at > REFRESH_MS;
-      if (advanced && !this.summaryQueue.includes(t.sessionId)) {
-        this.enqueueSummary(t.sessionId, t.lastActivityMs, false);
+      if (shouldRefresh(t, cur, now) && !this.summaryQueue.includes(t.sessionId)) {
+        this.enqueueSummary(t, false);
       }
     }
     void this.drainSummaries();
   }
 
   /** Queue a session for (re)summarizing. `firstCompute` shows the placeholder; a refresh keeps the old text. */
-  private enqueueSummary(id: string, mtime: number, firstCompute: boolean): void {
-    const cur = this.summaries.get(id);
-    this.summaries.set(id, {
+  private enqueueSummary(tile: AgentTile, firstCompute: boolean): void {
+    const cur = this.summaries.get(tile.sessionId);
+    this.summaries.set(tile.sessionId, {
       summary: cur?.summary ?? EMPTY_SUMMARY,
       loading: firstCompute,
-      mtime,
+      mtime: tile.lastActivityMs,
+      turnCount: tile.turnCount,
+      action: tile.actionLine,
       at: Date.now(),
     });
-    if (!this.summaryQueue.includes(id)) this.summaryQueue.push(id);
+    if (!this.summaryQueue.includes(tile.sessionId)) this.summaryQueue.push(tile.sessionId);
   }
 
   /** Compute queued summaries one inference at a time (the model is serialized anyway). */
@@ -126,8 +143,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         const summary = await this.service.summarize(id).catch((): AgentSummary => EMPTY_SUMMARY);
         const prev = this.summaries.get(id);
         if (!prev) continue; // pruned while inferring
-        // Anchor the throttle on completion so a slow inference does not immediately re-fire.
-        this.summaries.set(id, { summary, loading: false, mtime: prev.mtime, at: Date.now() });
+        // Anchor the floor on completion so a slow inference does not immediately re-fire.
+        this.summaries.set(id, { ...prev, summary, loading: false, at: Date.now() });
         this.update();
       }
     } finally {
