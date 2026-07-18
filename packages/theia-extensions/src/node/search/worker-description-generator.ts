@@ -1,5 +1,5 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { fork } from "node:child_process";
+import { fork, execFileSync } from "node:child_process";
 import { resolveModelsDir, resolveWorkerPath } from "./models-dir.js";
 import type {
   DescriptionGenerator,
@@ -15,16 +15,40 @@ export interface WorkerLike {
   terminate(): unknown;
 }
 
+let cachedNode: string | null | undefined; // undefined=unresolved, null=none found
+
+/**
+ * Absolute path to a real Node binary on PATH, or undefined if none.
+ *
+ * onnxruntime-node segfaults during inference when the fork runs under
+ * `ELECTRON_RUN_AS_NODE` (the Electron binary as Node); the same model runs fine
+ * under a genuine Node. So prefer a real Node when one is resolvable (dev launched
+ * from a shell), and fall back to Electron-as-Node only when it is not (a packaged
+ * app), where the worker may fail and degrade to no summaries.
+ */
+function resolveNodeBinary(): string | undefined {
+  if (cachedNode !== undefined) return cachedNode ?? undefined;
+  try {
+    cachedNode = execFileSync("node", ["-p", "process.execPath"], { encoding: "utf8", timeout: 5000 }).trim() || null;
+  } catch {
+    cachedNode = null;
+  }
+  return cachedNode ?? undefined;
+}
+
 /**
  * Fork the model worker as its own OS process (not a worker_thread) so its native
  * onnxruntime work never touches the backend's process — see description-worker's
- * header. `ELECTRON_RUN_AS_NODE` makes the Electron binary run the script as
- * plain Node (the same pattern Theia uses for its forked backends); the models
- * dir is passed by env since forks have no `workerData`.
+ * header. The models dir is passed by env since forks have no `workerData`.
  */
 function defaultWorkerFactory(): WorkerLike {
+  const node = resolveNodeBinary();
+  const env: NodeJS.ProcessEnv = { ...process.env, SPEXR_MODELS_DIR: resolveModelsDir() };
+  if (!node) env.ELECTRON_RUN_AS_NODE = "1"; // no real Node → run the Electron binary as Node
+  console.error(`[darkfactory] forking model worker via ${node ?? "electron-as-node"}`);
   const child = fork(resolveWorkerPath(), [], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SPEXR_MODELS_DIR: resolveModelsDir() },
+    ...(node ? { execPath: node } : {}),
+    env,
     stdio: ["ignore", "inherit", "inherit", "ipc"],
   });
   return {
