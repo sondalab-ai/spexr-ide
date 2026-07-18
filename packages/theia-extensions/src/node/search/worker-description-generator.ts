@@ -25,14 +25,23 @@ interface Pending {
   resolve: (value: string | null) => void;
 }
 
+/** Give up on the worker only after this many consecutive crashes. */
+const MAX_CONSECUTIVE_CRASHES = 3;
+
 /**
- * Drives description generation in a worker thread. Spawns the worker lazily
- * on first use and degrades to null permanently if the worker errors or exits.
+ * Drives description generation in a worker thread. Spawns the worker lazily on
+ * first use. A worker crash (error/exit) rejects in-flight work and tears the
+ * worker down, but the next request respawns it — one crash no longer disables
+ * generation forever. Only after {@link MAX_CONSECUTIVE_CRASHES} back-to-back
+ * crashes (with no successful result between) does it degrade to null. Crash
+ * reasons are logged so the cause (e.g. OOM) is visible in the backend output.
  */
 @injectable()
 export class WorkerDescriptionGenerator implements DescriptionGenerator {
   private worker: WorkerLike | undefined;
   private failed = false;
+  private crashes = 0;
+  private disposing = false;
   private seq = 0;
   private readonly pending = new Map<number, Pending>();
 
@@ -64,6 +73,7 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
   }
 
   dispose(): void {
+    this.disposing = true;
     this.worker?.terminate();
     this.worker = undefined;
   }
@@ -74,10 +84,12 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
       try {
         const worker = this.factory();
         worker.on("message", (msg: WorkerResponse) => this.onMessage(msg));
-        worker.on("error", () => this.fail());
-        worker.on("exit", () => this.fail());
+        worker.on("error", (err) => this.onCrash("error", err));
+        worker.on("exit", (code) => this.onCrash("exit", code));
         this.worker = worker;
-      } catch {
+        console.error("[darkfactory] description worker started");
+      } catch (err) {
+        console.error("[darkfactory] description worker failed to spawn:", err);
         this.fail();
         return undefined;
       }
@@ -86,10 +98,34 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
   }
 
   private onMessage(msg: WorkerResponse): void {
+    if (msg.type === "done") this.crashes = 0; // a real result clears the crash streak
     const entry = this.pending.get(msg.id);
     if (!entry) return;
     this.pending.delete(msg.id);
     entry.resolve(msg.type === "done" ? msg.text : null);
+  }
+
+  /**
+   * Handle a worker `error`/`exit`. `error` fires first and nulls the worker, so
+   * the following `exit` is ignored; a self-initiated `terminate()` is ignored too.
+   * In-flight work resolves null and the worker is dropped so the next request
+   * respawns it — unless the crash streak hits the cap.
+   */
+  private onCrash(kind: "error" | "exit", info: unknown): void {
+    if (this.disposing) return; // our own terminate()
+    if (!this.worker && kind === "exit") return; // already handled via the preceding "error"
+    this.crashes++;
+    console.error(
+      `[darkfactory] description worker ${kind} (crash ${this.crashes}/${MAX_CONSECUTIVE_CRASHES}):`,
+      info,
+    );
+    for (const entry of this.pending.values()) entry.resolve(null);
+    this.pending.clear();
+    this.worker = undefined;
+    if (this.crashes >= MAX_CONSECUTIVE_CRASHES) {
+      console.error("[darkfactory] too many description-worker crashes; disabling local model");
+      this.failed = true;
+    }
   }
 
   private fail(): void {

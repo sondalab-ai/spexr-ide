@@ -41,14 +41,51 @@ describe("WorkerDescriptionGenerator", () => {
     expect(await p).toBeNull();
   });
 
-  it("becomes unavailable and resolves pending to null on crash", async () => {
-    const fake = new FakeWorker();
-    const gen = new WorkerDescriptionGenerator(() => fake);
+  it("resolves pending to null on a crash but stays available and respawns", async () => {
+    const factory = vi.fn(() => new FakeWorker());
+    const gen = new WorkerDescriptionGenerator(factory);
     const p = gen.generate("a.ts", "x");
-    fake.crash();
+    (factory.mock.results[0]!.value as FakeWorker).crash();
     expect(await p).toBeNull();
+    expect(gen.isAvailable()).toBe(true); // resilient: one crash does not disable
+    const p2 = gen.generate("b.ts", "y");
+    expect(factory).toHaveBeenCalledTimes(2); // respawned a fresh worker
+    const second = factory.mock.results[1]!.value as FakeWorker;
+    second.emit({ id: second.requests[0]!.id, type: "done", text: "ok" });
+    expect(await p2).toBe("ok");
+  });
+
+  it("disables the model after 3 consecutive worker crashes", async () => {
+    const factory = vi.fn(() => new FakeWorker());
+    const gen = new WorkerDescriptionGenerator(factory);
+    for (let i = 0; i < 3; i++) {
+      const p = gen.generate("a.ts", "x");
+      (factory.mock.results[i]!.value as FakeWorker).crash();
+      expect(await p).toBeNull();
+    }
     expect(gen.isAvailable()).toBe(false);
     expect(await gen.generate("b.ts", "y")).toBeNull();
+  });
+
+  it("a successful result resets the crash streak", async () => {
+    const factory = vi.fn(() => new FakeWorker());
+    const gen = new WorkerDescriptionGenerator(factory);
+    const current = () => factory.mock.results.at(-1)!.value as FakeWorker;
+    for (let i = 0; i < 2; i++) {
+      const p = gen.generate("a.ts", "x");
+      current().crash();
+      expect(await p).toBeNull();
+    }
+    const ok = gen.generate("b.ts", "y");
+    const w = current();
+    w.emit({ id: w.requests[0]!.id, type: "done", text: "good" });
+    expect(await ok).toBe("good");
+    for (let i = 0; i < 2; i++) {
+      const p = gen.generate("a.ts", "x");
+      current().crash();
+      expect(await p).toBeNull();
+    }
+    expect(gen.isAvailable()).toBe(true); // streak was reset by the success
   });
 
   it("returns null without spawning when the factory throws", async () => {

@@ -26,6 +26,15 @@ import {
 const port = parentPort;
 const modelsDir: string = workerData?.modelsDir;
 
+// Surface JS-level crashes in the backend output (the host only sees the exit).
+process.on("uncaughtException", (err) => {
+  console.error("[darkfactory worker] uncaughtException:", err);
+  process.exit(1);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[darkfactory worker] unhandledRejection:", err);
+});
+
 type TextGenPipeline = (
   messages: unknown,
   options: unknown,
