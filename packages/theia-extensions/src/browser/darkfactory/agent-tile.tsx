@@ -89,6 +89,57 @@ export function AgentTileCard(props: {
   );
 }
 
+/**
+ * Expanded, pinned card lifted above the grid: a large read-only live view of one
+ * session's transcript, with an action to continue it in an interactive terminal.
+ */
+export function AgentPinnedCard(props: {
+  tile: AgentTile;
+  now: number;
+  summary?: { summary: AgentSummary; loading: boolean } | undefined;
+  scrollback: string;
+  onClose: () => void;
+  onOpenTerminal: (t: AgentTile) => void;
+}): React.ReactElement {
+  const { tile, now, summary, scrollback, onClose, onOpenTerminal } = props;
+  const status = statusOf(tile);
+  return (
+    <section
+      className="spexr-df-pinned"
+      data-state={tile.state}
+      data-status={status.kind}
+      style={{ ["--tile-accent" as string]: `var(--spexr-df-accent-${tile.accentId})` }}
+    >
+      <header className="spexr-df-pinned__head">
+        <span className="spexr-df-card__led" />
+        <span className="spexr-df-pinned__project">{tile.projectName}</span>
+        <span className="spexr-df-card__status" data-kind={status.kind}>
+          {status.label}
+        </span>
+        <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
+        <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
+          <i className="codicon codicon-close" />
+        </button>
+      </header>
+      {summary && !summary.loading && summary.summary.now && (
+        <span className="spexr-df-card__ai">
+          <i className="codicon codicon-sparkle" />
+          <span className="spexr-df-card__ai-text">{summary.summary.now}</span>
+        </span>
+      )}
+      <pre className="spexr-df-pinned__scroll">{scrollback || "Waiting for activity…"}</pre>
+      <footer className="spexr-df-pinned__foot">
+        <span className="spexr-df-pinned__tag">
+          <i className="codicon codicon-eye" /> read-only live view
+        </span>
+        <button className="spexr-button spexr-button--primary" onClick={() => onOpenTerminal(tile)}>
+          Continue in terminal
+        </button>
+      </footer>
+    </section>
+  );
+}
+
 /** Condensed one-line row for lower-priority sessions below the card grid. */
 export function AgentCondensedRow(props: {
   tile: AgentTile;

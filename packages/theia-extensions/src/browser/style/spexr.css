@@ -2358,6 +2358,44 @@ code {
 .spexr-df-empty { padding: var(--spexr-space-5); color: var(--spexr-text-muted); font-size: var(--spexr-text-sm); }
 .spexr-df-root { display: flex; flex-direction: column; gap: var(--spexr-space-5); }
 
+/* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
+.spexr-df-pinned {
+  display: flex; flex-direction: column; gap: var(--spexr-space-3); min-width: 0;
+  min-height: 58vh; padding: var(--spexr-space-4);
+  background: var(--spexr-bg-surface);
+  border: 1px solid var(--tile-accent);
+  border-radius: var(--spexr-radius-md);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-accent) 25%, transparent),
+    0 12px 40px -12px color-mix(in srgb, var(--tile-accent) 30%, transparent);
+}
+.spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--spexr-space-2); min-width: 0; }
+.spexr-df-pinned__project {
+  font-size: var(--spexr-text-lg); font-weight: 700; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.spexr-df-pinned__close {
+  margin-left: var(--spexr-space-2); flex: none; display: inline-flex; align-items: center;
+  padding: 4px; border: none; border-radius: var(--spexr-radius-sm, 6px);
+  background: transparent; color: var(--spexr-text-muted); cursor: pointer;
+}
+.spexr-df-pinned__close:hover { background: color-mix(in srgb, var(--spexr-text-primary) 8%, transparent); color: var(--spexr-text-primary); }
+.spexr-df-pinned__scroll {
+  flex: 1 1 auto; min-height: 0; margin: 0; overflow: auto;
+  padding: var(--spexr-space-3);
+  background: color-mix(in srgb, var(--spexr-text-primary) 4%, transparent);
+  border-radius: var(--spexr-radius-sm, 6px);
+  font-family: var(--theia-code-font-family); font-size: var(--spexr-text-xs); line-height: 1.45;
+  color: var(--spexr-text-secondary, var(--spexr-text-primary));
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.spexr-df-pinned__foot { display: flex; align-items: center; gap: var(--spexr-space-3); }
+.spexr-df-pinned__tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--spexr-text-xs); color: var(--spexr-text-muted);
+}
+.spexr-df-pinned__tag .codicon { font-size: 0.9em; }
+.spexr-df-pinned__foot .spexr-button { margin-left: auto; }
+
 /* Top-priority sessions: 3 wide cards per row. */
 .spexr-df-grid {
   display: grid;

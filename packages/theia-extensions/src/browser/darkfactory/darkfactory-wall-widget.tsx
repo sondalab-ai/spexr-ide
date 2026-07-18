@@ -8,7 +8,7 @@ import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrDarkfactoryFollowWidget } from "./follow-pane.js";
 import { sortTiles } from "./darkfactory-format.js";
-import { AgentTileCard, AgentCondensedRow } from "./agent-tile.js";
+import { AgentTileCard, AgentCondensedRow, AgentPinnedCard } from "./agent-tile.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
@@ -74,6 +74,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private readonly summaryQueue: string[] = [];
   private summaryRunning = false;
 
+  /** The session lifted into the expanded pinned card, with its live follow buffer. */
+  private pinnedSessionId: string | undefined;
+  private pinnedScrollback = "";
+
   @postConstruct()
   protected init(): void {
     this.id = SpexrDarkfactoryWidget.ID;
@@ -83,9 +87,48 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.title.iconClass = "codicon codicon-server-process";
     this.addClass("spexr-darkfactory");
     this.toDispose.push(this.client.onTilesChanged$((tiles) => this.setTiles(tiles)));
+    this.toDispose.push(
+      this.client.onFollowChunk$(({ sessionId, turns }) => {
+        if (sessionId !== this.pinnedSessionId) return;
+        this.pinnedScrollback += (this.pinnedScrollback ? "\n" : "") + turns;
+        this.update();
+      }),
+    );
+    this.toDispose.push({ dispose: () => this.stopFollow() });
     this.refresh().catch(() => {
       /* ignore */
     });
+  }
+
+  /** Lift a session into the pinned card and start its read-only live follow (toggles off if already pinned). */
+  private pin(tile: AgentTile): void {
+    if (this.pinnedSessionId === tile.sessionId) {
+      this.unpin();
+      return;
+    }
+    this.stopFollow();
+    this.pinnedSessionId = tile.sessionId;
+    this.pinnedScrollback = "";
+    this.update();
+    void this.service.startFollow(tile.sessionId).catch(() => {
+      /* ignore */
+    });
+  }
+
+  private unpin(): void {
+    this.stopFollow();
+    this.pinnedSessionId = undefined;
+    this.pinnedScrollback = "";
+    this.update();
+  }
+
+  private stopFollow(): void {
+    const id = this.pinnedSessionId;
+    if (id) {
+      void this.service.stopFollow(id).catch(() => {
+        /* ignore */
+      });
+    }
   }
 
   private async refresh(): Promise<void> {
@@ -100,6 +143,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const id of this.summaries.keys()) {
       if (!live.has(id)) this.summaries.delete(id);
     }
+    // Drop the pinned card if its session is gone (stops the orphaned follow).
+    if (this.pinnedSessionId && !live.has(this.pinnedSessionId)) this.unpin();
     // First compute for a newly-seen session; then keep a WORKING session's summary
     // fresh, but only when the agent has meaningfully moved (see shouldRefresh).
     // Idle/done sessions are computed once.
@@ -160,14 +205,30 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         <div className="spexr-df-empty">No Claude agents found. Start a session to see it here.</div>
       );
     }
-    const open = (tile: AgentTile): void =>
+    const pin = (tile: AgentTile): void => this.pin(tile);
+    const openTerminal = (tile: AgentTile): void =>
       void this.openFocus(tile).catch(() => {
         /* ignore */
       });
-    const cards = tiles.slice(0, CARD_LIMIT);
-    const condensed = tiles.slice(CARD_LIMIT);
+    // The pinned session is lifted out of the grid; the rest keep their order below.
+    const pinned = this.pinnedSessionId
+      ? tiles.find((t) => t.sessionId === this.pinnedSessionId)
+      : undefined;
+    const rest = pinned ? tiles.filter((t) => t.sessionId !== pinned.sessionId) : tiles;
+    const cards = rest.slice(0, CARD_LIMIT);
+    const condensed = rest.slice(CARD_LIMIT);
     return (
       <div className="spexr-df-root">
+        {pinned && (
+          <AgentPinnedCard
+            tile={pinned}
+            now={now}
+            summary={this.summaries.get(pinned.sessionId)}
+            scrollback={this.pinnedScrollback}
+            onClose={() => this.unpin()}
+            onOpenTerminal={openTerminal}
+          />
+        )}
         <div className="spexr-df-grid">
           {cards.map((t) => (
             <AgentTileCard
@@ -175,7 +236,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               tile={t}
               now={now}
               summary={this.summaries.get(t.sessionId)}
-              onOpen={open}
+              onOpen={pin}
             />
           ))}
         </div>
@@ -183,7 +244,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           <div className="spexr-df-condensed">
             <div className="spexr-df-condensed__label">{condensed.length} more</div>
             {condensed.map((t) => (
-              <AgentCondensedRow key={t.sessionId} tile={t} now={now} onOpen={open} />
+              <AgentCondensedRow key={t.sessionId} tile={t} now={now} onOpen={pin} />
             ))}
           </div>
         )}
