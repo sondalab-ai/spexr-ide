@@ -36,8 +36,9 @@ Most editors bolt an agent into a sidebar. SPEXR inverts the layout: the Claude 
 6. **Themeable, accessible UI** — WCAG 2.1 AA via Radix primitives + design tokens (CSS vars). Light, dark, high-contrast presets + custom JSON themes.
 7. **Smart search** — sidebar panel ranks results with hybrid BM25 + dense embeddings, expands queries, and extracts symbols across languages. A local model generates one-line file descriptions on first index — no API calls, no data leaves the machine.
 8. **Git, built in** — full SCM provider (stage/unstage/commit/push/pull/fetch/branch/checkout) plus inline blame, no external Git extension needed.
+9. **Darkfactory** — a wall of every local Claude session across all your config dirs (`~/.claude`, aliased profiles, …): live state (working / waiting on you / idle), an on-device AI summary of each, and one-click open into an embedded terminal that resumes the session in place — read-only follow when it's live elsewhere, `--fork-session` to take over. Watch and drive many agents from one window.
 
-> **On `main`, not yet released.** Smart search and Git support are merged but not in a tagged version yet — build from source (below) to try them before the next installer release.
+> **On `main`, not yet released.** Smart search, Git support, and Darkfactory are merged but not in a tagged version yet — build from source (below) to try them before the next installer release.
 
 ## Screenshots
 
