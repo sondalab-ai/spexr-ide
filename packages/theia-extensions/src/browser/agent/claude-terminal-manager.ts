@@ -23,6 +23,11 @@ import {
 
 export const CLAUDE_TERMINAL_ID = "spexr-claude";
 
+/** Wrap an argument in single quotes for safe inclusion in a shell command. */
+function shellQuote(arg: string): string {
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
 /** Quiet period after the last PTY output that signals the TUI finished rendering. */
 const READY_IDLE_MS = 1_200;
 
@@ -192,6 +197,25 @@ export class ClaudeTerminalManager {
     }
   }
 
+  /**
+   * Spawn the agent through an interactive login shell (`-i -l`) so the user's
+   * full environment — PATH, HOME, proxies — is present; a bare direct spawn
+   * loses the env the shell re-derives and made Claude re-onboard.
+   *
+   * The account is set authoritatively in the `-c` line: `export CLAUDE_CONFIG_DIR`
+   * for a profile that carries one, and `unset CLAUDE_CONFIG_DIR` for the default
+   * profile so it uses `~/.claude` even when the host env has a stray
+   * CLAUDE_CONFIG_DIR (e.g. a shell that exports one). The resolved executable is
+   * invoked directly — never an account alias.
+   */
+  private resolveShell(profile: ClaudeProfileDto, shellArgs: string[]): { shellArgs: string[] } {
+    const bin = profile.executablePath ? shellQuote(profile.executablePath) : "claude";
+    const account = profile.configDir
+      ? `export CLAUDE_CONFIG_DIR=${shellQuote(profile.configDir)}`
+      : "unset CLAUDE_CONFIG_DIR";
+    const line = `${account}; ${[bin, ...shellArgs.map(shellQuote)].join(" ")}`;
+    return { shellArgs: ["-i", "-l", "-c", line] };
+  }
 
   private async buildShellArgs(workspaceRoot: string, expertId?: string): Promise<string[]> {
     const ctx = await this.agentService!.buildLaunchContext(workspaceRoot, expertId);
@@ -306,10 +330,7 @@ export class ClaudeTerminalManager {
         : nls.localize("spexr/agent/title", "Agent"),
       useServerTitle: false,
       iconClass: expert ? `codicon ${expert.icon}` : "codicon codicon-sparkle",
-      // SPEXR resolves the executable (login-shell-aware, see the profile detector)
-      // and owns CLAUDE_CONFIG_DIR per profile via `env`; spawn the binary directly.
-      shellPath: profile.executablePath,
-      shellArgs,
+      ...this.resolveShell(profile, shellArgs),
       cwd: workspaceRoot,
       env,
       destroyTermOnClose: false,

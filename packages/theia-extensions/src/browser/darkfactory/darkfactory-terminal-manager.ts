@@ -105,7 +105,9 @@ export class SpexrDarkfactoryTerminalManager {
     const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
     const bin = exe ? shellQuote(exe) : "claude";
     const prefix = [
-      dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "",
+      // Set the account authoritatively so a stray CLAUDE_CONFIG_DIR in the host
+      // env can't send the resume to the wrong config dir.
+      dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "unset CLAUDE_CONFIG_DIR",
       projectPath ? `cd ${shellQuote(projectPath)}` : "",
     ]
       .filter(Boolean)
