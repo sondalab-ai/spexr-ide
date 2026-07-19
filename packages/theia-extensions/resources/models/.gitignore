@@ -1,0 +1,3 @@
+# Vendored ONNX model weights are fetched at build time, not committed.
+*
+!.gitignore

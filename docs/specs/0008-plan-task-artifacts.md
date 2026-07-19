@@ -4,12 +4,10 @@ title: Plan & task artifacts derived from a spec
 status: validated
 workflowStep: ship
 createdAt: 2026-05-24
-updatedAt: 2026-06-14
-relatedSpecs:
-  - 0005-drift-detector
-  - 0006-spec-context-fan-in
+updatedAt: 2026-07-19
+relatedSpecs: 
+forcedSteps: [ship]
 ---
-
 ## Goal
 
 Make the `plan` workflow step produce a real, persisted artifact. The data model already anticipates it — `Task.planStepId` exists (`packages/spec/src/types.ts:73`) and the step label reads "Draft plan steps linked to AC" (`workflow.ts:103`) — but no plan is ever generated or stored; `plan` is only a state label. This spec lets the agent draft a plan of tasks from a spec's acceptance criteria, persists it next to the spec, and tracks task completion so progress is visible and resumable.

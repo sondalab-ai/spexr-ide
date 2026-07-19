@@ -5,8 +5,8 @@ status: in-progress
 owner: marcello.barile@gmail.com
 createdAt: 2026-05-09
 workflowStep: ship
-updatedAt: 2026-07-16
-forcedSteps: [implement, validate]
+updatedAt: 2026-07-19
+forcedSteps: [implement, validate, ship]
 ---
 ## Goal
 
