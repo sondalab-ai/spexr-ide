@@ -74,6 +74,17 @@ function capitalize(s: string): string {
   return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
+/**
+ * Order the two AI clauses by visual weight: the session goal (overview) is the
+ * headline, the moment-to-moment activity (now) the muted sub-line. Falls back to
+ * `now` as the headline when there is no overview, and never repeats a line.
+ */
+function summaryLines(s: AgentSummary): { headline: string; sub: string } {
+  const headline = s.overview || s.now;
+  const sub = s.overview ? s.now : "";
+  return { headline, sub };
+}
+
 /** The single most important status word for a tile, with its visual class. */
 function statusOf(tile: AgentTile): { label: string; kind: string } {
   if (tile.lastFailed) return { label: "Failed", kind: "error" };
@@ -93,6 +104,7 @@ export function AgentTileCard(props: {
   const status = statusOf(tile);
   const primary = capitalize(tile.goal || tile.actionLine);
   const expandable = primary.length > 90;
+  const ai = summary && !summary.loading ? summaryLines(summary.summary) : undefined;
 
   return (
     <button
@@ -136,15 +148,15 @@ export function AgentTileCard(props: {
           Summarizing…
         </span>
       )}
-      {summary && !summary.loading && summary.summary.now && (
-        <span className="spexr-df-card__ai" title={summary.summary.now}>
+      {ai?.headline && (
+        <span className="spexr-df-card__ai" title={ai.headline}>
           <i className="codicon codicon-sparkle" />
-          <span className="spexr-df-card__ai-text">{summary.summary.now}</span>
+          <span className="spexr-df-card__ai-text">{ai.headline}</span>
         </span>
       )}
-      {summary && !summary.loading && summary.summary.overview && (
-        <span className="spexr-df-card__overview" title={summary.summary.overview}>
-          {summary.summary.overview}
+      {ai?.sub && (
+        <span className="spexr-df-card__overview" title={ai.sub}>
+          {ai.sub}
         </span>
       )}
 
@@ -192,10 +204,10 @@ export function AgentPinnedCard(props: {
           <i className="codicon codicon-close" />
         </button>
       </header>
-      {summary && !summary.loading && summary.summary.now && (
+      {summary && !summary.loading && summaryLines(summary.summary).headline && (
         <span className="spexr-df-card__ai">
           <i className="codicon codicon-sparkle" />
-          <span className="spexr-df-card__ai-text">{summary.summary.now}</span>
+          <span className="spexr-df-card__ai-text">{summaryLines(summary.summary).headline}</span>
         </span>
       )}
       {terminal ? (

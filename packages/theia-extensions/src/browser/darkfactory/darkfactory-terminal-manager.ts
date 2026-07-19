@@ -75,7 +75,7 @@ export class SpexrDarkfactoryTerminalManager {
       title: baseName(projectPath),
       useServerTitle: false,
       iconClass: "codicon codicon-sparkle",
-      ...this.resolveShell(buildResumeArgs(sessionId, fork), dir),
+      ...this.resolveShell(buildResumeArgs(sessionId, fork), dir, projectPath),
       cwd: projectPath,
       env: dir ? { CLAUDE_CONFIG_DIR: dir } : {},
       destroyTermOnClose: false,
@@ -90,20 +90,30 @@ export class SpexrDarkfactoryTerminalManager {
    * With a custom launch command set, run it through the interactive login shell
    * (so aliases/functions resolve); otherwise spawn the resolved executable.
    *
-   * The login shell re-sources the user's profile, which often re-exports
-   * CLAUDE_CONFIG_DIR (e.g. an alias pinning ~/.claude-perso) and thereby clobbers
-   * the env we set — so a session living in a different config dir resumes against
-   * the wrong one and fails with "No conversation found". Re-exporting `dir` inside
-   * the `-c` line, after the profile has run, makes the session's dir win.
+   * The login shell re-sources the user's profile, which can clobber both the
+   * config dir (an alias re-exports CLAUDE_CONFIG_DIR) and the working directory
+   * (a profile that `cd`s to a default). `claude --resume` resolves a session by
+   * CLAUDE_CONFIG_DIR *and* the cwd's project slug, so if either is wrong it fails
+   * with "No conversation found". Re-exporting the dir and `cd`-ing into the
+   * project inside the `-c` line, after the profile has run, makes both win.
    */
-  private resolveShell(resumeArgs: string[], dir: string): { shellPath?: string; shellArgs: string[] } {
+  private resolveShell(
+    resumeArgs: string[],
+    dir: string,
+    projectPath: string,
+  ): { shellPath?: string; shellArgs: string[] } {
     const command = (this.preferences.get<string>(SPEXR_CLAUDE_LAUNCH_COMMAND_PREFERENCE) ?? "").trim();
     if (command) {
-      const exportDir = dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}; ` : "";
+      const prefix = [
+        dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "",
+        projectPath ? `cd ${shellQuote(projectPath)}` : "",
+      ]
+        .filter(Boolean)
+        .join("; ");
       // `; exec $SHELL` keeps the terminal alive after claude exits (e.g. a resume
       // that can't find the conversation) so the tab shows the error instead of
       // vanishing.
-      const line = `${exportDir}${[command, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
+      const line = `${prefix ? `${prefix}; ` : ""}${[command, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
       return { shellArgs: ["-i", "-l", "-c", line] };
     }
     const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
