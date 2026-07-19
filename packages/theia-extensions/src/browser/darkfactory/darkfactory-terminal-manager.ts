@@ -1,5 +1,4 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
-import { ApplicationShell } from "@theia/core/lib/browser";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
@@ -35,38 +34,22 @@ function baseName(p: string): string {
 }
 
 /**
- * Owns embedded `claude --resume` terminals, one per session. Each Darkfactory
- * focus request for an idle session opens (or reveals) a session-keyed terminal
- * in the main area, so several agents can be driven from one window.
+ * Owns `claude --resume` terminals, one per session, created for embedding in the
+ * Darkfactory pinned card. Each terminal is keyed by session id and reused while
+ * live, so several agents can be driven from one window.
  */
 @injectable()
 export class SpexrDarkfactoryTerminalManager {
   @inject(TerminalService) private readonly terminalService!: TerminalService;
-  @inject(ApplicationShell) private readonly shell!: ApplicationShell;
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
 
   private readonly widgets = new Map<string, TerminalWidget>();
 
   /**
-   * Open (or reveal) an interactive terminal that resumes `sessionId` in
-   * `projectPath`, against the config dir that owns the session. `fork` uses
-   * `--fork-session` to branch from the history when the original is live
-   * elsewhere.
-   */
-  async openResume(sessionId: string, projectPath: string, configDir: string, fork: boolean): Promise<void> {
-    const existing = this.widgets.get(sessionId);
-    if (existing && !existing.isDisposed) {
-      await this.revealMain(existing);
-      return;
-    }
-    const term = await this.createResumeTerminal(sessionId, projectPath, configDir, fork);
-    if (term) await this.revealMain(term);
-  }
-
-  /**
    * Create (or reuse) a resume terminal WITHOUT docking it in the shell — the
-   * caller attaches its node into its own container (the pinned card). Returns
-   * undefined if the session id/path is invalid or the terminal can't start.
+   * caller attaches its node into its own container (the pinned card). `fork` uses
+   * `--fork-session` to branch from the history when the original is live
+   * elsewhere. Returns undefined if the session id/path is invalid or it can't start.
    */
   async openEmbedded(
     sessionId: string,
@@ -101,11 +84,6 @@ export class SpexrDarkfactoryTerminalManager {
     this.widgets.set(sessionId, term);
     term.onDidDispose(() => this.widgets.delete(sessionId));
     return term;
-  }
-
-  private async revealMain(term: TerminalWidget): Promise<void> {
-    await this.shell.addWidget(term, { area: "main" });
-    await this.shell.activateWidget(term.id);
   }
 
   /**

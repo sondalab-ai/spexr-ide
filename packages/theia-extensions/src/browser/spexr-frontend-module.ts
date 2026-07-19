@@ -89,7 +89,6 @@ import {
   SpexrDarkfactoryClientToken,
 } from "./darkfactory/darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory/darkfactory-terminal-manager.js";
-import { SpexrDarkfactoryFollowWidget } from "./darkfactory/follow-pane.js";
 
 /**
  * Frontend contributions for SPEXR. Theia handles DI via Inversify and
@@ -281,13 +280,6 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     }))
     .inSingletonScope();
   bind(SpexrDarkfactoryTerminalManager).toSelf().inSingletonScope();
-  bind(SpexrDarkfactoryFollowWidget).toSelf().inSingletonScope();
-  bind(WidgetFactory)
-    .toDynamicValue((ctx) => ({
-      id: SpexrDarkfactoryFollowWidget.ID,
-      createWidget: () => ctx.container.get(SpexrDarkfactoryFollowWidget),
-    }))
-    .inSingletonScope();
   bind(SpexrDarkfactoryClientDispatcher).toSelf().inSingletonScope();
   bind(SpexrDarkfactoryClientToken).toService(SpexrDarkfactoryClientDispatcher);
   bind(SpexrDarkfactoryServiceProxy)
