@@ -46,22 +46,47 @@ let pipePromise: Promise<TextGenPipeline> | undefined;
 // Leave at least half the cores for the backend event loop (see file header).
 const INTRA_OP_THREADS = Math.max(1, Math.floor(cpus().length / 2));
 
-function getPipe(): Promise<TextGenPipeline> {
-  if (!pipePromise) {
-    env.allowRemoteModels = false;
-    env.localModelPath = modelsDir;
-    const t0 = Date.now();
-    console.error(`[darkfactory worker] loading model (intraOpThreads=${INTRA_OP_THREADS})…`);
-    pipePromise = (
-      pipeline("text-generation", GEN_MODEL_ID, {
-        dtype: "q4",
-        session_options: { intraOpNumThreads: INTRA_OP_THREADS, interOpNumThreads: 1 },
-      }) as unknown as Promise<TextGenPipeline>
-    ).then((p) => {
-      console.error(`[darkfactory worker] model loaded in ${Date.now() - t0}ms`);
+/**
+ * Prefer the WebGPU execution provider — on this hardware it ran q4 inference ~4x
+ * faster than CPU (CoreML was slower than CPU on this decoder, so it is not used).
+ * Only when a genuine Node runs the worker: onnxruntime-node has a segfault history
+ * under ELECTRON_RUN_AS_NODE (see worker-description-generator), and a GPU segfault
+ * there is uncatchable, so a packaged app with no real Node stays on CPU.
+ */
+const PREFER_GPU = !process.env.ELECTRON_RUN_AS_NODE;
+
+function loadPipe(device: "webgpu" | "cpu"): Promise<TextGenPipeline> {
+  return pipeline("text-generation", GEN_MODEL_ID, {
+    dtype: "q4",
+    device,
+    // intraOpNumThreads bounds the CPU pool; ignored by the WebGPU provider.
+    session_options: { intraOpNumThreads: INTRA_OP_THREADS, interOpNumThreads: 1 },
+  }) as unknown as Promise<TextGenPipeline>;
+}
+
+async function buildPipe(): Promise<TextGenPipeline> {
+  env.allowRemoteModels = false;
+  env.localModelPath = modelsDir;
+  const t0 = Date.now();
+  if (PREFER_GPU) {
+    try {
+      console.error("[darkfactory worker] loading model (device=webgpu)…");
+      const p = await loadPipe("webgpu");
+      console.error(`[darkfactory worker] model loaded on webgpu in ${Date.now() - t0}ms`);
       return p;
-    });
+    } catch (err) {
+      console.error("[darkfactory worker] webgpu unavailable, falling back to cpu:", err);
+    }
   }
+  const t1 = Date.now();
+  console.error(`[darkfactory worker] loading model (device=cpu, intraOpThreads=${INTRA_OP_THREADS})…`);
+  const p = await loadPipe("cpu");
+  console.error(`[darkfactory worker] model loaded on cpu in ${Date.now() - t1}ms`);
+  return p;
+}
+
+function getPipe(): Promise<TextGenPipeline> {
+  if (!pipePromise) pipePromise = buildPipe();
   return pipePromise;
 }
 
