@@ -1,15 +1,12 @@
 ---
 slug: 0006-spec-context-fan-in
 title: Automatic spec-context fan-in to the agent
-status: validated
+status: shipped
 createdAt: 2026-05-24
 workflowStep: ship
-updatedAt: 2026-06-14
-relatedSpecs:
-  - 0004-expert-agents
-  - 0005-drift-detector
+updatedAt: 2026-07-15
+relatedSpecs: 
 ---
-
 ## Goal
 
 Make the per-spec context store (`docs/specs/.context/<NNNN-slug>/`) actually reach the agent. Today context is storage-only: files and `_links.md` sit next to the spec but are never loaded — the README states "Context is storage-only for now ... ready for the agent to load on a future handoff." This spec is that handoff.

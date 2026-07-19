@@ -1,12 +1,12 @@
 ---
 slug: 0002-agent-transport
 title: Wire Claude Agent SDK transport
-status: archived
+status: shipped
 createdAt: 2026-05-09
-relatedSpecs:
-  - 0001-bootstrap
+relatedSpecs: 
+workflowStep: ship
+updatedAt: 2026-07-15
 ---
-
 ## Goal
 
 Replace the stub `ClaudeAgentTransport` with a real binding to `@anthropic-ai/claude-agent-sdk` so the auto-start session in `@spexr/agent` produces real responses inside the desktop shell.

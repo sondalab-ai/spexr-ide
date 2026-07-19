@@ -1,14 +1,12 @@
 ---
 slug: 0007-ship-to-pr
 title: Ship step — branch, commit trailer, open PR
-status: validated
+status: shipped
 workflowStep: ship
 createdAt: 2026-05-24
-updatedAt: 2026-06-14
-relatedSpecs:
-  - 0005-drift-detector
+updatedAt: 2026-07-15
+relatedSpecs: 
 ---
-
 ## Goal
 
 Turn the `ship` workflow step from a prompt into an action. Today the step is the label "Open PR with `Spec: <slug>` trailer" (`packages/spec/src/workflow.ts:106`) delivered as an `agent-prompt` — the human is told what to do, nothing is automated. This spec wires a real command that closes the spec → diff → PR loop and guarantees the `Spec: <slug>` trailer the drift detector (spec 0005) relies on.

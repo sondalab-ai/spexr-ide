@@ -1,11 +1,12 @@
 ---
 slug: 0005-drift-detector
 title: Real drift detector — code-vs-spec divergence
-status: validated
+status: shipped
 createdAt: 2026-05-24
-relatedSpecs:
+relatedSpecs: 
 workflowStep: ship
-updatedAt: 2026-06-14
+updatedAt: 2026-07-15
+forcedSteps: [ship]
 ---
 ## Goal
 

@@ -3,10 +3,10 @@ slug: 0003-terminal-agent-surface
 title: Embedded Claude TUI terminal as the agent surface
 status: shipped
 createdAt: 2026-05-22
-relatedSpecs:
-  - 0002-agent-transport
+relatedSpecs: 
+workflowStep: ship
+updatedAt: 2026-07-15
 ---
-
 ## Goal
 
 Replace the headless SDK proxy with the real interactive `claude` CLI hosted inside an embedded Theia terminal widget, giving full TUI fidelity (`/model`, `/config`, slash commands, permission prompts) in a narrow left panel with an expand/collapse toggle.

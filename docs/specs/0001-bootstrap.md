@@ -4,8 +4,9 @@ title: Bootstrap SPEXR skeleton
 status: in-progress
 owner: marcello.barile@gmail.com
 createdAt: 2026-05-09
-workflowStep: implement
-updatedAt: 2026-06-17
+workflowStep: ship
+updatedAt: 2026-07-16
+forcedSteps: [implement, validate]
 ---
 ## Goal
 
