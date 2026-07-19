@@ -54,14 +54,38 @@ export class SpexrDarkfactoryTerminalManager {
    * elsewhere.
    */
   async openResume(sessionId: string, projectPath: string, configDir: string, fork: boolean): Promise<void> {
-    if (!isSessionId(sessionId) || !projectPath) return;
-
     const existing = this.widgets.get(sessionId);
     if (existing && !existing.isDisposed) {
       await this.revealMain(existing);
       return;
     }
+    const term = await this.createResumeTerminal(sessionId, projectPath, configDir, fork);
+    if (term) await this.revealMain(term);
+  }
 
+  /**
+   * Create (or reuse) a resume terminal WITHOUT docking it in the shell — the
+   * caller attaches its node into its own container (the pinned card). Returns
+   * undefined if the session id/path is invalid or the terminal can't start.
+   */
+  async openEmbedded(
+    sessionId: string,
+    projectPath: string,
+    configDir: string,
+    fork: boolean,
+  ): Promise<TerminalWidget | undefined> {
+    const existing = this.widgets.get(sessionId);
+    if (existing && !existing.isDisposed) return existing;
+    return this.createResumeTerminal(sessionId, projectPath, configDir, fork);
+  }
+
+  private async createResumeTerminal(
+    sessionId: string,
+    projectPath: string,
+    configDir: string,
+    fork: boolean,
+  ): Promise<TerminalWidget | undefined> {
+    if (!isSessionId(sessionId) || !projectPath) return undefined;
     const dir = this.resolveConfigDir(configDir);
     const term = await this.terminalService.newTerminal({
       id: `spexr-df-${sessionId}`,
@@ -76,7 +100,7 @@ export class SpexrDarkfactoryTerminalManager {
     await term.start();
     this.widgets.set(sessionId, term);
     term.onDidDispose(() => this.widgets.delete(sessionId));
-    await this.revealMain(term);
+    return term;
   }
 
   private async revealMain(term: TerminalWidget): Promise<void> {

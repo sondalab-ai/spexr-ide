@@ -1,6 +1,46 @@
 import * as React from "@theia/core/shared/react";
+import { Widget, UnsafeWidgetUtilities } from "@theia/core/lib/browser/widgets/widget";
+import { MessageLoop } from "@theia/core/shared/@lumino/messaging";
+import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { AgentSummary, AgentTile, FollowEvent } from "../../common/darkfactory-protocol.js";
 import { stateLabel, relativeTime } from "./darkfactory-format.js";
+
+/**
+ * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
+ * imperatively (UnsafeWidgetUtilities allows a non-body host), keep it fitted with
+ * a ResizeObserver, and detach on unmount. React never reconciles the host's
+ * children, so the terminal survives the widget's re-renders. Disposal of the
+ * terminal itself stays with the manager that created it.
+ */
+function TerminalMount(props: { term: TerminalWidget }): React.ReactElement {
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const host = hostRef.current;
+    const term = props.term;
+    if (!host) return undefined;
+    UnsafeWidgetUtilities.attach(term, host);
+    const fit = (): void => {
+      try {
+        MessageLoop.sendMessage(term, Widget.ResizeMessage.UnknownSize);
+      } catch {
+        /* terminal not ready yet */
+      }
+    };
+    fit();
+    term.activate();
+    const ro = new ResizeObserver(() => fit());
+    ro.observe(host);
+    return () => {
+      ro.disconnect();
+      try {
+        Widget.detach(term);
+      } catch {
+        /* already detached or disposed */
+      }
+    };
+  }, [props.term]);
+  return <div className="spexr-df-termhost" ref={hostRef} />;
+}
 
 /** Terminal-like prefix glyph per follow-event kind. */
 const FOLLOW_PREFIX: Record<FollowEvent["kind"], string> = {
@@ -127,10 +167,12 @@ export function AgentPinnedCard(props: {
   now: number;
   summary?: { summary: AgentSummary; loading: boolean } | undefined;
   events: FollowEvent[];
+  /** When present, the card hosts this interactive terminal instead of the read-only view. */
+  terminal?: TerminalWidget | undefined;
   onClose: () => void;
-  onOpenTerminal: (t: AgentTile) => void;
+  onFork: (t: AgentTile) => void;
 }): React.ReactElement {
-  const { tile, now, summary, events, onClose, onOpenTerminal } = props;
+  const { tile, now, summary, events, terminal, onClose, onFork } = props;
   const status = statusOf(tile);
   return (
     <section
@@ -156,16 +198,28 @@ export function AgentPinnedCard(props: {
           <span className="spexr-df-card__ai-text">{summary.summary.now}</span>
         </span>
       )}
-      <div className="spexr-df-pinned__scroll">
-        <FollowTranscript events={events} />
-      </div>
+      {terminal ? (
+        <TerminalMount term={terminal} />
+      ) : (
+        <div className="spexr-df-pinned__scroll">
+          <FollowTranscript events={events} />
+        </div>
+      )}
       <footer className="spexr-df-pinned__foot">
-        <span className="spexr-df-pinned__tag">
-          <i className="codicon codicon-eye" /> read-only live view
-        </span>
-        <button className="spexr-button spexr-button--primary" onClick={() => onOpenTerminal(tile)}>
-          Continue in terminal
-        </button>
+        {terminal ? (
+          <span className="spexr-df-pinned__tag">
+            <i className="codicon codicon-terminal" /> interactive — resumed in this card
+          </span>
+        ) : (
+          <>
+            <span className="spexr-df-pinned__tag">
+              <i className="codicon codicon-eye" /> read-only live view
+            </span>
+            <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
+              Fork &amp; continue
+            </button>
+          </>
+        )}
       </footer>
     </section>
   );

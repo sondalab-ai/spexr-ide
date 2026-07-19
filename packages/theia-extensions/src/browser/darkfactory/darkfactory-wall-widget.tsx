@@ -1,12 +1,11 @@
 import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
-import { ApplicationShell } from "@theia/core/lib/browser";
+import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { AgentSummary, AgentTile, FollowEvent, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
-import { SpexrDarkfactoryFollowWidget } from "./follow-pane.js";
 import { sortTiles } from "./darkfactory-format.js";
 import { AgentTileCard, AgentCondensedRow, AgentPinnedCard } from "./agent-tile.js";
 
@@ -67,8 +66,6 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
-  @inject(SpexrDarkfactoryFollowWidget) private readonly followPane!: SpexrDarkfactoryFollowWidget;
-  @inject(ApplicationShell) private readonly shell!: ApplicationShell;
 
   private tiles: AgentTile[] = [];
   /** sessionId → AI summary state, filled asynchronously and refreshed for live sessions. */
@@ -77,9 +74,12 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private readonly summaryQueue: string[] = [];
   private summaryRunning = false;
 
-  /** The session lifted into the expanded pinned card, with its live follow buffer. */
+  /** The session lifted into the expanded pinned card. */
   private pinnedSessionId: string | undefined;
+  /** Read-only follow buffer (used when the pinned session has no interactive terminal). */
   private pinnedEvents: FollowEvent[] = [];
+  /** Interactive resume/fork terminal embedded in the pinned card, when applicable. */
+  private pinnedTerminal: TerminalWidget | undefined;
 
   @postConstruct()
   protected init(): void {
@@ -97,32 +97,79 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         this.update();
       }),
     );
-    this.toDispose.push({ dispose: () => this.stopFollow() });
+    this.toDispose.push({ dispose: () => this.clearPinned() });
     this.refresh().catch(() => {
       /* ignore */
     });
   }
 
-  /** Lift a session into the pinned card and start its read-only live follow (toggles off if already pinned). */
+  /**
+   * Lift a session into the pinned card (toggles off if already pinned). A
+   * resumable (idle, own config dir) session opens an interactive terminal in the
+   * card; a live-elsewhere session opens a read-only follow with a Fork & continue
+   * action. planFocus decides.
+   */
   private pin(tile: AgentTile): void {
     if (this.pinnedSessionId === tile.sessionId) {
       this.unpin();
       return;
     }
-    this.stopFollow();
+    this.clearPinned();
     this.pinnedSessionId = tile.sessionId;
     this.pinnedEvents = [];
     this.update();
-    void this.service.startFollow(tile.sessionId).catch(() => {
+    void this.openPinned(tile).catch(() => {
+      /* ignore */
+    });
+  }
+
+  private async openPinned(tile: AgentTile): Promise<void> {
+    const plan = await this.service.planFocus(tile.sessionId);
+    if (this.pinnedSessionId !== tile.sessionId) return; // pin changed while awaiting
+    if (plan.kind === "resume-terminal") {
+      const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, false);
+      if (this.pinnedSessionId !== tile.sessionId) {
+        term?.dispose();
+        return;
+      }
+      this.pinnedTerminal = term;
+      this.update();
+    } else {
+      await this.service.startFollow(tile.sessionId).catch(() => {
+        /* ignore */
+      });
+    }
+  }
+
+  /** Fork a live session into a writable terminal embedded in the pinned card. */
+  private forkTakeover(tile: AgentTile): void {
+    void (async () => {
+      const plan = await this.service.planFocus(tile.sessionId);
+      const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, true);
+      if (this.pinnedSessionId !== tile.sessionId) {
+        term?.dispose();
+        return;
+      }
+      this.stopFollow();
+      this.pinnedTerminal = term;
+      this.update();
+    })().catch(() => {
       /* ignore */
     });
   }
 
   private unpin(): void {
-    this.stopFollow();
+    this.clearPinned();
     this.pinnedSessionId = undefined;
     this.pinnedEvents = [];
     this.update();
+  }
+
+  /** Tear down the pinned session's follow and embedded terminal (keeps pinnedSessionId untouched). */
+  private clearPinned(): void {
+    this.stopFollow();
+    this.pinnedTerminal?.dispose();
+    this.pinnedTerminal = undefined;
   }
 
   private stopFollow(): void {
@@ -209,10 +256,6 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       );
     }
     const pin = (tile: AgentTile): void => this.pin(tile);
-    const openTerminal = (tile: AgentTile): void =>
-      void this.openFocus(tile).catch(() => {
-        /* ignore */
-      });
     // The pinned session is lifted out of the grid; the rest keep their order below.
     const pinned = this.pinnedSessionId
       ? tiles.find((t) => t.sessionId === this.pinnedSessionId)
@@ -228,8 +271,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             now={now}
             summary={this.summaries.get(pinned.sessionId)}
             events={this.pinnedEvents}
+            terminal={this.pinnedTerminal}
             onClose={() => this.unpin()}
-            onOpenTerminal={openTerminal}
+            onFork={(t) => this.forkTakeover(t)}
           />
         )}
         <div className="spexr-df-grid">
@@ -253,17 +297,5 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         )}
       </div>
     );
-  }
-
-  /** Open a tile in the focus pane: an interactive resume terminal, or a read-only follow. */
-  protected async openFocus(tile: AgentTile): Promise<void> {
-    const plan = await this.service.planFocus(tile.sessionId);
-    if (plan.kind === "resume-terminal") {
-      await this.terminals.openResume(plan.sessionId, plan.projectPath, plan.configDir, false);
-      return;
-    }
-    await this.followPane.follow(plan.sessionId, plan.projectPath, plan.configDir, tile.projectName);
-    await this.shell.addWidget(this.followPane, { area: "main" });
-    await this.shell.activateWidget(this.followPane.id);
   }
 }

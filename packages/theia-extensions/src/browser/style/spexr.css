@@ -2386,6 +2386,15 @@ code {
   border-radius: var(--spexr-radius-sm, 6px);
 }
 
+/* Interactive embedded terminal host: fills the pinned card body. */
+.spexr-df-termhost {
+  flex: 1 1 auto; min-height: 0; position: relative;
+  border-radius: var(--spexr-radius-sm, 6px); overflow: hidden;
+  background: var(--theia-terminal-background, #000);
+}
+.spexr-df-termhost > .p-Widget,
+.spexr-df-termhost > .lm-Widget { position: absolute; inset: 0; width: 100%; height: 100%; }
+
 /* Terminal-like read-only follow: one styled line per event. */
 .spexr-df-term {
   font-family: var(--theia-code-font-family); font-size: var(--spexr-text-xs); line-height: 1.5;
