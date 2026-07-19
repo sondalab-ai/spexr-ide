@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { execFileSync } from "node:child_process";
 
 /**
  * A detected Claude account profile derived from the user's shell configuration.
@@ -189,6 +190,42 @@ export function resolveClaudeExecutable(): string | "ambiguous" | undefined {
 }
 
 /**
+ * Resolve `claude` through the user's interactive login shell, so its real PATH
+ * (e.g. `~/.local/bin`, nvm shims) is searched even when the host process has a
+ * stripped PATH — as a GUI app launched from Finder/Dock does. Returns an
+ * absolute path, or `undefined` if the shell can't resolve it. Best-effort: any
+ * failure (no shell, timeout, non-file) yields `undefined`.
+ */
+export function resolveClaudeExecutableViaShell(): string | undefined {
+  if (process.platform === "win32") return undefined; // login-shell trick is posix-only
+  const shell = process.env["SHELL"] || "/bin/zsh";
+  try {
+    const out = execFileSync(shell, ["-l", "-i", "-c", "command -v claude"], {
+      encoding: "utf8",
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    // Take the last non-empty line — rc files may print banners before it.
+    const line = out.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
+    return line && path.isAbsolute(line) && isFileExecutable(line) ? line : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Best resolved `claude` path: the PATH scan first (fast, exactly-one-match), then
+ * the login-shell fallback for stripped-PATH hosts. `undefined` when unresolved,
+ * `"ambiguous"` only when the PATH scan itself found several distinct binaries.
+ */
+export function resolveClaudeExecutableRobust(): string | "ambiguous" | undefined {
+  const scanned = resolveClaudeExecutable();
+  if (typeof scanned === "string") return scanned;
+  if (scanned === "ambiguous") return "ambiguous";
+  return resolveClaudeExecutableViaShell();
+}
+
+/**
  * Returns `true` if the given path points to a regular executable file.
  */
 export function isFileExecutable(filePath: string): boolean {
@@ -215,7 +252,7 @@ export function isFileExecutable(filePath: string): boolean {
  * skipped; it never throws.
  */
 export function detectClaudeProfiles(): ClaudeProfile[] {
-  const resolvedExec = resolveClaudeExecutable();
+  const resolvedExec = resolveClaudeExecutableRobust();
   const executablePath = typeof resolvedExec === "string" ? resolvedExec : "claude";
 
   const profiles: ClaudeProfile[] = [

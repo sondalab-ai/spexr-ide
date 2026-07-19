@@ -11,23 +11,6 @@ import type { PreferenceContribution, PreferenceSchema } from "@theia/core/lib/c
 export const SPEXR_CLAUDE_EXECUTABLE_PREFERENCE = "spexr.claude.executablePath";
 
 /**
- * Key for a custom launch command (shell alias or function) preference.
- *
- * When set, the agent is started through the user's interactive login shell so
- * aliases / functions defined in `.zshrc` / `.bashrc` resolve. Takes precedence
- * over {@link SPEXR_CLAUDE_EXECUTABLE_PREFERENCE}. Leave empty to spawn the
- * resolved executable directly.
- *
- * IMPORTANT: the command must NOT pin `CLAUDE_CONFIG_DIR` (e.g. an alias like
- * `claude-perso='CLAUDE_CONFIG_DIR=~/.claude-perso claude'`). SPEXR sets the
- * config dir per session so it can resume agents across several config dirs; a
- * command-line env assignment beats the exported one, so a pinning alias sends
- * every resume to the wrong dir and fails with "No conversation found". Use the
- * plain `claude` binary and let SPEXR choose the dir.
- */
-export const SPEXR_CLAUDE_LAUNCH_COMMAND_PREFERENCE = "spexr.claude.launchCommand";
-
-/**
  * Key for the `CLAUDE_CONFIG_DIR` override preference.
  *
  * When set, the spawned CLI uses this directory for authentication instead of
@@ -71,16 +54,6 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "Path override for the Claude Code CLI binary used by the SPEXR agent. " +
         "Leave empty to auto-detect from PATH. Folder-scoped.",
-    },
-    [SPEXR_CLAUDE_LAUNCH_COMMAND_PREFERENCE]: {
-      type: "string",
-      default: "",
-      description:
-        "Custom command run through your interactive login shell to start the agent, " +
-        "so shell aliases/functions resolve. Overrides the executable path when set. " +
-        "Leave empty to spawn the binary directly. Must NOT pin CLAUDE_CONFIG_DIR " +
-        "(avoid aliases like \"claude-perso\") — SPEXR sets the config dir per session, " +
-        "and a pinning alias breaks resume with \"No conversation found\". Folder-scoped.",
     },
     [SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE]: {
       type: "string",

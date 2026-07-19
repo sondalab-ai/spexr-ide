@@ -33,7 +33,7 @@ import type {
 import {
   detectClaudeProfiles,
   isFileExecutable,
-  resolveClaudeExecutable,
+  resolveClaudeExecutableRobust,
 } from "./claude-profile-detector.js";
 
 /**
@@ -484,7 +484,7 @@ async function checkDriftImpl(
     `## Code Files\n${fileBlocks.join("\n\n")}`;
 
   // Spawn claude --print
-  const claudeExec = resolveClaudeExecutable();
+  const claudeExec = resolveClaudeExecutableRobust();
   if (!claudeExec || claudeExec === "ambiguous") {
     findings.push({ criterionId: "agent", severity: "warn", message: "Claude CLI not found; agent evaluation skipped." });
     const dto: DriftReportDto = { specSlug: slug, checkedAt, impliedFiles, findings };
@@ -699,7 +699,7 @@ export function resolveAndValidateExecutable(executableOverride?: string): strin
     return executableOverride;
   }
 
-  const execPath = resolveClaudeExecutable();
+  const execPath = resolveClaudeExecutableRobust();
 
   if (execPath === undefined) {
     throw new Error(

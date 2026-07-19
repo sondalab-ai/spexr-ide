@@ -4,7 +4,6 @@ import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-servi
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
-  SPEXR_CLAUDE_LAUNCH_COMMAND_PREFERENCE,
   SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 
@@ -87,37 +86,34 @@ export class SpexrDarkfactoryTerminalManager {
   }
 
   /**
-   * With a custom launch command set, run it through the interactive login shell
-   * (so aliases/functions resolve); otherwise spawn the resolved executable.
+   * Run the resume through an interactive login shell (so the user's real PATH —
+   * `~/.local/bin`, nvm shims — resolves `claude`), invoking the plain `claude`
+   * binary directly rather than any account alias.
    *
-   * The login shell re-sources the user's profile, which can clobber both the
-   * config dir (an alias re-exports CLAUDE_CONFIG_DIR) and the working directory
-   * (a profile that `cd`s to a default). `claude --resume` resolves a session by
-   * CLAUDE_CONFIG_DIR *and* the cwd's project slug, so if either is wrong it fails
-   * with "No conversation found". Re-exporting the dir and `cd`-ing into the
-   * project inside the `-c` line, after the profile has run, makes both win.
+   * SPEXR owns the account per session: `claude --resume` resolves a conversation
+   * by CLAUDE_CONFIG_DIR *and* the cwd's project slug, so both must be authoritative.
+   * The login shell re-sources the profile (which may re-export CLAUDE_CONFIG_DIR or
+   * `cd` away), so we re-export the session's dir and `cd` into its project inside
+   * the `-c` line, after the profile has run. Using the bare binary (not an alias
+   * like `claude-perso` that pins a dir) is what lets our export win.
    */
   private resolveShell(
     resumeArgs: string[],
     dir: string,
     projectPath: string,
-  ): { shellPath?: string; shellArgs: string[] } {
-    const command = (this.preferences.get<string>(SPEXR_CLAUDE_LAUNCH_COMMAND_PREFERENCE) ?? "").trim();
-    if (command) {
-      const prefix = [
-        dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "",
-        projectPath ? `cd ${shellQuote(projectPath)}` : "",
-      ]
-        .filter(Boolean)
-        .join("; ");
-      // `; exec $SHELL` keeps the terminal alive after claude exits (e.g. a resume
-      // that can't find the conversation) so the tab shows the error instead of
-      // vanishing.
-      const line = `${prefix ? `${prefix}; ` : ""}${[command, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
-      return { shellArgs: ["-i", "-l", "-c", line] };
-    }
+  ): { shellArgs: string[] } {
     const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
-    return exe ? { shellPath: exe, shellArgs: resumeArgs } : { shellArgs: resumeArgs };
+    const bin = exe ? shellQuote(exe) : "claude";
+    const prefix = [
+      dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "",
+      projectPath ? `cd ${shellQuote(projectPath)}` : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
+    // `; exec $SHELL` keeps the terminal alive after claude exits (e.g. a resume
+    // that can't find the conversation) so the tab shows the error instead of vanishing.
+    const line = `${prefix ? `${prefix}; ` : ""}${[bin, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
+    return { shellArgs: ["-i", "-l", "-c", line] };
   }
 
   /**
