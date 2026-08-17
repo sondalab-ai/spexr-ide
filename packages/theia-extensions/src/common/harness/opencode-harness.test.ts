@@ -40,15 +40,57 @@ describe("opencodeMessageToEntry", () => {
         role: "assistant",
         content: [
           { type: "text", text: "On it." },
-          { type: "tool_use", name: "bash", input: { command: "pnpm test" } },
+          { type: "tool_use", name: "Bash", input: { command: "pnpm test" } },
         ],
       },
     });
   });
 
+  it("maps opencode tool names/inputs to Claude shape (bash→Bash, filePath→file_path)", () => {
+    const entry = opencodeMessageToEntry({
+      info: { role: "assistant" },
+      parts: [
+        { type: "tool", tool: "bash", state: { input: { command: "pnpm test" } } },
+        { type: "tool", tool: "read", state: { input: { filePath: "/x/auth.ts" } } },
+      ],
+    });
+    expect(entry?.message.content).toEqual([
+      { type: "tool_use", name: "Bash", input: { command: "pnpm test" } },
+      { type: "tool_use", name: "Read", input: { file_path: "/x/auth.ts" } },
+    ]);
+  });
+
   it("drops messages with no usable parts and unknown roles", () => {
     expect(opencodeMessageToEntry({ info: { role: "assistant" }, parts: [{ type: "step-start" }] })).toBeUndefined();
     expect(opencodeMessageToEntry({ info: {}, parts: [{ type: "text", text: "x" }] })).toBeUndefined();
+  });
+});
+
+describe("opencode entry normalization feeds the shared consumers", () => {
+  const entries = opencodeExportToEntries([
+    { info: { role: "user" }, parts: [{ type: "text", text: "fix the auth bug" }] },
+    {
+      info: { role: "assistant" },
+      parts: [
+        { type: "text", text: "On it." },
+        { type: "tool", tool: "bash", state: { input: { command: "pnpm test" } } },
+      ],
+    },
+  ]);
+
+  it("distillAction / recentActions recognize the normalized tool_use blocks", async () => {
+    const { distillAction, recentActions } = await import("../../node/darkfactory/action-distiller.js");
+    expect(distillAction(entries as never)).toEqual({ line: "Running: pnpm test", tool: "Bash", target: "pnpm test" });
+    expect(recentActions(entries as never, 4)).toEqual(["Bash pnpm test"]);
+  });
+
+  it("buildFollowEvents splits prompt, reply, and tool call into typed events", async () => {
+    const { buildFollowEvents } = await import("../../node/darkfactory/turns.js");
+    expect(buildFollowEvents(entries as never, 10)).toEqual([
+      { kind: "prompt", text: "fix the auth bug" },
+      { kind: "assistant", text: "On it." },
+      { kind: "tool", text: "pnpm test" },
+    ]);
   });
 });
 
@@ -77,7 +119,7 @@ describe("opencodeHarness.parseTranscript (via export fixture)", () => {
       userTurns: 1,
       goal: "fix the auth bug",
       lastPrompt: "fix the auth bug",
-      lastTool: "bash",
+      lastTool: "Bash",
       interactive: true,
     });
   });

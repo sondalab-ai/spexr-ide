@@ -35,10 +35,38 @@ interface ExportMessage {
   parts?: Array<{ type?: string; text?: string; tool?: string; state?: { input?: Record<string, unknown>; status?: string } }>;
 }
 
+/** opencode tool name → Claude tool name, so the shared distiller renders known verbs. */
+const TOOL_NAME: Record<string, string> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  grep: "Grep",
+  glob: "Glob",
+  webfetch: "WebFetch",
+  task: "Task",
+};
+
+/** opencode tool input key → Claude input key, so the shared distiller finds its target. */
+const INPUT_KEY: Record<string, string> = {
+  filePath: "file_path",
+  pattern: "pattern",
+  command: "command",
+};
+
+function mapToolInput(tool: string, input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    out[INPUT_KEY[k] ?? k] = v;
+  }
+  return out;
+}
+
 /**
  * Map one opencode export message to Claude's entry shape so the shared tile
  * pipeline (turns / action-distiller / session-state) consumes it unchanged.
- * Text parts → `text` blocks; tool parts → `tool_use` blocks (name + input).
+ * Text parts → `text` blocks; tool parts → `tool_use` blocks with Claude tool
+ * names and input keys (bash→Bash, filePath→file_path).
  */
 export function opencodeMessageToEntry(msg: ExportMessage): { message: { role: string; content: unknown[] } } | undefined {
   const role = msg.info?.role;
@@ -48,7 +76,8 @@ export function opencodeMessageToEntry(msg: ExportMessage): { message: { role: s
     if (p.type === "text" && typeof p.text === "string" && p.text.trim()) {
       blocks.push({ type: "text", text: p.text });
     } else if (p.type === "tool" && p.tool) {
-      blocks.push({ type: "tool_use", name: p.tool, input: p.state?.input ?? {} });
+      const name = TOOL_NAME[p.tool.toLowerCase()] ?? p.tool;
+      blocks.push({ type: "tool_use", name, input: mapToolInput(p.tool, p.state?.input ?? {}) });
     }
   }
   if (!blocks.length) return undefined;
