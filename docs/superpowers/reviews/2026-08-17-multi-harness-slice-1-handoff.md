@@ -9,7 +9,8 @@
 
 ## Status
 
-Complete and green. All 7 plan tasks done; spec 0012 marked `shipped`.
+Complete and green. All 7 plan tasks done; spec 0012 status `in-progress`
+(reserved `shipped`/`ship` until merged to main and available to users).
 Working tree clean at commit `b2e8e1b` (branch `feat/multi-harness-opencode`).
 
 ## Scope (and explicit non-scope)

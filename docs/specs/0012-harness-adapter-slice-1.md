@@ -1,9 +1,9 @@
 ---
 slug: 0012-harness-adapter-slice-1
 title: HarnessAdapter extraction (multi-harness Slice 1)
-status: shipped
+status: in-progress
 createdAt: 2026-08-17
-workflowStep: ship
+workflowStep: plan
 updatedAt: 2026-08-17
 ---
 > **What is this file.** Implementation contract for Slice 1 of multi-harness
