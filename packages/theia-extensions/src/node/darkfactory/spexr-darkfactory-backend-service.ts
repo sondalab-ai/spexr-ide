@@ -6,6 +6,7 @@ import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js
 import { parseTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
+import { claudeHarness } from "../../common/harness/claude-harness.js";
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
 import { buildTurnsText, buildFollowEvents, type TurnEntry } from "./turns.js";
 import { parseSessionSummary, type DescriptionGenerator } from "../search/description-format.js";
@@ -90,7 +91,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
     this.listTranscripts = d.listTranscripts ?? (() => this.scanDisk());
-    this.liveDirs = d.liveProjectDirs ?? (() => defaultLiveProjectDirs());
+    this.liveDirs =
+      d.liveProjectDirs ?? (() => defaultLiveProjectDirs(undefined, undefined, claudeHarness.processNames()));
     this.generator = d.generator;
   }
 

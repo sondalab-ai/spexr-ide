@@ -6,20 +6,7 @@ import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
   SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** True when a string is a Claude session UUID (safe to pass to `claude --resume`). */
-function isSessionId(sessionId: string): boolean {
-  return UUID_RE.test(sessionId);
-}
-
-/** Args for `claude` to resume a session (caller must pass a validated sessionId). */
-function buildResumeArgs(sessionId: string, fork: boolean): string[] {
-  const args = ["--resume", sessionId];
-  if (fork) args.push("--fork-session");
-  return args;
-}
+import { claudeHarness } from "../../common/harness/claude-harness.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -67,14 +54,14 @@ export class SpexrDarkfactoryTerminalManager {
     configDir: string,
     fork: boolean,
   ): Promise<TerminalWidget | undefined> {
-    if (!isSessionId(sessionId) || !projectPath) return undefined;
+    if (!claudeHarness.isResumableId(sessionId) || !projectPath) return undefined;
     const dir = this.resolveConfigDir(configDir);
     const term = await this.terminalService.newTerminal({
       id: `spexr-df-${sessionId}`,
       title: baseName(projectPath),
       useServerTitle: false,
       iconClass: "codicon codicon-sparkle",
-      ...this.resolveShell(buildResumeArgs(sessionId, fork), dir, projectPath),
+      ...this.resolveShell(claudeHarness.buildResumeArgs(sessionId, fork), dir, projectPath),
       cwd: projectPath,
       env: dir ? { CLAUDE_CONFIG_DIR: dir } : {},
       destroyTermOnClose: false,
