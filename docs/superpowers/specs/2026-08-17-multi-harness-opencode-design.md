@@ -232,10 +232,15 @@ registry's detect/select logic.
 ## Risks
 
 - **R1 — Global opencode session enumeration.** `opencode session list` is
-  directory-scoped; Darkfactory needs all sessions across all projects. Resolved
-  by the Slice 4 spike. Candidates: derive project dirs from live `opencode`
-  processes (`ps`+`lsof`) and list per-dir; read the SQLite database read-only;
-  or run an `opencode serve` instance and query it.
+  directory-scoped; Darkfactory needs all sessions across all projects.
+  **Resolved (2026-08-17 spike, see
+  `docs/superpowers/specs/2026-08-17-opencode-enumeration-spike.md`):** a single
+  `opencode db --format json "SELECT id, directory, … FROM session"` CLI query
+  enumerates every session globally (verified: 71 sessions / 7 dirs in one call),
+  with the `directory` column as the tile group. `opencode db` is a first-class
+  subcommand, so this stays CLI-only (SPEXR never opens the `.db` itself). The
+  earlier candidates (per-dir `session list`, live-process derivation, raw DB
+  read, `opencode serve`) are superseded.
 - **R2 — Live-follow without a tail-able file.** opencode has no per-session
   JSON-lines file to `watch`. Slice 5 must poll `opencode export` or consume a
   server event stream; both are heavier than Claude's file tail.
