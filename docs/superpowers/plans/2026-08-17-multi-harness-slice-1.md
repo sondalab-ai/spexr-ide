@@ -38,7 +38,7 @@ The Slice 1 acceptance criteria live in `docs/specs/0012-harness-adapter-slice-1
 **Interfaces:**
 - Produces: `type HarnessId = "claude" | "opencode"`; `interface HarnessAdapter` with `id: HarnessId`, `processNames(): string[]`, `isResumableId(sessionId: string): boolean`, `buildResumeArgs(sessionId: string, fork: boolean): string[]`. (Launch/session/memory members arrive in later slices; keep it minimal to avoid dead stubs.)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -60,12 +60,12 @@ describe("harness-types", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/common/harness/harness-types.test.ts`
 Expected: FAIL — cannot find module `./harness-types.js`.
 
-- [ ] **Step 3: Write the interface**
+- [x] **Step 3: Write the interface**
 
 ```ts
 /** The set of agent CLIs SPEXR can drive. */
@@ -89,12 +89,12 @@ export interface HarnessAdapter {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/common/harness/harness-types.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/theia-extensions/src/common/harness/harness-types.ts packages/theia-extensions/src/common/harness/harness-types.test.ts
@@ -115,7 +115,7 @@ git commit -m "feat(harness): add HarnessAdapter interface and HarnessId"
 **Interfaces:**
 - Produces (from new path): `isSessionId(sessionId: string): boolean`, `buildResumeArgs(sessionId: string, fork: boolean): string[]` — identical signatures/behavior to today (throws on non-UUID).
 
-- [ ] **Step 1: Create the moved implementation** at `common/harness/resume-args.ts` (verbatim copy of the current body)
+- [x] **Step 1: Create the moved implementation** at `common/harness/resume-args.ts` (verbatim copy of the current body)
 
 ```ts
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -134,7 +134,7 @@ export function buildResumeArgs(sessionId: string, fork: boolean): string[] {
 }
 ```
 
-- [ ] **Step 2: Replace the old file with a re-export shim** at `node/darkfactory/resume-args.ts`
+- [x] **Step 2: Replace the old file with a re-export shim** at `node/darkfactory/resume-args.ts`
 
 ```ts
 // Moved to common/harness so both the node backend and the browser frontend
@@ -142,12 +142,12 @@ export function buildResumeArgs(sessionId: string, fork: boolean): string[] {
 export { isSessionId, buildResumeArgs } from "../../common/harness/resume-args.js";
 ```
 
-- [ ] **Step 3: Run the existing test (must pass unchanged, via the shim)**
+- [x] **Step 3: Run the existing test (must pass unchanged, via the shim)**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/node/darkfactory/resume-args.test.ts`
 Expected: PASS — the test imports `./resume-args.js`, which now re-exports from common.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/theia-extensions/src/common/harness/resume-args.ts packages/theia-extensions/src/node/darkfactory/resume-args.ts
@@ -166,7 +166,7 @@ git commit -m "refactor(harness): move resume-args to common with re-export shim
 - Consumes: `HarnessAdapter` (Task 1); `isSessionId`, `buildResumeArgs` from `./resume-args.js` (Task 2, same dir).
 - Produces: `const claudeHarness: HarnessAdapter`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -192,12 +192,12 @@ describe("claudeHarness", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/common/harness/claude-harness.test.ts`
 Expected: FAIL — cannot find module `./claude-harness.js`.
 
-- [ ] **Step 3: Implement the descriptor**
+- [x] **Step 3: Implement the descriptor**
 
 ```ts
 import type { HarnessAdapter } from "./harness-types.js";
@@ -216,12 +216,12 @@ export const claudeHarness: HarnessAdapter = {
 };
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/common/harness/claude-harness.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/theia-extensions/src/common/harness/claude-harness.ts packages/theia-extensions/src/common/harness/claude-harness.test.ts
@@ -245,7 +245,7 @@ git commit -m "feat(harness): add ClaudeHarness delegating to existing helpers"
 
 Rules: none installed → `undefined`; exactly one → that one (ignore `preferred`); several → `preferred` when installed, else first installed.
 
-- [ ] **Step 1: Write the failing test** (full stub literals — no `as` casts)
+- [x] **Step 1: Write the failing test** (full stub literals — no `as` casts)
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -285,12 +285,12 @@ describe("harness-registry", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/common/harness/harness-registry.test.ts`
 Expected: FAIL — cannot find module `./harness-registry.js`.
 
-- [ ] **Step 3: Implement the registry**
+- [x] **Step 3: Implement the registry**
 
 ```ts
 import type { HarnessAdapter, HarnessId } from "./harness-types.js";
@@ -320,12 +320,12 @@ export function resolveActiveHarness(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/common/harness/harness-registry.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/theia-extensions/src/common/harness/harness-registry.ts packages/theia-extensions/src/common/harness/harness-registry.test.ts
@@ -343,7 +343,7 @@ git commit -m "feat(harness): add HarnessRegistry detect/select helpers"
 **Interfaces:**
 - Produces: `parseAgentPids(psStdout: string, names: string[]): number[]`. `parseClaudePids(psStdout: string): number[]` becomes a thin wrapper. `liveProjectDirs` gains an optional `names` param defaulting to `["claude"]`.
 
-- [ ] **Step 1: Write the failing test** (append to `process-scanner.test.ts`)
+- [x] **Step 1: Write the failing test** (append to `process-scanner.test.ts`)
 
 ```ts
 import { parseAgentPids } from "./process-scanner.js";
@@ -365,12 +365,12 @@ describe("parseAgentPids", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/node/darkfactory/process-scanner.test.ts`
 Expected: FAIL — `parseAgentPids` is not exported.
 
-- [ ] **Step 3: Implement** — replace the `parseClaudePids` definition with:
+- [x] **Step 3: Implement** — replace the `parseClaudePids` definition with:
 
 ```ts
 /** PIDs whose process command name (from `ps -Ao pid,comm`) is one of `names`. */
@@ -406,12 +406,12 @@ export async function liveProjectDirs(
     // …rest of the body unchanged…
 ```
 
-- [ ] **Step 4: Run the file to verify no regression**
+- [x] **Step 4: Run the file to verify no regression**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/node/darkfactory/process-scanner.test.ts`
 Expected: PASS — new `parseAgentPids` tests plus the untouched `parseClaudePids`/`liveProjectDirs` tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/theia-extensions/src/node/darkfactory/process-scanner.ts packages/theia-extensions/src/node/darkfactory/process-scanner.test.ts
@@ -431,7 +431,7 @@ Two edits, behavior identical, covered by existing tests.
 **Interfaces:**
 - Consumes: `claudeHarness` (Task 3).
 
-- [ ] **Step 1: Backend — feed the scanner from the harness.** In `spexr-darkfactory-backend-service.ts`, add the import and change the `liveDirs` default so the process-name set comes from `claudeHarness` (value is `["claude"]`, unchanged):
+- [x] **Step 1: Backend — feed the scanner from the harness.** In `spexr-darkfactory-backend-service.ts`, add the import and change the `liveDirs` default so the process-name set comes from `claudeHarness` (value is `["claude"]`, unchanged):
 
 ```ts
 import { claudeHarness } from "../../common/harness/claude-harness.js";
@@ -446,7 +446,7 @@ Change the constructor default:
       d.liveProjectDirs ?? (() => defaultLiveProjectDirs(undefined, undefined, claudeHarness.processNames()));
 ```
 
-- [ ] **Step 2: Browser — replace the inline resume dup with the harness.** In `darkfactory-terminal-manager.ts`, delete the local `UUID_RE`, `isSessionId`, and `buildResumeArgs` (lines 10-22) and import the harness instead:
+- [x] **Step 2: Browser — replace the inline resume dup with the harness.** In `darkfactory-terminal-manager.ts`, delete the local `UUID_RE`, `isSessionId`, and `buildResumeArgs` (lines 10-22) and import the harness instead:
 
 ```ts
 import { claudeHarness } from "../../common/harness/claude-harness.js";
@@ -462,12 +462,12 @@ if (!claudeHarness.isResumableId(sessionId) || !projectPath) return undefined;
 
 (The `isResumableId` guard runs before `buildResumeArgs`, so the throw-on-invalid path is never hit — behavior identical to the old non-validating inline version.)
 
-- [ ] **Step 3: Run the darkfactory backend + related tests**
+- [x] **Step 3: Run the darkfactory backend + related tests**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run src/node/darkfactory`
 Expected: PASS — `spexr-darkfactory-backend-service.test.ts` and the scanner tests are unchanged and green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/theia-extensions/src/node/darkfactory/spexr-darkfactory-backend-service.ts packages/theia-extensions/src/browser/darkfactory/darkfactory-terminal-manager.ts
@@ -480,27 +480,27 @@ git commit -m "refactor(darkfactory): route live-scan + resume through claudeHar
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Confirm the abstraction is referenced from live src (not just tests)**
+- [x] **Step 1: Confirm the abstraction is referenced from live src (not just tests)**
 
 Run: `grep -rn "claudeHarness" packages/theia-extensions/src --include='*.ts' | grep -v ".test.ts" | grep -v "common/harness/"`
 Expected: at least the two Task 6 call sites (backend service + terminal manager). If empty, the slice has dead code — fix before proceeding.
 
-- [ ] **Step 2: Typecheck the package**
+- [x] **Step 2: Typecheck the package**
 
 Run: `cd packages/theia-extensions && pnpm run typecheck`
 Expected: no errors.
 
-- [ ] **Step 3: Run the full package test suite**
+- [x] **Step 3: Run the full package test suite**
 
 Run: `cd packages/theia-extensions && pnpm exec vitest run`
 Expected: all pre-existing tests pass **unchanged**, plus the new harness + scanner tests.
 
-- [ ] **Step 4: Lint**
+- [x] **Step 4: Lint**
 
 Run: `cd packages/theia-extensions && pnpm run lint`
 Expected: clean.
 
-- [ ] **Step 5: Commit any lint/format fixups (skip if nothing changed)**
+- [x] **Step 5: Commit any lint/format fixups (skip if nothing changed)**
 
 ```bash
 git add -A && git commit -m "chore(harness): lint/format fixups for slice 1"
