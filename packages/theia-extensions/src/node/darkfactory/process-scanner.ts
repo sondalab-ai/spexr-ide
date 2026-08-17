@@ -6,14 +6,20 @@ export interface ScannerDeps {
   runLsofCwd: (pid: number) => Promise<string>;
 }
 
-/** PIDs whose process command name is exactly `claude` (from `ps -Ao pid,comm`). */
-export function parseClaudePids(psStdout: string): number[] {
+/** PIDs whose process command name (from `ps -Ao pid,comm`) is one of `names`. */
+export function parseAgentPids(psStdout: string, names: string[]): number[] {
+  const want = new Set(names);
   const pids: number[] = [];
   for (const line of psStdout.split("\n")) {
     const m = line.trim().match(/^(\d+)\s+(.+)$/);
-    if (m && m[2]!.trim() === "claude") pids.push(Number(m[1]));
+    if (m && want.has(m[2]!.trim())) pids.push(Number(m[1]));
   }
   return pids;
+}
+
+/** Back-compat wrapper: PIDs whose command name is exactly `claude`. */
+export function parseClaudePids(psStdout: string): number[] {
+  return parseAgentPids(psStdout, ["claude"]);
 }
 
 /** Working directory from `lsof -p <pid> -d cwd -Fn` output (the `n`-prefixed line). */
@@ -43,15 +49,19 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<string> {
 }
 
 /**
- * Working directories of all running `claude` processes, or `null` when
+ * Working directories of all running agent processes (by name), or `null` when
  * detection failed (caller falls back to modified-time-only liveness).
  */
-export async function liveProjectDirs(deps?: ScannerDeps, timeoutMs = 1500): Promise<Set<string> | null> {
+export async function liveProjectDirs(
+  deps?: ScannerDeps,
+  timeoutMs = 1500,
+  names: string[] = ["claude"],
+): Promise<Set<string> | null> {
   const runPs = deps?.runPs ?? (() => run("ps", ["-Ao", "pid,comm"], timeoutMs));
   const runLsofCwd =
     deps?.runLsofCwd ?? ((pid: number) => run("lsof", lsofCwdArgs(pid), timeoutMs));
   try {
-    const pids = parseClaudePids(await runPs());
+    const pids = parseAgentPids(await runPs(), names);
     const dirs = new Set<string>();
     await Promise.all(
       pids.map(async (pid) => {

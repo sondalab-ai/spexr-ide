@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseClaudePids, parseCwd, liveProjectDirs, lsofCwdArgs } from "./process-scanner.js";
+import { parseClaudePids, parseAgentPids, parseCwd, liveProjectDirs, lsofCwdArgs } from "./process-scanner.js";
 
 describe("process-scanner", () => {
   test("lsofCwdArgs ANDs the pid and cwd selectors with -a (else lsof ORs → cwd '/')", () => {
@@ -30,5 +30,21 @@ describe("process-scanner", () => {
       runLsofCwd: async () => "",
     });
     expect(set).toBeNull();
+  });
+});
+
+describe("parseAgentPids", () => {
+  const ps = ["  10 claude", "  20 opencode", "  30 node", "  40 claude"].join("\n");
+
+  test("matches a single name (claude) like the legacy parser", () => {
+    expect(parseAgentPids(ps, ["claude"])).toEqual([10, 40]);
+  });
+
+  test("matches multiple names (claude + opencode)", () => {
+    expect(parseAgentPids(ps, ["claude", "opencode"])).toEqual([10, 20, 40]);
+  });
+
+  test("no name matches → empty", () => {
+    expect(parseAgentPids(ps, ["ghost"])).toEqual([]);
   });
 });
