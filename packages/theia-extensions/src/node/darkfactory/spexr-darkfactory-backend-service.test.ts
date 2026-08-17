@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { SpexrDarkfactoryBackendService, stitchBoundedLines } from "./spexr-darkfactory-backend-service.js";
+import { SpexrDarkfactoryBackendService } from "./spexr-darkfactory-backend-service.js";
+import { stitchBoundedLines } from "./bounded-read.js";
 
 const NOW = 100 * 3_600_000;
 
