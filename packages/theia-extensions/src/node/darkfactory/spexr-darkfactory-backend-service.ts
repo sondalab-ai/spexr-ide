@@ -1,12 +1,15 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { join, basename } from "node:path";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { basename } from "node:path";
+import { readFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
-import { parseTranscript } from "./transcript-parser.js";
+import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
-import { claudeHarness } from "../../common/harness/claude-harness.js";
+import { claudeHarness, scanClaudeTranscripts, type TranscriptRef } from "../../common/harness/claude-harness.js";
+import { opencodeHarness } from "../../common/harness/opencode-harness.js";
+import { installedHarnesses, type DetectFn } from "../../common/harness/harness-registry.js";
+import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
 import { readBoundedLines } from "./bounded-read.js";
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
 import { buildTurnsText, buildFollowEvents, type TurnEntry } from "./turns.js";
@@ -33,14 +36,15 @@ const PALETTE_SIZE = 8;
  */
 const RECENT_LIMIT = 60;
 
-/** One transcript file discovered on disk; `readLines` is lazy. */
-export interface TranscriptRef {
-  sessionId: string;
-  transcriptPath: string;
-  /** Config dir that owns this session (for `claude --resume`). */
-  configDir: string;
-  mtimeMs: number;
-  readLines(): Promise<string[]>;
+/** All harnesses the wall can scan; detection decides which are installed. */
+const ALL_HARNESSES: HarnessAdapter[] = [claudeHarness, opencodeHarness];
+
+/** One session from any harness, with its owning harness for parse/focus routing. */
+interface UnifiedRef {
+  harness: HarnessAdapter;
+  ref: HarnessSessionRef;
+  /** Claude only: the transcript file (bounded read + fs.watch follow). */
+  claude?: TranscriptRef;
 }
 
 /** Constructor seams so the service is unit-testable without a real home dir. */
@@ -49,8 +53,10 @@ export interface DarkfactoryDeps {
   /** Config dir the launch command actually resumes against (env CLAUDE_CONFIG_DIR). */
   resumableConfigDir?: string;
   now?: () => number;
-  listTranscripts?: () => Promise<TranscriptRef[]>;
+  listTranscripts?: () => Promise<UnifiedRef[]>;
   liveProjectDirs?: () => Promise<Set<string> | null>;
+  /** Which harnesses are installed; default resolves each binary via PATH. */
+  detect?: DetectFn;
   /** Local model used to infer a one-line session description. */
   generator?: DescriptionGenerator;
 }
@@ -62,6 +68,8 @@ interface SessionMeta {
   configDir: string;
   state: AgentTile["state"];
   mtimeMs: number;
+  /** The harness that owns this session (drives planFocus routing). */
+  harnessId: string;
 }
 
 @injectable()
@@ -69,8 +77,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly configDirs: string[];
   private readonly resumableConfigDir: string;
   private readonly now: () => number;
-  private readonly listTranscripts: () => Promise<TranscriptRef[]>;
+  private readonly listTranscripts: () => Promise<UnifiedRef[]>;
   private readonly liveDirs: () => Promise<Set<string> | null>;
+  private readonly installed: HarnessAdapter[];
 
   private readonly generator: DescriptionGenerator | undefined;
   private client?: SpexrDarkfactoryClient;
@@ -88,9 +97,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.configDirs = d.configDirs ?? defaultConfigDirs();
     this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
-    this.listTranscripts = d.listTranscripts ?? (() => this.scanDisk());
-    this.liveDirs =
-      d.liveProjectDirs ?? (() => defaultLiveProjectDirs(undefined, undefined, claudeHarness.processNames()));
+    const detect = d.detect ?? ((a) => a.id === "claude"); // tests: claude-only unless overridden
+    this.installed = installedHarnesses(ALL_HARNESSES, detect);
+    this.listTranscripts = d.listTranscripts ?? (() => this.defaultListTranscripts());
+    const names = this.installed.flatMap((h) => h.processNames());
+    this.liveDirs = d.liveProjectDirs ?? (() => defaultLiveProjectDirs(undefined, undefined, names));
     this.generator = d.generator;
   }
 
@@ -141,39 +152,40 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const now = this.now();
     // Only read the newest sessions — history is huge and reading it all stalls
     // the event loop; the wall only shows recent work.
-    const refs = [...allRefs].sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, RECENT_LIMIT);
+    const refs = [...allRefs].sort((a, b) => b.ref.mtimeMs - a.ref.mtimeMs).slice(0, RECENT_LIMIT);
     // Parse each transcript once; track the newest transcript mtime per project
     // so "working" is attributed to a single session per project.
-    const parsed = new Map<string, { ref: TranscriptRef; lines: string[]; parsed: ReturnType<typeof parseTranscript> }>();
+    const parsed = new Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>();
     const newestByProject = new Map<string, number>();
-    for (const ref of refs) {
-      const lines = await ref.readLines();
-      const p = parseTranscript(lines);
+    for (const u of refs) {
+      const p = await u.harness.parseTranscript(u.ref);
       if (!p.cwd) continue; // no real project path → skip
       if (!p.interactive) continue; // SDK / one-shot subagent session → not followable
-      parsed.set(ref.sessionId, { ref, lines, parsed: p });
+      const entries = (await u.ref.loadEntries()) as TurnEntry[];
+      parsed.set(u.ref.sessionId, { u, entries, parsed: p });
       const prev = newestByProject.get(p.cwd);
-      if (prev === undefined || ref.mtimeMs > prev) newestByProject.set(p.cwd, ref.mtimeMs);
+      if (prev === undefined || u.ref.mtimeMs > prev) newestByProject.set(p.cwd, u.ref.mtimeMs);
     }
 
     this.index.clear();
     const tiles: AgentTile[] = [];
-    for (const { ref, lines, parsed: p } of parsed.values()) {
+    for (const { u, entries, parsed: p } of parsed.values()) {
       const cwd = p.cwd!;
+      const ref = u.ref;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
-      const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
       const { state, needsYou, needsYouCertain } = classifySession(cwd, ref.mtimeMs, isNewest, live, now, entries, p.permissionMode);
       const action = distillAction(entries);
       this.index.set(ref.sessionId, {
-        transcriptPath: ref.transcriptPath,
+        transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
-        configDir: ref.configDir,
+        configDir: u.claude?.configDir ?? "",
         state,
         mtimeMs: ref.mtimeMs,
+        harnessId: u.harness.id,
       });
       tiles.push({
         sessionId: ref.sessionId,
-        transcriptPath: ref.transcriptPath,
+        transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
         projectName: basename(cwd),
         state,
@@ -205,10 +217,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const meta = this.index.get(sessionId);
     const projectPath = meta?.projectPath ?? "";
     const configDir = meta?.configDir ?? "";
-    // Follow read-only when the session is live elsewhere OR when it lives in a
-    // config dir the launch command can't resume against (the resume would fail
-    // with "no conversation"). Otherwise open an interactive resume terminal.
-    const resumable = !!meta && meta.configDir === this.resumableConfigDir;
+    // Follow read-only when the session is live elsewhere OR (for Claude) when it
+    // lives in a config dir the launch command can't resume against. Opencode has
+    // no per-account config dir, so its sessions are always resumable.
+    const opencode = meta?.harnessId === "opencode";
+    const resumable = !!meta && (opencode || meta.configDir === this.resumableConfigDir);
     const kind = meta?.state === "working" || !resumable ? "readonly-follow" : "resume-terminal";
     return { sessionId, projectPath, configDir, kind };
   }
@@ -232,7 +245,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     try {
       watcher = watch(meta.transcriptPath, debounce(() => void emit().catch(() => {}), 250));
     } catch {
-      return; // transcript vanished
+      return; // transcript vanished (or no file-backed transcript — opencode, Slice 5)
     }
     this.follows.set(sessionId, { watcher, offset: 0 });
     await emit(); // send the current tail immediately
@@ -271,44 +284,33 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     }
   }
 
-  private async scanDisk(): Promise<TranscriptRef[]> {
-    const refs: TranscriptRef[] = [];
-    for (const configDir of this.configDirs) {
-      const projectsDir = projectsDirOf(configDir);
-      let projectDirs: string[];
-      try {
-        projectDirs = await readdir(projectsDir);
-      } catch {
-        continue; // this config dir has no projects
-      }
-      for (const dir of projectDirs) {
-        const full = join(projectsDir, dir);
-        let files: string[];
-        try {
-          files = await readdir(full);
-        } catch {
-          continue;
-        }
-        for (const f of files) {
-          if (!f.endsWith(".jsonl")) continue;
-          const transcriptPath = join(full, f);
-          let mtimeMs: number;
-          try {
-            mtimeMs = (await stat(transcriptPath)).mtimeMs;
-          } catch {
-            continue;
-          }
-          refs.push({
-            sessionId: f.replace(/\.jsonl$/, ""),
-            transcriptPath,
-            configDir,
-            mtimeMs,
-            readLines: () => readBoundedLines(transcriptPath),
-          });
-        }
+  /** Merge every installed harness's session list (Claude: disk walk, opencode: db query). */
+  private async defaultListTranscripts(): Promise<UnifiedRef[]> {
+    const out: UnifiedRef[] = [];
+    if (this.installed.includes(claudeHarness)) {
+      const claudeRefs = await scanClaudeTranscripts(this.configDirs);
+      for (const r of claudeRefs) {
+        out.push({
+          harness: claudeHarness,
+          ref: {
+            sessionId: r.sessionId,
+            projectPath: "", // resolved from the transcript's cwd at parse time (as today)
+            mtimeMs: r.mtimeMs,
+            loadEntries: async () => {
+              const lines = await readBoundedLines(r.transcriptPath);
+              return lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+            },
+          },
+          claude: r,
+        });
       }
     }
-    return refs;
+    for (const h of this.installed) {
+      if (h.id === "claude") continue;
+      const refs = await h.listSessions();
+      for (const ref of refs) out.push({ harness: h, ref });
+    }
+    return out;
   }
 
   dispose(): void {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SpexrDarkfactoryBackendService } from "./spexr-darkfactory-backend-service.js";
 import { stitchBoundedLines } from "./bounded-read.js";
+import { claudeHarness } from "../../common/harness/claude-harness.js";
 
 const NOW = 100 * 3_600_000;
 
@@ -11,16 +12,33 @@ function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendS
     listTranscripts: () =>
       Promise.resolve([
         {
-          sessionId: "s1",
-          transcriptPath: "/PD/-proj/s1.jsonl",
-          configDir: "/Users/x/.claude",
-          mtimeMs: NOW - 5_000,
-          readLines: () =>
-            Promise.resolve([
-              `{"type":"mode","mode":"normal"}`,
-              `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
-              `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
-            ]),
+          harness: claudeHarness,
+          ref: {
+            sessionId: "s1",
+            projectPath: "",
+            mtimeMs: NOW - 5_000,
+            loadEntries: async () => [
+              { type: "mode", mode: "normal" },
+              {
+                cwd: "/Users/x/src/proj",
+                type: "assistant",
+                message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }] },
+              },
+              { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } },
+            ],
+          },
+          claude: {
+            sessionId: "s1",
+            transcriptPath: "/PD/-proj/s1.jsonl",
+            configDir: "/Users/x/.claude",
+            mtimeMs: NOW - 5_000,
+            readLines: () =>
+              Promise.resolve([
+                `{"type":"mode","mode":"normal"}`,
+                `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
+                `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
+              ]),
+          },
         },
       ]),
     liveProjectDirs: () => Promise.resolve(new Set(["/Users/x/src/proj"])),
@@ -102,5 +120,47 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     });
     await s.listTiles();
     expect((await s.planFocus("s1")).kind).toBe("readonly-follow");
+  });
+
+  it("merges opencode sessions from the harness and marks them always resumable", async () => {
+    const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: opencodeHarness,
+            ref: {
+              sessionId: "ses_abc123",
+              projectPath: "/Users/x/src/oc-proj",
+              mtimeMs: NOW - 60_000,
+              loadEntries: async () => [
+                { message: { role: "user", content: [{ type: "text", text: "fix the login" }] } },
+                { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+              ],
+            },
+          },
+        ]),
+      liveProjectDirs: () => Promise.resolve(new Set()),
+    });
+    const tiles = await s.listTiles();
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0]).toMatchObject({ sessionId: "ses_abc123", projectName: "oc-proj", goal: "fix the login" });
+    // idle + opencode → always resumable (no config-dir mismatch possible)
+    expect((await s.planFocus("ses_abc123")).kind).toBe("resume-terminal");
+  });
+
+  it("keeps the pipeline intact when an opencode session has no cwd", async () => {
+    const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: opencodeHarness,
+            ref: { sessionId: "ses_empty", projectPath: "", mtimeMs: NOW - 5_000, loadEntries: async () => [] },
+          },
+        ]),
+    });
+    const tiles = await s.listTiles();
+    expect(tiles).toHaveLength(0); // no cwd → skipped; nothing crashes
   });
 });
