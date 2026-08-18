@@ -131,10 +131,9 @@ describe("SUMMARY_SYSTEM_PROMPT", () => {
     expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/auth middleware|token expiry/i);
   });
 
-  it("asks for a single third-person line (the model fabricates the second of two asks)", () => {
-    expect(SUMMARY_SYSTEM_PROMPT).toMatch(/one line/i);
+  it("asks for two third-person clauses from a single model pass", () => {
+    expect(SUMMARY_SYSTEM_PROMPT).toMatch(/exactly two lines/i);
     expect(SUMMARY_SYSTEM_PROMPT).toMatch(/third person/i);
-    expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/exactly two lines/i);
   });
 });
 

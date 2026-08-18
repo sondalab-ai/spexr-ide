@@ -142,9 +142,8 @@ describe("SpexrDarkfactoryBackendService v2", () => {
         },
       });
       await s.listTiles();
-      // Now = deterministic distilled action; Overview = the model's line.
       expect(await s.summarize("s1")).toEqual({
-        now: "Editing auth.ts",
+        now: "Editing the modal list component",
         overview: "Migrating browse-blueprints to the design system",
       });
       await s.summarize("s1");
@@ -273,7 +272,7 @@ describe("SpexrDarkfactoryBackendService v2", () => {
       },
     });
     await s.listTiles();
-    expect(await s.summarize("ses_sum")).toEqual({ now: "Running: pnpm test", overview: "Fixing the login bug" });
+    expect(await s.summarize("ses_sum")).toEqual({ now: "Running the login tests", overview: "Fixing the login bug" });
     expect(seenTurns).toContain("user: fix the login page"); // the model gets real context, not an empty transcript
     expect(seenTurns).toContain("[Bash: pnpm test]");
   });

@@ -191,20 +191,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     } else if (meta.loadEntries) {
       entries = ((await meta.loadEntries()) ?? []) as TurnEntry[];
     }
-    // The "Now" clause is deterministic (the distilled last action): factual by
-    // construction, never first-person, never invented. The model writes only the
-    // overview — a single anchored line is what the small model does reliably.
+    // Both clauses come from one model pass so they share a single language and
+    // tone. The deterministic last-action line is only the fallback for thin or
+    // model-less sessions (and when the model yields nothing usable).
     const actionNow = entries.length > 0 ? distillAction(entries).line : "";
     const turnsText = buildTurnsText(entries, SUMMARY_TURNS);
     if (turnsText.length >= MIN_SUMMARY_CHARS && this.generator?.isAvailable()) {
       const raw = await this.generator.summarize(turnsText);
       if (raw) {
         const parsed = parseSessionSummary(raw);
-        const overview = parsed.overview || parsed.now; // one-line replies can land in either field
-        if (overview) summary = { now: actionNow, overview };
+        if (parsed.now || parsed.overview) summary = parsed;
       }
     }
-    // Thin or model-less sessions still get the honest deterministic line.
     if (!summary.now && !summary.overview && actionNow) summary = { now: actionNow, overview: "" };
     this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, summary });
     return summary;
