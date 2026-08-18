@@ -30,13 +30,19 @@ export const SUMMARY_MAX_NEW_TOKENS = 110;
 // NOTE: no concrete example clause here on purpose — a small model echoes a
 // memorable example verbatim when the session context is thin, which produced
 // bogus "refactoring the auth middleware" summaries. Keep the guidance abstract.
+// NOTE 2: each clause is anchored to a SPECIFIC input line ("the last assistant:
+// line", "the first user: line"). Anchored clauses stay factual; abstract asks
+// ("what the session is trying to accomplish") made the model fabricate stock
+// content ("developing a web application using Python and Flask") — verified
+// side-by-side against real sessions with the q4 1.5B model.
 export const SUMMARY_SYSTEM_PROMPT =
   "You are given the goal and recent events of a coding-assistant session. Reply with EXACTLY two lines, " +
-  "no preamble, no markdown, no trailing period:\n" +
-  "Now: <present-tense clause, max 12 words, what the assistant is doing in the most recent events>\n" +
-  "Overview: <one clause, max 16 words, what the whole session is trying to accomplish>\n" +
+  "no preamble, no markdown, no trailing period. Line 1 MUST start with the literal text 'Now: ' and " +
+  "line 2 MUST start with the literal text 'Overview: '.\n" +
+  "Now: <present-tense clause, max 12 words, rephrasing what the last assistant: line is doing>\n" +
+  "Overview: <one clause, max 16 words, rephrasing what the user asked for in the first user: line>\n" +
   "Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies. " +
-  "Do not begin either line with 'The' or 'This'.";
+  "Do not begin either clause with 'The' or 'This'.";
 
 /** User message for a two-level session summary. */
 export function buildSummaryPrompt(turnsText: string): string {

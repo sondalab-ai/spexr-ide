@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FSWatcher } from "node:fs";
-import { homedir } from "node:os";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import {
   SpexrDarkfactoryBackendService,
@@ -83,23 +84,73 @@ describe("SpexrDarkfactoryBackendService v2", () => {
 
   it("summarize parses now/overview from the model and caches by mtime", async () => {
     let calls = 0;
-    const s = svc({
-      generator: {
-        generate: async () => null,
-        isAvailable: () => true,
-        summarize: async () => {
-          calls++;
-          return "Now: editing the modal list component\nOverview: migrating browse-blueprints to the design system";
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-"));
+    const transcriptPath = join(dir, "s1.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        `{"type":"mode","mode":"normal"}`,
+        `{"cwd":"/Users/x/src/proj","type":"user","message":{"role":"user","content":[{"type":"text","text":"fix the login page: the session cookie is dropped after the redirect and users get logged out"}]}}`,
+        `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I will inspect the redirect handler."}]}}`,
+        `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
+        `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
+      ].join("\n"),
+    );
+    try {
+      const s = svc({
+        listTranscripts: () =>
+          Promise.resolve([
+            {
+              harness: claudeHarness,
+              ref: {
+                sessionId: "s1",
+                projectPath: "",
+                mtimeMs: NOW - 5_000,
+                loadEntries: async () => [
+                  { type: "mode", mode: "normal" },
+                  {
+                    cwd: "/Users/x/src/proj",
+                    type: "user",
+                    message: {
+                      role: "user",
+                      content: [
+                        { type: "text", text: "fix the login page: the session cookie is dropped after the redirect and users get logged out" },
+                      ],
+                    },
+                  },
+                  { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "I will inspect the redirect handler." }] } },
+                  { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }] } },
+                  { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } },
+                ],
+              },
+              claude: {
+                sessionId: "s1",
+                transcriptPath,
+                configDir: "/Users/x/.claude",
+                mtimeMs: NOW - 5_000,
+                readLines: () => Promise.resolve([]),
+              },
+            },
+          ]),
+        generator: {
+          generate: async () => null,
+          isAvailable: () => true,
+          summarize: async () => {
+            calls++;
+            return "Now: editing the modal list component\nOverview: migrating browse-blueprints to the design system";
+          },
         },
-      },
-    });
-    await s.listTiles();
-    expect(await s.summarize("s1")).toEqual({
-      now: "Editing the modal list component",
-      overview: "Migrating browse-blueprints to the design system",
-    });
-    await s.summarize("s1");
-    expect(calls).toBe(1); // cached by mtime
+      });
+      await s.listTiles();
+      expect(await s.summarize("s1")).toEqual({
+        now: "Editing the modal list component",
+        overview: "Migrating browse-blueprints to the design system",
+      });
+      await s.summarize("s1");
+      expect(calls).toBe(1); // cached by mtime
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("summarize returns empty fields when no model is available", async () => {
@@ -170,8 +221,15 @@ describe("SpexrDarkfactoryBackendService v2", () => {
               sessionId: "ses_sum",
               projectPath: "/Users/x/src/oc-proj",
               mtimeMs: NOW - 60_000,
+              // enough rendered context to clear MIN_SUMMARY_CHARS (thin sessions are skipped)
               loadEntries: async () => [
-                { message: { role: "user", content: [{ type: "text", text: "fix the login" }] } },
+                {
+                  message: {
+                    role: "user",
+                    content: [{ type: "text", text: "fix the login page: the session cookie is dropped after the redirect and users get logged out" }],
+                  },
+                },
+                { message: { role: "assistant", content: [{ type: "text", text: "I will inspect the redirect handler." }] } },
                 { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
               ],
             },
@@ -191,6 +249,40 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect(await s.summarize("ses_sum")).toEqual({ now: "Running the login tests", overview: "Fixing the login bug" });
     expect(seenTurns).toContain("user: fix the login"); // the model gets real context, not an empty transcript
     expect(seenTurns).toContain("[Bash: pnpm test]");
+  });
+
+  it("skips inference when the rendered context is too thin (the small model fabricates)", async () => {
+    const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
+    let calls = 0;
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: opencodeHarness,
+            ref: {
+              sessionId: "ses_thin",
+              projectPath: "/Users/x/src/oc-proj",
+              mtimeMs: NOW - 60_000,
+              loadEntries: async () => [
+                { message: { role: "user", content: [{ type: "text", text: "test" }] } },
+                { message: { role: "assistant", content: [{ type: "text", text: "Test ricevuto." }] } },
+              ],
+            },
+          },
+        ]),
+      liveProjectDirs: () => Promise.resolve(new Set()),
+      generator: {
+        generate: async () => null,
+        isAvailable: () => true,
+        summarize: async () => {
+          calls++;
+          return "Now: x\nOverview: y";
+        },
+      },
+    });
+    await s.listTiles();
+    expect(await s.summarize("ses_thin")).toEqual({ now: "", overview: "" });
+    expect(calls).toBe(0); // thin context → no inference, no fabrication
   });
 
   it("keeps the pipeline intact when an opencode session has no cwd", async () => {

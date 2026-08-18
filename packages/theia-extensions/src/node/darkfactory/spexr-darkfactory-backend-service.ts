@@ -32,6 +32,13 @@ const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 /** Follow backfill cap: how many recent events the read-only view seeds with. */
 const FOLLOW_EVENTS = 40;
 const SUMMARY_TURNS = 14;
+/**
+ * Below this much rendered context the small local model fabricates content
+ * ("developing a web application using Python and Flask…") instead of
+ * summarizing. Skip the inference and leave the summary empty — the tile
+ * already shows the session's goal.
+ */
+const MIN_SUMMARY_CHARS = 120;
 const PALETTE_SIZE = 8;
 /**
  * Only the most-recently-active sessions are read on each scan. Transcript
@@ -186,8 +193,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       } else {
         entries = ((await meta.loadEntries?.()) ?? []) as TurnEntry[];
       }
-      const raw = await this.generator.summarize(buildTurnsText(entries, SUMMARY_TURNS));
-      if (raw) summary = parseSessionSummary(raw);
+      const turnsText = buildTurnsText(entries, SUMMARY_TURNS);
+      if (turnsText.length >= MIN_SUMMARY_CHARS) {
+        const raw = await this.generator.summarize(turnsText);
+        if (raw) summary = parseSessionSummary(raw);
+      }
     }
     this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, summary });
     return summary;
