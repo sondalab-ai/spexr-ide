@@ -94,6 +94,8 @@ interface SessionMeta {
   mtimeMs: number;
   /** The harness that owns this session (drives planFocus routing). */
   harnessId: string;
+  /** Entry loader from the last scan — summary source for file-less transcripts (opencode). */
+  loadEntries?: () => Promise<unknown[]>;
 }
 
 @injectable()
@@ -172,8 +174,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     if (cached && cached.mtimeMs === meta.mtimeMs) return cached.summary;
     let summary = EMPTY_SUMMARY;
     if (this.generator?.isAvailable()) {
-      const lines = await readBoundedLines(meta.transcriptPath);
-      const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+      // Claude: read the transcript file fresh (bounded head+tail). Opencode has
+      // no transcript file — its sessions live in the db — so use the scan's
+      // export entries (already loaded and memoized on the indexed ref). Reading
+      // the empty path used to hand the model an empty transcript, producing the
+      // generic "default" summaries.
+      let entries: TurnEntry[];
+      if (meta.transcriptPath) {
+        const lines = await readBoundedLines(meta.transcriptPath);
+        entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+      } else {
+        entries = ((await meta.loadEntries?.()) ?? []) as TurnEntry[];
+      }
       const raw = await this.generator.summarize(buildTurnsText(entries, SUMMARY_TURNS));
       if (raw) summary = parseSessionSummary(raw);
     }
@@ -249,6 +261,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         state,
         mtimeMs: ref.mtimeMs,
         harnessId: u.harness.id,
+        loadEntries: ref.loadEntries,
       });
       tiles.push({
         sessionId: ref.sessionId,

@@ -158,6 +158,41 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect((await s.planFocus("ses_abc123")).kind).toBe("resume-terminal");
   });
 
+  it("summarizes opencode sessions from their export entries (no transcript file)", async () => {
+    const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
+    let seenTurns = "";
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: opencodeHarness,
+            ref: {
+              sessionId: "ses_sum",
+              projectPath: "/Users/x/src/oc-proj",
+              mtimeMs: NOW - 60_000,
+              loadEntries: async () => [
+                { message: { role: "user", content: [{ type: "text", text: "fix the login" }] } },
+                { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+              ],
+            },
+          },
+        ]),
+      liveProjectDirs: () => Promise.resolve(new Set()),
+      generator: {
+        generate: async () => null,
+        isAvailable: () => true,
+        summarize: async (turns) => {
+          seenTurns = turns;
+          return "Now: running the login tests\nOverview: fixing the login bug";
+        },
+      },
+    });
+    await s.listTiles();
+    expect(await s.summarize("ses_sum")).toEqual({ now: "Running the login tests", overview: "Fixing the login bug" });
+    expect(seenTurns).toContain("user: fix the login"); // the model gets real context, not an empty transcript
+    expect(seenTurns).toContain("[Bash: pnpm test]");
+  });
+
   it("keeps the pipeline intact when an opencode session has no cwd", async () => {
     const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
     const s = svc({
