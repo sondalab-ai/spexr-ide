@@ -1,5 +1,7 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { basename } from "node:path";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { execFile } from "node:child_process";
@@ -59,6 +61,10 @@ export interface DarkfactoryDeps {
   liveProjectDirs?: () => Promise<Set<string> | null>;
   /** Which harnesses are installed; default resolves each binary via PATH. */
   detect?: DetectFn;
+  /** opencode storage dir to watch for live tile pushes; undefined → none. */
+  opencodeDataDir?: () => string | undefined;
+  /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
+  watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
   /** Local model used to infer a one-line session description. */
   generator?: DescriptionGenerator;
 }
@@ -83,8 +89,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly liveDirs: () => Promise<Set<string> | null>;
   /** Test-injected synchronous detection; absent in production (login-shell probe). */
   private readonly detectSync: DetectFn | undefined;
+  /** opencode storage dir (parent of opencode.db) to watch; injected in tests. */
+  private readonly opencodeDataDirOf: () => string | undefined;
+  /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
+  private readonly watchDir: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
   /** Memoized installed-harness set — resolved lazily so injected seams never spawn a probe. */
   private installedCache?: Promise<HarnessAdapter[]>;
+  /** True once setClient armed the wall watchers (guards re-entry). */
+  private watching = false;
 
   private readonly generator: DescriptionGenerator | undefined;
   private client?: SpexrDarkfactoryClient;
@@ -103,6 +115,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
     this.detectSync = d.detect;
+    this.opencodeDataDirOf = d.opencodeDataDir ?? defaultOpencodeDataDir;
+    this.watchDir = d.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
     this.listTranscripts = d.listTranscripts ?? (() => this.defaultListTranscripts());
     this.liveDirs =
       d.liveProjectDirs ??
@@ -284,7 +298,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   private ensureWatching(): void {
-    if (this.wallWatchers.length) return;
+    if (this.watching) return;
+    this.watching = true;
     const onChange = debounce(() => {
       void this.pushTiles();
     }, 400);
@@ -293,10 +308,33 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         // NOTE: `recursive` is implemented only on macOS and Windows; on Linux it
         // throws and is swallowed here, so live push-refresh is inert there (the
         // wall still refreshes on its own listTiles calls). Known follow-up.
-        this.wallWatchers.push(watch(projectsDirOf(dir), { recursive: true }, onChange));
+        this.wallWatchers.push(this.watchDir(projectsDirOf(dir), true, onChange));
       } catch {
         /* directory missing (or recursive unsupported) → no live push for it */
       }
+    }
+    void this.armOpencodeWatch(onChange);
+  }
+
+  /**
+   * opencode keeps every session in one SQLite db (per-slice spike R1) — there
+   * is no per-session file to tail — so the wall watches the db's parent data
+   * dir instead: an OS notification on the directory, never an open of the db
+   * itself. Armed only when opencode is installed; detection is async, so this
+   * lands a tick after the Claude watchers and shares their debounced push.
+   * Non-recursive on purpose: the db and its -wal/-shm siblings live directly
+   * in the data dir, and this keeps Linux inotify working (see NOTE above).
+   */
+  private async armOpencodeWatch(onChange: () => void): Promise<void> {
+    const installed = await this.installed();
+    if (!this.watching) return; // disposed while detection was in flight
+    if (!installed.some((h) => h.id === "opencode")) return;
+    const dir = this.opencodeDataDirOf();
+    if (!dir) return;
+    try {
+      this.wallWatchers.push(this.watchDir(dir, false, onChange));
+    } catch {
+      /* directory missing → no live push for it */
     }
   }
 
@@ -339,6 +377,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   dispose(): void {
+    this.watching = false;
     if (this.loopMonitor) clearInterval(this.loopMonitor);
     for (const w of this.wallWatchers) w.close();
     this.wallWatchers.length = 0;
@@ -377,6 +416,16 @@ export async function detectInstalledHarnesses(adapters: HarnessAdapter[]): Prom
     adapters.map((a) => (a.id === "claude" ? Promise.resolve(true) : commandExists(a.id))),
   );
   return adapters.filter((_, i) => flags[i]);
+}
+
+/**
+ * opencode's storage dir — the parent of its single `opencode.db` — where every
+ * session write lands. Follows opencode's XDG convention (verified against
+ * `opencode debug paths`); watched by the wall for live tile pushes.
+ */
+export function defaultOpencodeDataDir(env: NodeJS.ProcessEnv = process.env): string {
+  const xdg = env.XDG_DATA_HOME?.trim();
+  return xdg ? join(xdg, "opencode") : join(homedir(), ".local", "share", "opencode");
 }
 
 async function readFileLines(path: string): Promise<string[]> {

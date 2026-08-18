@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { SpexrDarkfactoryBackendService } from "./spexr-darkfactory-backend-service.js";
+import { describe, expect, it, vi } from "vitest";
+import type { FSWatcher } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { SpexrDarkfactoryBackendService, defaultOpencodeDataDir } from "./spexr-darkfactory-backend-service.js";
 import { stitchBoundedLines } from "./bounded-read.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
+import type { SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
 
 const NOW = 100 * 3_600_000;
 
@@ -162,5 +166,58 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     });
     const tiles = await s.listTiles();
     expect(tiles).toHaveLength(0); // no cwd → skipped; nothing crashes
+  });
+});
+
+interface WatchCall {
+  dir: string;
+  recursive: boolean;
+}
+
+function fakeWatch(calls: WatchCall[]): (dir: string, recursive: boolean, onChange: () => void) => FSWatcher {
+  return (dir, recursive) => {
+    calls.push({ dir, recursive });
+    return { close: () => {} } as unknown as FSWatcher;
+  };
+}
+
+const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {} };
+
+describe("wall watcher", () => {
+  it("watches the opencode data dir alongside the Claude config dirs when opencode is installed", async () => {
+    const calls: WatchCall[] = [];
+    const s = svc({
+      configDirs: ["/c1", "/c2"],
+      detect: (h) => h.id === "opencode",
+      opencodeDataDir: () => "/oc/data",
+      watchDir: fakeWatch(calls),
+    });
+    s.setClient(fakeClient);
+    await vi.waitFor(() => expect(calls.some((c) => c.dir === "/oc/data")).toBe(true), { timeout: 1000 });
+    expect(calls).toContainEqual({ dir: "/c1/projects", recursive: true });
+    expect(calls).toContainEqual({ dir: "/c2/projects", recursive: true });
+    expect(calls).toContainEqual({ dir: "/oc/data", recursive: false });
+    s.dispose();
+  });
+
+  it("skips the opencode data dir when opencode is not installed", async () => {
+    const calls: WatchCall[] = [];
+    const s = svc({
+      configDirs: ["/c1"],
+      detect: (h) => h.id === "claude",
+      opencodeDataDir: () => "/oc/data",
+      watchDir: fakeWatch(calls),
+    });
+    s.setClient(fakeClient);
+    await vi.waitFor(() => expect(calls.some((c) => c.dir === "/c1/projects")).toBe(true), { timeout: 1000 });
+    await new Promise((r) => setTimeout(r, 50)); // let the async arm complete before asserting absence
+    expect(calls.some((c) => c.dir === "/oc/data")).toBe(false);
+    s.dispose();
+  });
+
+  it("derives the opencode data dir from XDG_DATA_HOME, falling back to ~/.local/share/opencode", () => {
+    expect(defaultOpencodeDataDir({ XDG_DATA_HOME: "/xdg" })).toBe("/xdg/opencode");
+    expect(defaultOpencodeDataDir({ XDG_DATA_HOME: "  " })).toBe(join(homedir(), ".local", "share", "opencode"));
+    expect(defaultOpencodeDataDir({})).toBe(join(homedir(), ".local", "share", "opencode"));
   });
 });
