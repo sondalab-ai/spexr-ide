@@ -249,3 +249,44 @@ describe("forEachConcurrent", () => {
     await forEachConcurrent([], 4, async () => {});
   });
 });
+
+type Pushable = { pushTiles(): Promise<void> };
+
+describe("pushTiles coalescing + live-dir cache", () => {
+  it("is single-flight: pushes during an in-flight scan coalesce into one follow-up scan", async () => {
+    let scans = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const s = svc({
+      configDirs: [],
+      detect: () => false,
+      listTranscripts: async () => { scans++; await gate; return []; },
+    });
+    s.setClient(fakeClient);
+    const push = s as unknown as Pushable;
+    const first = push.pushTiles(); // starts scan #1, holds on the gate
+    push.pushTiles(); // in flight → only marks dirty
+    push.pushTiles(); // in flight → only marks dirty
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    await first;
+    expect(scans).toBe(2); // #1 + exactly one coalesced follow-up, not three
+    s.dispose();
+  });
+
+  it("reuses live-project dirs within the TTL and re-checks after it expires", async () => {
+    let t = 1_000;
+    let psCalls = 0;
+    const s = svc({
+      now: () => t,
+      listTranscripts: () => Promise.resolve([]),
+      liveProjectDirs: async () => { psCalls++; return new Set<string>(); },
+    });
+    await s.listTiles();
+    await s.listTiles();
+    expect(psCalls).toBe(1); // within TTL → served from cache
+    t += 15_000; // LIVE_DIRS_TTL_MS
+    await s.listTiles();
+    expect(psCalls).toBe(2); // TTL expired → re-checked
+  });
+});

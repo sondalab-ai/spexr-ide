@@ -48,6 +48,14 @@ const RECENT_LIMIT = 60;
  */
 const PARSE_CONCURRENCY = 8;
 
+/**
+ * Live-process-dir freshness floor. `ps` only anchors the "working" attribution
+ * and costs one spawn per scan — with an active opencode session the db-write
+ * watcher retriggers scans faster than they finish, and uncached `ps` calls
+ * piled a spawn storm onto the backend. 15s is plenty for a liveness hint.
+ */
+const LIVE_DIRS_TTL_MS = 15_000;
+
 /** All harnesses the wall can scan; detection decides which are installed. */
 const ALL_HARNESSES: HarnessAdapter[] = [claudeHarness, opencodeHarness];
 
@@ -110,6 +118,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private client?: SpexrDarkfactoryClient;
   private loopMonitor?: ReturnType<typeof setInterval>;
   private readonly wallWatchers: FSWatcher[] = [];
+  /** Single-flight push state: while a scan runs, events mark it dirty for one follow-up scan. */
+  private scanInFlight = false;
+  private scanDirty = false;
+  /** TTL cache of the live-process dirs (one `ps` spawn per TTL, not per scan). */
+  private liveCache?: { at: number; value: Set<string> | null };
   private readonly index = new Map<string, SessionMeta>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
@@ -196,7 +209,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
-    const [allRefs, live] = await Promise.all([this.listTranscripts(), this.liveDirs()]);
+    const [allRefs, live] = await Promise.all([this.listTranscripts(), this.cachedLiveDirs()]);
     const now = this.now();
     // Only read the newest sessions — history is huge and reading it all stalls
     // the event loop; the wall only shows recent work.
@@ -358,12 +371,44 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     }
   }
 
+  /**
+   * Push a fresh tile snapshot, single-flight. An active opencode session can
+   * fire the db watcher faster than a scan finishes; without coalescing each
+   * event queued another full scan, so scans piled up and their `ps`/`opencode`
+   * spawns stacked into a process-spawn storm. Here at most one scan runs at a
+   * time; events arriving mid-scan only mark it dirty, so at most one follow-up
+   * scan is queued no matter how many events land.
+   */
   private async pushTiles(): Promise<void> {
+    if (!this.client) return;
+    this.scanDirty = true;
+    if (this.scanInFlight) return;
+    this.scanInFlight = true;
     try {
-      this.client?.onTilesChanged(await this.listTiles());
-    } catch {
-      /* transient scan failure → skip this tick */
+      while (this.scanDirty) {
+        this.scanDirty = false;
+        try {
+          this.client.onTilesChanged(await this.listTiles());
+        } catch {
+          /* transient scan failure → skip this tick */
+        }
+      }
+    } finally {
+      this.scanInFlight = false;
     }
+  }
+
+  /**
+   * Live-process dirs with a TTL: each miss spawns `ps`, and scans re-run far
+   * more often than liveness changes. Keyed on the injected clock so tests can
+   * drive expiry deterministically.
+   */
+  private async cachedLiveDirs(): Promise<Set<string> | null> {
+    const now = this.now();
+    if (this.liveCache && now - this.liveCache.at < LIVE_DIRS_TTL_MS) return this.liveCache.value;
+    const value = await this.liveDirs();
+    this.liveCache = { at: now, value };
+    return value;
   }
 
   /** Merge every installed harness's session list (Claude: disk walk, opencode: db query). */
