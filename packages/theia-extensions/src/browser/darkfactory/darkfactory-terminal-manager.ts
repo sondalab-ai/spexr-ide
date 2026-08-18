@@ -7,6 +7,8 @@ import {
   SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
+import { opencodeHarness } from "../../common/harness/opencode-harness.js";
+import type { HarnessAdapter } from "../../common/harness/harness-types.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -19,10 +21,18 @@ function baseName(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
+/** The harness that owns a session id (by shape: UUID → claude, `ses_…` → opencode). */
+function harnessForSessionId(sessionId: string): HarnessAdapter | undefined {
+  if (claudeHarness.isResumableId(sessionId)) return claudeHarness;
+  if (opencodeHarness.isResumableId(sessionId)) return opencodeHarness;
+  return undefined;
+}
+
 /**
- * Owns `claude --resume` terminals, one per session, created for embedding in the
+ * Owns resume terminals, one per session, created for embedding in the
  * Darkfactory pinned card. Each terminal is keyed by session id and reused while
- * live, so several agents can be driven from one window.
+ * live, so several agents can be driven from one window. The harness is selected
+ * per session by id shape (Claude UUID vs opencode `ses_…`).
  */
 @injectable()
 export class SpexrDarkfactoryTerminalManager {
@@ -33,9 +43,9 @@ export class SpexrDarkfactoryTerminalManager {
 
   /**
    * Create (or reuse) a resume terminal WITHOUT docking it in the shell — the
-   * caller attaches its node into its own container (the pinned card). `fork` uses
-   * `--fork-session` to branch from the history when the original is live
-   * elsewhere. Returns undefined if the session id/path is invalid or it can't start.
+   * caller attaches its node into its own container (the pinned card). `fork`
+   * branches from the history when the original is live elsewhere. Returns
+   * undefined if the session id/path is invalid or it can't start.
    */
   async openEmbedded(
     sessionId: string,
@@ -54,14 +64,15 @@ export class SpexrDarkfactoryTerminalManager {
     configDir: string,
     fork: boolean,
   ): Promise<TerminalWidget | undefined> {
-    if (!claudeHarness.isResumableId(sessionId) || !projectPath) return undefined;
-    const dir = this.resolveConfigDir(configDir);
+    const harness = harnessForSessionId(sessionId);
+    if (!harness || !projectPath) return undefined;
+    const dir = harness.id === "claude" ? this.resolveConfigDir(configDir) : "";
     const term = await this.terminalService.newTerminal({
       id: `spexr-df-${sessionId}`,
       title: baseName(projectPath),
       useServerTitle: false,
       iconClass: "codicon codicon-sparkle",
-      ...this.resolveShell(claudeHarness.buildResumeArgs(sessionId, fork), dir, projectPath),
+      ...this.resolveShell(harness, harness.buildResumeArgs(sessionId, fork), dir, projectPath),
       cwd: projectPath,
       env: dir ? { CLAUDE_CONFIG_DIR: dir } : {},
       destroyTermOnClose: false,
@@ -74,35 +85,45 @@ export class SpexrDarkfactoryTerminalManager {
 
   /**
    * Run the resume through an interactive login shell (so the user's real PATH —
-   * `~/.local/bin`, nvm shims — resolves `claude`), invoking the plain `claude`
+   * `~/.local/bin`, nvm shims — resolves the harness binary), invoking the plain
    * binary directly rather than any account alias.
    *
-   * SPEXR owns the account per session: `claude --resume` resolves a conversation
-   * by CLAUDE_CONFIG_DIR *and* the cwd's project slug, so both must be authoritative.
-   * The login shell re-sources the profile (which may re-export CLAUDE_CONFIG_DIR or
-   * `cd` away), so we re-export the session's dir and `cd` into its project inside
-   * the `-c` line, after the profile has run. Using the bare binary (not an alias
-   * like `claude-perso` that pins a dir) is what lets our export win.
+   * For Claude, SPEXR owns the account per session: `claude --resume` resolves a
+   * conversation by CLAUDE_CONFIG_DIR *and* the cwd's project slug, so both must
+   * be authoritative. The login shell re-sources the profile (which may re-export
+   * CLAUDE_CONFIG_DIR or `cd` away), so we re-export the session's dir and `cd`
+   * into its project inside the `-c` line, after the profile has run. Opencode has
+   * no config-dir override — only the `cd` is needed (the session's directory is
+   * authoritative).
    */
   private resolveShell(
+    harness: HarnessAdapter,
     resumeArgs: string[],
     dir: string,
     projectPath: string,
   ): { shellArgs: string[] } {
-    const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
-    const bin = exe ? shellQuote(exe) : "claude";
+    const bin = this.resolveBinary(harness);
     const prefix = [
       // Set the account authoritatively so a stray CLAUDE_CONFIG_DIR in the host
-      // env can't send the resume to the wrong config dir.
-      dir ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "unset CLAUDE_CONFIG_DIR",
+      // env can't send the resume to the wrong config dir (Claude only).
+      harness.id === "claude" ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "",
       projectPath ? `cd ${shellQuote(projectPath)}` : "",
     ]
       .filter(Boolean)
       .join("; ");
-    // `; exec $SHELL` keeps the terminal alive after claude exits (e.g. a resume
-    // that can't find the conversation) so the tab shows the error instead of vanishing.
+    // `; exec $SHELL` keeps the terminal alive after the harness exits (e.g. a
+    // resume that can't find the conversation) so the tab shows the error instead of vanishing.
     const line = `${prefix ? `${prefix}; ` : ""}${[bin, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
     return { shellArgs: ["-i", "-l", "-c", line] };
+  }
+
+  /** The harness binary to launch: the user's explicit Claude path when set, else the bare name. */
+  private resolveBinary(harness: HarnessAdapter): string {
+    if (harness.id === "claude") {
+      const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
+      return exe ? shellQuote(exe) : "claude";
+    }
+    return "opencode";
   }
 
   /**
