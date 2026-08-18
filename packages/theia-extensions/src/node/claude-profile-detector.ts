@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
 /**
  * A detected Claude account profile derived from the user's shell configuration.
@@ -189,28 +189,40 @@ export function resolveClaudeExecutable(): string | "ambiguous" | undefined {
   return [...candidates][0]!;
 }
 
+/** Memoized login-shell probe: `claude` doesn't move mid-process, and a fresh probe costs 1–2.5s of shell startup. */
+let shellProbe: { path: string | undefined } | undefined;
+
 /**
  * Resolve `claude` through the user's interactive login shell, so its real PATH
  * (e.g. `~/.local/bin`, nvm shims) is searched even when the host process has a
  * stripped PATH — as a GUI app launched from Finder/Dock does. Returns an
  * absolute path, or `undefined` if the shell can't resolve it. Best-effort: any
  * failure (no shell, timeout, non-file) yields `undefined`.
+ *
+ * Async on purpose: an interactive login shell's rc files take 1–2.5s to load;
+ * running that synchronously blocked the backend event loop past the watchdog
+ * threshold. Successful probes are memoized for the process lifetime; spawn
+ * errors/timeouts are not, so a transient failure can retry.
  */
-export function resolveClaudeExecutableViaShell(): string | undefined {
-  if (process.platform === "win32") return undefined; // login-shell trick is posix-only
+export function resolveClaudeExecutableViaShell(): Promise<string | undefined> {
+  if (process.platform === "win32") return Promise.resolve(undefined); // login-shell trick is posix-only
+  if (shellProbe) return Promise.resolve(shellProbe.path);
   const shell = process.env["SHELL"] || "/bin/zsh";
-  try {
-    const out = execFileSync(shell, ["-l", "-i", "-c", "command -v claude"], {
-      encoding: "utf8",
-      timeout: 5000,
-      stdio: ["ignore", "pipe", "ignore"],
+  return new Promise((resolve) => {
+    execFile(shell, ["-l", "-i", "-c", "command -v claude"], { encoding: "utf8", timeout: 5000 }, (err, stdout) => {
+      if (err) return resolve(undefined);
+      // Take the last non-empty line — rc files may print banners before it.
+      const line = stdout.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
+      const resolved = line && path.isAbsolute(line) && isFileExecutable(line) ? line : undefined;
+      shellProbe = { path: resolved };
+      resolve(resolved);
     });
-    // Take the last non-empty line — rc files may print banners before it.
-    const line = out.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
-    return line && path.isAbsolute(line) && isFileExecutable(line) ? line : undefined;
-  } catch {
-    return undefined;
-  }
+  });
+}
+
+/** Test seam: forget the memoized login-shell probe. */
+export function resetClaudeShellProbeCache(): void {
+  shellProbe = undefined;
 }
 
 /**
@@ -218,7 +230,7 @@ export function resolveClaudeExecutableViaShell(): string | undefined {
  * the login-shell fallback for stripped-PATH hosts. `undefined` when unresolved,
  * `"ambiguous"` only when the PATH scan itself found several distinct binaries.
  */
-export function resolveClaudeExecutableRobust(): string | "ambiguous" | undefined {
+export async function resolveClaudeExecutableRobust(): Promise<string | "ambiguous" | undefined> {
   const scanned = resolveClaudeExecutable();
   if (typeof scanned === "string") return scanned;
   if (scanned === "ambiguous") return "ambiguous";
@@ -251,8 +263,8 @@ export function isFileExecutable(filePath: string): boolean {
  * This function is fail-soft: unreadable or unparseable files are silently
  * skipped; it never throws.
  */
-export function detectClaudeProfiles(): ClaudeProfile[] {
-  const resolvedExec = resolveClaudeExecutableRobust();
+export async function detectClaudeProfiles(): Promise<ClaudeProfile[]> {
+  const resolvedExec = await resolveClaudeExecutableRobust();
   const executablePath = typeof resolvedExec === "string" ? resolvedExec : "claude";
 
   const profiles: ClaudeProfile[] = [
