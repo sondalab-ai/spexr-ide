@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { FSWatcher } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { SpexrDarkfactoryBackendService, defaultOpencodeDataDir } from "./spexr-darkfactory-backend-service.js";
+import {
+  SpexrDarkfactoryBackendService,
+  defaultOpencodeDataDir,
+  forEachConcurrent,
+} from "./spexr-darkfactory-backend-service.js";
 import { stitchBoundedLines } from "./bounded-read.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
 import type { SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
@@ -219,5 +223,28 @@ describe("wall watcher", () => {
     expect(defaultOpencodeDataDir({ XDG_DATA_HOME: "/xdg" })).toBe("/xdg/opencode");
     expect(defaultOpencodeDataDir({ XDG_DATA_HOME: "  " })).toBe(join(homedir(), ".local", "share", "opencode"));
     expect(defaultOpencodeDataDir({})).toBe(join(homedir(), ".local", "share", "opencode"));
+  });
+});
+
+describe("forEachConcurrent", () => {
+  it("processes every item without exceeding the concurrency limit", async () => {
+    let inFlight = 0;
+    let maxSeen = 0;
+    const done: number[] = [];
+    const items = Array.from({ length: 25 }, (_, i) => i);
+    await forEachConcurrent(items, 8, async (i) => {
+      inFlight++;
+      maxSeen = Math.max(maxSeen, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      done.push(i);
+      inFlight--;
+    });
+    expect(maxSeen).toBeLessThanOrEqual(8);
+    expect(maxSeen).toBeGreaterThan(1); // genuinely parallel, not serialized
+    expect([...done].sort((a, b) => a - b)).toEqual(items);
+  });
+
+  it("handles empty input", async () => {
+    await forEachConcurrent([], 4, async () => {});
   });
 });

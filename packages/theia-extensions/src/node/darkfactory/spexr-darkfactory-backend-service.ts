@@ -40,6 +40,13 @@ const PALETTE_SIZE = 8;
  */
 const RECENT_LIMIT = 60;
 
+/**
+ * Transcript parses run concurrently up to this limit. Each opencode session is
+ * an `opencode export` CLI spawn (~0.5s); parsed sequentially, 60 sessions
+ * stalled the scan for ~30s. 8 keeps the spawn/memory pressure modest.
+ */
+const PARSE_CONCURRENCY = 8;
+
 /** All harnesses the wall can scan; detection decides which are installed. */
 const ALL_HARNESSES: HarnessAdapter[] = [claudeHarness, opencodeHarness];
 
@@ -189,22 +196,28 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // the event loop; the wall only shows recent work.
     const refs = [...allRefs].sort((a, b) => b.ref.mtimeMs - a.ref.mtimeMs).slice(0, RECENT_LIMIT);
     // Parse each transcript once; track the newest transcript mtime per project
-    // so "working" is attributed to a single session per project.
+    // so "working" is attributed to a single session per project. Parses run
+    // concurrently (bounded) — sequential parsing serialized ~60 harness calls,
+    // which for opencode is one CLI spawn per session (~30s total).
     const parsed = new Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>();
     const newestByProject = new Map<string, number>();
-    for (const u of refs) {
+    await forEachConcurrent(refs, PARSE_CONCURRENCY, async (u) => {
       const p = await u.harness.parseTranscript(u.ref);
-      if (!p.cwd) continue; // no real project path → skip
-      if (!p.interactive) continue; // SDK / one-shot subagent session → not followable
+      if (!p.cwd) return; // no real project path → skip
+      if (!p.interactive) return; // SDK / one-shot subagent session → not followable
       const entries = (await u.ref.loadEntries()) as TurnEntry[];
       parsed.set(u.ref.sessionId, { u, entries, parsed: p });
       const prev = newestByProject.get(p.cwd);
       if (prev === undefined || u.ref.mtimeMs > prev) newestByProject.set(p.cwd, u.ref.mtimeMs);
-    }
+    });
 
     this.index.clear();
     const tiles: AgentTile[] = [];
-    for (const { u, entries, parsed: p } of parsed.values()) {
+    // Iterate refs (not the parse map) so tile order stays recency-based, not completion-order.
+    for (const u of refs) {
+      const item = parsed.get(u.ref.sessionId);
+      if (!item) continue;
+      const { entries, parsed: p } = item;
       const cwd = p.cwd!;
       const ref = u.ref;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
@@ -452,4 +465,20 @@ function debounce<T extends (...a: never[]) => void>(fn: T, ms: number): T {
     if (t) clearTimeout(t);
     t = setTimeout(() => fn(...a), ms);
   }) as T;
+}
+
+/**
+ * Run `fn` over every item with at most `limit` calls in flight, resolving when
+ * all complete. Errors propagate (callers fail soft inside `fn`).
+ */
+export async function forEachConcurrent<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next]!;
+      next += 1;
+      await fn(item);
+    }
+  });
+  await Promise.all(workers);
 }
