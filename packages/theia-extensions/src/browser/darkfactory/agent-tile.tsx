@@ -118,6 +118,7 @@ export function AgentTileCard(props: {
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
         <span className="spexr-df-card__project">{tile.projectName}</span>
+        <span className="spexr-df-card__harness">{tile.harness}</span>
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
         </span>
@@ -196,6 +197,7 @@ export function AgentPinnedCard(props: {
       <header className="spexr-df-pinned__head">
         <span className="spexr-df-card__led" />
         <span className="spexr-df-pinned__project">{tile.projectName}</span>
+        <span className="spexr-df-card__harness">{tile.harness}</span>
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
         </span>
@@ -256,6 +258,7 @@ export function AgentCondensedRow(props: {
     >
       <span className="spexr-df-row__led" />
       <span className="spexr-df-row__project">{tile.projectName}</span>
+      <span className="spexr-df-row__harness">{tile.harness}</span>
       <span className="spexr-df-row__action">{tile.goal || tile.actionLine}</span>
       {(tile.lastFailed || tile.needsYou) && (
         <span className="spexr-df-row__status" data-kind={status.kind}>

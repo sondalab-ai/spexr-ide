@@ -60,6 +60,7 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect(tiles).toHaveLength(1);
     expect(tiles[0]).toMatchObject({
       sessionId: "s1",
+      harness: "claude",
       projectName: "proj",
       state: "working",
       actionLine: "Editing auth.ts",
@@ -152,7 +153,7 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     });
     const tiles = await s.listTiles();
     expect(tiles).toHaveLength(1);
-    expect(tiles[0]).toMatchObject({ sessionId: "ses_abc123", projectName: "oc-proj", goal: "fix the login" });
+    expect(tiles[0]).toMatchObject({ sessionId: "ses_abc123", harness: "opencode", projectName: "oc-proj", goal: "fix the login" });
     // idle + opencode → always resumable (no config-dir mismatch possible)
     expect((await s.planFocus("ses_abc123")).kind).toBe("resume-terminal");
   });

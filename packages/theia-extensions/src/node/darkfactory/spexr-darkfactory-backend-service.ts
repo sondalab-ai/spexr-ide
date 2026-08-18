@@ -233,6 +233,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       });
       tiles.push({
         sessionId: ref.sessionId,
+        harness: u.harness.id,
         transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
         projectName: basename(cwd),

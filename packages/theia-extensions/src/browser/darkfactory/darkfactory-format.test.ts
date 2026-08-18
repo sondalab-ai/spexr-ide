@@ -4,6 +4,7 @@ import type { AgentTile } from "../../common/darkfactory-protocol.js";
 
 const tile = (id: string, state: AgentTile["state"], needsYou = false, lastActivityMs = 0): AgentTile => ({
   sessionId: id,
+  harness: "claude",
   transcriptPath: `/p/${id}.jsonl`,
   projectPath: "/p",
   projectName: "p",

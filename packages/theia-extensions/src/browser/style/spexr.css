@@ -2356,6 +2356,11 @@ code {
   height: 100%;
 }
 .spexr-df-empty { padding: var(--spexr-space-5); color: var(--spexr-text-muted); font-size: var(--spexr-text-sm); }
+/* codicon-loading + codicon-modifier-spin provide the spinner animation. */
+.spexr-df-loading {
+  display: flex; align-items: center; gap: var(--spexr-space-2);
+  padding: var(--spexr-space-5); color: var(--spexr-text-muted); font-size: var(--spexr-text-sm);
+}
 .spexr-df-root { display: flex; flex-direction: column; gap: var(--spexr-space-5); }
 
 /* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
@@ -2459,6 +2464,17 @@ code {
   flex: 1 1 auto; min-width: 0;
   font-size: var(--spexr-text-lg, 1.05rem); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Harness chip — muted mono tag identifying the agent CLI (claude / opencode). */
+.spexr-df-card__harness {
+  flex: none; padding: 0 var(--spexr-space-1);
+  font-family: var(--theia-code-font-family); font-size: var(--spexr-text-xs);
+  color: var(--spexr-text-muted); border: 1px solid var(--spexr-border-subtle);
+  border-radius: var(--spexr-radius-sm); line-height: 1.5;
+}
+.spexr-df-row__harness {
+  flex: none; font-family: var(--theia-code-font-family);
+  font-size: var(--spexr-text-xs); color: var(--spexr-text-muted);
 }
 .spexr-df-card__branch {
   margin-top: auto; /* pin to the bottom regardless of how tall the other content is */
