@@ -129,7 +129,12 @@ describe("DESCRIPTION_SYSTEM_PROMPT", () => {
 describe("SUMMARY_SYSTEM_PROMPT", () => {
   it("carries no concrete example clause the small model could echo verbatim", () => {
     expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/auth middleware|token expiry/i);
-    expect(SUMMARY_SYSTEM_PROMPT).toMatch(/exactly two lines/i);
+  });
+
+  it("asks for a single third-person line (the model fabricates the second of two asks)", () => {
+    expect(SUMMARY_SYSTEM_PROMPT).toMatch(/one line/i);
+    expect(SUMMARY_SYSTEM_PROMPT).toMatch(/third person/i);
+    expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/exactly two lines/i);
   });
 });
 
@@ -155,6 +160,26 @@ describe("parseSessionSummary", () => {
 
   it("strips a leading 'The'/'This' the model may add, then capitalizes", () => {
     expect(parseSessionSummary("Now: The agent edits the parser").now).toBe("Agent edits the parser");
+  });
+
+  it("tolerates markdown-bolded labels the small model adds despite 'no markdown'", () => {
+    expect(parseSessionSummary("**Now:** working on the wall rendering")).toEqual({
+      now: "Working on the wall rendering",
+      overview: "",
+    });
+    expect(parseSessionSummary("**Overview:** fixing the session tiles")).toEqual({
+      now: "",
+      overview: "Fixing the session tiles",
+    });
+  });
+
+  it("strips first/second-person subjects so clauses read third-person", () => {
+    expect(parseSessionSummary("Now: I'm fixing the login bug")).toEqual({ now: "Fixing the login bug", overview: "" });
+    expect(parseSessionSummary("Overview: I need to ensure the tests pass")).toEqual({
+      now: "",
+      overview: "Need to ensure the tests pass",
+    });
+    expect(parseSessionSummary("Now: we are running the migration").now).toBe("Running the migration");
   });
 
   it("capitalizes a lowercase clause the model emits", () => {

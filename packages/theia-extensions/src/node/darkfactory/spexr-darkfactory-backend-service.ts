@@ -179,26 +179,33 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     if (!meta) return EMPTY_SUMMARY;
     const cached = this.summaryCache.get(sessionId);
     if (cached && cached.mtimeMs === meta.mtimeMs) return cached.summary;
+    // Claude: read the transcript file fresh (bounded head+tail). Opencode has no
+    // transcript file — its sessions live in the db — so use the scan's export
+    // entries (already loaded and memoized on the indexed ref). Reading the empty
+    // path used to hand the model an empty transcript, producing generic output.
     let summary = EMPTY_SUMMARY;
-    if (this.generator?.isAvailable()) {
-      // Claude: read the transcript file fresh (bounded head+tail). Opencode has
-      // no transcript file — its sessions live in the db — so use the scan's
-      // export entries (already loaded and memoized on the indexed ref). Reading
-      // the empty path used to hand the model an empty transcript, producing the
-      // generic "default" summaries.
-      let entries: TurnEntry[];
-      if (meta.transcriptPath) {
-        const lines = await readBoundedLines(meta.transcriptPath);
-        entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
-      } else {
-        entries = ((await meta.loadEntries?.()) ?? []) as TurnEntry[];
-      }
-      const turnsText = buildTurnsText(entries, SUMMARY_TURNS);
-      if (turnsText.length >= MIN_SUMMARY_CHARS) {
-        const raw = await this.generator.summarize(turnsText);
-        if (raw) summary = parseSessionSummary(raw);
+    let entries: TurnEntry[] = [];
+    if (meta.transcriptPath) {
+      const lines = await readBoundedLines(meta.transcriptPath);
+      entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+    } else if (meta.loadEntries) {
+      entries = ((await meta.loadEntries()) ?? []) as TurnEntry[];
+    }
+    // The "Now" clause is deterministic (the distilled last action): factual by
+    // construction, never first-person, never invented. The model writes only the
+    // overview — a single anchored line is what the small model does reliably.
+    const actionNow = entries.length > 0 ? distillAction(entries).line : "";
+    const turnsText = buildTurnsText(entries, SUMMARY_TURNS);
+    if (turnsText.length >= MIN_SUMMARY_CHARS && this.generator?.isAvailable()) {
+      const raw = await this.generator.summarize(turnsText);
+      if (raw) {
+        const parsed = parseSessionSummary(raw);
+        const overview = parsed.overview || parsed.now; // one-line replies can land in either field
+        if (overview) summary = { now: actionNow, overview };
       }
     }
+    // Thin or model-less sessions still get the honest deterministic line.
+    if (!summary.now && !summary.overview && actionNow) summary = { now: actionNow, overview: "" };
     this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, summary });
     return summary;
   }

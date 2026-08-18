@@ -21,28 +21,21 @@ export const DESCRIPTION_SYSTEM_PROMPT =
   "When unsure, stay generic rather than guess specifics. Reply with only the sentence, max 15 words, " +
   "no preamble, no markdown. Do not begin with 'This file' or 'This'.";
 
-// Headroom over the two bounded clauses (~28 words ≈ 55 tokens): the small model
-// often exceeds its word limits, and a cap that clips the Overview mid-sentence
-// reads as a truncated summary. Greedy decoding still stops at EOS, so concise
-// replies are unaffected — only verbose ones use the extra budget.
-export const SUMMARY_MAX_NEW_TOKENS = 110;
+// One-line task: the q4 1.5B model stays factual on a single anchored ask, but
+// when asked for two clauses it fills the weaker one with stock fabrication
+// ("developing a web application using Python and Flask") — verified side-by-side
+// on real sessions. The "Now" clause is therefore computed deterministically by
+// the caller (the distilled last action) and the model writes only the overview.
+export const SUMMARY_MAX_NEW_TOKENS = 45;
 
 // NOTE: no concrete example clause here on purpose — a small model echoes a
-// memorable example verbatim when the session context is thin, which produced
-// bogus "refactoring the auth middleware" summaries. Keep the guidance abstract.
-// NOTE 2: each clause is anchored to a SPECIFIC input line ("the last assistant:
-// line", "the first user: line"). Anchored clauses stay factual; abstract asks
-// ("what the session is trying to accomplish") made the model fabricate stock
-// content ("developing a web application using Python and Flask") — verified
-// side-by-side against real sessions with the q4 1.5B model.
+// memorable example verbatim when the session context is thin. Keep the guidance
+// abstract; the thin-context guard upstream already withholds empty contexts.
 export const SUMMARY_SYSTEM_PROMPT =
-  "You are given the goal and recent events of a coding-assistant session. Reply with EXACTLY two lines, " +
-  "no preamble, no markdown, no trailing period. Line 1 MUST start with the literal text 'Now: ' and " +
-  "line 2 MUST start with the literal text 'Overview: '.\n" +
-  "Now: <present-tense clause, max 12 words, rephrasing what the last assistant: line is doing>\n" +
-  "Overview: <one clause, max 16 words, rephrasing what the user asked for in the first user: line>\n" +
-  "Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies. " +
-  "Do not begin either clause with 'The' or 'This'.";
+  "You are given the goal and recent events of a coding-assistant session. Write ONE line, " +
+  "max 16 words, in third person, saying what the user asked for in the first user: line. " +
+  "Use only facts present in the text; never invent files, tools, commands, or technologies. " +
+  "No preamble, no markdown, no trailing period.";
 
 /** User message for a two-level session summary. */
 export function buildSummaryPrompt(turnsText: string): string {
@@ -59,6 +52,9 @@ function cleanClause(s: string): string {
   const cleaned = s
     .replace(/^["'`*\s]+|["'`*\s.]+$/g, "")
     .replace(/^(?:the|this)\s+/i, "")
+    // The small model speaks as the session's assistant ("I'm fixing…"): strip
+    // first/second-person subjects so the clause reads as a neutral third person.
+    .replace(/^(?:i'm|i am|we're|we are|you're|you are|i|we|you)\s+/i, "")
     .trim();
   // Capitalize the first letter: the model often lowercases the clause ("assistant
   // is fixing…"), which reads as unformatted noise in the card.
@@ -71,7 +67,8 @@ function cleanClause(s: string): string {
  * empty fields rather than throwing.
  */
 export function parseSessionSummary(raw: string): SessionSummary {
-  const lines = raw.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  // The small model sometimes bolds the labels ("**Now:** …") despite "no markdown".
+  const lines = raw.split("\n").map((l) => l.replace(/^\*+\s*/, "").trim()).filter((l) => l.length > 0);
   let now = "";
   let overview = "";
   for (const line of lines) {

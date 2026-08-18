@@ -142,8 +142,9 @@ describe("SpexrDarkfactoryBackendService v2", () => {
         },
       });
       await s.listTiles();
+      // Now = deterministic distilled action; Overview = the model's line.
       expect(await s.summarize("s1")).toEqual({
-        now: "Editing the modal list component",
+        now: "Editing auth.ts",
         overview: "Migrating browse-blueprints to the design system",
       });
       await s.summarize("s1");
@@ -272,12 +273,12 @@ describe("SpexrDarkfactoryBackendService v2", () => {
       },
     });
     await s.listTiles();
-    expect(await s.summarize("ses_sum")).toEqual({ now: "Running the login tests", overview: "Fixing the login bug" });
-    expect(seenTurns).toContain("user: fix the login"); // the model gets real context, not an empty transcript
+    expect(await s.summarize("ses_sum")).toEqual({ now: "Running: pnpm test", overview: "Fixing the login bug" });
+    expect(seenTurns).toContain("user: fix the login page"); // the model gets real context, not an empty transcript
     expect(seenTurns).toContain("[Bash: pnpm test]");
   });
 
-  it("skips inference when the rendered context is too thin (the small model fabricates)", async () => {
+  it("skips inference on thin context but still shows the deterministic action line", async () => {
     const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
     let calls = 0;
     const s = svc({
@@ -307,7 +308,7 @@ describe("SpexrDarkfactoryBackendService v2", () => {
       },
     });
     await s.listTiles();
-    expect(await s.summarize("ses_thin")).toEqual({ now: "", overview: "" });
+    expect(await s.summarize("ses_thin")).toEqual({ now: "Test ricevuto.", overview: "" });
     expect(calls).toBe(0); // thin context → no inference, no fabrication
   });
 
