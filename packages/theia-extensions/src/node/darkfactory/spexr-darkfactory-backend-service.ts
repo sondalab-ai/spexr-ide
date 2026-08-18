@@ -1,10 +1,11 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { basename } from "node:path";
 import { join } from "node:path";
-import { homedir } from "node:os";
-import { readFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { execFile } from "node:child_process";
+import { Session as InspectorSession } from "node:inspector";
 import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
 import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
@@ -176,14 +177,19 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /**
    * Diagnostic: log when the backend event loop was blocked well past the tick
    * interval, so a real main-thread stall (vs. a mere websocket drop) is visible
-   * and attributable in time.
+   * and attributable in time. With SPEXR_LOOP_PROFILE=1 each stall also dumps a
+   * .cpuprofile (see {@link stallProfiler}) to attribute the block to a hotspot.
    */
   private startLoopMonitor(): void {
     if (this.loopMonitor) return;
     let last = Date.now();
+    const dumpProfile = process.env.SPEXR_LOOP_PROFILE ? stallProfiler() : undefined;
     this.loopMonitor = setInterval(() => {
       const lag = Date.now() - last - 1000;
-      if (lag > 750) console.error(`[darkfactory] backend event loop blocked ~${lag}ms`);
+      if (lag > 750) {
+        console.error(`[darkfactory] backend event loop blocked ~${lag}ms`);
+        dumpProfile?.(lag);
+      }
       last = Date.now();
     }, 1000);
     this.loopMonitor.unref?.();
@@ -440,6 +446,33 @@ export async function detectInstalledHarnesses(adapters: HarnessAdapter[]): Prom
 export function defaultOpencodeDataDir(env: NodeJS.ProcessEnv = process.env): string {
   const xdg = env.XDG_DATA_HOME?.trim();
   return xdg ? join(xdg, "opencode") : join(homedir(), ".local", "share", "opencode");
+}
+
+/**
+ * Continuous CPU profiler for stall attribution: runs from watchdog start and,
+ * each time the watchdog fires, dumps the profile collected so far to the system
+ * temp dir (open in DevTools or Speedscope to find the synchronous hotspot),
+ * then restarts to capture the next stall. Opt-in via SPEXR_LOOP_PROFILE=1.
+ */
+function stallProfiler(): ((lagMs: number) => void) | undefined {
+  try {
+    const session = new InspectorSession();
+    session.connect();
+    session.post("Profiler.enable");
+    session.post("Profiler.start");
+    return (lagMs: number): void => {
+      session.post("Profiler.stop", (err, params) => {
+        if (err || !params) return;
+        const file = join(tmpdir(), `spexr-stall-${Math.round(lagMs)}ms-${Date.now()}.cpuprofile`);
+        void writeFile(file, JSON.stringify(params.profile)).then(() =>
+          console.error(`[darkfactory] stall profile → ${file}`),
+        );
+        session.post("Profiler.start"); // keep capturing the next stall
+      });
+    };
+  } catch {
+    return undefined; // inspector unavailable → watchdog keeps logging only
+  }
 }
 
 async function readFileLines(path: string): Promise<string[]> {
