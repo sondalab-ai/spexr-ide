@@ -127,7 +127,7 @@ Commit: `feat(darkfactory): resume terminals select harness per session`
 - [x] Mark spec 0013 checkboxes/status per repo convention (`in-progress` until
       merged).
 
-Commit: `docs(spec): mark 0013 slice 4 shipped; complete plan checkboxes`
+Commit: `docs(spec): mark 0013 slice 4 in-progress; complete plan checkboxes`
 
 ## Out of scope (explicit)
 

@@ -5,6 +5,7 @@ import { parseTranscript } from "../../node/darkfactory/transcript-parser.js";
 import { readBoundedLines } from "../../node/darkfactory/bounded-read.js";
 import type { HarnessAdapter, HarnessSessionRef, ParsedTranscript, FollowHandle } from "./harness-types.js";
 import { buildResumeArgs, isSessionId } from "./resume-args.js";
+import { once } from "./once.js";
 
 /** One Claude transcript file discovered on disk; `readLines` is lazy. */
 export interface TranscriptRef {
@@ -88,10 +89,10 @@ export const claudeHarness: HarnessAdapter = {
       sessionId: r.sessionId,
       projectPath: "", // resolved from the transcript's cwd at parse time (as today)
       mtimeMs: r.mtimeMs,
-      loadEntries: async () => {
+      loadEntries: once(async () => {
         const lines = await r.readLines();
         return lines.map(parseLine).filter((e): e is ClaudeEntry => !!e);
-      },
+      }),
     }));
   },
 

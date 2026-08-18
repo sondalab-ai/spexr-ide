@@ -130,6 +130,17 @@ Key seam decisions:
   minimal column set verified against opencode 1.18.13; a future schema change
   degrades to "no opencode tiles" (empty list), never an error, per the spike's
   mitigation.
+- **Live opencode sessions fork-resume (no read-only follow yet).** opencode's
+  read-only follow is Slice 5, so `planFocus` never routes an opencode session to
+  `readonly-follow`; a session classified `working` opens a resume terminal that
+  the wall widget forks (`opencode --session <id> --fork`), branching from the
+  live history without disturbing the running session. Idle opencode sessions
+  resume plainly (`opencode --session <id>`).
+- **One read/export per session per scan.** A ref's `loadEntries` is memoized
+  (`common/harness/once.ts`), so the tile pipeline's two consumers
+  (`parseTranscript` and the entry distillers) share a single bounded read
+  (Claude) or a single `opencode export` spawn (opencode) — the export never runs
+  twice for the same tile on one scan.
 
 ## Testing strategy
 

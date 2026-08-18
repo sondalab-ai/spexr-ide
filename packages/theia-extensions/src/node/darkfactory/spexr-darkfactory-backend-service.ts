@@ -9,6 +9,7 @@ import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js"
 import { claudeHarness, scanClaudeTranscripts, type TranscriptRef } from "../../common/harness/claude-harness.js";
 import { opencodeHarness } from "../../common/harness/opencode-harness.js";
 import { installedHarnesses, type DetectFn } from "../../common/harness/harness-registry.js";
+import { once } from "../../common/harness/once.js";
 import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
 import { readBoundedLines } from "./bounded-read.js";
 import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
@@ -217,12 +218,15 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const meta = this.index.get(sessionId);
     const projectPath = meta?.projectPath ?? "";
     const configDir = meta?.configDir ?? "";
-    // Follow read-only when the session is live elsewhere OR (for Claude) when it
-    // lives in a config dir the launch command can't resume against. Opencode has
-    // no per-account config dir, so its sessions are always resumable.
+    // Claude: follow read-only when the session is live elsewhere OR when it lives
+    // in a config dir the launch command can't resume against. Opencode has no
+    // per-account config dir (always resumable) and no read-only follow yet
+    // (Slice 5), so a live opencode session opens a resume terminal — forked from
+    // the live history by the caller (see the wall widget) so it never disturbs the
+    // running session.
     const opencode = meta?.harnessId === "opencode";
     const resumable = !!meta && (opencode || meta.configDir === this.resumableConfigDir);
-    const kind = meta?.state === "working" || !resumable ? "readonly-follow" : "resume-terminal";
+    const kind = (!opencode && meta?.state === "working") || !resumable ? "readonly-follow" : "resume-terminal";
     return { sessionId, projectPath, configDir, kind };
   }
 
@@ -296,10 +300,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             sessionId: r.sessionId,
             projectPath: "", // resolved from the transcript's cwd at parse time (as today)
             mtimeMs: r.mtimeMs,
-            loadEntries: async () => {
+            loadEntries: once(async () => {
               const lines = await readBoundedLines(r.transcriptPath);
               return lines.map(parseLine).filter((e): e is TurnEntry => !!e);
-            },
+            }),
           },
           claude: r,
         });

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import type { HarnessAdapter, HarnessSessionRef, ParsedTranscript, FollowHandle } from "./harness-types.js";
+import { once } from "./once.js";
 
 /** One row of the `opencode db` session query. */
 interface SessionRow {
@@ -54,7 +55,7 @@ const INPUT_KEY: Record<string, string> = {
   command: "command",
 };
 
-function mapToolInput(tool: string, input: Record<string, unknown>): Record<string, unknown> {
+function mapToolInput(input: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
     out[INPUT_KEY[k] ?? k] = v;
@@ -71,13 +72,19 @@ function mapToolInput(tool: string, input: Record<string, unknown>): Record<stri
 export function opencodeMessageToEntry(msg: ExportMessage): { message: { role: string; content: unknown[] } } | undefined {
   const role = msg.info?.role;
   if (role !== "user" && role !== "assistant") return undefined;
-  const blocks: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }> = [];
+  const blocks: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown>; is_error?: boolean }> = [];
   for (const p of msg.parts ?? []) {
     if (p.type === "text" && typeof p.text === "string" && p.text.trim()) {
       blocks.push({ type: "text", text: p.text });
     } else if (p.type === "tool" && p.tool) {
       const name = TOOL_NAME[p.tool.toLowerCase()] ?? p.tool;
-      blocks.push({ type: "tool_use", name, input: mapToolInput(p.tool, p.state?.input ?? {}) });
+      blocks.push({ type: "tool_use", name, input: mapToolInput(p.state?.input ?? {}) });
+      // Emit a matching tool_result so `lastActionFailed` sees opencode failures
+      // (state.status ∈ {completed, error}; a failed tool carries state.error).
+      const status = p.state?.status;
+      if (status === "completed" || status === "error") {
+        blocks.push({ type: "tool_result", is_error: status === "error" });
+      }
     }
   }
   if (!blocks.length) return undefined;
@@ -113,7 +120,7 @@ export const opencodeHarness: HarnessAdapter = {
       sessionId: r.id,
       projectPath: r.directory,
       mtimeMs: r.time_updated,
-      loadEntries: async () => opencodeExportToEntries(await exportSession(r.id)),
+      loadEntries: once(async () => opencodeExportToEntries(await exportSession(r.id))),
     }));
   },
 

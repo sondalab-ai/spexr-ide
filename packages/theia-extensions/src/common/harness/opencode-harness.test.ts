@@ -1,5 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
+
+import { execFile } from "node:child_process";
 import { opencodeHarness, opencodeMessageToEntry, opencodeExportToEntries } from "./opencode-harness.js";
+
+const execFileMock = execFile as unknown as ReturnType<typeof vi.fn>;
+
+/**
+ * Route the mocked `execFile` by argv, returning `{ stdout }` or `{ err }`.
+ * Arity-robust: picks the argv (first array arg) and callback (last function arg)
+ * regardless of whether `options` was passed.
+ */
+function mockCli(handler: (args: string[]) => { stdout?: string; err?: Error }): void {
+  execFileMock.mockImplementation((...all: unknown[]) => {
+    const args = (all.find((a) => Array.isArray(a)) ?? []) as string[];
+    const cb = all.find((a) => typeof a === "function") as ((e: Error | null, out: string) => void) | undefined;
+    if (!cb) return; // ignore any non-callback invocation
+    const { stdout = "", err = null } = handler(args);
+    cb(err, stdout);
+  });
+}
 
 describe("opencodeHarness.isResumableId", () => {
   it("accepts opaque ses_ ids", () => {
@@ -128,5 +149,84 @@ describe("opencodeHarness.parseTranscript (via export fixture)", () => {
     const empty = { ...ref, loadEntries: async () => [] };
     const p = await opencodeHarness.parseTranscript(empty);
     expect(p).toEqual({ cwd: "/tmp/proj", userTurns: 0, goal: "", lastPrompt: "", interactive: true });
+  });
+});
+
+describe("opencode tool_result failure signal", () => {
+  it("emits is_error for a failed tool so lastActionFailed sees it", async () => {
+    const { lastActionFailed } = await import("../../node/darkfactory/action-distiller.js");
+    const entries = opencodeExportToEntries([
+      { info: { role: "assistant" }, parts: [{ type: "tool", tool: "bash", state: { input: { command: "x" }, status: "error" } }] },
+    ]);
+    expect(lastActionFailed(entries as never)).toBe(true);
+  });
+
+  it("a completed tool is not a failure", async () => {
+    const { lastActionFailed } = await import("../../node/darkfactory/action-distiller.js");
+    const entries = opencodeExportToEntries([
+      { info: { role: "assistant" }, parts: [{ type: "tool", tool: "bash", state: { input: { command: "x" }, status: "completed" } }] },
+    ]);
+    expect(lastActionFailed(entries as never)).toBe(false);
+  });
+
+  it("the last tool's outcome wins (completed after an earlier error → not failed)", async () => {
+    const { lastActionFailed } = await import("../../node/darkfactory/action-distiller.js");
+    const entries = opencodeExportToEntries([
+      {
+        info: { role: "assistant" },
+        parts: [
+          { type: "tool", tool: "bash", state: { input: { command: "boom" }, status: "error" } },
+          { type: "tool", tool: "bash", state: { input: { command: "ok" }, status: "completed" } },
+        ],
+      },
+    ]);
+    expect(lastActionFailed(entries as never)).toBe(false);
+  });
+});
+
+describe("opencodeHarness.listSessions (mocked opencode db)", () => {
+  beforeEach(() => execFileMock.mockReset());
+
+  const rows = [
+    { id: "ses_a", directory: "/p/a", parent_id: null, title: "t", agent: "x", model: "m", time_created: 1, time_updated: 20 },
+    { id: "ses_b", directory: "/p/b", parent_id: null, title: "u", agent: "x", model: "m", time_created: 2, time_updated: 10 },
+  ];
+
+  it("maps db rows to refs (sessionId, projectPath, mtimeMs) preserving order", async () => {
+    mockCli(() => ({ stdout: JSON.stringify(rows) }));
+    const refs = await opencodeHarness.listSessions();
+    expect(refs.map((r) => [r.sessionId, r.projectPath, r.mtimeMs])).toEqual([
+      ["ses_a", "/p/a", 20],
+      ["ses_b", "/p/b", 10],
+    ]);
+  });
+
+  it("memoizes loadEntries — one `opencode export` spawn per ref per scan", async () => {
+    let exportCalls = 0;
+    mockCli((args) => {
+      if (args[0] === "db") return { stdout: JSON.stringify([rows[0]]) };
+      exportCalls++;
+      return { stdout: JSON.stringify({ messages: [{ info: { role: "user" }, parts: [{ type: "text", text: "hi" }] }] }) };
+    });
+    const [ref] = await opencodeHarness.listSessions();
+    const first = await ref.loadEntries();
+    const second = await ref.loadEntries();
+    expect(exportCalls).toBe(1);
+    expect(first).toBe(second); // same memoized result, not a re-read
+  });
+
+  it("resolves to [] when `opencode db` fails (enumeration unavailable)", async () => {
+    mockCli(() => ({ err: new Error("command not found") }));
+    expect(await opencodeHarness.listSessions()).toEqual([]);
+  });
+
+  it("resolves to [] on non-JSON stdout", async () => {
+    mockCli(() => ({ stdout: "Exporting session: …not json" }));
+    expect(await opencodeHarness.listSessions()).toEqual([]);
+  });
+
+  it("resolves to [] when the query yields a non-array", async () => {
+    mockCli(() => ({ stdout: JSON.stringify({ error: "bad schema" }) }));
+    expect(await opencodeHarness.listSessions()).toEqual([]);
   });
 });
