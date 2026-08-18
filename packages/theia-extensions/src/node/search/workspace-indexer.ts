@@ -10,7 +10,7 @@ import {
   DEFAULT_MAX_BYTES,
   createIgnoreFilter,
   isBinaryBuffer,
-  isSkippedExtension,
+  isSkippedFile,
 } from "./file-filter.js";
 
 const MAX_CONTENT_CHARS = 2000;
@@ -196,7 +196,7 @@ export class WorkspaceIndexer {
           if (ignored(`${rel}/`)) continue;
           await walk(abs);
         } else if (entry.isFile()) {
-          if (isSkippedExtension(rel) || ignored(rel)) continue;
+          if (isSkippedFile(rel) || ignored(rel)) continue;
           const info = await stat(abs);
           if (info.size > DEFAULT_MAX_BYTES) continue;
           const buf = await readFile(abs);
@@ -239,7 +239,7 @@ export class WorkspaceIndexer {
     } catch {
       return this.index.remove(relPath);
     }
-    if (!info.isFile() || info.size > DEFAULT_MAX_BYTES || isSkippedExtension(relPath)) {
+    if (!info.isFile() || info.size > DEFAULT_MAX_BYTES || isSkippedFile(relPath)) {
       return this.index.remove(relPath);
     }
     const buf = await readFile(abs);
