@@ -134,11 +134,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     const plan = await this.service.planFocus(tile.sessionId);
     if (this.pinnedSessionId !== tile.sessionId) return; // pin changed while awaiting
     if (plan.kind === "resume-terminal") {
-      // A live session that still routes to a resume terminal is opencode (Claude
-      // live → readonly-follow above); fork so the resume branches from the live
-      // history instead of attaching to the running session.
-      const fork = tile.state === "working";
-      const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, fork);
+      const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, false);
       if (this.pinnedSessionId !== tile.sessionId) {
         term?.dispose();
         return;

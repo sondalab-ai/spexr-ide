@@ -173,6 +173,32 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     ]);
   });
 
+  it("planFocus routes a working opencode session to readonly-follow (fork stays an explicit CTA)", async () => {
+    const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: opencodeHarness,
+            ref: {
+              sessionId: "ses_live",
+              projectPath: "/Users/x/src/oc-live",
+              mtimeMs: NOW - 5_000,
+              loadEntries: async () => [
+                { message: { role: "user", content: [{ type: "text", text: "keep building the dashboard widgets" }] } },
+                { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+                { message: { role: "user", content: [{ type: "tool_result", is_error: false }] } },
+              ],
+            },
+          },
+        ]),
+      liveProjectDirs: () => Promise.resolve(new Set(["/Users/x/src/oc-live"])),
+    });
+    const tiles = await s.listTiles();
+    expect(tiles[0]).toMatchObject({ sessionId: "ses_live", state: "working" });
+    expect((await s.planFocus("ses_live")).kind).toBe("readonly-follow");
+  });
+
   it("planFocus falls back to readonly-follow when the session's config dir isn't resumable", async () => {
     const s = svc({
       liveProjectDirs: () => Promise.resolve(new Set()),

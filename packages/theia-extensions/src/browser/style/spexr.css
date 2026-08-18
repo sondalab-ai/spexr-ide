@@ -2390,6 +2390,14 @@ code {
   background: color-mix(in srgb, var(--spexr-text-primary) 4%, transparent);
   border-radius: var(--spexr-radius-sm, 6px);
 }
+/* Live opencode session: no transcript follow yet — explain and point at the fork CTA. */
+.spexr-df-pinned__nofollow {
+  flex: 1 1 auto; min-height: 0; display: flex; align-items: center;
+  padding: var(--spexr-space-4);
+  background: color-mix(in srgb, var(--spexr-text-primary) 4%, transparent);
+  border-radius: var(--spexr-radius-sm, 6px);
+  color: var(--spexr-text-muted); font-size: var(--spexr-text-sm); line-height: 1.5;
+}
 
 /* Interactive embedded terminal host: fills the pinned card body. */
 .spexr-df-termhost {

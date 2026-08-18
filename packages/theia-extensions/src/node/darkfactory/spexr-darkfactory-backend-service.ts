@@ -308,15 +308,17 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const meta = this.index.get(sessionId);
     const projectPath = meta?.projectPath ?? "";
     const configDir = meta?.configDir ?? "";
-    // Claude: follow read-only when the session is live elsewhere OR when it lives
-    // in a config dir the launch command can't resume against. Opencode has no
-    // per-account config dir (always resumable) and no read-only follow yet
-    // (Slice 5), so a live opencode session opens a resume terminal — forked from
-    // the live history by the caller (see the wall widget) so it never disturbs the
-    // running session.
+    // A WORKING session always opens read-only, on every harness: resuming it
+    // would attach to (Claude) or risk disturbing the running session, and the
+    // decision to fork is an explicit "Fork & continue" action in the pinned
+    // card, never an automatic side effect of opening the tile. A session also
+    // opens read-only when it lives in a config dir the launch command can't
+    // resume against. Opencode has no per-account config dir (always resumable)
+    // and no read-only follow yet (Slice 5), so its read-only view carries the
+    // fork CTA with an empty transcript until then.
     const opencode = meta?.harnessId === "opencode";
     const resumable = !!meta && (opencode || meta.configDir === this.resumableConfigDir);
-    const kind = (!opencode && meta?.state === "working") || !resumable ? "readonly-follow" : "resume-terminal";
+    const kind = meta?.state === "working" || !resumable ? "readonly-follow" : "resume-terminal";
     return { sessionId, projectPath, configDir, kind };
   }
 
