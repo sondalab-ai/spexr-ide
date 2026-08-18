@@ -186,6 +186,8 @@ terminal functional parity. Includes the agent-file-pickup validation.
 spike** on global session enumeration (per-directory `session list` vs. deriving
 project dirs from live processes vs. reading the database) before implementing.
 Delivers: opencode sessions visible and resumable on the wall.
+*Status: implemented on `feat/multi-harness-opencode` (2026-08-18, contract
+`docs/specs/0013-harness-adapter-slice-4.md`) — not yet merged to main.*
 
 **Slice 5 — Darkfactory: live-follow + AI summary for opencode.**
 `followSession` via polling `opencode export` (or an opencode server stream —

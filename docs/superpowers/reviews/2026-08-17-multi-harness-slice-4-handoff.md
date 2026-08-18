@@ -1,86 +1,98 @@
-# Multi-harness Slice 4 — Planning handoff (adversarial review input)
+# Multi-harness Slice 4 — End-of-work report (adversarial review input)
 
-> **What is this file.** Handoff report for the adversarial reviewer of the
-> **planning artifacts** for `feat/multi-harness-opencode` Slice 4 (Darkfactory
-> opencode tiles + resume). Audience: the reviewer agent. Owner: marcello.barile.
-> Artifacts under review: contract
-> `docs/specs/0013-harness-adapter-slice-4.md` and plan
-> `docs/superpowers/plans/2026-08-17-multi-harness-slice-4.md`. Design:
-> `docs/superpowers/specs/2026-08-17-multi-harness-opencode-design.md`; R1 spike
-> (resolved): `docs/superpowers/specs/2026-08-17-opencode-enumeration-spike.md`;
-> Slice 1 contract: `docs/specs/0012-harness-adapter-slice-1.md`.
+> **What is this file.** Handoff report for the adversarial reviewer of
+> `feat/multi-harness-opencode` (Slice 4: Darkfactory opencode tiles + resume).
+> Audience: the reviewer agent. Owner: marcello.barile. Contract under review:
+> `docs/specs/0013-harness-adapter-slice-4.md`; design:
+> `docs/superpowers/specs/2026-08-17-multi-harness-opencode-design.md`; plan:
+> `docs/superpowers/plans/2026-08-17-multi-harness-slice-4.md`. Slice 4 stacks on
+> Slice 1 (contract `docs/specs/0012-harness-adapter-slice-1.md`, also unmerged) —
+> review both as one unit.
 
 ## Status
 
-**Planning complete, implementation not started.** No code was written in this
-session. Working tree clean at commit `3df892d` (branch
-`feat/multi-harness-opencode`). The plan is execution-ready for a
-subagent-driven run; nothing in it has been verified against the codebase
-beyond the reads listed below.
+Complete and green. All 7 plan tasks done; spec 0013 status `in-progress`
+(reserved `shipped`/`ship` until merged to main and available to users).
+Working tree clean at commit `6f3c3fe` (branch `feat/multi-harness-opencode`).
 
-## What was done this session
+## Scope (and explicit non-scope)
 
-1. Re-established context from: spec 0012, the design doc (incl. the resolved
-   R1 section), the R1 spike, the Slice 1 handoff report, and the current code
-   (`common/harness/*`, `node/darkfactory/*`, `browser/darkfactory/
-   darkfactory-terminal-manager.ts`, `common/darkfactory-protocol.ts`).
-2. Three scope decisions were made with the user (recorded here for the
-   reviewer):
-   - **Interface extension:** `followSession` is added to `HarnessAdapter` in
-     Slice 4 (not deferred to Slice 5), with an opencode fail-fast stub; the
-     backend does not call it yet. Rationale: avoid re-opening the interface in
-     Slice 5.
-   - **Backend wiring:** registry-driven — the backend consumes
-     `installedHarnesses`/`resolveActiveHarness` (Slice 1's currently
-     test-only registry) and merges `listSessions()` from every installed
-     harness. Both installed harnesses are scanned; no user preference needed
-     for the wall.
-   - **Transcript strategy:** `listSessions` is the cheap `opencode db` query;
-     `opencode export` is lazy, only for sessions inside the existing
-     `RECENT_LIMIT` cut — parity with Claude's bounded-read discipline.
-3. Wrote contract 0013 (6 ACs) + plan (7 tasks), committed as `3df892d`.
+Slice 4 extends the `HarnessAdapter` seam with session members
+(`listSessions`, `parseTranscript`, `followSession`), adds a live
+`OpencodeHarness`, routes the Darkfactory backend through the
+`HarnessRegistry` (its first live consumer), and makes resume terminals select
+the harness per session. Deliberately NOT in this slice: Agent-terminal launch
+for opencode (Slices 2–3), live-follow streaming + AI summary for opencode
+(Slice 5 — `followSession` is a fail-fast stub, the backend never calls it),
+`spexr.agent.harness` preference / switch command, and project-memory linking
+(Slice 6).
+
+## Commits under review (Slice 4 only; Slice 1 commits are in its own handoff)
+
+| Commit | Content |
+|--------|---------|
+| `3df892d` | Docs — contract 0013 + plan (not part of the code diff) |
+| `ca00d67` | Task 1 — `ParsedTranscript` moved to `common/harness/harness-types.ts`; `transcript-parser.ts` re-export shim |
+| `a3e9860` | Task 2 — `HarnessSessionRef`/`FollowHandle` types; `listSessions`/`parseTranscript`/`followSession` added to the interface; `ClaudeHarness` implements them (`scanClaudeTranscripts` extracted, bounded-read moved to `node/darkfactory/bounded-read.ts`) |
+| `8b48a8b` | Task 3 — `OpencodeHarness`: `opencode db` enumeration, `opencode export` parsing, `ses_…` id whitelist, `--session`/`--fork` resume args |
+| `b86f92b` | Task 4 — opencode export → Claude entry-shape normalization (tool names bash→Bash, inputs filePath→file_path) so the shared distiller/follow consumers work unmodified |
+| `b7bf6c9` | Task 5 — backend routes through `installedHarnesses`; merged multi-harness tile pipeline; opencode sessions always resumable in `planFocus` |
+| `6f3c3fe` | Task 6 — resume terminal manager selects harness by id shape (UUID → claude, `ses_…` → opencode); new unit tests |
+
+## Verification evidence (run 2026-08-18, post-Task 6)
+
+- `pnpm run typecheck` in `packages/theia-extensions`: clean.
+- `pnpm run lint`: clean.
+- `pnpm exec vitest run`: **35 files / 289 tests passed**, zero failures
+  (baseline before Slice 4: 33 files / 270 tests; +2 files, +19 tests).
+- Pre-existing suites pass unchanged in behavior; the backend test's fixture
+  shape was updated to the new `UnifiedRef` wrapper (mechanical, same data).
+- **Real-CLI e2e** (temporary vitest file against the installed opencode
+  1.18.13, removed after running): `opencodeHarness.listSessions()` returned
+  **72 sessions**; `parseTranscript` on the newest produced
+  `{cwd: "/Users/marcello.barile/src/mine/spexr", interactive: true}` —
+  enumeration + export parsing work end-to-end.
 
 ## Reviewer attention points
 
-1. **Contract/code consistency.** The ACs reference existing code by name
-   (`scanDisk`, `startFollow`, `RECENT_LIMIT`, `liveProjectDirs`,
-   `classifySession`). Verify each reference is accurate against the current
-   tree — e.g. AC-2 says `claudeHarness.listSessions` "walks the config dirs
-   exactly as today's `scanDisk` does"; `scanDisk` is a private method of
-   `SpexrDarkfactoryBackendService` (spexr-darkfactory-backend-service.ts:276),
-   so Task 2's extraction step must not change its observable behavior.
-2. **`HarnessSessionRef` shape.** AC-1 leaves the exact fields to the plan
-   ("neutral: sessionId, projectPath, mtimeMs, harness-specific payload"). The
-   reviewer should flag if a concrete shape is needed in the contract for
-   testability; the plan does not pin one.
-3. **Opencode `interactive: true` hardcode** (AC-3). The Claude pipeline uses
-   `interactive` to filter SDK/one-shot sessions out of the wall. Opencode has
-   no such flood today, but if it ever gains a headless mode the wall will show
-   it. Acceptable for Slice 4; flag as a known limitation if you disagree.
-4. **Resume-harness selection by id shape** (AC-5). UUID regex → claude,
-   `ses_…` → opencode. This duplicates the two harnesses' `isResumableId`
-   checks in the browser. Alternative: the backend could tag each tile with its
-   harness id (protocol change). The contract chose no protocol change; flag if
-   you think the tag is worth it.
-5. **`planFocus` for opencode** (Task 5): always resumable, `configDir: ""`.
-   Verify this matches how the frontend consumes `FocusPlan.configDir`
-   (darkfactory-terminal-manager.ts:112 falls back to a preference — confirm
-   the empty string flows correctly).
-6. **Schema coupling.** The `opencode db` SELECT is pinned to opencode 1.18.13
-   columns (spike). Failure degrades to "no opencode tiles" (empty list), never
-   an error — verify AC-3's "never rejects" is testable as written.
-7. **Slice 1 status.** Spec 0012 still says `in-progress` (not merged to main).
-   Slice 4 stacks on it; the branch is not shippable until Slice 1 merges.
-   Confirm the reviewer treats both as one review unit.
+1. **Behavior-preservation for Claude (AC-6) is the whole contract.** The
+   backend's tile pipeline now calls `harness.parseTranscript(ref)` instead of
+   its inline `parseTranscript(lines)`. For Claude this round-trips
+   entries → JSON lines → `parseTranscript`; verify it yields identical fields
+   (goal/turns/mode/permissionMode/cwd) — the pre-existing backend tests are the
+   gate, but they exercise a small fixture.
+2. **`claudeHarness.listSessions` is currently unused by the backend** — the
+   backend builds Claude `UnifiedRef`s directly in `defaultListTranscripts` (it
+   needs the `TranscriptRef` for `transcriptPath`/`configDir`, which
+   `HarnessSessionRef` deliberately does not carry). Both paths share
+   `scanClaudeTranscripts`, so there is one source of truth; flag if you want
+   the harness member to be the sole path.
+3. **Opencode `interactive: true` hardcode** (AC-3). Claude uses `interactive`
+   to filter SDK/one-shot sessions; opencode has no headless flood today, but a
+   future headless mode would appear on the wall. Known limitation, accepted.
+4. **Resume-harness selection by id shape** (AC-5) duplicates the two
+   `isResumableId` checks in the browser instead of tagging tiles with their
+   harness id (would need a protocol change). Chosen to keep the protocol stable;
+   flag if you think the tag is worth it.
+5. **Tool-name/input mapping** (Task 4): opencode's `bash/read/write/edit/…`
+   map to Claude names and `filePath`→`file_path` so `distillAction`/
+   `recentActions` render known verbs ("Running: …", "Editing …"). Unmapped tools
+   pass through verbatim. Verify the mapping table covers the tools you care about.
+6. **`opencode db` schema coupling** (spike R1). The SELECT is pinned to opencode
+   1.18.13 columns; any failure/empty result resolves to `[]` → "no opencode
+   tiles", never an error. Verify the never-rejects path is covered by tests.
+7. **Default detect seam.** In production the backend's default detect reports
+   only Claude installed (opencode detection via `command -v` is not wired yet —
+   that arrives with Slices 2–3's preference/launch work). So opencode tiles
+   appear only when a caller injects a detect that reports both. This is
+   intentional scope control; flag if you expect auto-detection in Slice 4.
 
 ## Known limitations / assumptions
 
-- No implementation, so no verification evidence (typecheck/lint/test runs)
-  exists for Slice 4 yet — the gate is defined in the plan's ground rules and
-  AC-6.
-- `opencode` CLI facts are from the 2026-08-17 spike on opencode 1.18.13; a
-  newer install could differ (mitigated per the spike).
-- The plan assumes `execFile("opencode", …)` resolves via PATH in the backend's
-  environment; if the user's `opencode` is only on their login-shell PATH, the
-  backend may need the same robust resolution Claude uses
-  (`resolveClaudeExecutableRobust`). Not pinned in the contract — flag.
+- `followSession` throws for both harnesses (Claude's follow stays in the
+  backend service, opencode's is Slice 5) — the interface member exists so Slice
+  5 doesn't re-open it.
+- Opencode resume terminals launch bare `opencode` via the login shell; there is
+  no `spexr.opencode.executable` preference yet (Slice 2).
+- No manual wall verification was performed (requires a running Theia workbench);
+  the e2e above covers the harness layer against the real CLI.
