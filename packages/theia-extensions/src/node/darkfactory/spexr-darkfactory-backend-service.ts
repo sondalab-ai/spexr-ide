@@ -2,6 +2,7 @@ import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { basename } from "node:path";
 import { readFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
+import { execFile } from "node:child_process";
 import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
 import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
@@ -80,7 +81,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly now: () => number;
   private readonly listTranscripts: () => Promise<UnifiedRef[]>;
   private readonly liveDirs: () => Promise<Set<string> | null>;
-  private readonly installed: HarnessAdapter[];
+  /** Test-injected synchronous detection; absent in production (login-shell probe). */
+  private readonly detectSync: DetectFn | undefined;
+  /** Memoized installed-harness set — resolved lazily so injected seams never spawn a probe. */
+  private installedCache?: Promise<HarnessAdapter[]>;
 
   private readonly generator: DescriptionGenerator | undefined;
   private client?: SpexrDarkfactoryClient;
@@ -98,12 +102,28 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.configDirs = d.configDirs ?? defaultConfigDirs();
     this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
-    const detect = d.detect ?? ((a) => a.id === "claude"); // tests: claude-only unless overridden
-    this.installed = installedHarnesses(ALL_HARNESSES, detect);
+    this.detectSync = d.detect;
     this.listTranscripts = d.listTranscripts ?? (() => this.defaultListTranscripts());
-    const names = this.installed.flatMap((h) => h.processNames());
-    this.liveDirs = d.liveProjectDirs ?? (() => defaultLiveProjectDirs(undefined, undefined, names));
+    this.liveDirs =
+      d.liveProjectDirs ??
+      (async () => {
+        const installed = await this.installed();
+        return defaultLiveProjectDirs(undefined, undefined, installed.flatMap((h) => h.processNames()));
+      });
     this.generator = d.generator;
+  }
+
+  /**
+   * Which harnesses are installed, resolved once. Tests inject a synchronous
+   * `detect`; in production Claude is the hard dependency (always present) and
+   * every other harness is probed via a login-shell `command -v` (opencode lives
+   * on the user's PATH, e.g. /opt/homebrew/bin, which the app process may not
+   * inherit). Lazy + memoized so injected-seam tests never spawn the probe.
+   */
+  private installed(): Promise<HarnessAdapter[]> {
+    return (this.installedCache ??= this.detectSync
+      ? Promise.resolve(installedHarnesses(ALL_HARNESSES, this.detectSync))
+      : detectInstalledHarnesses(ALL_HARNESSES));
   }
 
   /**
@@ -291,7 +311,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /** Merge every installed harness's session list (Claude: disk walk, opencode: db query). */
   private async defaultListTranscripts(): Promise<UnifiedRef[]> {
     const out: UnifiedRef[] = [];
-    if (this.installed.includes(claudeHarness)) {
+    const installed = await this.installed();
+    if (installed.includes(claudeHarness)) {
       const claudeRefs = await scanClaudeTranscripts(this.configDirs);
       for (const r of claudeRefs) {
         out.push({
@@ -309,7 +330,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         });
       }
     }
-    for (const h of this.installed) {
+    for (const h of installed) {
       if (h.id === "claude") continue;
       const refs = await h.listSessions();
       for (const ref of refs) out.push({ harness: h, ref });
@@ -332,6 +353,30 @@ function parseLine(line: string): TurnEntry | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Whether `bin` resolves on the user's login-shell PATH. Runs the same kind of
+ * login+interactive shell the resume terminals use, so detection matches where
+ * the resume actually finds the binary (e.g. /opt/homebrew/bin for opencode,
+ * which the Electron backend's own PATH may not include). `bin` comes from the
+ * hardcoded harness list, never user input.
+ */
+function commandExists(bin: string): Promise<boolean> {
+  const shell = process.env.SHELL || "/bin/zsh";
+  return new Promise((resolve) => {
+    execFile(shell, ["-lic", `command -v ${bin}`], { timeout: 5000 }, (err, stdout) => {
+      resolve(!err && stdout.trim().length > 0);
+    });
+  });
+}
+
+/** Claude is the hard dependency (always installed); probe every other harness via `command -v`. */
+export async function detectInstalledHarnesses(adapters: HarnessAdapter[]): Promise<HarnessAdapter[]> {
+  const flags = await Promise.all(
+    adapters.map((a) => (a.id === "claude" ? Promise.resolve(true) : commandExists(a.id))),
+  );
+  return adapters.filter((_, i) => flags[i]);
 }
 
 async function readFileLines(path: string): Promise<string[]> {
