@@ -1,24 +1,44 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { writeSync } from "node:fs";
 
-vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
+vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { opencodeHarness, opencodeMessageToEntry, opencodeExportToEntries } from "./opencode-harness.js";
 
-const execFileMock = execFile as unknown as ReturnType<typeof vi.fn>;
+const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>;
 
 /**
- * Route the mocked `execFile` by argv, returning `{ stdout }` or `{ err }`.
- * Arity-robust: picks the argv (first array arg) and callback (last function arg)
- * regardless of whether `options` was passed.
+ * Route the mocked `spawn` by argv, writing `{ stdout }` to the real stdout fd
+ * (runOpencode redirects it to a temp file because Bun truncates pipes) and
+ * emitting `close`, or emitting `error`. The fd write happens before `close`
+ * so the production `readFileSync` sees the payload.
  */
 function mockCli(handler: (args: string[]) => { stdout?: string; err?: Error }): void {
-  execFileMock.mockImplementation((...all: unknown[]) => {
+  spawnMock.mockImplementation((...all: unknown[]) => {
     const args = (all.find((a) => Array.isArray(a)) ?? []) as string[];
-    const cb = all.find((a) => typeof a === "function") as ((e: Error | null, out: string) => void) | undefined;
-    if (!cb) return; // ignore any non-callback invocation
+    const opts = all.find((a) => !!a && typeof a === "object" && !Array.isArray(a)) as { stdio?: unknown[] } | undefined;
     const { stdout = "", err = null } = handler(args);
-    cb(err, stdout);
+    const handlers: Record<string, (...a: unknown[]) => void> = {};
+    const child = {
+      once(event: string, cb: (...a: unknown[]) => void): unknown {
+        handlers[event] = cb;
+        return child;
+      },
+    };
+    const fd = Array.isArray(opts?.stdio) ? (opts.stdio![1] as number) : undefined;
+    setImmediate(() => {
+      if (!err && typeof fd === "number") {
+        try {
+          writeSync(fd, stdout);
+        } catch {
+          /* fd already closed */
+        }
+      }
+      if (err) handlers["error"]?.(err);
+      else handlers["close"]?.(0);
+    });
+    return child;
   });
 }
 
@@ -185,7 +205,7 @@ describe("opencode tool_result failure signal", () => {
 });
 
 describe("opencodeHarness.listSessions (mocked opencode db)", () => {
-  beforeEach(() => execFileMock.mockReset());
+  beforeEach(() => spawnMock.mockReset());
 
   const rows = [
     { id: "ses_a", directory: "/p/a", parent_id: null, title: "t", agent: "x", model: "m", time_created: 1, time_updated: 20 },

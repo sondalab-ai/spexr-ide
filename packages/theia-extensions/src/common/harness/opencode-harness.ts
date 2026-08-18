@@ -1,4 +1,7 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
+import { openSync, closeSync, readFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { HarnessAdapter, HarnessSessionRef, ParsedTranscript, FollowHandle } from "./harness-types.js";
 import { opencodeCore } from "./opencode-harness-core.js";
 import { once } from "./once.js";
@@ -19,12 +22,49 @@ interface SessionRow {
 const SESSION_QUERY =
   "SELECT id, directory, parent_id, title, agent, model, time_created, time_updated FROM session ORDER BY time_updated DESC";
 
+/**
+ * opencode (Bun) truncates stdout written to a PIPE at ~128 KiB — the tail is
+ * never flushed when the process exits, so a large `opencode export` payload
+ * arrives as corrupted JSON (verified: 2.9 MB session truncated at exactly
+ * 131072 bytes; file redirect unaffected). Spawn with stdout redirected to a
+ * temp file and read it back; callers stay fail-soft on the parse downstream.
+ */
 function runOpencode(args: string[], timeoutMs = 15_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile("opencode", args, { timeout: timeoutMs, maxBuffer: 32 << 20 }, (err, stdout) => {
-      if (err && !stdout) reject(err);
-      else resolve(stdout);
-    });
+    const outFile = join(tmpdir(), `spexr-opencode-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.out`);
+    let fd: number;
+    try {
+      fd = openSync(outFile, "w");
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    const child = spawn("opencode", args, { stdio: ["ignore", fd, "ignore"], timeout: timeoutMs });
+    let settled = false;
+    const done = (err: Error | null): void => {
+      if (settled) return;
+      settled = true;
+      try {
+        closeSync(fd);
+      } catch {
+        /* already closed */
+      }
+      let out = "";
+      try {
+        out = readFileSync(outFile, "utf8");
+      } catch {
+        /* missing/unreadable → resolve empty, callers fail soft */
+      }
+      try {
+        unlinkSync(outFile);
+      } catch {
+        /* best effort */
+      }
+      if (err) reject(err);
+      else resolve(out);
+    };
+    child.once("error", done);
+    child.once("close", (code) => done(code === 0 ? null : new Error(`opencode ${args[0]} exited with code ${code}`)));
   });
 }
 
