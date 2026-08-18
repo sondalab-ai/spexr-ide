@@ -17,8 +17,8 @@ import { once } from "../../common/harness/once.js";
 import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
 import { readBoundedLines } from "./bounded-read.js";
 import { distillAction, nowActionLine, recentActions, lastActionFailed } from "./action-distiller.js";
-import { buildTurnsText, buildFollowEvents, sessionGoal, type TurnEntry } from "./turns.js";
-import { parseSessionSummary, type DescriptionGenerator } from "../search/description-format.js";
+import { buildFollowEvents, sessionGoal, recentAssistantProse, type TurnEntry } from "./turns.js";
+import { buildNowPrompt, buildOverviewPrompt, cleanSummaryLine, type DescriptionGenerator } from "../search/description-format.js";
 import type {
   AgentSummary,
   AgentTile,
@@ -31,14 +31,17 @@ const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
 /** Follow backfill cap: how many recent events the read-only view seeds with. */
 const FOLLOW_EVENTS = 40;
-const SUMMARY_TURNS = 14;
+/** How many recent assistant prose segments feed the now/overview summary model. */
+const SUMMARY_PROSE_TURNS = 4;
 /**
- * Below this much rendered context the small local model fabricates content
- * ("developing a web application using Python and Flask…") instead of
- * summarizing. Skip the inference and leave the summary empty — the tile
- * already shows the session's goal.
+ * Below this much combined goal+progress the small local model fabricates content
+ * ("developing a web application using Python and Flask…") instead of summarizing,
+ * so the inference is skipped and Now falls back to the deterministic action line.
+ * Tuned for chip-free input: the summary is now fed goal + assistant prose only
+ * (no tool chips), which is far shorter than the old turns digest — a resumed
+ * session with a terse goal ("continua") but real work must still clear this.
  */
-const MIN_SUMMARY_CHARS = 120;
+const MIN_SUMMARY_CHARS = 60;
 const PALETTE_SIZE = 8;
 /**
  * Only the most-recently-active sessions are read on each scan. Transcript
@@ -191,25 +194,35 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     } else if (meta.loadEntries) {
       entries = ((await meta.loadEntries()) ?? []) as TurnEntry[];
     }
-    // Now = deterministic last-action line (always factual, and inherently
-    // distinct from the goal). Overview = the model, asked for ONLY that one
-    // clause — a single anchored ask is what the small model does reliably; the
-    // previous two-clause ask came back merged, first-person, or echoing raw
-    // tool payloads.
-    const nowClause = entries.length > 0 ? nowActionLine(entries) : "";
+    // Both lines are model-written from real content, via two SEPARATE single-clause
+    // asks (the paired ask came back merged/first-person/echoing tool payloads):
+    //  - Overview = the session goal grounded in recent progress prose (not a stale
+    //    paraphrase of the first prompt; not the full turns digest, which made the
+    //    model enumerate actions and overrun the token cap).
+    //  - Now = the current task named from the most recent prose ("fixing the token
+    //    expiry check") rather than the raw tool call.
+    // Recent prose excludes tool chips, keeping the input small and enumeration-free.
     const goal = entries.length > 0 ? sessionGoal(entries) : "";
-    const turnsText = buildTurnsText(entries, SUMMARY_TURNS);
+    const progress = entries.length > 0 ? recentAssistantProse(entries, SUMMARY_PROSE_TURNS).join("\n") : "";
+    // Deterministic fallback for Now: always factual, used when the model is
+    // unavailable, the context is thin, or the model returns nothing.
+    let now = entries.length > 0 ? nowActionLine(entries) : "";
     let overview = "";
-    // Overview = the model condensing the session GOAL only — feeding it the whole
-    // turns text made it enumerate recent actions and run past the token cap.
-    if (goal && turnsText.length >= MIN_SUMMARY_CHARS && this.generator?.isAvailable()) {
-      const raw = await this.generator.summarize(goal);
-      if (raw) {
-        const parsed = parseSessionSummary(raw);
-        overview = parsed.overview || parsed.now; // single-line reply can land in either field
-      }
+    // Thin-context guard on the combined goal+progress: below it the small model
+    // fabricates rather than summarizes. The goal (real user text) dominates, so a
+    // session with a substantial first prompt clears it even when prose is terse.
+    const context = `${goal}\n${progress}`;
+    if (this.generator?.isAvailable() && context.length >= MIN_SUMMARY_CHARS) {
+      const [rawOverview, rawNow] = await Promise.all([
+        goal ? this.generator.summarize(buildOverviewPrompt(goal, progress), "overview") : Promise.resolve(null),
+        progress.trim() ? this.generator.summarize(buildNowPrompt(progress), "now") : Promise.resolve(null),
+      ]);
+      const modelOverview = rawOverview ? cleanSummaryLine(rawOverview) : "";
+      const modelNow = rawNow ? cleanSummaryLine(rawNow) : "";
+      if (modelOverview) overview = modelOverview;
+      if (modelNow) now = modelNow;
     }
-    if (nowClause || overview) summary = { now: nowClause, overview };
+    if (now || overview) summary = { now, overview };
     this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, summary });
     return summary;
   }

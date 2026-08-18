@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, buildSymbolSummary, cleanGenerated, DESCRIPTION_SYSTEM_PROMPT, parseSessionSummary, SUMMARY_SYSTEM_PROMPT } from "./description-format.js";
+import { buildPrompt, buildSymbolSummary, cleanGenerated, DESCRIPTION_SYSTEM_PROMPT, cleanSummaryLine, NOW_SYSTEM_PROMPT, OVERVIEW_SYSTEM_PROMPT, buildOverviewPrompt, buildNowPrompt } from "./description-format.js";
 
 describe("cleanGenerated", () => {
   it("keeps only the first non-empty line", () => {
@@ -126,65 +126,67 @@ describe("DESCRIPTION_SYSTEM_PROMPT", () => {
   });
 });
 
-describe("SUMMARY_SYSTEM_PROMPT", () => {
-  it("carries no concrete example clause the small model could echo verbatim", () => {
-    expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/auth middleware|token expiry/i);
+describe("summary system prompts", () => {
+  it("carry no concrete example clause the small model could echo verbatim", () => {
+    expect(OVERVIEW_SYSTEM_PROMPT).not.toMatch(/auth middleware|token expiry/i);
+    expect(NOW_SYSTEM_PROMPT).not.toMatch(/auth middleware|token expiry/i);
   });
 
-  it("asks for ONE third-person goal line (two-clause asks came back merged or echoing tool payloads)", () => {
-    expect(SUMMARY_SYSTEM_PROMPT).toMatch(/one line/i);
-    expect(SUMMARY_SYSTEM_PROMPT).toMatch(/third person/i);
-    expect(SUMMARY_SYSTEM_PROMPT).not.toMatch(/exactly two lines/i);
+  it("each ask for ONE third-person line (the paired ask came back merged or echoing tool payloads)", () => {
+    for (const p of [OVERVIEW_SYSTEM_PROMPT, NOW_SYSTEM_PROMPT]) {
+      expect(p).toMatch(/one line/i);
+      expect(p).toMatch(/third person/i);
+      expect(p).not.toMatch(/two lines/i);
+    }
+  });
+
+  it("overview targets the whole session; now targets the current task", () => {
+    expect(OVERVIEW_SYSTEM_PROMPT).toMatch(/accomplishing/i);
+    expect(NOW_SYSTEM_PROMPT).toMatch(/right now/i);
   });
 });
 
-describe("parseSessionSummary", () => {
-  it("splits labelled Now/Overview lines and strips punctuation", () => {
-    const s = parseSessionSummary("Now: editing the auth module.\nOverview: adding OAuth support to the API.");
-    expect(s).toEqual({ now: "Editing the auth module", overview: "Adding OAuth support to the API" });
+describe("buildOverviewPrompt / buildNowPrompt", () => {
+  it("overview carries the goal and, when present, recent progress", () => {
+    const p = buildOverviewPrompt("add OAuth to the API", "inspecting the redirect handler");
+    expect(p).toContain("add OAuth to the API");
+    expect(p).toContain("inspecting the redirect handler");
   });
 
-  it("is case-insensitive and tolerates a dash separator", () => {
-    expect(parseSessionSummary("NOW - running tests\nOVERVIEW - fixing the parser")).toEqual({
-      now: "Running tests",
-      overview: "Fixing the parser",
-    });
+  it("overview omits the progress block when progress is empty", () => {
+    expect(buildOverviewPrompt("add OAuth to the API", "   ")).not.toMatch(/recent progress/i);
   });
 
-  it("treats an unlabelled single line as the now clause", () => {
-    expect(parseSessionSummary("refactoring the wall widget")).toEqual({
-      now: "Refactoring the wall widget",
-      overview: "",
-    });
+  it("now carries only the recent activity", () => {
+    expect(buildNowPrompt("running the login tests")).toContain("running the login tests");
+  });
+});
+
+describe("cleanSummaryLine", () => {
+  it("strips punctuation and capitalizes a plain line", () => {
+    expect(cleanSummaryLine("adding OAuth support to the API.")).toBe("Adding OAuth support to the API");
   });
 
-  it("strips a leading 'The'/'This' the model may add, then capitalizes", () => {
-    expect(parseSessionSummary("Now: The agent edits the parser").now).toBe("Agent edits the parser");
+  it("strips a stray Now:/Overview: label the model may prepend", () => {
+    expect(cleanSummaryLine("Now: editing the auth module")).toBe("Editing the auth module");
+    expect(cleanSummaryLine("**Overview:** fixing the session tiles")).toBe("Fixing the session tiles");
   });
 
-  it("tolerates markdown-bolded labels the small model adds despite 'no markdown'", () => {
-    expect(parseSessionSummary("**Now:** working on the wall rendering")).toEqual({
-      now: "Working on the wall rendering",
-      overview: "",
-    });
-    expect(parseSessionSummary("**Overview:** fixing the session tiles")).toEqual({
-      now: "",
-      overview: "Fixing the session tiles",
-    });
+  it("takes the first non-empty line when the model adds extra lines", () => {
+    expect(cleanSummaryLine("\nrefactoring the wall widget\ntrailing noise")).toBe("Refactoring the wall widget");
   });
 
-  it("strips first/second-person subjects so clauses read third-person", () => {
-    expect(parseSessionSummary("Now: I'm fixing the login bug")).toEqual({ now: "Fixing the login bug", overview: "" });
-    expect(parseSessionSummary("Overview: I need to ensure the tests pass")).toEqual({
-      now: "",
-      overview: "Need to ensure the tests pass",
-    });
-    expect(parseSessionSummary("Now: we are running the migration").now).toBe("Running the migration");
+  it("strips a leading 'The'/'This' the model may add", () => {
+    expect(cleanSummaryLine("The agent edits the parser")).toBe("Agent edits the parser");
   });
 
-  it("capitalizes a lowercase clause the model emits", () => {
-    expect(parseSessionSummary("Now: assistant is fixing the offline bug").now).toBe(
-      "Assistant is fixing the offline bug",
-    );
+  it("strips first/second-person subjects so the clause reads third-person", () => {
+    expect(cleanSummaryLine("I'm fixing the login bug")).toBe("Fixing the login bug");
+    expect(cleanSummaryLine("we are running the migration")).toBe("Running the migration");
+  });
+
+  it("returns empty for a label-only or empty reply", () => {
+    expect(cleanSummaryLine("Overview:")).toBe("");
+    expect(cleanSummaryLine("")).toBe("");
   });
 });

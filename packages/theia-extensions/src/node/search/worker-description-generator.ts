@@ -109,13 +109,13 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
     });
   }
 
-  summarize(turnsText: string): Promise<string | null> {
+  summarize(prompt: string, kind: "now" | "overview"): Promise<string | null> {
     const worker = this.ensureWorker();
     if (!worker) return Promise.resolve(null);
     const id = ++this.seq;
     return new Promise<string | null>((resolve) => {
       this.pending.set(id, { resolve });
-      worker.postMessage({ id, kind: "summary", relPath: "", content: turnsText });
+      worker.postMessage({ id, kind, relPath: "", content: prompt });
     });
   }
 

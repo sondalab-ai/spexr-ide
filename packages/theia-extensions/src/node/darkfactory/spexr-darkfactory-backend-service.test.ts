@@ -135,20 +135,22 @@ describe("SpexrDarkfactoryBackendService v2", () => {
         generator: {
           generate: async () => null,
           isAvailable: () => true,
-          summarize: async () => {
+          summarize: async (_prompt, kind) => {
             calls++;
-            return "Now: editing the modal list component\nOverview: migrating browse-blueprints to the design system";
+            return kind === "overview"
+              ? "migrating browse-blueprints to the design system"
+              : "inspecting the redirect handler that drops the cookie";
           },
         },
       });
       await s.listTiles();
-      // Now = deterministic last action; Overview = the model's goal clause.
+      // Both lines are model-written (two separate single-clause asks), cleaned.
       expect(await s.summarize("s1")).toEqual({
-        now: "Editing auth.ts",
+        now: "Inspecting the redirect handler that drops the cookie",
         overview: "Migrating browse-blueprints to the design system",
       });
       await s.summarize("s1");
-      expect(calls).toBe(1); // cached by mtime
+      expect(calls).toBe(2); // two asks (now + overview) on the first call; cached by mtime after
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -238,7 +240,7 @@ describe("SpexrDarkfactoryBackendService v2", () => {
 
   it("summarizes opencode sessions from their export entries (no transcript file)", async () => {
     const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
-    let seenTurns = "";
+    const seen: Record<string, string> = {};
     const s = svc({
       listTranscripts: () =>
         Promise.resolve([
@@ -266,17 +268,61 @@ describe("SpexrDarkfactoryBackendService v2", () => {
       generator: {
         generate: async () => null,
         isAvailable: () => true,
-        summarize: async (turns) => {
-          seenTurns = turns;
-          return "Now: running the login tests\nOverview: fixing the login bug";
+        summarize: async (prompt, kind) => {
+          seen[kind] = prompt;
+          return kind === "overview" ? "fixing the login bug" : "running the login tests";
         },
       },
     });
     await s.listTiles();
-    // Now = deterministic last action; Overview = model, fed the session goal only.
-    expect(await s.summarize("ses_sum")).toEqual({ now: "Running pnpm test", overview: "Fixing the login bug" });
-    expect(seenTurns).toContain("fix the login page"); // the model receives the goal, not an empty transcript
-    expect(seenTurns).not.toContain("[Bash:"); // recent actions stay out of the goal-only overview ask
+    // Both lines model-written from real content (two separate single-clause asks).
+    expect(await s.summarize("ses_sum")).toEqual({ now: "Running the login tests", overview: "Fixing the login bug" });
+    expect(seen.overview).toContain("fix the login page"); // overview is grounded in the session goal
+    expect(seen.overview).toContain("inspect the redirect handler"); // …plus recent progress prose
+    expect(seen.overview).not.toContain("[Bash:"); // tool chips stay out — no enumeration temptation
+    expect(seen.now).toContain("inspect the redirect handler"); // now is fed only the recent prose
+    expect(seen.now).not.toContain("fix the login page"); // …not the goal
+  });
+
+  it("summarizes a resumed session with a terse goal but substantial recent work", async () => {
+    const { opencodeHarness } = await import("../../common/harness/opencode-harness.js");
+    let calls = 0;
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: opencodeHarness,
+            ref: {
+              sessionId: "ses_resumed",
+              projectPath: "/Users/x/src/oc-proj",
+              mtimeMs: NOW - 60_000,
+              // Terse goal ("continua") — the old turns-digest gate cleared 120 only
+              // because it added tool-chip lines; chip-free prose must still qualify.
+              loadEntries: async () => [
+                { message: { role: "user", content: [{ type: "text", text: "continua" }] } },
+                { message: { role: "assistant", content: [{ type: "text", text: "tracing the redirect handler that drops the session cookie" }] } },
+                { message: { role: "assistant", content: [{ type: "text", text: "the cookie flag is cleared before the 302 response is written" }] } },
+                { message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }] } },
+              ],
+            },
+          },
+        ]),
+      liveProjectDirs: () => Promise.resolve(new Set()),
+      generator: {
+        generate: async () => null,
+        isAvailable: () => true,
+        summarize: async (_prompt, kind) => {
+          calls++;
+          return kind === "overview" ? "restoring the dropped session cookie on redirect" : "editing the auth redirect handler";
+        },
+      },
+    });
+    await s.listTiles();
+    expect(await s.summarize("ses_resumed")).toEqual({
+      now: "Editing the auth redirect handler",
+      overview: "Restoring the dropped session cookie on redirect",
+    });
+    expect(calls).toBe(2); // terse goal did not gate the model out
   });
 
   it("skips inference on thin context but still shows the deterministic action line", async () => {

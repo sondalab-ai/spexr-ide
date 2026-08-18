@@ -21,76 +21,74 @@ export const DESCRIPTION_SYSTEM_PROMPT =
   "When unsure, stay generic rather than guess specifics. Reply with only the sentence, max 15 words, " +
   "no preamble, no markdown. Do not begin with 'This file' or 'This'.";
 
-// Single-clause task: the q4 1.5B model is reliable on ONE anchored ask but not
-// on two — asked for a "Now" + "Overview" pair it merged them into near-identical
-// text, spoke first person ("I'm…"), or echoed raw tool payloads (bash fences)
-// into the reply. The "Now" (current task) line is therefore computed
-// deterministically upstream (see nowActionLine); the model writes only the
-// overview, so this prompt asks for exactly one line. ~16 words ≈ 30 tokens;
-// the cap leaves headroom without letting verbose replies run on.
+// Each summary line is a SEPARATE single-clause ask (kind "now" / "overview").
+// The q4 1.5B model is reliable on ONE anchored ask but not on a paired one —
+// asked for "Now" + "Overview" together it merged them, spoke first person
+// ("I'm…"), or echoed raw tool payloads (bash fences). Two independent calls,
+// each returning one line, keep that reliability while letting BOTH lines be
+// model-written from real session content. ~16 words ≈ 30 tokens; the cap
+// leaves headroom without letting verbose replies run on.
 export const SUMMARY_MAX_NEW_TOKENS = 50;
 
-// NOTE: no concrete example clause here on purpose — a small model echoes a
-// memorable example verbatim when the session context is thin, which produced
-// bogus "refactoring the auth middleware" summaries. Keep the guidance abstract;
-// the thin-context guard upstream already withholds empty contexts.
-export const SUMMARY_SYSTEM_PROMPT =
-  "You are given the goal and recent events of a coding-assistant session. Write ONE line, " +
-  "max 16 words, in the third person and present tense, describing the SESSION GOAL — what the " +
-  "session is working toward overall, from the first user: line. Never use 'I', 'we', or 'you'; " +
-  "do not begin with 'The' or 'This'. No preamble, no markdown, no trailing period. " +
-  "Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies.";
+// NOTE: no concrete example clause in either prompt on purpose — a small model
+// echoes a memorable example verbatim when the session context is thin, which
+// produced bogus "refactoring the auth middleware" summaries. Keep the guidance
+// abstract; the thin-context guard upstream already withholds empty contexts.
 
-/** User message for the one-line session-goal (overview) summary. */
-export function buildSummaryPrompt(goal: string): string {
-  return `Session goal (the user's first request):\n${goal.slice(0, 600)}\n\nWrite the one-line goal.`;
+// Overview = what the whole session is accomplishing. Fed the goal PLUS recent
+// progress prose (no tool chips) so it reflects where the work has gotten to,
+// not a stale paraphrase of the first prompt.
+export const OVERVIEW_SYSTEM_PROMPT =
+  "You are given a coding-assistant session's goal and its most recent progress. Write ONE line, " +
+  "max 16 words, in the third person and present tense, describing what the SESSION IS ACCOMPLISHING " +
+  "overall. Never use 'I', 'we', or 'you'; do not begin with 'The' or 'This'. No preamble, no markdown, " +
+  "no trailing period. Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies.";
+
+// Now = what is being worked on at this moment, and why. Fed only the most
+// recent assistant prose so the model names the current task ("fixing the token
+// expiry check") rather than the raw tool call ("Editing auth.ts").
+export const NOW_SYSTEM_PROMPT =
+  "You are given the most recent activity of a coding-assistant session. Write ONE line, " +
+  "max 12 words, in the third person and present tense, describing what is being worked on RIGHT NOW. " +
+  "Never use 'I', 'we', or 'you'; do not begin with 'The' or 'This'. No preamble, no markdown, " +
+  "no trailing period. Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies.";
+
+/** User message for the one-line overview: session goal grounded in recent progress. */
+export function buildOverviewPrompt(goal: string, progress: string): string {
+  const ctx = progress.trim() ? `\n\nRecent progress:\n${progress.slice(0, 500)}` : "";
+  return `Session goal (the user's first request):\n${goal.slice(0, 400)}${ctx}\n\nWrite the one-line overview.`;
 }
 
-/** A parsed two-level session summary. */
-export interface SessionSummary {
-  now: string;
-  overview: string;
-}
-
-function cleanClause(s: string): string {
-  const cleaned = s
-    .replace(/^["'`*\s]+|["'`*\s.]+$/g, "")
-    .replace(/^(?:the|this)\s+/i, "")
-    // The small model speaks as the session's assistant ("I'm fixing…"): strip
-    // first/second-person subjects so the clause reads as a neutral third person.
-    .replace(/^(?:i'm|i am|we're|we are|you're|you are|i|we|you)\s+/i, "")
-    .trim();
-  // Capitalize the first letter: the model often lowercases the clause ("assistant
-  // is fixing…"), which reads as unformatted noise in the card.
-  return cleaned.length > 0 ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : cleaned;
+/** User message for the one-line current-task ("now") summary. */
+export function buildNowPrompt(recentProse: string): string {
+  return `Most recent activity:\n${recentProse.slice(0, 500)}\n\nWrite the one-line current task.`;
 }
 
 /**
- * Parse the model's two-line reply into { now, overview }. Robust to missing
- * labels: an unlabelled single line becomes `now`; a label-only reply yields
- * empty fields rather than throwing.
+ * Normalize one model reply line into a clean third-person clause: strip quotes/
+ * markdown/trailing period, drop a leading "The/This", strip first/second-person
+ * subjects ("I'm fixing…" → "fixing…"), and capitalize. Returns "" for an empty
+ * or label-only reply.
  */
-export function parseSessionSummary(raw: string): SessionSummary {
-  // The small model sometimes bolds the labels ("**Now:** …") despite "no markdown".
-  const lines = raw.split("\n").map((l) => l.replace(/^\*+\s*/, "").trim()).filter((l) => l.length > 0);
-  let now = "";
-  let overview = "";
-  for (const line of lines) {
-    const m = /^(now|overview)\s*[:\-]\s*(.*)$/i.exec(line);
-    if (m) {
-      if (m[1]!.toLowerCase() === "now") now = cleanClause(m[2]!);
-      else overview = cleanClause(m[2]!);
-    } else if (!now && !overview) {
-      now = cleanClause(line); // unlabelled fallback → treat as the "now" line
-    }
-  }
-  return { now, overview };
+export function cleanSummaryLine(raw: string): string {
+  // Take the first non-empty line; a well-behaved reply is one line, but the
+  // model occasionally prepends a blank or a stray "Now:"/"Overview:" label.
+  const first = raw
+    .split("\n")
+    .map((l) => l.replace(/^\*+\s*/, "").replace(/^(?:now|overview)\s*[:\-]\s*/i, "").trim())
+    .find((l) => l.length > 0) ?? "";
+  const cleaned = first
+    .replace(/^["'`*\s]+|["'`*\s.]+$/g, "")
+    .replace(/^(?:the|this)\s+/i, "")
+    .replace(/^(?:i'm|i am|we're|we are|you're|you are|i|we|you)\s+/i, "")
+    .trim();
+  return cleaned.length > 0 ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : cleaned;
 }
 
 /** Produces a one-sentence, whole-file description, or null if unavailable. */
 export interface DescriptionGenerator {
   generate(relPath: string, content: string): Promise<string | null>;
-  summarize(turnsText: string): Promise<string | null>;
+  summarize(prompt: string, kind: "now" | "overview"): Promise<string | null>;
   isAvailable(): boolean;
   dispose?(): void;
 }
@@ -100,7 +98,7 @@ export const DescriptionGeneratorToken = Symbol("DescriptionGenerator");
 /** host → worker */
 export interface WorkerRequest {
   id: number;
-  kind?: "description" | "summary";
+  kind?: "description" | "now" | "overview";
   relPath: string;
   content: string;
 }

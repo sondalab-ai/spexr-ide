@@ -107,11 +107,12 @@ describe("WorkerDescriptionGenerator", () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
-  it("summarize posts a summary request and resolves with worker text", async () => {
+  it("summarize posts the request under its kind and resolves with worker text", async () => {
     const fake = new FakeWorker();
     const gen = new WorkerDescriptionGenerator(() => fake);
-    const p = gen.summarize("user: fix auth");
-    expect(fake.requests[0]!.kind).toBe("summary");
+    const p = gen.summarize("Most recent activity:\nfix auth", "now");
+    expect(fake.requests[0]!.kind).toBe("now");
+    expect(fake.requests[0]!.content).toContain("fix auth");
     fake.emit({ id: fake.requests[0]!.id, type: "done", text: "fixing auth" });
     expect(await p).toBe("fixing auth");
   });

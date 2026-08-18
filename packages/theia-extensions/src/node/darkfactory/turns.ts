@@ -103,6 +103,22 @@ export function buildTurnsText(entries: TurnEntry[], maxEvents: number): string 
   return tail.join("\n");
 }
 
+/**
+ * The last `n` assistant prose segments (text blocks only — tool_use chips are
+ * excluded). Feeds the summary model a small, work-grounded input: enough recent
+ * reasoning to name the current task, without the tool-call enumeration that made
+ * the model run past its token cap when handed the full turns digest.
+ */
+export function recentAssistantProse(entries: TurnEntry[], n: number): string[] {
+  const out: string[] = [];
+  for (const e of entries) {
+    if (e.message?.role !== "assistant") continue;
+    const t = textOf(e.message.content);
+    if (t) out.push(t);
+  }
+  return out.slice(-n);
+}
+
 /** The session goal: the text of the first genuine user prompt ("" when none). */
 export function sessionGoal(entries: TurnEntry[]): string {
   for (const e of entries) {

@@ -17,8 +17,8 @@ import {
   MAX_NEW_TOKENS,
   DESCRIPTION_SYSTEM_PROMPT,
   SUMMARY_MAX_NEW_TOKENS,
-  SUMMARY_SYSTEM_PROMPT,
-  buildSummaryPrompt,
+  NOW_SYSTEM_PROMPT,
+  OVERVIEW_SYSTEM_PROMPT,
   buildPrompt,
   cleanGenerated,
   type WorkerRequest,
@@ -104,9 +104,12 @@ async function handle(req: WorkerRequest): Promise<void> {
   const t0 = Date.now();
   try {
     const pipe = await getPipe();
-    const system = kind === "summary" ? SUMMARY_SYSTEM_PROMPT : DESCRIPTION_SYSTEM_PROMPT;
-    const user = kind === "summary" ? buildSummaryPrompt(content) : buildPrompt(relPath, content);
-    const maxTokens = kind === "summary" ? SUMMARY_MAX_NEW_TOKENS : MAX_NEW_TOKENS;
+    // Summary kinds ("now"/"overview") carry a fully-built user prompt in `content`;
+    // only the file-description path composes its prompt here from path + content.
+    const isSummary = kind === "now" || kind === "overview";
+    const system = kind === "overview" ? OVERVIEW_SYSTEM_PROMPT : kind === "now" ? NOW_SYSTEM_PROMPT : DESCRIPTION_SYSTEM_PROMPT;
+    const user = isSummary ? content : buildPrompt(relPath, content);
+    const maxTokens = isSummary ? SUMMARY_MAX_NEW_TOKENS : MAX_NEW_TOKENS;
     const tInfer = Date.now();
     const out = await pipe(
       [
@@ -121,9 +124,9 @@ async function handle(req: WorkerRequest): Promise<void> {
     const msgs = out[0]?.generated_text;
     const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : undefined;
     const raw = typeof last?.content === "string" ? last.content : "";
-    // Summaries are multi-line (Now:/Overview:) and parsed by the caller; only the
+    // Summary lines are cleaned by the caller (cleanSummaryLine); only the
     // single-line file description goes through cleanGenerated.
-    const text = kind === "summary" ? raw.trim() : cleanGenerated(raw);
+    const text = isSummary ? raw.trim() : cleanGenerated(raw);
     post({ id, type: "done", text: text.length > 0 ? text : null });
   } catch (err) {
     console.error(`[darkfactory worker] inference failed after ${Date.now() - t0}ms:`, err);
