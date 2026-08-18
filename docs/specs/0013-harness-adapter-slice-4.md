@@ -136,6 +136,16 @@ Key seam decisions:
   the wall widget forks (`opencode --session <id> --fork`), branching from the
   live history without disturbing the running session. Idle opencode sessions
   resume plainly (`opencode --session <id>`).
+- **Core / adapter split keeps the frontend Node-free.** Slice 4's session
+  members (`listSessions`/`parseTranscript`/`followSession`) need
+  `child_process`/`fs`, so importing a full harness object drags Node builtins
+  into whatever bundle imports it. The browser's resume-terminal manager only
+  needs the pure resume surface, so that surface lives in `HarnessCore`
+  (`claude-harness-core.ts` / `opencode-harness-core.ts` — id, processNames,
+  isResumableId, buildResumeArgs, no Node imports); `HarnessAdapter extends
+  HarnessCore` adds the Node-only session members and is assembled in the
+  `*-harness.ts` modules the backend imports. The frontend imports only the
+  cores — webpack must never resolve `node:*` for the Darkfactory bundle.
 - **One read/export per session per scan.** A ref's `loadEntries` is memoized
   (`common/harness/once.ts`), so the tile pipeline's two consumers
   (`parseTranscript` and the entry distillers) share a single bounded read

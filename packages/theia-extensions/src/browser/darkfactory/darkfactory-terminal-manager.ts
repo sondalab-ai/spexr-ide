@@ -6,9 +6,9 @@ import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
   SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
-import { claudeHarness } from "../../common/harness/claude-harness.js";
-import { opencodeHarness } from "../../common/harness/opencode-harness.js";
-import type { HarnessAdapter } from "../../common/harness/harness-types.js";
+import { claudeCore } from "../../common/harness/claude-harness-core.js";
+import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
+import type { HarnessCore } from "../../common/harness/harness-types.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -22,9 +22,9 @@ function baseName(p: string): string {
 }
 
 /** The harness that owns a session id (by shape: UUID → claude, `ses_…` → opencode). */
-function harnessForSessionId(sessionId: string): HarnessAdapter | undefined {
-  if (claudeHarness.isResumableId(sessionId)) return claudeHarness;
-  if (opencodeHarness.isResumableId(sessionId)) return opencodeHarness;
+function harnessForSessionId(sessionId: string): HarnessCore | undefined {
+  if (claudeCore.isResumableId(sessionId)) return claudeCore;
+  if (opencodeCore.isResumableId(sessionId)) return opencodeCore;
   return undefined;
 }
 
@@ -97,7 +97,7 @@ export class SpexrDarkfactoryTerminalManager {
    * authoritative).
    */
   private resolveShell(
-    harness: HarnessAdapter,
+    harness: HarnessCore,
     resumeArgs: string[],
     dir: string,
     projectPath: string,
@@ -118,7 +118,7 @@ export class SpexrDarkfactoryTerminalManager {
   }
 
   /** The harness binary to launch: the user's explicit Claude path when set, else the bare name. */
-  private resolveBinary(harness: HarnessAdapter): string {
+  private resolveBinary(harness: HarnessCore): string {
     if (harness.id === "claude") {
       const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
       return exe ? shellQuote(exe) : "claude";

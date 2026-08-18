@@ -4,7 +4,7 @@ import { configDirs as defaultConfigDirs, projectsDirOf } from "../../node/darkf
 import { parseTranscript } from "../../node/darkfactory/transcript-parser.js";
 import { readBoundedLines } from "../../node/darkfactory/bounded-read.js";
 import type { HarnessAdapter, HarnessSessionRef, ParsedTranscript, FollowHandle } from "./harness-types.js";
-import { buildResumeArgs, isSessionId } from "./resume-args.js";
+import { claudeCore } from "./claude-harness-core.js";
 import { once } from "./once.js";
 
 /** One Claude transcript file discovered on disk; `readLines` is lazy. */
@@ -78,10 +78,7 @@ function parseLine(line: string): ClaudeEntry | undefined {
  * that later slices sit a second harness beside.
  */
 export const claudeHarness: HarnessAdapter = {
-  id: "claude",
-  processNames: () => ["claude"],
-  isResumableId: (sessionId) => isSessionId(sessionId),
-  buildResumeArgs: (sessionId, fork) => buildResumeArgs(sessionId, fork),
+  ...claudeCore,
 
   async listSessions(): Promise<HarnessSessionRef[]> {
     const refs = await scanClaudeTranscripts();

@@ -41,11 +41,12 @@ export interface ParsedTranscript {
 }
 
 /**
- * Abstraction over an agent harness (Claude Code, opencode). Captures the points
- * where SPEXR previously assumed the `claude` CLI. Slice 1 defines the launch-
- * free core; Slices 2–4 add the Darkfactory session members below.
+ * The launch-free, process-agnostic core of a harness (id, process names, and
+ * the pure resume-arg helpers). Contains no Node imports, so the browser bundle
+ * can import a harness's core to route resume terminals by session-id shape
+ * without pulling `child_process`/`fs` into the frontend.
  */
-export interface HarnessAdapter {
+export interface HarnessCore {
   /** Stable identifier of this harness. */
   readonly id: HarnessId;
   /** Process command names (`ps -Ao pid,comm`) that indicate a live session. */
@@ -54,6 +55,14 @@ export interface HarnessAdapter {
   isResumableId(sessionId: string): boolean;
   /** CLI args to resume the given (already-validated) session id. */
   buildResumeArgs(sessionId: string, fork: boolean): string[];
+}
+
+/**
+ * A harness core plus its Darkfactory session members (Node-only: they spawn the
+ * CLI / read transcripts). Backend code consumes the full adapter; browser code
+ * must import only `HarnessCore` (see the two `*-harness-core.ts` modules).
+ */
+export interface HarnessAdapter extends HarnessCore {
   /** Enumerate this harness's sessions globally; `[]` when enumeration is unavailable. */
   listSessions(): Promise<HarnessSessionRef[]>;
   /** Distill one session's transcript into display fields; never throws. */

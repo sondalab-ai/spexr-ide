@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import type { HarnessAdapter, HarnessSessionRef, ParsedTranscript, FollowHandle } from "./harness-types.js";
+import { opencodeCore } from "./opencode-harness-core.js";
 import { once } from "./once.js";
 
 /** One row of the `opencode db` session query. */
@@ -17,9 +18,6 @@ interface SessionRow {
 /** Hardcoded against opencode 1.18.13 — never interpolate user input (spike R1). */
 const SESSION_QUERY =
   "SELECT id, directory, parent_id, title, agent, model, time_created, time_updated FROM session ORDER BY time_updated DESC";
-
-/** Opaque `ses_…` ids; the regex doubles as the shell-arg sanitizer. */
-const RESUMABLE_ID = /^ses_[A-Za-z0-9]+$/;
 
 function runOpencode(args: string[], timeoutMs = 15_000): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -97,10 +95,7 @@ export function opencodeMessageToEntry(msg: ExportMessage): { message: { role: s
  * follow is Slice 5 — `followSession` fails fast until then.
  */
 export const opencodeHarness: HarnessAdapter = {
-  id: "opencode",
-  processNames: () => ["opencode"],
-  isResumableId: (sessionId) => RESUMABLE_ID.test(sessionId),
-  buildResumeArgs: (sessionId, fork) => (fork ? ["--session", sessionId, "--fork"] : ["--session", sessionId]),
+  ...opencodeCore,
 
   async listSessions(): Promise<HarnessSessionRef[]> {
     let stdout: string;
