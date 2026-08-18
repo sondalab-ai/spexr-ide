@@ -100,6 +100,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       }),
     );
     this.toDispose.push({ dispose: () => this.clearPinned() });
+    // ReactWidget renders only on update() — paint the loading state now, before
+    // the first tiles land (without this the widget body stays blank until then).
+    this.update();
     this.refresh().catch(() => {
       // Scan failed — stop the spinner and fall through to the empty state.
       this.loaded = true;
