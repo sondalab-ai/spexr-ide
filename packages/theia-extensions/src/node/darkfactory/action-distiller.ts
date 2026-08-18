@@ -114,6 +114,35 @@ export function distillAction(entries: DistillEntry[]): DistilledAction {
 }
 
 /**
+ * Clean descriptor of the session's CURRENT action, for the "Now" summary line.
+ * Deterministic on purpose: the small model cannot reliably phrase two distinct
+ * summary clauses (it merges them, speaks first person, or echoes raw tool
+ * payloads), so the current-task line is derived from the transcript instead —
+ * always factual, and inherently different from the goal-based overview above it.
+ * Bash commands are compressed to program + subcommand (no raw argv noise).
+ */
+/** Strip URLs/markdown noise from a prose action so it reads as a terse status line. */
+function cleanActionText(s: string): string {
+  return s
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[`*_#>\[\]]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+export function nowActionLine(entries: DistillEntry[]): string {
+  const d = distillAction(entries);
+  if (d.line === "No activity yet") return "";
+  if (d.tool === "Bash") {
+    const { label } = bashLabel(typeof d.target === "string" ? stripEnv(d.target) : "");
+    return label ? `Running ${label}` : d.line;
+  }
+  if (d.tool) return d.line; // "Editing auth.ts" style — already clean
+  return cleanActionText(d.line); // prose fallback (last message text)
+}
+
+/**
  * The last `n` meaningful tool calls, chronological, as short chips
  * (e.g. ["Read x", "Edit y", "Bash pnpm test"]). Trivial shell commands
  * (cd/ls/echo…) and consecutive duplicates are dropped.

@@ -16,8 +16,8 @@ import { installedHarnesses, type DetectFn } from "../../common/harness/harness-
 import { once } from "../../common/harness/once.js";
 import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
 import { readBoundedLines } from "./bounded-read.js";
-import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
-import { buildTurnsText, buildFollowEvents, type TurnEntry } from "./turns.js";
+import { distillAction, nowActionLine, recentActions, lastActionFailed } from "./action-distiller.js";
+import { buildTurnsText, buildFollowEvents, sessionGoal, type TurnEntry } from "./turns.js";
 import { parseSessionSummary, type DescriptionGenerator } from "../search/description-format.js";
 import type {
   AgentSummary,
@@ -191,19 +191,25 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     } else if (meta.loadEntries) {
       entries = ((await meta.loadEntries()) ?? []) as TurnEntry[];
     }
-    // Both clauses come from one model pass so they share a single language and
-    // tone. The deterministic last-action line is only the fallback for thin or
-    // model-less sessions (and when the model yields nothing usable).
-    const actionNow = entries.length > 0 ? distillAction(entries).line : "";
+    // Now = deterministic last-action line (always factual, and inherently
+    // distinct from the goal). Overview = the model, asked for ONLY that one
+    // clause — a single anchored ask is what the small model does reliably; the
+    // previous two-clause ask came back merged, first-person, or echoing raw
+    // tool payloads.
+    const nowClause = entries.length > 0 ? nowActionLine(entries) : "";
+    const goal = entries.length > 0 ? sessionGoal(entries) : "";
     const turnsText = buildTurnsText(entries, SUMMARY_TURNS);
-    if (turnsText.length >= MIN_SUMMARY_CHARS && this.generator?.isAvailable()) {
-      const raw = await this.generator.summarize(turnsText);
+    let overview = "";
+    // Overview = the model condensing the session GOAL only — feeding it the whole
+    // turns text made it enumerate recent actions and run past the token cap.
+    if (goal && turnsText.length >= MIN_SUMMARY_CHARS && this.generator?.isAvailable()) {
+      const raw = await this.generator.summarize(goal);
       if (raw) {
         const parsed = parseSessionSummary(raw);
-        if (parsed.now || parsed.overview) summary = parsed;
+        overview = parsed.overview || parsed.now; // single-line reply can land in either field
       }
     }
-    if (!summary.now && !summary.overview && actionNow) summary = { now: actionNow, overview: "" };
+    if (nowClause || overview) summary = { now: nowClause, overview };
     this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, summary });
     return summary;
   }

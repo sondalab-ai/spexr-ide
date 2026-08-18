@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTurnsText, buildFollowEvents } from "./turns.js";
+import { buildTurnsText, buildFollowEvents, sessionGoal } from "./turns.js";
 
 describe("buildFollowEvents", () => {
   it("splits each prompt, reply, tool call, and result into its own typed event", () => {
@@ -93,5 +93,31 @@ describe("describeToolUse", () => {
     expect(describeToolUse("Edit", { file_path: "/a/b/auth.ts" })).toBe("Edit auth.ts");
     expect(describeToolUse("Grep", { pattern: "authToken" })).toBe("Grep authToken");
     expect(describeToolUse("Bash", undefined)).toBe("Bash");
+  });
+});
+
+describe("sessionGoal", () => {
+  it("returns the first genuine user prompt", () => {
+    const entries = [
+      { isMeta: true, message: { role: "user", content: "<injected bootstrap>" } },
+      { message: { role: "assistant", content: [{ type: "text", text: "On it." }] } },
+      { message: { role: "user", content: [{ type: "text", text: "fix the login bug" }] } },
+      { message: { role: "user", content: [{ type: "text", text: "a later instruction" }] } },
+    ];
+    expect(sessionGoal(entries)).toBe("fix the login bug");
+  });
+
+  it("skips tool_result carrier messages and meta/injected prompts", () => {
+    const entries = [
+      { message: { role: "user", content: [{ type: "tool_result", content: "ok" }] } },
+      { message: { role: "user", content: "[Request interrupted by user]" } },
+      { message: { role: "user", content: "real task" } },
+    ];
+    expect(sessionGoal(entries)).toBe("real task");
+  });
+
+  it("returns '' when there is no genuine user prompt", () => {
+    expect(sessionGoal([])).toBe("");
+    expect(sessionGoal([{ message: { role: "assistant", content: "hi" } }])).toBe("");
   });
 });

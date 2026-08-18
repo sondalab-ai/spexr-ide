@@ -21,32 +21,29 @@ export const DESCRIPTION_SYSTEM_PROMPT =
   "When unsure, stay generic rather than guess specifics. Reply with only the sentence, max 15 words, " +
   "no preamble, no markdown. Do not begin with 'This file' or 'This'.";
 
-// Headroom over the two bounded clauses (~28 words ≈ 55 tokens): the small model
-// often exceeds its word limits, and a cap that clips the Overview mid-sentence
-// reads as a truncated summary. Greedy decoding still stops at EOS, so concise
-// replies are unaffected — only verbose ones use the extra budget.
-export const SUMMARY_MAX_NEW_TOKENS = 110;
+// Single-clause task: the q4 1.5B model is reliable on ONE anchored ask but not
+// on two — asked for a "Now" + "Overview" pair it merged them into near-identical
+// text, spoke first person ("I'm…"), or echoed raw tool payloads (bash fences)
+// into the reply. The "Now" (current task) line is therefore computed
+// deterministically upstream (see nowActionLine); the model writes only the
+// overview, so this prompt asks for exactly one line. ~16 words ≈ 30 tokens;
+// the cap leaves headroom without letting verbose replies run on.
+export const SUMMARY_MAX_NEW_TOKENS = 50;
 
 // NOTE: no concrete example clause here on purpose — a small model echoes a
 // memorable example verbatim when the session context is thin, which produced
 // bogus "refactoring the auth middleware" summaries. Keep the guidance abstract;
-// the thin-context guard upstream already withholds empty contexts. The
-// third-person sentence was added after the model started speaking as the
-// session's assistant ("I'm fixing…"), and both clauses stay model-generated so
-// they share one language (a deterministic Now mixed English command strings
-// with the model's language).
+// the thin-context guard upstream already withholds empty contexts.
 export const SUMMARY_SYSTEM_PROMPT =
-  "You are given the goal and recent events of a coding-assistant session. Reply with EXACTLY two lines, " +
-  "no preamble, no markdown, no trailing period. Write both clauses in the third person, describing what " +
-  "the assistant and the user are doing — never use 'I', 'we', or 'you'.\n" +
-  "Now: <present-tense clause, max 12 words, what the assistant is doing in the most recent events>\n" +
-  "Overview: <one clause, max 16 words, what the whole session is trying to accomplish>\n" +
-  "Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies. " +
-  "Do not begin either line with 'The' or 'This'.";
+  "You are given the goal and recent events of a coding-assistant session. Write ONE line, " +
+  "max 16 words, in the third person and present tense, describing the SESSION GOAL — what the " +
+  "session is working toward overall, from the first user: line. Never use 'I', 'we', or 'you'; " +
+  "do not begin with 'The' or 'This'. No preamble, no markdown, no trailing period. " +
+  "Use ONLY facts present in the given text. Never invent files, tools, commands, or technologies.";
 
-/** User message for a two-level session summary. */
-export function buildSummaryPrompt(turnsText: string): string {
-  return `Goal and recent events:\n${turnsText}\n\nWrite the "Now:" and "Overview:" lines.`;
+/** User message for the one-line session-goal (overview) summary. */
+export function buildSummaryPrompt(goal: string): string {
+  return `Session goal (the user's first request):\n${goal.slice(0, 600)}\n\nWrite the one-line goal.`;
 }
 
 /** A parsed two-level session summary. */

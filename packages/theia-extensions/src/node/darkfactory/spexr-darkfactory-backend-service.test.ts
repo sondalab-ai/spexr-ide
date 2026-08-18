@@ -142,8 +142,9 @@ describe("SpexrDarkfactoryBackendService v2", () => {
         },
       });
       await s.listTiles();
+      // Now = deterministic last action; Overview = the model's goal clause.
       expect(await s.summarize("s1")).toEqual({
-        now: "Editing the modal list component",
+        now: "Editing auth.ts",
         overview: "Migrating browse-blueprints to the design system",
       });
       await s.summarize("s1");
@@ -272,9 +273,10 @@ describe("SpexrDarkfactoryBackendService v2", () => {
       },
     });
     await s.listTiles();
-    expect(await s.summarize("ses_sum")).toEqual({ now: "Running the login tests", overview: "Fixing the login bug" });
-    expect(seenTurns).toContain("user: fix the login page"); // the model gets real context, not an empty transcript
-    expect(seenTurns).toContain("[Bash: pnpm test]");
+    // Now = deterministic last action; Overview = model, fed the session goal only.
+    expect(await s.summarize("ses_sum")).toEqual({ now: "Running pnpm test", overview: "Fixing the login bug" });
+    expect(seenTurns).toContain("fix the login page"); // the model receives the goal, not an empty transcript
+    expect(seenTurns).not.toContain("[Bash:"); // recent actions stay out of the goal-only overview ask
   });
 
   it("skips inference on thin context but still shows the deterministic action line", async () => {
