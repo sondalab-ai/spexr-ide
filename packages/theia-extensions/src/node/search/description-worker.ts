@@ -52,8 +52,13 @@ const INTRA_OP_THREADS = Math.max(1, Math.floor(cpus().length / 2));
  * Only when a genuine Node runs the worker: onnxruntime-node has a segfault history
  * under ELECTRON_RUN_AS_NODE (see worker-description-generator), and a GPU segfault
  * there is uncatchable, so a packaged app with no real Node stays on CPU.
+ *
+ * Detection keys on `process.versions.electron`, not the ELECTRON_RUN_AS_NODE env:
+ * the backend runs as Electron-as-node, so that flag is inherited by this child —
+ * and Electron's fork patch re-injects it even when `execPath` points at a real
+ * Node — while `process.versions.electron` truthfully reports the running binary.
  */
-const PREFER_GPU = !process.env.ELECTRON_RUN_AS_NODE;
+const PREFER_GPU = process.versions.electron === undefined;
 
 function loadPipe(device: "webgpu" | "cpu"): Promise<TextGenPipeline> {
   return pipeline("text-generation", GEN_MODEL_ID, {

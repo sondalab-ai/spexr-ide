@@ -37,16 +37,12 @@ function resolveNodeBinary(): string | undefined {
 }
 
 /**
- * Fork the model worker as its own OS process (not a worker_thread) so its native
- * onnxruntime work never touches the backend's process — see description-worker's
- * header. The models dir is passed by env since forks have no `workerData`.
- */
-/**
  * Env for the forked model worker. A genuine-Node child must NOT inherit
  * ELECTRON_RUN_AS_NODE: the backend itself usually runs as Electron-as-node, so
  * the flag sits in the inherited env even though the child (via `execPath`) is
- * real Node — leaving it in makes the worker's PREFER_GPU check wrongly force
- * the slow CPU provider. Electron-as-node children need the flag set instead.
+ * real Node. (The worker's own GPU decision does not trust this flag either —
+ * it keys on `process.versions.electron`, which env injection cannot fake.)
+ * Electron-as-node children need the flag set instead.
  */
 export function buildWorkerEnv(base: NodeJS.ProcessEnv, realNode: boolean): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base, SPEXR_MODELS_DIR: resolveModelsDir() };
