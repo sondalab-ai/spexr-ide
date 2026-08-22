@@ -10,7 +10,7 @@ const THEIA_THEME_BY_SPEXR: Record<string, string> = {
 };
 
 /**
- * Sets the `data-spexr-theme` attribute on the document so the design tokens
+ * Sets the `data-sl-theme` attribute on the document so the design tokens
  * resolve to a concrete theme, and syncs Theia's own color theme so native
  * chrome (tab bars, editor, terminal) matches the SPEXR tokens. Reads the saved
  * preference (or system) and subscribes to changes via prefers-color-scheme.
@@ -28,7 +28,7 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     // setTimeout(0): Theia may apply CSS vars asynchronously after firing this event;
     // delaying ensures we always run after Theia's <style> is written.
     this.themeService.onDidColorThemeChange(() => {
-      const current = document.documentElement.getAttribute("data-spexr-theme") ?? resolved;
+      const current = document.documentElement.getAttribute("data-sl-theme") ?? resolved;
       setTimeout(() => this.applyAccentOverrides(current), 0);
     });
 
@@ -44,7 +44,7 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
 
   /** Apply a SPEXR theme to both the design tokens and Theia's native chrome. */
   private applyTheme(spexrTheme: string): void {
-    document.documentElement.setAttribute("data-spexr-theme", spexrTheme);
+    document.documentElement.setAttribute("data-sl-theme", spexrTheme);
     const theiaId = THEIA_THEME_BY_SPEXR[spexrTheme];
     if (theiaId && this.themeService.getCurrentTheme().id !== theiaId) {
       if (this.themeService.getThemes().some((t) => t.id === theiaId)) {

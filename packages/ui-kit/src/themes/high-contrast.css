@@ -1,43 +1,24 @@
-/*
- * spexr — high-contrast theme.
- * All foreground/background pairs target WCAG AAA (>= 7:1) where possible, AA minimum.
- * Used by users with low vision or as user preference (Windows / macOS HC).
- */
-[data-spexr-theme="high-contrast"] {
-  --spexr-bg-canvas: #000000;
-  --spexr-bg-surface: #000000;
-  --spexr-bg-surface-raised: #0a0a0a;
-  --spexr-bg-overlay: rgba(0, 0, 0, 0.85);
-
-  --spexr-border-subtle: #ffffff;
-  --spexr-border-default: #ffffff;
-  --spexr-border-strong: #ffff00;
-
-  --spexr-text-primary: #ffffff;
-  --spexr-text-secondary: #ffffff;
-  --spexr-text-muted: #cccccc;
-  --spexr-text-on-accent: #000000;
-
-  --spexr-accent-default: #ffff00;
-  --spexr-accent-hover: #ffffa0;
-  --spexr-accent-active: #cccc00;
-  --spexr-accent-subtle: #1a1a00;
-
-  --spexr-status-success: #00ff00;
-  --spexr-status-warning: #ffaa00;
-  --spexr-status-danger: #ff5555;
-  --spexr-status-info: #00ffff;
-
-  --spexr-agent-bg: #000000;
-  --spexr-agent-bubble-user: #1a1a00;
-  --spexr-agent-bubble-assistant: #0a0a0a;
-  --spexr-agent-rail: #ffff00;
-
-  --spexr-editor-bg: #000000;
-  --spexr-editor-fg: #ffffff;
-  --spexr-editor-line-active: #1a1a1a;
-  --spexr-editor-selection: #ffff00;
-
-  --spexr-focus-ring: #ffff00;
-  --spexr-focus-ring-width: 3px;
+/* VENDORED from the sondalab-ui repo (sondalab.tokens.json) — do not edit here. Update tokens upstream in sondalab-ui, regenerate, and re-copy. */
+[data-sl-theme="high-contrast"] {
+  --sl-bg-canvas: #000000;
+  --sl-bg-surface: #000000;
+  --sl-bg-surface-raised: #0a0a0a;
+  --sl-bg-overlay: rgba(0,0,0,0.85);
+  --sl-border-subtle: #ffffff;
+  --sl-border-default: #ffffff;
+  --sl-border-strong: #ffff00;
+  --sl-text-primary: #ffffff;
+  --sl-text-secondary: #ffffff;
+  --sl-text-muted: #cccccc;
+  --sl-text-on-accent: #000000;
+  --sl-status-success: #00ff00;
+  --sl-status-warning: #ffaa00;
+  --sl-status-danger: #ff5555;
+  --sl-status-info: #00ffff;
+  --sl-accent-default: #ffff00;
+  --sl-accent-hover: #ffffa0;
+  --sl-accent-active: #cccc00;
+  --sl-accent-subtle: #1a1a00;
+  --sl-accent-depth: #00ffff;
+  --sl-focus-ring: #ffff00;
 }

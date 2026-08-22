@@ -1,49 +1,24 @@
-/* spexr — dark theme. Calibrated for low eye strain at night. */
-[data-spexr-theme="dark"] {
-  --spexr-bg-canvas: #0c0d10;
-  --spexr-bg-surface: #131418;
-  --spexr-bg-surface-raised: #1a1c22;
-  --spexr-bg-overlay: rgba(0, 0, 0, 0.6);
-
-  --spexr-border-subtle: #23252c;
-  --spexr-border-default: #2e313a;
-  --spexr-border-strong: #4b4f5a;
-
-  --spexr-text-primary: #f4f4f5;
-  --spexr-text-secondary: #a1a1aa;
-  --spexr-text-muted: #71717a;
-  --spexr-text-on-accent: #0a0a0b;
-
-  --spexr-accent-default: #8b96ff;
-  --spexr-accent-hover: #a3acff;
-  --spexr-accent-active: #6b78f0;
-  --spexr-accent-subtle: #1c1f3a;
-
-  --spexr-status-success: #4ade80;
-  --spexr-status-warning: #fbbf24;
-  --spexr-status-danger: #f87171;
-  --spexr-status-info: #38bdf8;
-
-  --spexr-agent-bg: #0e0f13;
-  --spexr-agent-bubble-user: #1c1f3a;
-  --spexr-agent-bubble-assistant: #15171c;
-  --spexr-agent-rail: #8b96ff;
-
-  --spexr-editor-bg: #0c0d10;
-  --spexr-editor-fg: #e5e5e7;
-  --spexr-editor-line-active: #15171c;
-  --spexr-editor-selection: #313869;
-
-  --spexr-focus-ring: #8b96ff;
-
-  /* Syntax highlight token colours (atom-one-dark) */
-  --spexr-hljs-base:     #abb2bf;
-  --spexr-hljs-comment:  #5c6370;
-  --spexr-hljs-keyword:  #c678dd;
-  --spexr-hljs-string:   #98c379;
-  --spexr-hljs-literal:  #56b6c2;
-  --spexr-hljs-number:   #d19a66;
-  --spexr-hljs-tag:      #e06c75;
-  --spexr-hljs-title:    #61aeee;
-  --spexr-hljs-builtin:  #e6c07b;
+/* VENDORED from the sondalab-ui repo (sondalab.tokens.json) — do not edit here. Update tokens upstream in sondalab-ui, regenerate, and re-copy. */
+[data-sl-theme="dark"] {
+  --sl-bg-canvas: #070A0D;
+  --sl-bg-surface: #0F151A;
+  --sl-bg-surface-raised: #131C23;
+  --sl-bg-overlay: rgba(0,0,0,0.6);
+  --sl-border-subtle: rgba(218,227,228,0.07);
+  --sl-border-default: rgba(218,227,228,0.13);
+  --sl-border-strong: rgba(218,227,228,0.28);
+  --sl-text-primary: #DAE3E4;
+  --sl-text-secondary: #9AA9AD;
+  --sl-text-muted: #6E8088;
+  --sl-text-on-accent: #0A0A0B;
+  --sl-status-success: #4ade80;
+  --sl-status-warning: #fbbf24;
+  --sl-status-danger: #f87171;
+  --sl-status-info: #38bdf8;
+  --sl-accent-default: #F5A83C;
+  --sl-accent-hover: #F7B863;
+  --sl-accent-active: #E0942A;
+  --sl-accent-subtle: rgba(245,168,60,0.16);
+  --sl-accent-depth: #35A0B4;
+  --sl-focus-ring: #F5A83C;
 }

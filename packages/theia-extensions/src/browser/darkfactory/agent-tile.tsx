@@ -111,7 +111,7 @@ export function AgentTileCard(props: {
       className="spexr-df-card"
       data-state={tile.state}
       data-status={status.kind}
-      style={{ ["--tile-accent" as string]: `var(--spexr-df-accent-${tile.accentId})` }}
+      style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
       onClick={() => onOpen(tile)}
       title={tile.projectPath}
     >
@@ -191,7 +191,7 @@ export function AgentPinnedCard(props: {
       className="spexr-df-pinned"
       data-state={tile.state}
       data-status={status.kind}
-      style={{ ["--tile-accent" as string]: `var(--spexr-df-accent-${tile.accentId})` }}
+      style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
     >
       <header className="spexr-df-pinned__head">
         <span className="spexr-df-card__led" />
@@ -250,7 +250,7 @@ export function AgentCondensedRow(props: {
       className="spexr-df-row"
       data-state={tile.state}
       data-status={status.kind}
-      style={{ ["--tile-accent" as string]: `var(--spexr-df-accent-${tile.accentId})` }}
+      style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
       onClick={() => onOpen(tile)}
       title={`${tile.projectPath} · ${status.label}`}
     >

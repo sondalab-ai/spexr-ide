@@ -1,57 +1,24 @@
-/* spexr — light theme. Role tokens → concrete values. */
-[data-spexr-theme="light"] {
-  /* Surfaces */
-  --spexr-bg-canvas: #fafafa;
-  --spexr-bg-surface: #ffffff;
-  --spexr-bg-surface-raised: #ffffff;
-  --spexr-bg-overlay: rgba(20, 20, 24, 0.4);
-
-  /* Borders */
-  --spexr-border-subtle: #e5e5e7;
-  --spexr-border-default: #d4d4d8;
-  --spexr-border-strong: #a1a1aa;
-
-  /* Text */
-  --spexr-text-primary: #0a0a0b;
-  --spexr-text-secondary: #52525b;
-  --spexr-text-muted: #71717a;
-  --spexr-text-on-accent: #ffffff;
-
-  /* Accent — fresh-tech, not stock blue */
-  --spexr-accent-default: #5b6cff;
-  --spexr-accent-hover: #4858ee;
-  --spexr-accent-active: #3645d4;
-  --spexr-accent-subtle: #eef0ff;
-
-  /* Status */
-  --spexr-status-success: #16a34a;
-  --spexr-status-warning: #d97706;
-  --spexr-status-danger: #dc2626;
-  --spexr-status-info: #0284c7;
-
-  /* Agent surfaces — primary view emphasis */
-  --spexr-agent-bg: #fbfbfd;
-  --spexr-agent-bubble-user: #eef0ff;
-  --spexr-agent-bubble-assistant: #ffffff;
-  --spexr-agent-rail: #5b6cff;
-
-  /* Editor */
-  --spexr-editor-bg: #ffffff;
-  --spexr-editor-fg: #0a0a0b;
-  --spexr-editor-line-active: #f4f4f5;
-  --spexr-editor-selection: #c7d2fe;
-
-  /* Focus */
-  --spexr-focus-ring: #5b6cff;
-
-  /* Syntax highlight token colours (atom-one-light) */
-  --spexr-hljs-base:     #383a42;
-  --spexr-hljs-comment:  #9ca3a3;
-  --spexr-hljs-keyword:  #a626a4;
-  --spexr-hljs-string:   #50a14f;
-  --spexr-hljs-literal:  #0184bc;
-  --spexr-hljs-number:   #986801;
-  --spexr-hljs-tag:      #e45649;
-  --spexr-hljs-title:    #4078f2;
-  --spexr-hljs-builtin:  #c18401;
+/* VENDORED from the sondalab-ui repo (sondalab.tokens.json) — do not edit here. Update tokens upstream in sondalab-ui, regenerate, and re-copy. */
+[data-sl-theme="light"] {
+  --sl-bg-canvas: #ECE4D4;
+  --sl-bg-surface: #F6F1E6;
+  --sl-bg-surface-raised: #FFFFFF;
+  --sl-bg-overlay: rgba(21,33,31,0.4);
+  --sl-border-subtle: rgba(21,33,31,0.09);
+  --sl-border-default: rgba(21,33,31,0.16);
+  --sl-border-strong: rgba(21,33,31,0.28);
+  --sl-text-primary: #15211F;
+  --sl-text-secondary: #475754;
+  --sl-text-muted: #6E7B78;
+  --sl-text-on-accent: #FFFFFF;
+  --sl-status-success: #16a34a;
+  --sl-status-warning: #d97706;
+  --sl-status-danger: #dc2626;
+  --sl-status-info: #0284c7;
+  --sl-accent-default: #B56A0C;
+  --sl-accent-hover: #A05F0A;
+  --sl-accent-active: #8A5109;
+  --sl-accent-subtle: rgba(197,122,22,0.12);
+  --sl-accent-depth: #14606C;
+  --sl-focus-ring: #B56A0C;
 }
