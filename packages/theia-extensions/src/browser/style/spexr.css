@@ -156,8 +156,13 @@ body {
   gap: var(--sl-space-2);
 }
 
+/* Sondalab L3: field label reads as a mono structural eyebrow.
+   See canonical recipe in sondalab-ui/docs/design-language.md (L3). */
 .spexr-agent-chat__label {
+  font-family: var(--sl-font-code);
   font-size: var(--sl-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
   color: var(--sl-text-muted);
 }
 
@@ -529,9 +534,10 @@ body {
 }
 
 .spexr-spec-resources__caption {
+  font-family: var(--sl-font-code);
   font-size: var(--sl-text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.16em;
   font-weight: 600;
   color: var(--sl-text-muted);
 }
@@ -2527,10 +2533,12 @@ code {
 .spexr-df-pill--attn { color: var(--sl-text-on-accent, #fff); background: var(--tile-accent); }
 .spexr-df-pill--error { color: #fff; background: var(--sl-status-danger, #e5484d); }
 
-/* Status word (right of the project name) */
+/* Status word (right of the project name) — a UI label, so it takes the design
+   mono --sl-font-code (like the other L3 eyebrows), intentionally distinct from
+   this card's code-content runs (__branch/__trail mirror the editor font). */
 .spexr-df-card__status {
-  flex: none; font-size: var(--sl-text-xs); font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.05em;
+  flex: none; font-family: var(--sl-font-code); font-size: var(--sl-text-xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.12em;
 }
 .spexr-df-card__status[data-kind="working"], .spexr-df-card__status[data-kind="attn"] { color: var(--tile-accent); }
 .spexr-df-card__status[data-kind="idle"] { color: var(--sl-text-muted); }
