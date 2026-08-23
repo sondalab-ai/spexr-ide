@@ -1,24 +1,2 @@
-/* VENDORED from the sondalab-ui repo (sondalab.tokens.json) — do not edit here. Update tokens upstream in sondalab-ui, regenerate, and re-copy. */
-[data-sl-theme="high-contrast"] {
-  --sl-bg-canvas: #000000;
-  --sl-bg-surface: #000000;
-  --sl-bg-surface-raised: #0a0a0a;
-  --sl-bg-overlay: rgba(0,0,0,0.85);
-  --sl-border-subtle: #ffffff;
-  --sl-border-default: #ffffff;
-  --sl-border-strong: #ffff00;
-  --sl-text-primary: #ffffff;
-  --sl-text-secondary: #ffffff;
-  --sl-text-muted: #cccccc;
-  --sl-text-on-accent: #000000;
-  --sl-status-success: #00ff00;
-  --sl-status-warning: #ffaa00;
-  --sl-status-danger: #ff5555;
-  --sl-status-info: #00ffff;
-  --sl-accent-default: #ffff00;
-  --sl-accent-hover: #ffffa0;
-  --sl-accent-active: #cccc00;
-  --sl-accent-subtle: #1a1a00;
-  --sl-accent-depth: #00ffff;
-  --sl-focus-ring: #ffff00;
-}
+/* Sondalab base theme (high-contrast). SPEXR overrides load separately. */
+@import "@sondalab/ui-kit/themes/high-contrast.css";

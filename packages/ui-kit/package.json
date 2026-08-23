@@ -18,6 +18,7 @@
       "default": "./dist/themes/index.js"
     },
     "./tokens.css": "./src/tokens/tokens.css",
+    "./components.css": "./src/components.css",
     "./themes/light.css": "./src/themes/light.css",
     "./themes/dark.css": "./src/themes/dark.css",
     "./themes/high-contrast.css": "./src/themes/high-contrast.css",
@@ -32,6 +33,7 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@sondalab/ui-kit": "^0.2.0",
     "@radix-ui/react-dialog": "^1.1.0",
     "@radix-ui/react-dropdown-menu": "^2.1.0",
     "@radix-ui/react-tabs": "^1.1.0",

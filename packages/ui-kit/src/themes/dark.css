@@ -1,24 +1,2 @@
-/* VENDORED from the sondalab-ui repo (sondalab.tokens.json) — do not edit here. Update tokens upstream in sondalab-ui, regenerate, and re-copy. */
-[data-sl-theme="dark"] {
-  --sl-bg-canvas: #070A0D;
-  --sl-bg-surface: #0F151A;
-  --sl-bg-surface-raised: #131C23;
-  --sl-bg-overlay: rgba(0,0,0,0.6);
-  --sl-border-subtle: rgba(218,227,228,0.07);
-  --sl-border-default: rgba(218,227,228,0.13);
-  --sl-border-strong: rgba(218,227,228,0.28);
-  --sl-text-primary: #DAE3E4;
-  --sl-text-secondary: #9AA9AD;
-  --sl-text-muted: #6E8088;
-  --sl-text-on-accent: #0A0A0B;
-  --sl-status-success: #4ade80;
-  --sl-status-warning: #fbbf24;
-  --sl-status-danger: #f87171;
-  --sl-status-info: #38bdf8;
-  --sl-accent-default: #F5A83C;
-  --sl-accent-hover: #F7B863;
-  --sl-accent-active: #E0942A;
-  --sl-accent-subtle: rgba(245,168,60,0.16);
-  --sl-accent-depth: #35A0B4;
-  --sl-focus-ring: #F5A83C;
-}
+/* Sondalab base theme (dark). SPEXR overrides load separately. */
+@import "@sondalab/ui-kit/themes/dark.css";
