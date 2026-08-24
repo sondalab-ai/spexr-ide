@@ -12,6 +12,19 @@
   /* Editor / code contexts keep a coding mono; the brand mono (--sl-font-mono,
      Martian) is available for data labels but is not forced into code here. */
   --sl-font-code: "JetBrains Mono", "Geist Mono", "SF Mono", "Menlo", "Consolas", monospace;
+
+  /* Syntax highlight — adopt the shared DS atom-one palette (--sl-code-*, which
+     flips per [data-sl-theme]). Mapped once here; hljs stays undefined in HC,
+     where the DS omits --sl-code-* (unchanged from before the migration). */
+  --sl-hljs-base:    var(--sl-code-fg);
+  --sl-hljs-comment: var(--sl-code-comment);
+  --sl-hljs-keyword: var(--sl-code-keyword);
+  --sl-hljs-string:  var(--sl-code-string);
+  --sl-hljs-literal: var(--sl-code-boolean);
+  --sl-hljs-number:  var(--sl-code-number);
+  --sl-hljs-tag:     var(--sl-code-tag);
+  --sl-hljs-title:   var(--sl-code-function);
+  --sl-hljs-builtin: var(--sl-code-builtin);
 }
 
 [data-sl-theme="light"] {
@@ -33,17 +46,6 @@
   --sl-editor-fg: #0a0a0b;
   --sl-editor-line-active: #f4f4f5;
   --sl-editor-selection: #c7d2fe;
-
-  /* Syntax highlight (atom-one-light) */
-  --sl-hljs-base: #383a42;
-  --sl-hljs-comment: #9ca3a3;
-  --sl-hljs-keyword: #a626a4;
-  --sl-hljs-string: #50a14f;
-  --sl-hljs-literal: #0184bc;
-  --sl-hljs-number: #986801;
-  --sl-hljs-tag: #e45649;
-  --sl-hljs-title: #4078f2;
-  --sl-hljs-builtin: #c18401;
 }
 
 [data-sl-theme="dark"] {
@@ -62,17 +64,6 @@
   --sl-editor-fg: #e5e5e7;
   --sl-editor-line-active: #15171c;
   --sl-editor-selection: #313869;
-
-  /* Syntax highlight (atom-one-dark) */
-  --sl-hljs-base: #abb2bf;
-  --sl-hljs-comment: #5c6370;
-  --sl-hljs-keyword: #c678dd;
-  --sl-hljs-string: #98c379;
-  --sl-hljs-literal: #56b6c2;
-  --sl-hljs-number: #d19a66;
-  --sl-hljs-tag: #e06c75;
-  --sl-hljs-title: #61aeee;
-  --sl-hljs-builtin: #e6c07b;
 }
 
 [data-sl-theme="high-contrast"] {

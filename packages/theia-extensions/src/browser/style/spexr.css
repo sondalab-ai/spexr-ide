@@ -2351,14 +2351,15 @@ code {
 
 /* --- Darkfactory: agent monitoring wall --- */
 .spexr-darkfactory {
-  --sl-df-accent-0: #b388ff;
-  --sl-df-accent-1: #4dd0e1;
-  --sl-df-accent-2: #ffb74d;
-  --sl-df-accent-3: #81c784;
-  --sl-df-accent-4: #f06292;
-  --sl-df-accent-5: #7986cb;
-  --sl-df-accent-6: #a1887f;
-  --sl-df-accent-7: #4db6ac;
+  /* Categorical wall — adopt the shared DS data-viz ramp (--sl-viz-0..7). */
+  --sl-df-accent-0: var(--sl-viz-0);
+  --sl-df-accent-1: var(--sl-viz-1);
+  --sl-df-accent-2: var(--sl-viz-2);
+  --sl-df-accent-3: var(--sl-viz-3);
+  --sl-df-accent-4: var(--sl-viz-4);
+  --sl-df-accent-5: var(--sl-viz-5);
+  --sl-df-accent-6: var(--sl-viz-6);
+  --sl-df-accent-7: var(--sl-viz-7);
   padding: var(--sl-space-4);
   overflow: auto;
   height: 100%;
