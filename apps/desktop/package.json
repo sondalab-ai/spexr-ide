@@ -3,7 +3,7 @@
   "version": "0.1.5",
   "private": true,
   "description": "SPEXR desktop shell — Theia + Electron",
-  "homepage": "https://github.com/marcellobarile/spexr-ide",
+  "homepage": "https://github.com/sondalab-ai/spexr-ide",
   "author": {
     "name": "SPEXR",
     "email": "marcello.barile@gmail.com"
