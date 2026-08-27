@@ -240,8 +240,11 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   // returns one entry per registered provider that has a decoration for a URI, in
   // the order registerDecorationsProvider() was called (which follows onStart()
   // call order, itself normally following bind order), and the tree consumes only
-  // index [0] — so on an unlikely collision (a tracked path that is also
-  // gitignored) the ignored provider's dim wins over this one's state letter.
+  // index [0] — so first-registered would win a collision. In practice this never
+  // fires: GitIgnoredDecorationProvider's set comes from `git ls-files -o -i
+  // --exclude-standard`, and `-o` (others) restricts it to untracked paths, so a
+  // tracked, changed file — the only thing this provider decorates — can never
+  // also appear in that set.
   bind(GitStateDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitStateDecorationProvider);
 

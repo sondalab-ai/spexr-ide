@@ -11,7 +11,12 @@ export interface StateDecoration {
 // conflicted — not the protocol's GitFileState letters, which keep "?" and
 // "U" apart (see the comment on GitFileState in common/git-protocol.ts).
 // Copied reuses the renamed colour; there is no distinct "copied" role in
-// the gitDecoration.* palette.
+// the gitDecoration.* palette. Deleted and conflicting also share one
+// colour (gitDecoration.deletedResourceForeground and
+// .conflictingResourceForeground both resolve to the same --sl-status-danger
+// token in spexr-theme-contribution.ts) because the design system has four
+// semantic status colours where this table needs five distinct ones; the
+// letter ("D" vs "!") is what actually distinguishes the two states.
 const DECORATION_BY_STATE: Record<GitFileState, StateDecoration> = {
   A: { letter: "A", colorId: "gitDecoration.addedResourceForeground", tooltip: "Added" },
   M: { letter: "M", colorId: "gitDecoration.modifiedResourceForeground", tooltip: "Modified" },
