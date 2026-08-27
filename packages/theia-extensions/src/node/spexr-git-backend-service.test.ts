@@ -113,6 +113,19 @@ describe("SpexrGitBackendService", () => {
     await expect(service.discard(tmpDir, ["README.md"])).resolves.toBeUndefined();
   });
 
+  it("discard: reverts to staged content, not HEAD, when both differ", async () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "staged");
+    await service.stage(tmpDir, ["README.md"]);
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "unstaged");
+
+    await service.discard(tmpDir, ["README.md"]);
+
+    expect(fs.readFileSync(path.join(tmpDir, "README.md"), "utf8")).toBe("staged");
+    const status = await service.getStatus(tmpDir);
+    const f = status.files.find((x) => x.path === "README.md");
+    expect(f?.stagedState).toBe("M");
+  });
+
   it("commit: staged file produces clean status", async () => {
     fs.writeFileSync(path.join(tmpDir, "new.txt"), "hello");
     await service.stage(tmpDir, ["new.txt"]);

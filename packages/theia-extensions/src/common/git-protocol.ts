@@ -75,8 +75,10 @@ export interface SpexrGitService {
   stage(root: string, paths: string[]): Promise<void>;
   unstage(root: string, paths: string[]): Promise<void>;
   /**
-   * Throw away working-tree changes. Tracked paths are restored from HEAD;
-   * untracked paths are deleted from disk. Irreversible — callers confirm first.
+   * Throw away working-tree changes. For tracked paths, unstaged edits are
+   * discarded and the file reverts to its staged (index) content — a staged
+   * edit survives and the file stays staged. Untracked paths are deleted from
+   * disk. Irreversible — callers confirm first.
    */
   discard(root: string, paths: string[]): Promise<void>;
   commit(root: string, message: string): Promise<void>;
