@@ -11,6 +11,7 @@ import {
   parseIgnoredPaths,
   pickRemote,
   mapFileChange,
+  dirIdentity,
 } from "./spexr-git-backend-service.js";
 
 describe("SpexrGitBackendService", () => {
@@ -193,7 +194,8 @@ describe("SpexrGitBackendService", () => {
 
   describe("pickRemote", () => {
     it("prefers origin", () => expect(pickRemote(["upstream", "origin"])).toBe("origin"));
-    it("takes the sole remote when there is no origin", () => expect(pickRemote(["fork"])).toBe("fork"));
+    it("takes the sole remote when there is no origin", () =>
+      expect(pickRemote(["fork"])).toBe("fork"));
     it("throws, naming candidates, when ambiguous", () => {
       expect(() => pickRemote(["a", "b"])).toThrow(/a, b/);
     });
@@ -348,7 +350,9 @@ describe("normalizeRemoteUrl", () => {
 describe("parseIgnoredPaths", () => {
   it("splits NUL-separated paths and drops empties", () => {
     expect(parseIgnoredPaths("dist/\0debug.log\0node_modules/\0")).toEqual([
-      "dist/", "debug.log", "node_modules/",
+      "dist/",
+      "debug.log",
+      "node_modules/",
     ]);
   });
   it("returns [] for empty output", () => {
@@ -420,10 +424,23 @@ describe("SpexrGitBackendService — virgin repo (no commits)", () => {
   });
 });
 
+/** Minimal FSWatcher stand-in; `onError` receives the handler the service registers. */
+function fakeWatcher(onError?: (handler: () => void) => void): FSWatcher {
+  const w = {
+    close: () => {},
+    on: (event: string, handler: () => void) => {
+      if (event === "error") onError?.(handler);
+      return w;
+    },
+  };
+  return w as unknown as FSWatcher;
+}
+
 describe("SpexrGitBackendService — repository watcher", () => {
   let tmpDir: string;
   let watched: { dir: string; recursive: boolean }[];
   let fire: (() => void)[];
+  let failWatch: (() => void)[];
   let service: SpexrGitBackendService;
 
   beforeEach(() => {
@@ -431,11 +448,12 @@ describe("SpexrGitBackendService — repository watcher", () => {
     execSync("git init", { cwd: tmpDir });
     watched = [];
     fire = [];
+    failWatch = [];
     service = new SpexrGitBackendService({
       watchDir: (dir, recursive, onChange) => {
         watched.push({ dir, recursive });
         fire.push(onChange);
-        return { close: () => {} } as unknown as FSWatcher;
+        return fakeWatcher((handler) => failWatch.push(handler));
       },
     });
   });
@@ -449,24 +467,34 @@ describe("SpexrGitBackendService — repository watcher", () => {
 
     const dirs = watched.map((w) => path.basename(w.dir));
     expect(dirs).toContain(".git");
-    expect(watched.some((w) => w.dir.endsWith(path.join(".git", "refs")) && w.recursive)).toBe(true);
+    expect(watched.some((w) => w.dir.endsWith(path.join(".git", "refs")) && w.recursive)).toBe(
+      true,
+    );
   });
 
   it("debounces a burst of changes into one notification", async () => {
     let calls = 0;
-    service.setClient({ onRepositoryChanged: () => { calls += 1; } });
+    service.setClient({
+      onRepositoryChanged: () => {
+        calls += 1;
+      },
+    });
     await service.getStatus(tmpDir);
     await vi.waitFor(() => expect(fire.length).toBeGreaterThan(0));
 
-    fire[0]!(); fire[0]!(); fire[0]!();
-    expect(calls).toBe(0);                       // nothing yet — debounced
+    fire[0]!();
+    fire[0]!();
+    fire[0]!();
+    expect(calls).toBe(0); // nothing yet — debounced
     await new Promise((r) => setTimeout(r, 250));
-    expect(calls).toBe(1);                       // exactly one, not three
+    expect(calls).toBe(1); // exactly one, not three
   });
 
   it("does not throw when the watch target cannot be watched", async () => {
     const failing = new SpexrGitBackendService({
-      watchDir: () => { throw new Error("EPERM"); },
+      watchDir: () => {
+        throw new Error("EPERM");
+      },
     });
     failing.setClient({ onRepositoryChanged: () => {} });
     await expect(failing.getStatus(tmpDir)).resolves.toBeDefined();
@@ -489,7 +517,7 @@ describe("SpexrGitBackendService — repository watcher", () => {
         if (shouldFail) throw new Error("EPERM");
         watched.push({ dir, recursive });
         fire.push(onChange);
-        return { close: () => {} } as unknown as FSWatcher;
+        return fakeWatcher();
       },
     });
     flaky.setClient({ onRepositoryChanged: () => {} });
@@ -499,6 +527,47 @@ describe("SpexrGitBackendService — repository watcher", () => {
     shouldFail = false;
     await flaky.getStatus(tmpDir); // permissions recovered → arming must be retried, not skipped
     await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+  });
+
+  it("re-arms after the git directory is deleted and recreated", async () => {
+    service.setClient({ onRepositoryChanged: () => {} });
+    await service.getStatus(tmpDir);
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+    const countAfterFirst = watched.length;
+
+    fs.rmSync(path.join(tmpDir, ".git"), { recursive: true, force: true });
+    execSync("git init", { cwd: tmpDir });
+
+    await service.getStatus(tmpDir);
+    expect(watched.length).toBeGreaterThan(countAfterFirst);
+  });
+
+  it("re-arms after a watcher reports an error", async () => {
+    service.setClient({ onRepositoryChanged: () => {} });
+    await service.getStatus(tmpDir);
+    await vi.waitFor(() => expect(failWatch.length).toBeGreaterThan(0));
+    const countAfterFirst = watched.length;
+
+    failWatch[0]!(); // the watcher died after being established
+
+    await service.getStatus(tmpDir);
+    expect(watched.length).toBeGreaterThan(countAfterFirst);
+  });
+
+  it("arms a directory that becomes a repository after the first probe", async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-init-"));
+    try {
+      service.setClient({ onRepositoryChanged: () => {} });
+      await expect(service.getStatus(plain)).rejects.toThrow();
+      expect(watched.length).toBe(0);
+
+      execSync("git init", { cwd: plain });
+
+      await service.getStatus(plain);
+      await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+    } finally {
+      fs.rmSync(plain, { recursive: true, force: true });
+    }
   });
 
   it("watches refs under the common dir, not the worktree's own empty one", async () => {
@@ -529,15 +598,38 @@ describe("mapFileChange — conflict and untracked states", () => {
     expect(mapFileChange("new.txt", "?", "?")).toEqual({ path: "new.txt", unstagedState: "?" });
   });
 
-  it.each([["U", "U"], ["A", "A"], ["D", "D"], ["A", "U"], ["U", "A"], ["D", "U"], ["U", "D"]])(
-    "treats %s%s as a conflict",
-    (index, worktree) => {
-      const r = mapFileChange("f.txt", index, worktree);
-      expect(r?.unstagedState).toBe("U");
-    },
-  );
+  it.each([
+    ["U", "U"],
+    ["A", "A"],
+    ["D", "D"],
+    ["A", "U"],
+    ["U", "A"],
+    ["D", "U"],
+    ["U", "D"],
+  ])("treats %s%s as a conflict", (index, worktree) => {
+    const r = mapFileChange("f.txt", index, worktree);
+    expect(r?.unstagedState).toBe("U");
+  });
 
   it("still maps a plain staged modification", () => {
     expect(mapFileChange("f.txt", "M", " ")).toEqual({ path: "f.txt", stagedState: "M" });
+  });
+});
+
+describe("dirIdentity", () => {
+  it("returns undefined for a directory that does not exist", () => {
+    expect(dirIdentity(path.join(os.tmpdir(), `spexr-absent-${Date.now()}`))).toBeUndefined();
+  });
+
+  it("stays stable while entries are added and removed inside the directory", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-ident-"));
+    try {
+      const before = dirIdentity(dir);
+      fs.writeFileSync(path.join(dir, "a"), "x");
+      fs.rmSync(path.join(dir, "a"));
+      expect(dirIdentity(dir)).toBe(before);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

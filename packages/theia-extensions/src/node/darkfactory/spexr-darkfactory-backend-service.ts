@@ -10,15 +10,29 @@ import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js
 import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
-import { claudeHarness, scanClaudeTranscripts, type TranscriptRef } from "../../common/harness/claude-harness.js";
+import {
+  claudeHarness,
+  scanClaudeTranscripts,
+  type TranscriptRef,
+} from "../../common/harness/claude-harness.js";
 import { opencodeHarness } from "../../common/harness/opencode-harness.js";
 import { installedHarnesses, type DetectFn } from "../../common/harness/harness-registry.js";
 import { once } from "../../common/harness/once.js";
 import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
 import { readBoundedLines } from "./bounded-read.js";
-import { distillAction, nowActionLine, recentActions, lastActionFailed } from "./action-distiller.js";
+import {
+  distillAction,
+  nowActionLine,
+  recentActions,
+  lastActionFailed,
+} from "./action-distiller.js";
 import { buildFollowEvents, sessionGoal, recentAssistantProse, type TurnEntry } from "./turns.js";
-import { buildNowPrompt, buildOverviewPrompt, cleanSummaryLine, type DescriptionGenerator } from "../search/description-format.js";
+import {
+  buildNowPrompt,
+  buildOverviewPrompt,
+  cleanSummaryLine,
+  type DescriptionGenerator,
+} from "../search/description-format.js";
 import type {
   AgentSummary,
   AgentTile,
@@ -145,17 +159,23 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   constructor(@unmanaged() deps?: DarkfactoryDeps) {
     const d = deps ?? {};
     this.configDirs = d.configDirs ?? defaultConfigDirs();
-    this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
+    this.resumableConfigDir =
+      d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
     this.detectSync = d.detect;
     this.opencodeDataDirOf = d.opencodeDataDir ?? defaultOpencodeDataDir;
-    this.watchDir = d.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
+    this.watchDir =
+      d.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
     this.listTranscripts = d.listTranscripts ?? (() => this.defaultListTranscripts());
     this.liveDirs =
       d.liveProjectDirs ??
       (async () => {
         const installed = await this.installed();
-        return defaultLiveProjectDirs(undefined, undefined, installed.flatMap((h) => h.processNames()));
+        return defaultLiveProjectDirs(
+          undefined,
+          undefined,
+          installed.flatMap((h) => h.processNames()),
+        );
       });
     this.generator = d.generator;
   }
@@ -203,7 +223,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     //    expiry check") rather than the raw tool call.
     // Recent prose excludes tool chips, keeping the input small and enumeration-free.
     const goal = entries.length > 0 ? sessionGoal(entries) : "";
-    const progress = entries.length > 0 ? recentAssistantProse(entries, SUMMARY_PROSE_TURNS).join("\n") : "";
+    const progress =
+      entries.length > 0 ? recentAssistantProse(entries, SUMMARY_PROSE_TURNS).join("\n") : "";
     // Deterministic fallback for Now: always factual, used when the model is
     // unavailable, the context is thin, or the model returns nothing.
     let now = entries.length > 0 ? nowActionLine(entries) : "";
@@ -214,8 +235,12 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const context = `${goal}\n${progress}`;
     if (this.generator?.isAvailable() && context.length >= MIN_SUMMARY_CHARS) {
       const [rawOverview, rawNow] = await Promise.all([
-        goal ? this.generator.summarize(buildOverviewPrompt(goal, progress), "overview") : Promise.resolve(null),
-        progress.trim() ? this.generator.summarize(buildNowPrompt(progress), "now") : Promise.resolve(null),
+        goal
+          ? this.generator.summarize(buildOverviewPrompt(goal, progress), "overview")
+          : Promise.resolve(null),
+        progress.trim()
+          ? this.generator.summarize(buildNowPrompt(progress), "now")
+          : Promise.resolve(null),
       ]);
       const modelOverview = rawOverview ? cleanSummaryLine(rawOverview) : "";
       const modelNow = rawNow ? cleanSummaryLine(rawNow) : "";
@@ -264,7 +289,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // so "working" is attributed to a single session per project. Parses run
     // concurrently (bounded) — sequential parsing serialized ~60 harness calls,
     // which for opencode is one CLI spawn per session (~30s total).
-    const parsed = new Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>();
+    const parsed = new Map<
+      string,
+      { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }
+    >();
     const newestByProject = new Map<string, number>();
     await forEachConcurrent(refs, PARSE_CONCURRENCY, async (u) => {
       const p = await u.harness.parseTranscript(u.ref);
@@ -286,7 +314,15 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       const cwd = p.cwd!;
       const ref = u.ref;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
-      const { state, needsYou, needsYouCertain } = classifySession(cwd, ref.mtimeMs, isNewest, live, now, entries, p.permissionMode);
+      const { state, needsYou, needsYouCertain } = classifySession(
+        cwd,
+        ref.mtimeMs,
+        isNewest,
+        live,
+        now,
+        entries,
+        p.permissionMode,
+      );
       const action = distillAction(entries);
       this.index.set(ref.sessionId, {
         transcriptPath: u.claude?.transcriptPath ?? "",
@@ -363,10 +399,19 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     };
     let watcher: FSWatcher;
     try {
-      watcher = watch(meta.transcriptPath, debounce(() => void emit().catch(() => {}), 250));
+      watcher = watch(
+        meta.transcriptPath,
+        debounce(() => void emit().catch(() => {}), 250),
+      );
     } catch {
       return; // transcript vanished (or no file-backed transcript — opencode, Slice 5)
     }
+    // A watcher that fails after establishment emits `error`; unhandled, that
+    // throws out of the backend. Drop the follow instead — stopFollow and a
+    // later startFollow both stay correct against an absent entry.
+    watcher.on("error", () => {
+      void this.stopFollow(sessionId);
+    });
     this.follows.set(sessionId, { watcher, offset: 0 });
     await emit(); // send the current tail immediately
   }
@@ -390,12 +435,33 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         // NOTE: `recursive` is implemented only on macOS and Windows; on Linux it
         // throws and is swallowed here, so live push-refresh is inert there (the
         // wall still refreshes on its own listTiles calls). Known follow-up.
-        this.wallWatchers.push(this.watchDir(projectsDirOf(dir), true, onChange));
+        this.wallWatchers.push(this.armWallWatcher(projectsDirOf(dir), true, onChange));
       } catch {
         /* directory missing (or recursive unsupported) → no live push for it */
       }
     }
     void this.armOpencodeWatch(onChange);
+  }
+
+  /**
+   * Watch a wall directory with its `error` event handled. An FSWatcher that
+   * fails after being established emits `error`, and an unhandled `error` on
+   * an EventEmitter throws out of the backend process. The wall degrades to
+   * refreshing on its own `listTiles` calls, which is what an unwatchable
+   * directory already does.
+   */
+  private armWallWatcher(dir: string, recursive: boolean, onChange: () => void): FSWatcher {
+    const watcher = this.watchDir(dir, recursive, onChange);
+    watcher.on("error", () => {
+      try {
+        watcher.close();
+      } catch {
+        /* already closed */
+      }
+      const i = this.wallWatchers.indexOf(watcher);
+      if (i >= 0) this.wallWatchers.splice(i, 1);
+    });
+    return watcher;
   }
 
   /**
@@ -414,7 +480,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const dir = this.opencodeDataDirOf();
     if (!dir) return;
     try {
-      this.wallWatchers.push(this.watchDir(dir, false, onChange));
+      this.wallWatchers.push(this.armWallWatcher(dir, false, onChange));
     } catch {
       /* directory missing → no live push for it */
     }
@@ -525,7 +591,9 @@ function commandExists(bin: string): Promise<boolean> {
 }
 
 /** Claude is the hard dependency (always installed); probe every other harness via `command -v`. */
-export async function detectInstalledHarnesses(adapters: HarnessAdapter[]): Promise<HarnessAdapter[]> {
+export async function detectInstalledHarnesses(
+  adapters: HarnessAdapter[],
+): Promise<HarnessAdapter[]> {
   const flags = await Promise.all(
     adapters.map((a) => (a.id === "claude" ? Promise.resolve(true) : commandExists(a.id))),
   );
@@ -599,7 +667,11 @@ function debounce<T extends (...a: never[]) => void>(fn: T, ms: number): T {
  * Run `fn` over every item with at most `limit` calls in flight, resolving when
  * all complete. Errors propagate (callers fail soft inside `fn`).
  */
-export async function forEachConcurrent<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+export async function forEachConcurrent<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (next < items.length) {

@@ -1,6 +1,6 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { isAbsolute, resolve as resolvePath, join } from "node:path";
-import { watch, type FSWatcher } from "node:fs";
+import { statSync, watch, type FSWatcher } from "node:fs";
 import { rm } from "node:fs/promises";
 import simpleGit, { type SimpleGit } from "simple-git";
 import type {
@@ -79,12 +79,18 @@ export function parseBlamePorcelain(raw: string): BlameResultDto {
 
 function mapStateChar(char: string): GitFileState | undefined {
   switch (char) {
-    case "A": return "A";
-    case "M": return "M";
-    case "D": return "D";
-    case "R": return "R";
-    case "C": return "C";
-    default: return undefined;
+    case "A":
+      return "A";
+    case "M":
+      return "M";
+    case "D":
+      return "D";
+    case "R":
+      return "R";
+    case "C":
+      return "C";
+    default:
+      return undefined;
   }
 }
 
@@ -95,6 +101,30 @@ function mapStateChar(char: string): GitFileState | undefined {
  * never appears in the worktree column outside a conflict.
  */
 const CONFLICT_PAIRS = new Set(["UU", "AA", "DD", "AU", "UA", "DU", "UD"]);
+
+/**
+ * Identity of a directory, not merely its path: its inode.
+ *
+ * A `.git` deleted and recreated in place keeps its path, so comparing paths
+ * cannot tell the new directory from the old one — and the watchers armed on
+ * the old one are dead. The inode survives writes inside the directory, which
+ * timestamps do not: `ctime` changes every time git adds or removes an entry,
+ * and `birthtime` degrades to `ctime` on filesystems without creation times.
+ *
+ * The trade-off is deliberate. A reused inode (or a filesystem that reports
+ * `0` for every file) means a recreated git dir goes undetected — today's
+ * behaviour — whereas a volatile identity would disarm and re-arm on every
+ * call, leaking watchers. Missing the rare case beats that.
+ *
+ * Returns undefined when the directory is gone.
+ */
+export function dirIdentity(dir: string): string | undefined {
+  try {
+    return String(statSync(dir).ino);
+  } catch {
+    return undefined;
+  }
+}
 
 export function mapFileChange(
   filePath: string,
@@ -107,8 +137,7 @@ export function mapFileChange(
   if (indexChar === "?" && workingDirChar === "?") {
     return { path: filePath, unstagedState: "?" };
   }
-  const stagedState =
-    indexChar !== " " && indexChar !== "?" ? mapStateChar(indexChar) : undefined;
+  const stagedState = indexChar !== " " && indexChar !== "?" ? mapStateChar(indexChar) : undefined;
   const unstagedState =
     workingDirChar !== " " && workingDirChar !== "?" ? mapStateChar(workingDirChar) : undefined;
   if (!stagedState && !unstagedState) return undefined;
@@ -168,11 +197,16 @@ export class SpexrGitBackendService implements SpexrGitService {
 
   private readonly watchDir: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
   private client?: SpexrGitClient;
-  private readonly watchers: FSWatcher[] = [];
-  /** Roots with at least one watch actually established — not stacked on repeat getStatus calls. */
-  private readonly armed = new Set<string>();
-  /** Roots confirmed not to be a repository, so getStatus stops re-running rev-parse on them. */
-  private readonly notARepo = new Set<string>();
+  /**
+   * Roots with at least one watch actually established, keyed so a stale set
+   * can be closed and re-armed. The git dir is kept alongside the watchers
+   * because that is what goes stale: a `.git` deleted and recreated inside one
+   * session leaves watchers that will never fire again.
+   */
+  private readonly armed = new Map<
+    string,
+    { gitDir: string; gitDirId: string; watchers: FSWatcher[] }
+  >();
   private debounce?: ReturnType<typeof setTimeout>;
 
   constructor(@unmanaged() deps: GitBackendDeps = {}) {
@@ -201,7 +235,9 @@ export class SpexrGitBackendService implements SpexrGitService {
    * every call for a root — so this is also strictly faster than resolving
    * them one at a time.
    */
-  private async resolveGitDirs(root: string): Promise<{ gitDir: string; commonDir: string } | undefined> {
+  private async resolveGitDirs(
+    root: string,
+  ): Promise<{ gitDir: string; commonDir: string } | undefined> {
     try {
       const out = (await this.git(root).raw(["rev-parse", "--git-dir", "--git-common-dir"])).trim();
       const [gitDirRaw, commonDirRaw] = out.split("\n");
@@ -262,36 +298,73 @@ export class SpexrGitBackendService implements SpexrGitService {
       [gitDir, false],
       [join(commonDir, "refs"), true],
     ];
-    let established = false;
+    const watchers: FSWatcher[] = [];
     for (const [dir, recursive] of targets) {
       try {
-        this.watchers.push(this.watchDir(dir, recursive, () => { notify(); }));
-        established = true;
+        const watcher = this.watchDir(dir, recursive, () => {
+          notify();
+        });
+        // A watcher that fails after being established is dead but still
+        // bookkept, so without this the root would never re-arm. It also keeps
+        // the event handled: an unhandled `error` on an EventEmitter throws.
+        watcher.on("error", () => {
+          this.disarm(root);
+        });
+        watchers.push(watcher);
       } catch {
         // Unwatchable path or permission error: degrade to the previous
         // behavior rather than failing the whole service.
       }
     }
-    if (established) this.armed.add(root);
+    const gitDirId = watchers.length > 0 ? dirIdentity(gitDir) : undefined;
+    if (gitDirId === undefined) {
+      // Nothing established, or the git dir vanished mid-arm: close whatever
+      // was opened and leave the root unarmed so the next call retries.
+      for (const w of watchers) {
+        try {
+          w.close();
+        } catch {
+          /* already closed */
+        }
+      }
+      return;
+    }
+    this.armed.set(root, { gitDir, gitDirId, watchers });
+  }
+
+  /** Close and forget a root's watchers so the next getStatus arms fresh ones. */
+  private disarm(root: string): void {
+    const entry = this.armed.get(root);
+    if (!entry) return;
+    this.armed.delete(root);
+    for (const w of entry.watchers) {
+      try {
+        w.close();
+      } catch {
+        /* already closed */
+      }
+    }
   }
 
   dispose(): void {
     if (this.debounce) clearTimeout(this.debounce);
-    for (const w of this.watchers) {
-      try { w.close(); } catch { /* already closed */ }
-    }
-    this.watchers.length = 0;
-    this.armed.clear();
-    this.notARepo.clear();
+    for (const root of [...this.armed.keys()]) this.disarm(root);
   }
 
   async getStatus(root: string): Promise<GitStatusDto> {
-    if (this.client && !this.armed.has(root) && !this.notARepo.has(root)) {
-      const dirs = await this.resolveGitDirs(root);
-      if (dirs) {
-        this.armWatch(root, dirs.gitDir, dirs.commonDir);
-      } else {
-        this.notARepo.add(root);
+    if (this.client) {
+      // fs.watch does not report the removal of the directory it watches on
+      // every platform, so staleness is checked explicitly rather than left to
+      // the error handler: a `.git` deleted and recreated in place is a new
+      // directory at the same path, and the watchers on the old one are dead. A root that is not a repository is simply left
+      // unarmed and re-probed: caching that answer costs one `rev-parse` on a
+      // call that goes on to fail anyway, and permanently blinds the root to a
+      // later `git init`.
+      const entry = this.armed.get(root);
+      if (entry && dirIdentity(entry.gitDir) !== entry.gitDirId) this.disarm(root);
+      if (!this.armed.has(root)) {
+        const dirs = await this.resolveGitDirs(root);
+        if (dirs) this.armWatch(root, dirs.gitDir, dirs.commonDir);
       }
     }
     const git = this.git(root);
@@ -321,7 +394,10 @@ export class SpexrGitBackendService implements SpexrGitService {
     const git = this.git(root);
     // On a virgin repo (no commits yet) HEAD doesn't exist; git reset HEAD fails.
     // Use git rm --cached instead, which is the correct unstage for that state.
-    const hasHead = await git.raw(["rev-parse", "--verify", "HEAD"]).then(() => true).catch(() => false);
+    const hasHead = await git
+      .raw(["rev-parse", "--verify", "HEAD"])
+      .then(() => true)
+      .catch(() => false);
     if (hasHead) {
       await git.reset(["HEAD", "--", ...paths]);
     } else {
@@ -358,7 +434,9 @@ export class SpexrGitBackendService implements SpexrGitService {
     // entries from the `-a` listing above have no upstream of their own, so
     // leaving theirs undefined is correct.
     const raw = await git.raw([
-      "for-each-ref", "--format=%(refname:short) %(upstream:short)", "refs/heads",
+      "for-each-ref",
+      "--format=%(refname:short) %(upstream:short)",
+      "refs/heads",
     ]);
     const upstreams = new Map<string, string>();
     for (const line of raw.split("\n")) {
@@ -443,12 +521,7 @@ export class SpexrGitBackendService implements SpexrGitService {
     if (filePath.startsWith("-") || filePath.includes("..")) {
       throw new Error(`Invalid file path: "${filePath}"`);
     }
-    const raw = await this.git(root).raw([
-      "blame",
-      "--line-porcelain",
-      "--",
-      filePath,
-    ]);
+    const raw = await this.git(root).raw(["blame", "--line-porcelain", "--", filePath]);
     return parseBlamePorcelain(raw);
   }
 
@@ -458,7 +531,12 @@ export class SpexrGitBackendService implements SpexrGitService {
       // .gitignore, the global core.excludesFile, and .git/info/exclude; --directory
       // collapses a fully-ignored dir to one entry; -z NUL-separates for safe paths.
       const raw = await this.git(root).raw([
-        "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z",
+        "ls-files",
+        "-o",
+        "-i",
+        "--exclude-standard",
+        "--directory",
+        "-z",
       ]);
       return parseIgnoredPaths(raw);
     } catch {
