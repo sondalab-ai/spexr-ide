@@ -8,6 +8,7 @@ import {
 import { QuickInputService } from "@theia/core/lib/browser";
 import { ProgressService } from "@theia/core/lib/common/progress-service";
 import { SpexrGitScmProvider } from "./git-scm-provider.js";
+import { toRepoRelative } from "./relative-path.js";
 
 export const GitCommands = {
   STAGE_ALL: { id: "spexr.git.stageAll", label: "Git: Stage All Changes" } satisfies Command,
@@ -75,17 +76,21 @@ export class SpexrGitCommandsContribution implements CommandContribution {
   }
 
   private async stageAll(): Promise<void> {
+    const root = this.provider.root;
+    if (!root) return;
     const paths = this.provider.groups
       .find((g) => g.id === "workingTree")
-      ?.resources.map((r) => r.sourceUri.path.toString()) ?? [];
+      ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
     if (paths.length === 0) return;
     await this.provider.stage(paths);
   }
 
   private async unstageAll(): Promise<void> {
+    const root = this.provider.root;
+    if (!root) return;
     const paths = this.provider.groups
       .find((g) => g.id === "index")
-      ?.resources.map((r) => r.sourceUri.path.toString()) ?? [];
+      ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
     if (paths.length === 0) return;
     await this.provider.unstage(paths);
   }

@@ -130,6 +130,11 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     return this.rootUriStr;
   }
 
+  /** Filesystem path of the repository root, or undefined outside a workspace. */
+  get root(): string | undefined {
+    return this.rootFsPath;
+  }
+
   async onStart(): Promise<void> {
     const [first] = this.workspaceService.tryGetRoots();
     if (!first) return;
