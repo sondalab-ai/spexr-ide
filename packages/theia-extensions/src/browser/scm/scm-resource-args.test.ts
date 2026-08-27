@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { allInGroup, resourceGroupId, resourcePaths } from "./scm-resource-args.js";
+import { allInGroup, isResourceGroup, resourceGroupId, resourcePaths } from "./scm-resource-args.js";
 
 function resource(path: string, groupId?: string): unknown {
   return {
@@ -61,5 +61,23 @@ describe("allInGroup", () => {
     const args = [resource("/w/repo/a.ts", "conflicts")];
     expect(allInGroup(args, "conflicts")).toBe(true);
     expect(allInGroup(args, "workingTree")).toBe(false);
+  });
+});
+
+describe("isResourceGroup", () => {
+  it("is true for a single ScmResourceGroup argument matching the id", () => {
+    expect(isResourceGroup([{ id: "workingTree" }], "workingTree")).toBe(true);
+  });
+
+  it("is false when the group id differs", () => {
+    expect(isResourceGroup([{ id: "index" }], "workingTree")).toBe(false);
+  });
+
+  it("is true for an empty selection, so the command palette (which passes no args) still lists it", () => {
+    expect(isResourceGroup([], "workingTree")).toBe(true);
+  });
+
+  it("is false for a spread list of resources rather than a single group", () => {
+    expect(isResourceGroup([{ id: "workingTree" }, { id: "workingTree" }], "workingTree")).toBe(false);
   });
 });

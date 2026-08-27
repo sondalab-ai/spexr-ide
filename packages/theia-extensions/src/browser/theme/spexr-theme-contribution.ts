@@ -141,8 +141,16 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   /* Editor cursor */
   --theia-editorCursor-foreground: ${accent} !important;
 
-  /* SCM badges */
+  /* SCM badges. The other five states read from the shared --sl-status-*
+     design tokens (already theme-branched per [data-sl-theme], including
+     high contrast) rather than new literals here, so they stay legible
+     without duplicating this file's isDark branching. */
   --theia-gitDecoration-addedResourceForeground: ${accent} !important;
+  --theia-gitDecoration-modifiedResourceForeground: var(--sl-status-warning) !important;
+  --theia-gitDecoration-deletedResourceForeground: var(--sl-status-danger) !important;
+  --theia-gitDecoration-untrackedResourceForeground: var(--sl-status-success) !important;
+  --theia-gitDecoration-renamedResourceForeground: var(--sl-status-info) !important;
+  --theia-gitDecoration-conflictingResourceForeground: var(--sl-status-danger) !important;
 }`;
 
     // Neutral surfaces: only for light/dark. In high contrast, leave Theia's own

@@ -353,10 +353,11 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   }
 }
 
-function buildFileUri(root: string, filePath: string): URI {
+export function buildFileUri(root: string, filePath: string): URI {
   // String concatenation truncates paths containing "#" or "?" (parsed as
   // fragment/query by the URI parser) — build from components instead, as
-  // openDiff above already does.
+  // openDiff above already does. Exported so the decorations provider builds
+  // the identical URI the tree looks decorations up by.
   return URI.fromComponents({
     scheme: "file",
     authority: "",

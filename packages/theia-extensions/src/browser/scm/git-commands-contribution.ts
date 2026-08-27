@@ -12,7 +12,7 @@ import { ProgressService } from "@theia/core/lib/common/progress-service";
 import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { toRepoRelative } from "./relative-path.js";
-import { allInGroup, resourcePaths } from "./scm-resource-args.js";
+import { allInGroup, isResourceGroup, resourcePaths } from "./scm-resource-args.js";
 
 export const GitCommands = {
   STAGE_ALL: { id: "spexr.git.stageAll", label: "Git: Stage All Changes" } satisfies Command,
@@ -48,9 +48,14 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   registerCommands(commands: CommandRegistry): void {
     commands.registerCommand(GitCommands.STAGE_ALL, {
       execute: () => this.runGitOp("Stage changes", () => this.stageAll()),
+      // Restricts the group-header button to the Changes group without
+      // hiding the command from the command palette (which calls isVisible
+      // with no args at all — see isResourceGroup).
+      isVisible: (...args: unknown[]) => isResourceGroup(args, "workingTree"),
     });
     commands.registerCommand(GitCommands.UNSTAGE_ALL, {
       execute: () => this.runGitOp("Unstage changes", () => this.unstageAll()),
+      isVisible: (...args: unknown[]) => isResourceGroup(args, "index"),
     });
     commands.registerCommand(GitCommands.COMMIT, {
       execute: () => this.commitWithPrompt(),
@@ -108,6 +113,22 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   }
 
   registerMenus(menus: MenuModelRegistry): void {
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_INLINE_MENU, {
+      commandId: GitCommands.STAGE_ALL.id,
+      label: "Stage All Changes",
+      icon: "codicon codicon-add",
+      order: "1",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_INLINE_MENU, {
+      commandId: GitCommands.UNSTAGE_ALL.id,
+      label: "Unstage All Changes",
+      icon: "codicon codicon-remove",
+      order: "1",
+    });
+    for (const cmd of [GitCommands.STAGE_ALL, GitCommands.UNSTAGE_ALL]) {
+      menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });
+    }
+
     menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
       commandId: GitCommands.STAGE_FILE.id,
       label: "Stage",

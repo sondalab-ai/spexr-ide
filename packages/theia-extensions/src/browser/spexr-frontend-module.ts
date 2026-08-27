@@ -63,6 +63,7 @@ import { AboutDialog } from "@theia/core/lib/browser/about-dialog.js";
 import { SpexrAboutDialog } from "./about/spexr-about-dialog.js";
 import { SpexrGitScmProvider } from "./scm/git-scm-provider.js";
 import { GitIgnoredDecorationProvider } from "./scm/git-ignored-decoration-provider.js";
+import { GitStateDecorationProvider } from "./scm/git-state-decoration-provider.js";
 import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-proxy.js";
 import { SpexrGitClientDispatcher, SpexrGitClientToken } from "./scm/git-client.js";
 import { SpexrGitCommandsContribution } from "./scm/git-commands-contribution.js";
@@ -234,6 +235,15 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
 
   bind(GitIgnoredDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitIgnoredDecorationProvider);
+
+  // Bound after GitIgnoredDecorationProvider: DecorationsService#getDecoration
+  // returns one entry per registered provider that has a decoration for a URI, in
+  // the order registerDecorationsProvider() was called (which follows onStart()
+  // call order, itself normally following bind order), and the tree consumes only
+  // index [0] — so on an unlikely collision (a tracked path that is also
+  // gitignored) the ignored provider's dim wins over this one's state letter.
+  bind(GitStateDecorationProvider).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(GitStateDecorationProvider);
 
   bind(SpexrGitCommandsContribution).toSelf().inSingletonScope();
   bind(CommandContribution).toService(SpexrGitCommandsContribution);

@@ -32,3 +32,19 @@ export function resourceGroupId(item: unknown): string | undefined {
 export function allInGroup(items: unknown[], groupId: string): boolean {
   return items.length > 0 && items.every((i) => resourceGroupId(i) === groupId);
 }
+
+/**
+ * True when a *group*-menu command was invoked on the group with the given
+ * id, OR when there are no arguments at all. A group menu (e.g. the Stage
+ * All / Unstage All buttons on a Changes / Staged Changes header) receives a
+ * single `ScmResourceGroup` as its sole argument
+ * (`ScmResourceGroupElement.contextMenuArgs` in @theia/scm) — not the spread
+ * list of resources the per-resource menus receive, so this cannot reuse
+ * {@link allInGroup}. The empty-args branch is what keeps the command
+ * visible in the command palette: `QuickCommandService` calls
+ * `isVisible(id)` with no arguments at all, so a strict group-id match alone
+ * would silently remove the command from the palette.
+ */
+export function isResourceGroup(items: unknown[], groupId: string): boolean {
+  return items.length === 0 || (items.length === 1 && (items[0] as { id?: string } | undefined)?.id === groupId);
+}
