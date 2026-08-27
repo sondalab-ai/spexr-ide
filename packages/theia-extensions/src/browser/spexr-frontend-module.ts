@@ -226,11 +226,14 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     })
     .inSingletonScope();
 
-  bind(SpexrGitScmProvider).toSelf().inSingletonScope();
-  bind(FrontendApplicationContribution).toService(SpexrGitScmProvider);
-
+  // Bound before SpexrGitScmProvider: FrontendApplicationContribution#onStart
+  // runs in bind order, awaiting each one to completion, so this listener
+  // must attach before the provider's own onStart fires its first refresh.
   bind(GitStatusBarContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitStatusBarContribution);
+
+  bind(SpexrGitScmProvider).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrGitScmProvider);
 
   bind(GitIgnoredDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitIgnoredDecorationProvider);
