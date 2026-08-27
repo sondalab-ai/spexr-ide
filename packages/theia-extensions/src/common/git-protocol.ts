@@ -82,7 +82,6 @@ export interface SpexrGitService {
    */
   discard(root: string, paths: string[]): Promise<void>;
   commit(root: string, message: string): Promise<void>;
-  getDiff(root: string, filePath: string, staged: boolean): Promise<string>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;

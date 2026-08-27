@@ -67,6 +67,7 @@ import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-
 import { SpexrGitClientDispatcher, SpexrGitClientToken } from "./scm/git-client.js";
 import { SpexrGitCommandsContribution } from "./scm/git-commands-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
+import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
 import { GitOriginalResourceResolver } from "./scm/git-original-resource.js";
 import { ResourceResolver } from "@theia/core/lib/common/resource";
 import { SpexrGitBlameDecorator } from "./blame/blame-decorator.js";
@@ -227,6 +228,9 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
 
   bind(SpexrGitScmProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrGitScmProvider);
+
+  bind(GitStatusBarContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(GitStatusBarContribution);
 
   bind(GitIgnoredDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitIgnoredDecorationProvider);

@@ -135,20 +135,6 @@ describe("SpexrGitBackendService", () => {
     expect(status.isClean).toBe(true);
   });
 
-  it("getDiff: returns diff for unstaged modification", async () => {
-    fs.writeFileSync(path.join(tmpDir, "README.md"), "changed content");
-    const diff = await service.getDiff(tmpDir, "README.md", false);
-    expect(diff).toContain("-init");
-    expect(diff).toContain("+changed content");
-  });
-
-  it("getDiff: returns diff for staged modification", async () => {
-    fs.writeFileSync(path.join(tmpDir, "README.md"), "staged change");
-    await service.stage(tmpDir, ["README.md"]);
-    const diff = await service.getDiff(tmpDir, "README.md", true);
-    expect(diff).toContain("+staged change");
-  });
-
   it("getLog: returns at least the initial commit", async () => {
     const log = await service.getLog(tmpDir, 5);
     expect(log.length).toBeGreaterThanOrEqual(1);

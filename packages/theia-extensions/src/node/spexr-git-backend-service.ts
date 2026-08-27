@@ -334,12 +334,6 @@ export class SpexrGitBackendService implements SpexrGitService {
     await this.git(root).commit(message);
   }
 
-  async getDiff(root: string, filePath: string, staged: boolean): Promise<string> {
-    return staged
-      ? this.git(root).diff(["--cached", "--", filePath])
-      : this.git(root).diff(["--", filePath]);
-  }
-
   async getBranches(root: string): Promise<GitBranchDto[]> {
     const git = this.git(root);
     const result = await git.branch(["-a", "-vv"]);

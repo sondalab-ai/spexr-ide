@@ -17,7 +17,7 @@ import type {
 } from "@theia/scm/lib/browser/scm-provider";
 import { SpexrGitServiceProxySymbol } from "./git-service-proxy.js";
 import { GIT_ORIGINAL_SCHEME } from "./git-original-resource.js";
-import type { SpexrGitService, GitFileState, GitBranchDto } from "../../common/git-protocol.js";
+import type { SpexrGitService, GitFileState, GitBranchDto, GitStatusDto } from "../../common/git-protocol.js";
 import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
 import { SingleFlight } from "./single-flight.js";
 
@@ -107,6 +107,10 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   private readonly _onDidChangeCommitTemplateEmitter = new Emitter<string>();
   readonly onDidChangeCommitTemplate: Event<string> = this._onDidChangeCommitTemplateEmitter.event;
 
+  private readonly _onDidChangeStatusEmitter = new Emitter<GitStatusDto>();
+  /** Last known status, so consumers need not spawn their own git process. */
+  readonly onDidChangeStatus: Event<GitStatusDto> = this._onDidChangeStatusEmitter.event;
+
   private readonly indexGroup = new GitScmResourceGroup("index", "Staged Changes", this as unknown as ScmProvider);
   private readonly workingTreeGroup = new GitScmResourceGroup("workingTree", "Changes", this as unknown as ScmProvider);
 
@@ -165,6 +169,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     if (!this.rootFsPath) return;
     try {
       const status = await this.gitService.getStatus(this.rootFsPath);
+      this._onDidChangeStatusEmitter.fire(status);
       const root = this.rootFsPath;
 
       const staged = status.files
@@ -292,6 +297,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     this.toDispose.dispose();
     this._onDidChangeEmitter.dispose();
     this._onDidChangeCommitTemplateEmitter.dispose();
+    this._onDidChangeStatusEmitter.dispose();
     this.indexGroup.dispose();
     this.workingTreeGroup.dispose();
   }
