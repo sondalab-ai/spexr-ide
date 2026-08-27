@@ -13,7 +13,9 @@ const execFileMock = execFile as unknown as ReturnType<typeof vi.fn>;
 function mockCommandV(found: (bin: string) => boolean): void {
   execFileMock.mockImplementation((...all: unknown[]) => {
     const argv = (all.find((a) => Array.isArray(a)) ?? []) as string[];
-    const cb = all.find((a) => typeof a === "function") as ((e: Error | null, out: string) => void) | undefined;
+    const cb = all.find((a) => typeof a === "function") as
+      | ((e: Error | null, out: string) => void)
+      | undefined;
     if (!cb) return;
     const bin = (argv[argv.length - 1] ?? "").replace("command -v ", "");
     if (found(bin)) cb(null, `/opt/homebrew/bin/${bin}\n`);
@@ -24,7 +26,7 @@ function mockCommandV(found: (bin: string) => boolean): void {
 describe("detectInstalledHarnesses", () => {
   beforeEach(() => execFileMock.mockReset());
 
-  it("always includes Claude (the hard dependency) without probing", async () => {
+  it("includes Claude, which answers for itself, without probing", async () => {
     mockCommandV(() => false); // even if every probe fails, Claude stays
     const installed = await detectInstalledHarnesses([claudeHarness, opencodeHarness]);
     expect(installed).toEqual([claudeHarness]);
@@ -36,7 +38,7 @@ describe("detectInstalledHarnesses", () => {
     expect(installed).toEqual([claudeHarness, opencodeHarness]);
   });
 
-  it("never probes Claude — only non-Claude harnesses hit the shell", async () => {
+  it("only shells out for harnesses that do not answer for themselves", async () => {
     const probed: string[] = [];
     mockCommandV((bin) => {
       probed.push(bin);
@@ -44,5 +46,15 @@ describe("detectInstalledHarnesses", () => {
     });
     await detectInstalledHarnesses([claudeHarness, opencodeHarness]);
     expect(probed).toEqual(["opencode"]);
+  });
+
+  it("carries no knowledge of any particular harness id", async () => {
+    // A harness declaring itself absent must be dropped, and one with no
+    // opinion must still be probed — neither outcome depends on its id.
+    mockCommandV(() => true);
+    const absent = { ...claudeHarness, isInstalled: () => Promise.resolve(false) };
+    const probeOnly = { ...opencodeHarness, isInstalled: undefined };
+    const installed = await detectInstalledHarnesses([absent, probeOnly]);
+    expect(installed).toEqual([probeOnly]);
   });
 });

@@ -182,10 +182,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
   /**
    * Which harnesses are installed, resolved once. Tests inject a synchronous
-   * `detect`; in production Claude is the hard dependency (always present) and
-   * every other harness is probed via a login-shell `command -v` (opencode lives
-   * on the user's PATH, e.g. /opt/homebrew/bin, which the app process may not
-   * inherit). Lazy + memoized so injected-seam tests never spawn the probe.
+   * `detect`; in production each harness answers for itself, defaulting to a
+   * login-shell `command -v` (opencode lives on the user's PATH, e.g.
+   * /opt/homebrew/bin, which the app process may not inherit). Lazy + memoized
+   * so injected-seam tests never spawn the probe.
    */
   private installed(): Promise<HarnessAdapter[]> {
     return (this.installedCache ??= this.detectSync
@@ -590,13 +590,15 @@ function commandExists(bin: string): Promise<boolean> {
   });
 }
 
-/** Claude is the hard dependency (always installed); probe every other harness via `command -v`. */
+/**
+ * Which of `adapters` are installed. The rule is uniform — each harness answers
+ * for itself, falling back to a login-shell `command -v <id>` — so the detector
+ * carries no knowledge of any particular harness.
+ */
 export async function detectInstalledHarnesses(
   adapters: HarnessAdapter[],
 ): Promise<HarnessAdapter[]> {
-  const flags = await Promise.all(
-    adapters.map((a) => (a.id === "claude" ? Promise.resolve(true) : commandExists(a.id))),
-  );
+  const flags = await Promise.all(adapters.map((a) => a.isInstalled?.() ?? commandExists(a.id)));
   return adapters.filter((_, i) => flags[i]);
 }
 

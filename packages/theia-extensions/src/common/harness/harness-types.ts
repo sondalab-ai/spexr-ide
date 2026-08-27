@@ -69,4 +69,11 @@ export interface HarnessAdapter extends HarnessCore {
   parseTranscript(ref: HarnessSessionRef): Promise<ParsedTranscript>;
   /** Begin a read-only incremental tail of a session (opencode: Slice 5). */
   followSession(id: string): FollowHandle;
+  /**
+   * Whether this harness is available on the machine. Optional: the default is
+   * a login-shell `command -v <id>`, which is the right probe for a harness
+   * that must be on PATH to be driven at all. A harness overrides it only when
+   * that probe would answer wrongly for it — see `claudeHarness`.
+   */
+  isInstalled?(): Promise<boolean>;
 }
