@@ -115,16 +115,22 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       order: "1",
     });
     menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.UNSTAGE_FILE.id,
+      label: "Unstage",
+      icon: "codicon codicon-remove",
+      order: "2",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
       commandId: GitCommands.DISCARD_FILE.id,
       label: "Discard",
       icon: "codicon codicon-discard",
-      order: "2",
+      order: "3",
     });
     menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
       commandId: GitCommands.MARK_RESOLVED.id,
       label: "Mark Resolved",
       icon: "codicon codicon-check",
-      order: "3",
+      order: "4",
     });
     for (const cmd of [GitCommands.STAGE_FILE, GitCommands.UNSTAGE_FILE, GitCommands.DISCARD_FILE, GitCommands.MARK_RESOLVED]) {
       menus.registerMenuAction(ScmTreeWidget.RESOURCE_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });

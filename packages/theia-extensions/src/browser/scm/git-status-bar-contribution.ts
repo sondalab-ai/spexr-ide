@@ -25,7 +25,13 @@ export class GitStatusBarContribution implements FrontendApplicationContribution
     }
   }
 
-  private render(s: GitStatusDto): void {
+  private render(s: GitStatusDto | undefined): void {
+    if (!s) {
+      // A refresh failure clears the panel's status; mirror that here
+      // instead of leaving a stale branch/ahead-behind entry on display.
+      this.statusBar.removeElement(ENTRY_ID);
+      return;
+    }
     void this.statusBar.setElement(ENTRY_ID, {
       text: formatBranchEntry(s),
       alignment: StatusBarAlignment.LEFT,

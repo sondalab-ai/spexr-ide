@@ -21,6 +21,9 @@ import type { SpexrGitService, GitFileState, GitBranchDto, GitStatusDto } from "
 import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
 import { SingleFlight } from "./single-flight.js";
 
+// Display glyphs following VS Code's own SCM decoration convention ("U" for
+// untracked, "!" for conflicted) — not the protocol's GitFileState letters,
+// which AC-15 deliberately keeps "?" and "U" apart on.
 const STATE_LETTER: Record<GitFileState, string> = {
   A: "A", M: "M", D: "D", R: "R", C: "C", U: "!", "?": "U",
 };
@@ -107,9 +110,13 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   private readonly _onDidChangeCommitTemplateEmitter = new Emitter<string>();
   readonly onDidChangeCommitTemplate: Event<string> = this._onDidChangeCommitTemplateEmitter.event;
 
-  private readonly _onDidChangeStatusEmitter = new Emitter<GitStatusDto>();
-  /** Last known status, so consumers need not spawn their own git process. */
-  readonly onDidChangeStatus: Event<GitStatusDto> = this._onDidChangeStatusEmitter.event;
+  private readonly _onDidChangeStatusEmitter = new Emitter<GitStatusDto | undefined>();
+  /**
+   * Last known status, so consumers need not spawn their own git process.
+   * Fires `undefined` when a refresh fails, so a status-bar-style consumer
+   * can clear itself instead of showing a status the panel no longer has.
+   */
+  readonly onDidChangeStatus: Event<GitStatusDto | undefined> = this._onDidChangeStatusEmitter.event;
 
   private _lastStatus: GitStatusDto | undefined;
 
@@ -239,10 +246,14 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
       this.workingTreeGroup.updateResources(unstaged);
       this._onDidChangeEmitter.fire();
     } catch {
-      // Non-git workspace: clear groups silently.
+      // Non-git workspace: clear groups silently. Also clear the status the
+      // status bar is holding — otherwise it keeps showing e.g. "main ↑2"
+      // for a repository the panel no longer has any status for.
       this.conflictGroup.updateResources([]);
       this.indexGroup.updateResources([]);
       this.workingTreeGroup.updateResources([]);
+      this._lastStatus = undefined;
+      this._onDidChangeStatusEmitter.fire(undefined);
     }
   }
 
@@ -343,7 +354,16 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
 }
 
 function buildFileUri(root: string, filePath: string): URI {
-  return new URI(`file://${root}/${filePath}`);
+  // String concatenation truncates paths containing "#" or "?" (parsed as
+  // fragment/query by the URI parser) — build from components instead, as
+  // openDiff above already does.
+  return URI.fromComponents({
+    scheme: "file",
+    authority: "",
+    path: `${root}/${filePath}`,
+    query: "",
+    fragment: "",
+  });
 }
 
 function stateLabel(state: GitFileState): string {
