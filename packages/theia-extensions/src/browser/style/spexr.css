@@ -2365,6 +2365,11 @@ code {
   height: 100%;
 }
 .spexr-df-empty { padding: var(--sl-space-5); color: var(--sl-text-muted); font-size: var(--sl-text-sm); }
+/* codicon-loading + codicon-modifier-spin provide the spinner animation. */
+.spexr-df-loading {
+  display: flex; align-items: center; gap: var(--sl-space-2);
+  padding: var(--sl-space-5); color: var(--sl-text-muted); font-size: var(--sl-text-sm);
+}
 .spexr-df-root { display: flex; flex-direction: column; gap: var(--sl-space-5); }
 
 /* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
@@ -2393,6 +2398,14 @@ code {
   padding: var(--sl-space-3);
   background: color-mix(in srgb, var(--sl-text-primary) 4%, transparent);
   border-radius: var(--sl-radius-sm, 6px);
+}
+/* Live opencode session: no transcript follow yet — explain and point at the fork CTA. */
+.spexr-df-pinned__nofollow {
+  flex: 1 1 auto; min-height: 0; display: flex; align-items: center;
+  padding: var(--sl-space-4);
+  background: color-mix(in srgb, var(--sl-text-primary) 4%, transparent);
+  border-radius: var(--sl-radius-sm, 6px);
+  color: var(--sl-text-muted); font-size: var(--sl-text-sm); line-height: 1.5;
 }
 
 /* Interactive embedded terminal host: fills the pinned card body. */
@@ -2468,6 +2481,17 @@ code {
   flex: 1 1 auto; min-width: 0;
   font-size: var(--sl-text-lg, 1.05rem); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Harness chip — muted mono tag identifying the agent CLI (claude / opencode). */
+.spexr-df-card__harness {
+  flex: none; padding: 0 var(--sl-space-1);
+  font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs);
+  color: var(--sl-text-muted); border: 1px solid var(--sl-border-subtle);
+  border-radius: var(--sl-radius-sm); line-height: 1.5;
+}
+.spexr-df-row__harness {
+  flex: none; font-family: var(--theia-code-font-family);
+  font-size: var(--sl-text-xs); color: var(--sl-text-muted);
 }
 .spexr-df-card__branch {
   margin-top: auto; /* pin to the bottom regardless of how tall the other content is */

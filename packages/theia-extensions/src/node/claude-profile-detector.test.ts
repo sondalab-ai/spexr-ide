@@ -1,9 +1,27 @@
-import { describe, expect, it } from "vitest";
-import { parseClaudeProfiles, parseFishProfiles, parsePowershellProfiles } from "./claude-profile-detector.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  parseClaudeProfiles,
+  parseFishProfiles,
+  parsePowershellProfiles,
+  resolveClaudeExecutableViaShell,
+  resetClaudeShellProbeCache,
+} from "./claude-profile-detector.js";
 import * as os from "os";
 import * as path from "path";
 
 const home = os.homedir();
+
+// The login-shell probe must stay async (a sync execFileSync blocked the backend
+// event loop ~1.3s). Delayed callback so the promise cannot settle synchronously.
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    execFile: vi.fn((_file: string, _args: readonly string[], _opts: unknown, cb: (err: Error | null, stdout: string) => void) => {
+      setImmediate(() => cb(null, `${process.execPath}\n`));
+    }),
+  };
+});
 
 describe("parseClaudeProfiles — posix", () => {
   it("extracts a single-quoted alias with CLAUDE_CONFIG_DIR", () => {
@@ -113,5 +131,28 @@ describe("parseClaudeProfiles — powershell", () => {
     const text = `# PowerShell profile\nSet-Alias ll Get-ChildItem`;
     const result = parseClaudeProfiles(text, "powershell");
     expect(result).toHaveLength(0);
+  });
+});
+
+describe("resolveClaudeExecutableViaShell", () => {
+  it("returns before the probe settles — non-blocking (regression: a sync probe stalled the backend)", async () => {
+    resetClaudeShellProbeCache();
+    let settled = false;
+    const p = resolveClaudeExecutableViaShell();
+    void p.then(() => {
+      settled = true;
+    });
+    await Promise.resolve(); // drain microtasks only — no loop turn
+    expect(settled).toBe(false);
+    expect(await p).toBe(process.execPath);
+  });
+
+  it("memoizes the probe for the process lifetime", async () => {
+    resetClaudeShellProbeCache();
+    const cp = await import("node:child_process");
+    const calls = vi.mocked(cp.execFile).mock.calls.length;
+    await resolveClaudeExecutableViaShell();
+    await resolveClaudeExecutableViaShell();
+    expect(vi.mocked(cp.execFile).mock.calls.length).toBe(calls + 1);
   });
 });

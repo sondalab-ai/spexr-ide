@@ -107,11 +107,12 @@ describe("WorkerDescriptionGenerator", () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
-  it("summarize posts a summary request and resolves with worker text", async () => {
+  it("summarize posts the request under its kind and resolves with worker text", async () => {
     const fake = new FakeWorker();
     const gen = new WorkerDescriptionGenerator(() => fake);
-    const p = gen.summarize("user: fix auth");
-    expect(fake.requests[0]!.kind).toBe("summary");
+    const p = gen.summarize("Most recent activity:\nfix auth", "now");
+    expect(fake.requests[0]!.kind).toBe("now");
+    expect(fake.requests[0]!.content).toContain("fix auth");
     fake.emit({ id: fake.requests[0]!.id, type: "done", text: "fixing auth" });
     expect(await p).toBe("fixing auth");
   });
@@ -121,5 +122,21 @@ describe("WorkerDescriptionGenerator", () => {
     container.bind(DescriptionGeneratorToken).to(WorkerDescriptionGenerator);
     const gen = container.get(DescriptionGeneratorToken);
     expect(gen).toBeInstanceOf(WorkerDescriptionGenerator);
+  });
+});
+
+describe("buildWorkerEnv", () => {
+  it("strips inherited ELECTRON_RUN_AS_NODE for a genuine-Node child (regression: it forced the CPU provider)", async () => {
+    const { buildWorkerEnv } = await import("./worker-description-generator.js");
+    const env = buildWorkerEnv({ ELECTRON_RUN_AS_NODE: "1", HOME: "/h" }, true);
+    expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    expect(env.HOME).toBe("/h");
+    expect(env.SPEXR_MODELS_DIR).toBeTruthy();
+  });
+
+  it("sets ELECTRON_RUN_AS_NODE when the child must run as Electron-as-node", async () => {
+    const { buildWorkerEnv } = await import("./worker-description-generator.js");
+    const env = buildWorkerEnv({}, false);
+    expect(env.ELECTRON_RUN_AS_NODE).toBe("1");
   });
 });

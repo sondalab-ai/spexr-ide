@@ -1,14 +1,24 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { join, basename } from "node:path";
-import { readdir, readFile, open, stat } from "node:fs/promises";
+import { basename } from "node:path";
+import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
+import { execFile } from "node:child_process";
+import { Session as InspectorSession } from "node:inspector";
 import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
-import { parseTranscript } from "./transcript-parser.js";
+import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
-import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
-import { buildTurnsText, buildFollowEvents, type TurnEntry } from "./turns.js";
-import { parseSessionSummary, type DescriptionGenerator } from "../search/description-format.js";
+import { claudeHarness, scanClaudeTranscripts, type TranscriptRef } from "../../common/harness/claude-harness.js";
+import { opencodeHarness } from "../../common/harness/opencode-harness.js";
+import { installedHarnesses, type DetectFn } from "../../common/harness/harness-registry.js";
+import { once } from "../../common/harness/once.js";
+import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
+import { readBoundedLines } from "./bounded-read.js";
+import { distillAction, nowActionLine, recentActions, lastActionFailed } from "./action-distiller.js";
+import { buildFollowEvents, sessionGoal, recentAssistantProse, type TurnEntry } from "./turns.js";
+import { buildNowPrompt, buildOverviewPrompt, cleanSummaryLine, type DescriptionGenerator } from "../search/description-format.js";
 import type {
   AgentSummary,
   AgentTile,
@@ -21,7 +31,17 @@ const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
 /** Follow backfill cap: how many recent events the read-only view seeds with. */
 const FOLLOW_EVENTS = 40;
-const SUMMARY_TURNS = 14;
+/** How many recent assistant prose segments feed the now/overview summary model. */
+const SUMMARY_PROSE_TURNS = 4;
+/**
+ * Below this much combined goal+progress the small local model fabricates content
+ * ("developing a web application using Python and Flask…") instead of summarizing,
+ * so the inference is skipped and Now falls back to the deterministic action line.
+ * Tuned for chip-free input: the summary is now fed goal + assistant prose only
+ * (no tool chips), which is far shorter than the old turns digest — a resumed
+ * session with a terse goal ("continua") but real work must still clear this.
+ */
+const MIN_SUMMARY_CHARS = 60;
 const PALETTE_SIZE = 8;
 /**
  * Only the most-recently-active sessions are read on each scan. Transcript
@@ -30,18 +50,31 @@ const PALETTE_SIZE = 8;
  * work anyway, so cap the parse to this many newest sessions.
  */
 const RECENT_LIMIT = 60;
-/** Bytes read from the head (goal/cwd/interactive markers) and tail (recent activity). */
-const HEAD_BYTES = 32_768;
-const TAIL_BYTES = 98_304;
 
-/** One transcript file discovered on disk; `readLines` is lazy. */
-export interface TranscriptRef {
-  sessionId: string;
-  transcriptPath: string;
-  /** Config dir that owns this session (for `claude --resume`). */
-  configDir: string;
-  mtimeMs: number;
-  readLines(): Promise<string[]>;
+/**
+ * Transcript parses run concurrently up to this limit. Each opencode session is
+ * an `opencode export` CLI spawn (~0.5s); parsed sequentially, 60 sessions
+ * stalled the scan for ~30s. 8 keeps the spawn/memory pressure modest.
+ */
+const PARSE_CONCURRENCY = 8;
+
+/**
+ * Live-process-dir freshness floor. `ps` only anchors the "working" attribution
+ * and costs one spawn per scan — with an active opencode session the db-write
+ * watcher retriggers scans faster than they finish, and uncached `ps` calls
+ * piled a spawn storm onto the backend. 15s is plenty for a liveness hint.
+ */
+const LIVE_DIRS_TTL_MS = 15_000;
+
+/** All harnesses the wall can scan; detection decides which are installed. */
+const ALL_HARNESSES: HarnessAdapter[] = [claudeHarness, opencodeHarness];
+
+/** One session from any harness, with its owning harness for parse/focus routing. */
+interface UnifiedRef {
+  harness: HarnessAdapter;
+  ref: HarnessSessionRef;
+  /** Claude only: the transcript file (bounded read + fs.watch follow). */
+  claude?: TranscriptRef;
 }
 
 /** Constructor seams so the service is unit-testable without a real home dir. */
@@ -50,8 +83,14 @@ export interface DarkfactoryDeps {
   /** Config dir the launch command actually resumes against (env CLAUDE_CONFIG_DIR). */
   resumableConfigDir?: string;
   now?: () => number;
-  listTranscripts?: () => Promise<TranscriptRef[]>;
+  listTranscripts?: () => Promise<UnifiedRef[]>;
   liveProjectDirs?: () => Promise<Set<string> | null>;
+  /** Which harnesses are installed; default resolves each binary via PATH. */
+  detect?: DetectFn;
+  /** opencode storage dir to watch for live tile pushes; undefined → none. */
+  opencodeDataDir?: () => string | undefined;
+  /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
+  watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
   /** Local model used to infer a one-line session description. */
   generator?: DescriptionGenerator;
 }
@@ -63,6 +102,10 @@ interface SessionMeta {
   configDir: string;
   state: AgentTile["state"];
   mtimeMs: number;
+  /** The harness that owns this session (drives planFocus routing). */
+  harnessId: string;
+  /** Entry loader from the last scan — summary source for file-less transcripts (opencode). */
+  loadEntries?: () => Promise<unknown[]>;
 }
 
 @injectable()
@@ -70,13 +113,28 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly configDirs: string[];
   private readonly resumableConfigDir: string;
   private readonly now: () => number;
-  private readonly listTranscripts: () => Promise<TranscriptRef[]>;
+  private readonly listTranscripts: () => Promise<UnifiedRef[]>;
   private readonly liveDirs: () => Promise<Set<string> | null>;
+  /** Test-injected synchronous detection; absent in production (login-shell probe). */
+  private readonly detectSync: DetectFn | undefined;
+  /** opencode storage dir (parent of opencode.db) to watch; injected in tests. */
+  private readonly opencodeDataDirOf: () => string | undefined;
+  /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
+  private readonly watchDir: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
+  /** Memoized installed-harness set — resolved lazily so injected seams never spawn a probe. */
+  private installedCache?: Promise<HarnessAdapter[]>;
+  /** True once setClient armed the wall watchers (guards re-entry). */
+  private watching = false;
 
   private readonly generator: DescriptionGenerator | undefined;
   private client?: SpexrDarkfactoryClient;
   private loopMonitor?: ReturnType<typeof setInterval>;
   private readonly wallWatchers: FSWatcher[] = [];
+  /** Single-flight push state: while a scan runs, events mark it dirty for one follow-up scan. */
+  private scanInFlight = false;
+  private scanDirty = false;
+  /** TTL cache of the live-process dirs (one `ps` spawn per TTL, not per scan). */
+  private liveCache?: { at: number; value: Set<string> | null };
   private readonly index = new Map<string, SessionMeta>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
@@ -89,9 +147,30 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.configDirs = d.configDirs ?? defaultConfigDirs();
     this.resumableConfigDir = d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
     this.now = d.now ?? Date.now;
-    this.listTranscripts = d.listTranscripts ?? (() => this.scanDisk());
-    this.liveDirs = d.liveProjectDirs ?? (() => defaultLiveProjectDirs());
+    this.detectSync = d.detect;
+    this.opencodeDataDirOf = d.opencodeDataDir ?? defaultOpencodeDataDir;
+    this.watchDir = d.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
+    this.listTranscripts = d.listTranscripts ?? (() => this.defaultListTranscripts());
+    this.liveDirs =
+      d.liveProjectDirs ??
+      (async () => {
+        const installed = await this.installed();
+        return defaultLiveProjectDirs(undefined, undefined, installed.flatMap((h) => h.processNames()));
+      });
     this.generator = d.generator;
+  }
+
+  /**
+   * Which harnesses are installed, resolved once. Tests inject a synchronous
+   * `detect`; in production Claude is the hard dependency (always present) and
+   * every other harness is probed via a login-shell `command -v` (opencode lives
+   * on the user's PATH, e.g. /opt/homebrew/bin, which the app process may not
+   * inherit). Lazy + memoized so injected-seam tests never spawn the probe.
+   */
+  private installed(): Promise<HarnessAdapter[]> {
+    return (this.installedCache ??= this.detectSync
+      ? Promise.resolve(installedHarnesses(ALL_HARNESSES, this.detectSync))
+      : detectInstalledHarnesses(ALL_HARNESSES));
   }
 
   /**
@@ -103,13 +182,47 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     if (!meta) return EMPTY_SUMMARY;
     const cached = this.summaryCache.get(sessionId);
     if (cached && cached.mtimeMs === meta.mtimeMs) return cached.summary;
+    // Claude: read the transcript file fresh (bounded head+tail). Opencode has no
+    // transcript file — its sessions live in the db — so use the scan's export
+    // entries (already loaded and memoized on the indexed ref). Reading the empty
+    // path used to hand the model an empty transcript, producing generic output.
     let summary = EMPTY_SUMMARY;
-    if (this.generator?.isAvailable()) {
+    let entries: TurnEntry[] = [];
+    if (meta.transcriptPath) {
       const lines = await readBoundedLines(meta.transcriptPath);
-      const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
-      const raw = await this.generator.summarize(buildTurnsText(entries, SUMMARY_TURNS));
-      if (raw) summary = parseSessionSummary(raw);
+      entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+    } else if (meta.loadEntries) {
+      entries = ((await meta.loadEntries()) ?? []) as TurnEntry[];
     }
+    // Both lines are model-written from real content, via two SEPARATE single-clause
+    // asks (the paired ask came back merged/first-person/echoing tool payloads):
+    //  - Overview = the session goal grounded in recent progress prose (not a stale
+    //    paraphrase of the first prompt; not the full turns digest, which made the
+    //    model enumerate actions and overrun the token cap).
+    //  - Now = the current task named from the most recent prose ("fixing the token
+    //    expiry check") rather than the raw tool call.
+    // Recent prose excludes tool chips, keeping the input small and enumeration-free.
+    const goal = entries.length > 0 ? sessionGoal(entries) : "";
+    const progress = entries.length > 0 ? recentAssistantProse(entries, SUMMARY_PROSE_TURNS).join("\n") : "";
+    // Deterministic fallback for Now: always factual, used when the model is
+    // unavailable, the context is thin, or the model returns nothing.
+    let now = entries.length > 0 ? nowActionLine(entries) : "";
+    let overview = "";
+    // Thin-context guard on the combined goal+progress: below it the small model
+    // fabricates rather than summarizes. The goal (real user text) dominates, so a
+    // session with a substantial first prompt clears it even when prose is terse.
+    const context = `${goal}\n${progress}`;
+    if (this.generator?.isAvailable() && context.length >= MIN_SUMMARY_CHARS) {
+      const [rawOverview, rawNow] = await Promise.all([
+        goal ? this.generator.summarize(buildOverviewPrompt(goal, progress), "overview") : Promise.resolve(null),
+        progress.trim() ? this.generator.summarize(buildNowPrompt(progress), "now") : Promise.resolve(null),
+      ]);
+      const modelOverview = rawOverview ? cleanSummaryLine(rawOverview) : "";
+      const modelNow = rawNow ? cleanSummaryLine(rawNow) : "";
+      if (modelOverview) overview = modelOverview;
+      if (modelNow) now = modelNow;
+    }
+    if (now || overview) summary = { now, overview };
     this.summaryCache.set(sessionId, { mtimeMs: meta.mtimeMs, summary });
     return summary;
   }
@@ -123,57 +236,71 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /**
    * Diagnostic: log when the backend event loop was blocked well past the tick
    * interval, so a real main-thread stall (vs. a mere websocket drop) is visible
-   * and attributable in time.
+   * and attributable in time. With SPEXR_LOOP_PROFILE=1 each stall also dumps a
+   * .cpuprofile (see {@link stallProfiler}) to attribute the block to a hotspot.
    */
   private startLoopMonitor(): void {
     if (this.loopMonitor) return;
     let last = Date.now();
+    const dumpProfile = process.env.SPEXR_LOOP_PROFILE ? stallProfiler() : undefined;
     this.loopMonitor = setInterval(() => {
       const lag = Date.now() - last - 1000;
-      if (lag > 750) console.error(`[darkfactory] backend event loop blocked ~${lag}ms`);
+      if (lag > 750) {
+        console.error(`[darkfactory] backend event loop blocked ~${lag}ms`);
+        dumpProfile?.(lag);
+      }
       last = Date.now();
     }, 1000);
     this.loopMonitor.unref?.();
   }
 
   async listTiles(): Promise<AgentTile[]> {
-    const [allRefs, live] = await Promise.all([this.listTranscripts(), this.liveDirs()]);
+    const [allRefs, live] = await Promise.all([this.listTranscripts(), this.cachedLiveDirs()]);
     const now = this.now();
     // Only read the newest sessions — history is huge and reading it all stalls
     // the event loop; the wall only shows recent work.
-    const refs = [...allRefs].sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, RECENT_LIMIT);
+    const refs = [...allRefs].sort((a, b) => b.ref.mtimeMs - a.ref.mtimeMs).slice(0, RECENT_LIMIT);
     // Parse each transcript once; track the newest transcript mtime per project
-    // so "working" is attributed to a single session per project.
-    const parsed = new Map<string, { ref: TranscriptRef; lines: string[]; parsed: ReturnType<typeof parseTranscript> }>();
+    // so "working" is attributed to a single session per project. Parses run
+    // concurrently (bounded) — sequential parsing serialized ~60 harness calls,
+    // which for opencode is one CLI spawn per session (~30s total).
+    const parsed = new Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>();
     const newestByProject = new Map<string, number>();
-    for (const ref of refs) {
-      const lines = await ref.readLines();
-      const p = parseTranscript(lines);
-      if (!p.cwd) continue; // no real project path → skip
-      if (!p.interactive) continue; // SDK / one-shot subagent session → not followable
-      parsed.set(ref.sessionId, { ref, lines, parsed: p });
+    await forEachConcurrent(refs, PARSE_CONCURRENCY, async (u) => {
+      const p = await u.harness.parseTranscript(u.ref);
+      if (!p.cwd) return; // no real project path → skip
+      if (!p.interactive) return; // SDK / one-shot subagent session → not followable
+      const entries = (await u.ref.loadEntries()) as TurnEntry[];
+      parsed.set(u.ref.sessionId, { u, entries, parsed: p });
       const prev = newestByProject.get(p.cwd);
-      if (prev === undefined || ref.mtimeMs > prev) newestByProject.set(p.cwd, ref.mtimeMs);
-    }
+      if (prev === undefined || u.ref.mtimeMs > prev) newestByProject.set(p.cwd, u.ref.mtimeMs);
+    });
 
     this.index.clear();
     const tiles: AgentTile[] = [];
-    for (const { ref, lines, parsed: p } of parsed.values()) {
+    // Iterate refs (not the parse map) so tile order stays recency-based, not completion-order.
+    for (const u of refs) {
+      const item = parsed.get(u.ref.sessionId);
+      if (!item) continue;
+      const { entries, parsed: p } = item;
       const cwd = p.cwd!;
+      const ref = u.ref;
       const isNewest = newestByProject.get(cwd) === ref.mtimeMs;
-      const entries = lines.map(parseLine).filter((e): e is TurnEntry => !!e);
       const { state, needsYou, needsYouCertain } = classifySession(cwd, ref.mtimeMs, isNewest, live, now, entries, p.permissionMode);
       const action = distillAction(entries);
       this.index.set(ref.sessionId, {
-        transcriptPath: ref.transcriptPath,
+        transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
-        configDir: ref.configDir,
+        configDir: u.claude?.configDir ?? "",
         state,
         mtimeMs: ref.mtimeMs,
+        harnessId: u.harness.id,
+        loadEntries: ref.loadEntries,
       });
       tiles.push({
         sessionId: ref.sessionId,
-        transcriptPath: ref.transcriptPath,
+        harness: u.harness.id,
+        transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
         projectName: basename(cwd),
         state,
@@ -205,10 +332,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const meta = this.index.get(sessionId);
     const projectPath = meta?.projectPath ?? "";
     const configDir = meta?.configDir ?? "";
-    // Follow read-only when the session is live elsewhere OR when it lives in a
-    // config dir the launch command can't resume against (the resume would fail
-    // with "no conversation"). Otherwise open an interactive resume terminal.
-    const resumable = !!meta && meta.configDir === this.resumableConfigDir;
+    // A WORKING session always opens read-only, on every harness: resuming it
+    // would attach to (Claude) or risk disturbing the running session, and the
+    // decision to fork is an explicit "Fork & continue" action in the pinned
+    // card, never an automatic side effect of opening the tile. A session also
+    // opens read-only when it lives in a config dir the launch command can't
+    // resume against. Opencode has no per-account config dir (always resumable)
+    // and no read-only follow yet (Slice 5), so its read-only view carries the
+    // fork CTA with an empty transcript until then.
+    const opencode = meta?.harnessId === "opencode";
+    const resumable = !!meta && (opencode || meta.configDir === this.resumableConfigDir);
     const kind = meta?.state === "working" || !resumable ? "readonly-follow" : "resume-terminal";
     return { sessionId, projectPath, configDir, kind };
   }
@@ -232,7 +365,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     try {
       watcher = watch(meta.transcriptPath, debounce(() => void emit().catch(() => {}), 250));
     } catch {
-      return; // transcript vanished
+      return; // transcript vanished (or no file-backed transcript — opencode, Slice 5)
     }
     this.follows.set(sessionId, { watcher, offset: 0 });
     await emit(); // send the current tail immediately
@@ -247,7 +380,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   private ensureWatching(): void {
-    if (this.wallWatchers.length) return;
+    if (this.watching) return;
+    this.watching = true;
     const onChange = debounce(() => {
       void this.pushTiles();
     }, 400);
@@ -256,62 +390,108 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         // NOTE: `recursive` is implemented only on macOS and Windows; on Linux it
         // throws and is swallowed here, so live push-refresh is inert there (the
         // wall still refreshes on its own listTiles calls). Known follow-up.
-        this.wallWatchers.push(watch(projectsDirOf(dir), { recursive: true }, onChange));
+        this.wallWatchers.push(this.watchDir(projectsDirOf(dir), true, onChange));
       } catch {
         /* directory missing (or recursive unsupported) → no live push for it */
       }
     }
+    void this.armOpencodeWatch(onChange);
   }
 
-  private async pushTiles(): Promise<void> {
+  /**
+   * opencode keeps every session in one SQLite db (per-slice spike R1) — there
+   * is no per-session file to tail — so the wall watches the db's parent data
+   * dir instead: an OS notification on the directory, never an open of the db
+   * itself. Armed only when opencode is installed; detection is async, so this
+   * lands a tick after the Claude watchers and shares their debounced push.
+   * Non-recursive on purpose: the db and its -wal/-shm siblings live directly
+   * in the data dir, and this keeps Linux inotify working (see NOTE above).
+   */
+  private async armOpencodeWatch(onChange: () => void): Promise<void> {
+    const installed = await this.installed();
+    if (!this.watching) return; // disposed while detection was in flight
+    if (!installed.some((h) => h.id === "opencode")) return;
+    const dir = this.opencodeDataDirOf();
+    if (!dir) return;
     try {
-      this.client?.onTilesChanged(await this.listTiles());
+      this.wallWatchers.push(this.watchDir(dir, false, onChange));
     } catch {
-      /* transient scan failure → skip this tick */
+      /* directory missing → no live push for it */
     }
   }
 
-  private async scanDisk(): Promise<TranscriptRef[]> {
-    const refs: TranscriptRef[] = [];
-    for (const configDir of this.configDirs) {
-      const projectsDir = projectsDirOf(configDir);
-      let projectDirs: string[];
-      try {
-        projectDirs = await readdir(projectsDir);
-      } catch {
-        continue; // this config dir has no projects
-      }
-      for (const dir of projectDirs) {
-        const full = join(projectsDir, dir);
-        let files: string[];
+  /**
+   * Push a fresh tile snapshot, single-flight. An active opencode session can
+   * fire the db watcher faster than a scan finishes; without coalescing each
+   * event queued another full scan, so scans piled up and their `ps`/`opencode`
+   * spawns stacked into a process-spawn storm. Here at most one scan runs at a
+   * time; events arriving mid-scan only mark it dirty, so at most one follow-up
+   * scan is queued no matter how many events land.
+   */
+  private async pushTiles(): Promise<void> {
+    if (!this.client) return;
+    this.scanDirty = true;
+    if (this.scanInFlight) return;
+    this.scanInFlight = true;
+    try {
+      while (this.scanDirty) {
+        this.scanDirty = false;
         try {
-          files = await readdir(full);
+          this.client.onTilesChanged(await this.listTiles());
         } catch {
-          continue;
+          /* transient scan failure → skip this tick */
         }
-        for (const f of files) {
-          if (!f.endsWith(".jsonl")) continue;
-          const transcriptPath = join(full, f);
-          let mtimeMs: number;
-          try {
-            mtimeMs = (await stat(transcriptPath)).mtimeMs;
-          } catch {
-            continue;
-          }
-          refs.push({
-            sessionId: f.replace(/\.jsonl$/, ""),
-            transcriptPath,
-            configDir,
-            mtimeMs,
-            readLines: () => readBoundedLines(transcriptPath),
-          });
-        }
+      }
+    } finally {
+      this.scanInFlight = false;
+    }
+  }
+
+  /**
+   * Live-process dirs with a TTL: each miss spawns `ps`, and scans re-run far
+   * more often than liveness changes. Keyed on the injected clock so tests can
+   * drive expiry deterministically.
+   */
+  private async cachedLiveDirs(): Promise<Set<string> | null> {
+    const now = this.now();
+    if (this.liveCache && now - this.liveCache.at < LIVE_DIRS_TTL_MS) return this.liveCache.value;
+    const value = await this.liveDirs();
+    this.liveCache = { at: now, value };
+    return value;
+  }
+
+  /** Merge every installed harness's session list (Claude: disk walk, opencode: db query). */
+  private async defaultListTranscripts(): Promise<UnifiedRef[]> {
+    const out: UnifiedRef[] = [];
+    const installed = await this.installed();
+    if (installed.includes(claudeHarness)) {
+      const claudeRefs = await scanClaudeTranscripts(this.configDirs);
+      for (const r of claudeRefs) {
+        out.push({
+          harness: claudeHarness,
+          ref: {
+            sessionId: r.sessionId,
+            projectPath: "", // resolved from the transcript's cwd at parse time (as today)
+            mtimeMs: r.mtimeMs,
+            loadEntries: once(async () => {
+              const lines = await readBoundedLines(r.transcriptPath);
+              return lines.map(parseLine).filter((e): e is TurnEntry => !!e);
+            }),
+          },
+          claude: r,
+        });
       }
     }
-    return refs;
+    for (const h of installed) {
+      if (h.id === "claude") continue;
+      const refs = await h.listSessions();
+      for (const ref of refs) out.push({ harness: h, ref });
+    }
+    return out;
   }
 
   dispose(): void {
+    this.watching = false;
     if (this.loopMonitor) clearInterval(this.loopMonitor);
     for (const w of this.wallWatchers) w.close();
     this.wallWatchers.length = 0;
@@ -328,56 +508,72 @@ function parseLine(line: string): TurnEntry | undefined {
   }
 }
 
+/**
+ * Whether `bin` resolves on the user's login-shell PATH. Runs the same kind of
+ * login+interactive shell the resume terminals use, so detection matches where
+ * the resume actually finds the binary (e.g. /opt/homebrew/bin for opencode,
+ * which the Electron backend's own PATH may not include). `bin` comes from the
+ * hardcoded harness list, never user input.
+ */
+function commandExists(bin: string): Promise<boolean> {
+  const shell = process.env.SHELL || "/bin/zsh";
+  return new Promise((resolve) => {
+    execFile(shell, ["-lic", `command -v ${bin}`], { timeout: 5000 }, (err, stdout) => {
+      resolve(!err && stdout.trim().length > 0);
+    });
+  });
+}
+
+/** Claude is the hard dependency (always installed); probe every other harness via `command -v`. */
+export async function detectInstalledHarnesses(adapters: HarnessAdapter[]): Promise<HarnessAdapter[]> {
+  const flags = await Promise.all(
+    adapters.map((a) => (a.id === "claude" ? Promise.resolve(true) : commandExists(a.id))),
+  );
+  return adapters.filter((_, i) => flags[i]);
+}
+
+/**
+ * opencode's storage dir — the parent of its single `opencode.db` — where every
+ * session write lands. Follows opencode's XDG convention (verified against
+ * `opencode debug paths`); watched by the wall for live tile pushes.
+ */
+export function defaultOpencodeDataDir(env: NodeJS.ProcessEnv = process.env): string {
+  const xdg = env.XDG_DATA_HOME?.trim();
+  return xdg ? join(xdg, "opencode") : join(homedir(), ".local", "share", "opencode");
+}
+
+/**
+ * Continuous CPU profiler for stall attribution: runs from watchdog start and,
+ * each time the watchdog fires, dumps the profile collected so far to the system
+ * temp dir (open in DevTools or Speedscope to find the synchronous hotspot),
+ * then restarts to capture the next stall. Opt-in via SPEXR_LOOP_PROFILE=1.
+ */
+function stallProfiler(): ((lagMs: number) => void) | undefined {
+  try {
+    const session = new InspectorSession();
+    session.connect();
+    session.post("Profiler.enable");
+    session.post("Profiler.start");
+    return (lagMs: number): void => {
+      session.post("Profiler.stop", (err, params) => {
+        if (err || !params) return;
+        const file = join(tmpdir(), `spexr-stall-${Math.round(lagMs)}ms-${Date.now()}.cpuprofile`);
+        void writeFile(file, JSON.stringify(params.profile)).then(() =>
+          console.error(`[darkfactory] stall profile → ${file}`),
+        );
+        session.post("Profiler.start"); // keep capturing the next stall
+      });
+    };
+  } catch {
+    return undefined; // inspector unavailable → watchdog keeps logging only
+  }
+}
+
 async function readFileLines(path: string): Promise<string[]> {
   try {
     return (await readFile(path, "utf8")).split("\n");
   } catch {
     return [];
-  }
-}
-
-/**
- * Stitch bounded head/tail reads back into whole JSON lines. When `truncated`,
- * the line straddling each cut is partial, so drop the head's last line and the
- * tail's first line; the middle of the transcript is intentionally skipped.
- */
-export function stitchBoundedLines(head: string, tail: string, truncated: boolean): string[] {
-  if (!truncated) return head.split("\n");
-  const headLines = head.split("\n");
-  headLines.pop();
-  const tailLines = tail.split("\n");
-  tailLines.shift();
-  return [...headLines, ...tailLines];
-}
-
-/**
- * Read only the head and tail of a transcript (not the whole file — some run to
- * tens of MB). The head carries cwd/goal/interactive markers, the tail carries
- * recent activity; that is everything the wall and summary need.
- */
-async function readBoundedLines(path: string): Promise<string[]> {
-  let fh;
-  try {
-    fh = await open(path, "r");
-  } catch {
-    return [];
-  }
-  try {
-    const { size } = await fh.stat();
-    if (size <= HEAD_BYTES + TAIL_BYTES) {
-      const buf = Buffer.alloc(size);
-      await fh.read(buf, 0, size, 0);
-      return stitchBoundedLines(buf.toString("utf8"), "", false);
-    }
-    const headBuf = Buffer.alloc(HEAD_BYTES);
-    await fh.read(headBuf, 0, HEAD_BYTES, 0);
-    const tailBuf = Buffer.alloc(TAIL_BYTES);
-    await fh.read(tailBuf, 0, TAIL_BYTES, size - TAIL_BYTES);
-    return stitchBoundedLines(headBuf.toString("utf8"), tailBuf.toString("utf8"), true);
-  } catch {
-    return [];
-  } finally {
-    await fh.close();
   }
 }
 
@@ -397,4 +593,20 @@ function debounce<T extends (...a: never[]) => void>(fn: T, ms: number): T {
     if (t) clearTimeout(t);
     t = setTimeout(() => fn(...a), ms);
   }) as T;
+}
+
+/**
+ * Run `fn` over every item with at most `limit` calls in flight, resolving when
+ * all complete. Errors propagate (callers fail soft inside `fn`).
+ */
+export async function forEachConcurrent<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next]!;
+      next += 1;
+      await fn(item);
+    }
+  });
+  await Promise.all(workers);
 }

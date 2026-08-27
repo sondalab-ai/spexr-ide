@@ -88,6 +88,36 @@ describe("classifySession — live sessions are working or needs-you, never idle
     const streaming = [{ message: { role: "assistant", content: [{ type: "thinking", text: "…" }] } }];
     expect(classifySession("/p", NOW - 3_000, true, LIVE, NOW, streaming).state).toBe("working");
   });
+
+  test("needs-you: ESC interrupt after a tool — Claude's unwrapped marker shape", () => {
+    const interrupted = [
+      ...toolUse("Bash"),
+      { type: "queue-operation", content: "undefined" },
+      { type: "user", role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] },
+    ] as unknown as Parameters<typeof classifySession>[5];
+    expect(classifySession("/p", NOW - 2_000, true, LIVE, NOW, interrupted)).toEqual({
+      state: "idle",
+      needsYou: true,
+      needsYouCertain: false,
+    });
+  });
+
+  test("needs-you: ESC interrupt in the normalized message shape (other harness)", () => {
+    const interrupted = [
+      ...toolUse("Edit"),
+      { message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] } },
+    ];
+    expect(classifySession("/p", NOW - 2_000, true, LIVE, NOW, interrupted).needsYou).toBe(true);
+  });
+
+  test("working: a new prompt after the interrupt marker resumes the session", () => {
+    const resumed = [
+      ...toolUse("Bash"),
+      { type: "user", role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] },
+      { message: { role: "user", content: "carry on" } },
+    ] as unknown as Parameters<typeof classifySession>[5];
+    expect(classifySession("/p", NOW - 2_000, true, LIVE, NOW, resumed).state).toBe("working");
+  });
 });
 
 describe("classifySession — no live process", () => {

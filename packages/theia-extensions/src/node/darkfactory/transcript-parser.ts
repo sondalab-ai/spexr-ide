@@ -1,21 +1,6 @@
-/** Fields distilled from one Claude Code transcript (`.jsonl`). */
-export interface ParsedTranscript {
-  cwd?: string;
-  gitBranch?: string;
-  mode?: string;
-  permissionMode?: string;
-  userTurns: number;
-  /** First genuine human instruction — the session's goal (injected/meta skipped). */
-  goal: string;
-  lastPrompt: string;
-  lastTool?: string;
-  /**
-   * True for interactive TUI sessions (they emit `mode`/`permission-mode` or a
-   * SessionStart hook). SDK / `-p` one-shot sessions don't — used to filter the
-   * automated subagent flood out of the wall.
-   */
-  interactive: boolean;
-}
+import type { ParsedTranscript } from "../../common/harness/harness-types.js";
+
+export type { ParsedTranscript } from "../../common/harness/harness-types.js";
 
 /** Text of a user message whose `content` is a string or an array of blocks. */
 function userText(content: unknown): string | undefined {

@@ -37,14 +37,23 @@ function resolveNodeBinary(): string | undefined {
 }
 
 /**
- * Fork the model worker as its own OS process (not a worker_thread) so its native
- * onnxruntime work never touches the backend's process — see description-worker's
- * header. The models dir is passed by env since forks have no `workerData`.
+ * Env for the forked model worker. A genuine-Node child must NOT inherit
+ * ELECTRON_RUN_AS_NODE: the backend itself usually runs as Electron-as-node, so
+ * the flag sits in the inherited env even though the child (via `execPath`) is
+ * real Node. (The worker's own GPU decision does not trust this flag either —
+ * it keys on `process.versions.electron`, which env injection cannot fake.)
+ * Electron-as-node children need the flag set instead.
  */
+export function buildWorkerEnv(base: NodeJS.ProcessEnv, realNode: boolean): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, SPEXR_MODELS_DIR: resolveModelsDir() };
+  if (realNode) delete env.ELECTRON_RUN_AS_NODE;
+  else env.ELECTRON_RUN_AS_NODE = "1";
+  return env;
+}
+
 function defaultWorkerFactory(): WorkerLike {
   const node = resolveNodeBinary();
-  const env: NodeJS.ProcessEnv = { ...process.env, SPEXR_MODELS_DIR: resolveModelsDir() };
-  if (!node) env.ELECTRON_RUN_AS_NODE = "1"; // no real Node → run the Electron binary as Node
+  const env = buildWorkerEnv(process.env, !!node);
   console.error(`[darkfactory] forking model worker via ${node ?? "electron-as-node"}`);
   const child = fork(resolveWorkerPath(), [], {
     ...(node ? { execPath: node } : {}),
@@ -100,13 +109,13 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
     });
   }
 
-  summarize(turnsText: string): Promise<string | null> {
+  summarize(prompt: string, kind: "now" | "overview"): Promise<string | null> {
     const worker = this.ensureWorker();
     if (!worker) return Promise.resolve(null);
     const id = ++this.seq;
     return new Promise<string | null>((resolve) => {
       this.pending.set(id, { resolve });
-      worker.postMessage({ id, kind: "summary", relPath: "", content: turnsText });
+      worker.postMessage({ id, kind, relPath: "", content: prompt });
     });
   }
 

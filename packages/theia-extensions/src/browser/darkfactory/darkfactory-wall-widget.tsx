@@ -58,7 +58,7 @@ function shouldRefresh(tile: AgentTile, cur: SummaryState, now: number): boolean
   return tile.turnCount > cur.turnCount || tile.actionLine !== cur.action;
 }
 
-/** Machine-wide monitoring wall of every Claude Code session ("agent"). */
+/** Machine-wide monitoring wall of every agent session (Claude Code, opencode). */
 @injectable()
 export class SpexrDarkfactoryWidget extends ReactWidget {
   static readonly ID = "spexr.view.darkfactory";
@@ -68,6 +68,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
 
   private tiles: AgentTile[] = [];
+  /** False until the first tile snapshot lands — the wall shows a loading state until then. */
+  private loaded = false;
   /** sessionId → AI summary state, filled asynchronously and refreshed for live sessions. */
   private readonly summaries = new Map<string, SummaryState>();
   /** Sessions awaiting a summary; drained one inference at a time by {@link drainSummaries}. */
@@ -85,7 +87,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   protected init(): void {
     this.id = SpexrDarkfactoryWidget.ID;
     this.title.label = "Darkfactory";
-    this.title.caption = "All Claude agents at work";
+    this.title.caption = "All agent sessions at work";
     this.title.closable = true;
     this.title.iconClass = "codicon codicon-server-process";
     this.addClass("spexr-darkfactory");
@@ -98,8 +100,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       }),
     );
     this.toDispose.push({ dispose: () => this.clearPinned() });
+    // ReactWidget renders only on update() — paint the loading state now, before
+    // the first tiles land (without this the widget body stays blank until then).
+    this.update();
     this.refresh().catch(() => {
-      /* ignore */
+      // Scan failed — stop the spinner and fall through to the empty state.
+      this.loaded = true;
+      this.update();
     });
   }
 
@@ -187,6 +194,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   private setTiles(tiles: AgentTile[]): void {
     this.tiles = tiles;
+    this.loaded = true;
     this.update();
     // Drop cached descriptions for sessions no longer on the wall (no unbounded growth).
     const live = new Set(tiles.map((t) => t.sessionId));
@@ -248,11 +256,19 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   protected render(): React.ReactNode {
+    if (!this.loaded) {
+      return (
+        <div className="spexr-df-loading">
+          <i className="codicon codicon-loading codicon-modifier-spin" />
+          Scanning agent sessions…
+        </div>
+      );
+    }
     const now = Date.now();
     const tiles = sortTiles(this.tiles);
     if (tiles.length === 0) {
       return (
-        <div className="spexr-df-empty">No Claude agents found. Start a session to see it here.</div>
+        <div className="spexr-df-empty">No agent sessions found. Start a Claude or opencode session to see it here.</div>
       );
     }
     const pin = (tile: AgentTile): void => this.pin(tile);

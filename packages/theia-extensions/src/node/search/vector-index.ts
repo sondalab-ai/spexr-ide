@@ -1,6 +1,6 @@
 import { cosineSimilarity, topKIndices } from "./vector-math.js";
 
-export const INDEX_VERSION = 7;
+export const INDEX_VERSION = 8;
 
 export interface IndexRecord {
   path: string;

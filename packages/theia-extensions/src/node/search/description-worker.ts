@@ -17,8 +17,8 @@ import {
   MAX_NEW_TOKENS,
   DESCRIPTION_SYSTEM_PROMPT,
   SUMMARY_MAX_NEW_TOKENS,
-  SUMMARY_SYSTEM_PROMPT,
-  buildSummaryPrompt,
+  NOW_SYSTEM_PROMPT,
+  OVERVIEW_SYSTEM_PROMPT,
   buildPrompt,
   cleanGenerated,
   type WorkerRequest,
@@ -52,8 +52,13 @@ const INTRA_OP_THREADS = Math.max(1, Math.floor(cpus().length / 2));
  * Only when a genuine Node runs the worker: onnxruntime-node has a segfault history
  * under ELECTRON_RUN_AS_NODE (see worker-description-generator), and a GPU segfault
  * there is uncatchable, so a packaged app with no real Node stays on CPU.
+ *
+ * Detection keys on `process.versions.electron`, not the ELECTRON_RUN_AS_NODE env:
+ * the backend runs as Electron-as-node, so that flag is inherited by this child —
+ * and Electron's fork patch re-injects it even when `execPath` points at a real
+ * Node — while `process.versions.electron` truthfully reports the running binary.
  */
-const PREFER_GPU = !process.env.ELECTRON_RUN_AS_NODE;
+const PREFER_GPU = process.versions.electron === undefined;
 
 function loadPipe(device: "webgpu" | "cpu"): Promise<TextGenPipeline> {
   return pipeline("text-generation", GEN_MODEL_ID, {
@@ -99,9 +104,12 @@ async function handle(req: WorkerRequest): Promise<void> {
   const t0 = Date.now();
   try {
     const pipe = await getPipe();
-    const system = kind === "summary" ? SUMMARY_SYSTEM_PROMPT : DESCRIPTION_SYSTEM_PROMPT;
-    const user = kind === "summary" ? buildSummaryPrompt(content) : buildPrompt(relPath, content);
-    const maxTokens = kind === "summary" ? SUMMARY_MAX_NEW_TOKENS : MAX_NEW_TOKENS;
+    // Summary kinds ("now"/"overview") carry a fully-built user prompt in `content`;
+    // only the file-description path composes its prompt here from path + content.
+    const isSummary = kind === "now" || kind === "overview";
+    const system = kind === "overview" ? OVERVIEW_SYSTEM_PROMPT : kind === "now" ? NOW_SYSTEM_PROMPT : DESCRIPTION_SYSTEM_PROMPT;
+    const user = isSummary ? content : buildPrompt(relPath, content);
+    const maxTokens = isSummary ? SUMMARY_MAX_NEW_TOKENS : MAX_NEW_TOKENS;
     const tInfer = Date.now();
     const out = await pipe(
       [
@@ -116,9 +124,9 @@ async function handle(req: WorkerRequest): Promise<void> {
     const msgs = out[0]?.generated_text;
     const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : undefined;
     const raw = typeof last?.content === "string" ? last.content : "";
-    // Summaries are multi-line (Now:/Overview:) and parsed by the caller; only the
+    // Summary lines are cleaned by the caller (cleanSummaryLine); only the
     // single-line file description goes through cleanGenerated.
-    const text = kind === "summary" ? raw.trim() : cleanGenerated(raw);
+    const text = isSummary ? raw.trim() : cleanGenerated(raw);
     post({ id, type: "done", text: text.length > 0 ? text : null });
   } catch (err) {
     console.error(`[darkfactory worker] inference failed after ${Date.now() - t0}ms:`, err);

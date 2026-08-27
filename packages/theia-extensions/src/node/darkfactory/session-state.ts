@@ -39,6 +39,28 @@ function isRealMessage(e: StateEntry | undefined): boolean {
 }
 
 /**
+ * The interrupt marker a harness appends when the human aborts the turn (ESC).
+ * Claude Code writes it UNWRAPPED (top-level `role`/`content`, no `message`
+ * envelope), so the normal real-message check skips it and the turn would look
+ * like it is still acting. Tolerant of both shapes so any harness that emits the
+ * marker is classified correctly.
+ */
+function isInterruptMarker(e: StateEntry | undefined): boolean {
+  if (!e) return false;
+  const em = e as { role?: string; content?: unknown; message?: { role?: string; content?: unknown } };
+  const role = em.message?.role ?? em.role;
+  if (role !== "user") return false;
+  const content = em.message?.content ?? em.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content.map((b) => (typeof (b as { text?: string })?.text === "string" ? (b as { text?: string }).text : "")).join(" ")
+        : "";
+  return text.trim().startsWith("[Request interrupted");
+}
+
+/**
  * Where a live session's turn stands, from its last real conversation message:
  * - acting: a user message (a prompt or a tool_result to act on), an assistant
  *   `tool_use` for a non-permission tool, or a still-streaming assistant message
@@ -54,7 +76,14 @@ function isRealMessage(e: StateEntry | undefined): boolean {
  */
 function lastTurn(entries: StateEntry[]): Turn {
   let i = entries.length - 1;
-  while (i >= 0 && !isRealMessage(entries[i])) i--;
+  while (i >= 0) {
+    // An interrupt marker after the last real message means the turn was aborted
+    // mid-work and the session is back at the prompt — not still working.
+    if (isInterruptMarker(entries[i])) return "ended";
+    if (isRealMessage(entries[i])) break;
+    i--;
+  }
+  if (i < 0) return "unknown";
   const last = entries[i]?.message;
   if (!last) return "unknown";
   if (last.role === "user") return "acting";

@@ -1,3 +1,5 @@
+import type { HarnessId } from "./harness/harness-types.js";
+
 export const DARKFACTORY_SERVICE_PATH = "/services/spexr-darkfactory";
 
 export type AgentState = "working" | "idle" | "done";
@@ -8,6 +10,8 @@ export type FocusKind = "resume-terminal" | "readonly-follow";
 /** One agent session as shown on a wall tile. */
 export interface AgentTile {
   sessionId: string;
+  /** Which agent CLI this session belongs to (drives the tile's harness chip). */
+  harness: HarnessId;
   transcriptPath: string;
   projectPath: string;
   projectName: string;

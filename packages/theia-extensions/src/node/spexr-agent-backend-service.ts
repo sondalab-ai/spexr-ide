@@ -484,7 +484,7 @@ async function checkDriftImpl(
     `## Code Files\n${fileBlocks.join("\n\n")}`;
 
   // Spawn claude --print
-  const claudeExec = resolveClaudeExecutableRobust();
+  const claudeExec = await resolveClaudeExecutableRobust();
   if (!claudeExec || claudeExec === "ambiguous") {
     findings.push({ criterionId: "agent", severity: "warn", message: "Claude CLI not found; agent evaluation skipped." });
     const dto: DriftReportDto = { specSlug: slug, checkedAt, impliedFiles, findings };
@@ -688,7 +688,7 @@ export function warnIfVersionCheckFails(execPath: string): void {
  *
  * @param executableOverride  Optional override from `spexr.claude.executablePath`.
  */
-export function resolveAndValidateExecutable(executableOverride?: string): string {
+export async function resolveAndValidateExecutable(executableOverride?: string): Promise<string> {
   if (executableOverride) {
     if (!isFileExecutable(executableOverride)) {
       throw new Error(
@@ -699,7 +699,7 @@ export function resolveAndValidateExecutable(executableOverride?: string): strin
     return executableOverride;
   }
 
-  const execPath = resolveClaudeExecutableRobust();
+  const execPath = await resolveClaudeExecutableRobust();
 
   if (execPath === undefined) {
     throw new Error(

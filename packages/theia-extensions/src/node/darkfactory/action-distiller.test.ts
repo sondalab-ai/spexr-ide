@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { distillAction, recentActions, lastActionFailed } from "./action-distiller.js";
+import { distillAction, nowActionLine, recentActions, lastActionFailed } from "./action-distiller.js";
 
 describe("action-distiller", () => {
   test("last tool_use → verb + target", () => {
@@ -51,5 +51,37 @@ describe("action-distiller", () => {
     expect(lastActionFailed(ok)).toBe(false);
     expect(lastActionFailed(bad)).toBe(true);
     expect(lastActionFailed([])).toBe(false);
+  });
+});
+
+describe("nowActionLine", () => {
+  test("keeps clean verb+target lines for file tools", () => {
+    const entries = [
+      { message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/a/auth.ts" } }] } },
+    ];
+    expect(nowActionLine(entries)).toBe("Editing auth.ts");
+  });
+
+  test("compresses bash to program + subcommand (no raw argv noise)", () => {
+    const entries = [
+      {
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", name: "Bash", input: { command: "git push -u origin feat/x && gh pr create" } }],
+        },
+      },
+    ];
+    expect(nowActionLine(entries)).toBe("Running git push");
+  });
+
+  test("cleans URLs and markdown out of a prose fallback", () => {
+    const entries = [
+      { message: { role: "assistant", content: [{ type: "text", text: "Issue follow-up: https://x.com/i/449 `code` **bold** done" }] } },
+    ];
+    expect(nowActionLine(entries)).toBe("Issue follow-up: code bold done");
+  });
+
+  test("empty entries → empty line", () => {
+    expect(nowActionLine([])).toBe("");
   });
 });

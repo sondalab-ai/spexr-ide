@@ -118,6 +118,7 @@ export function AgentTileCard(props: {
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
         <span className="spexr-df-card__project">{tile.projectName}</span>
+        <span className="spexr-df-card__harness">{tile.harness}</span>
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
         </span>
@@ -196,6 +197,7 @@ export function AgentPinnedCard(props: {
       <header className="spexr-df-pinned__head">
         <span className="spexr-df-card__led" />
         <span className="spexr-df-pinned__project">{tile.projectName}</span>
+        <span className="spexr-df-card__harness">{tile.harness}</span>
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
         </span>
@@ -212,6 +214,11 @@ export function AgentPinnedCard(props: {
       )}
       {terminal ? (
         <TerminalMount term={terminal} />
+      ) : tile.harness === "opencode" ? (
+        <div className="spexr-df-pinned__nofollow">
+          This session is live elsewhere — a read-only transcript view for opencode isn&apos;t available yet.
+          Fork it to continue the work in this card.
+        </div>
       ) : (
         <div className="spexr-df-pinned__scroll">
           <FollowTranscript events={events} />
@@ -225,7 +232,15 @@ export function AgentPinnedCard(props: {
         ) : (
           <>
             <span className="spexr-df-pinned__tag">
-              <i className="codicon codicon-eye" /> read-only live view
+              {tile.harness === "opencode" ? (
+                <>
+                  <i className="codicon codicon-run" /> live elsewhere
+                </>
+              ) : (
+                <>
+                  <i className="codicon codicon-eye" /> read-only live view
+                </>
+              )}
             </span>
             <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
               Fork &amp; continue
@@ -256,6 +271,7 @@ export function AgentCondensedRow(props: {
     >
       <span className="spexr-df-row__led" />
       <span className="spexr-df-row__project">{tile.projectName}</span>
+      <span className="spexr-df-row__harness">{tile.harness}</span>
       <span className="spexr-df-row__action">{tile.goal || tile.actionLine}</span>
       {(tile.lastFailed || tile.needsYou) && (
         <span className="spexr-df-row__status" data-kind={status.kind}>
