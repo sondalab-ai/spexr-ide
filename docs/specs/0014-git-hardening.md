@@ -74,9 +74,13 @@ Everything in this spec is `Planned` until its slice merges.
   containing a `gitdir:` pointer, and assuming a directory there would leave
   the watcher silent.
 
-- **AC-3 Repository watcher.** The backend watches, inside the resolved git
-  directory: `HEAD`, `index`, `MERGE_HEAD`, `ORIG_HEAD`, and `refs/`
-  recursively. Changes are debounced at 150 ms into a single notification. The
+- **AC-3 Repository watcher.** The backend watches `HEAD`, `index`,
+  `MERGE_HEAD` and `ORIG_HEAD` inside the resolved git directory
+  (`rev-parse --git-dir`), and `refs/` recursively inside the **common** git
+  directory (`rev-parse --git-common-dir`). The two differ in a linked
+  worktree, where the per-worktree `refs/` is empty and every branch ref lives
+  in the common one — watching the wrong one would miss every branch move.
+  Changes are debounced at 150 ms into a single notification. The
   watch call goes through an injected seam with the same shape darkfactory uses
   (`watchDir?: (dir, recursive, onChange) => FSWatcher`), so tests capture calls
   without touching the filesystem. A watch that cannot be established (missing
