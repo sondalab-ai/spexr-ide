@@ -3,11 +3,16 @@ import {
   type CommandContribution,
   type CommandRegistry,
   type Command,
+  type MenuContribution,
+  type MenuModelRegistry,
   MessageService,
 } from "@theia/core";
-import { QuickInputService } from "@theia/core/lib/browser";
+import { ConfirmDialog, QuickInputService } from "@theia/core/lib/browser";
 import { ProgressService } from "@theia/core/lib/common/progress-service";
+import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import { SpexrGitScmProvider } from "./git-scm-provider.js";
+import { toRepoRelative } from "./relative-path.js";
+import { allInGroup, isResourceGroup, resourcePaths } from "./scm-resource-args.js";
 
 export const GitCommands = {
   STAGE_ALL: { id: "spexr.git.stageAll", label: "Git: Stage All Changes" } satisfies Command,
@@ -20,10 +25,14 @@ export const GitCommands = {
   CHECKOUT: { id: "spexr.git.checkout", label: "Git: Checkout Branch" } satisfies Command,
   CREATE_BRANCH: { id: "spexr.git.createBranch", label: "Git: Create Branch" } satisfies Command,
   REFRESH: { id: "spexr.git.refresh", label: "Git: Refresh" } satisfies Command,
+  STAGE_FILE: { id: "spexr.git.stageFile", label: "Git: Stage File" } satisfies Command,
+  UNSTAGE_FILE: { id: "spexr.git.unstageFile", label: "Git: Unstage File" } satisfies Command,
+  DISCARD_FILE: { id: "spexr.git.discardFile", label: "Git: Discard File Changes" } satisfies Command,
+  MARK_RESOLVED: { id: "spexr.git.markResolved", label: "Git: Mark Conflict Resolved" } satisfies Command,
 } as const;
 
 @injectable()
-export class SpexrGitCommandsContribution implements CommandContribution {
+export class SpexrGitCommandsContribution implements CommandContribution, MenuContribution {
   @inject(SpexrGitScmProvider)
   private readonly provider!: SpexrGitScmProvider;
 
@@ -39,9 +48,14 @@ export class SpexrGitCommandsContribution implements CommandContribution {
   registerCommands(commands: CommandRegistry): void {
     commands.registerCommand(GitCommands.STAGE_ALL, {
       execute: () => this.runGitOp("Stage changes", () => this.stageAll()),
+      // Restricts the group-header button to the Changes group without
+      // hiding the command from the command palette (which calls isVisible
+      // with no args at all — see isResourceGroup).
+      isVisible: (...args: unknown[]) => isResourceGroup(args, "workingTree"),
     });
     commands.registerCommand(GitCommands.UNSTAGE_ALL, {
       execute: () => this.runGitOp("Unstage changes", () => this.unstageAll()),
+      isVisible: (...args: unknown[]) => isResourceGroup(args, "index"),
     });
     commands.registerCommand(GitCommands.COMMIT, {
       execute: () => this.commitWithPrompt(),
@@ -72,20 +86,94 @@ export class SpexrGitCommandsContribution implements CommandContribution {
     commands.registerCommand(GitCommands.REFRESH, {
       execute: () => this.runGitOp("Refresh", () => this.provider.refresh()),
     });
+    commands.registerCommand(GitCommands.STAGE_FILE, {
+      execute: (...args: unknown[]) =>
+        this.runGitOp("Stage file", () => this.provider.stage(this.pathsOf(args))),
+      isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
+    });
+    commands.registerCommand(GitCommands.UNSTAGE_FILE, {
+      execute: (...args: unknown[]) =>
+        this.runGitOp("Unstage file", () => this.provider.unstage(this.pathsOf(args))),
+      isVisible: (...args: unknown[]) => allInGroup(args, "index"),
+    });
+    commands.registerCommand(GitCommands.DISCARD_FILE, {
+      execute: (...args: unknown[]) => this.discardWithConfirm(this.pathsOf(args)),
+      // Never on a Staged Changes row: a file with both a staged edit and a
+      // further unstaged edit is two rows sharing one repo-relative path, and
+      // discarding from the staged row would silently destroy the unstaged
+      // edit the user did not click on.
+      isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
+    });
+    commands.registerCommand(GitCommands.MARK_RESOLVED, {
+      execute: (...args: unknown[]) =>
+        // Staging IS resolution, in git's own terms.
+        this.runGitOp("Mark resolved", () => this.provider.stage(this.pathsOf(args)), "Marked resolved."),
+      isVisible: (...args: unknown[]) => allInGroup(args, "conflicts"),
+    });
+  }
+
+  registerMenus(menus: MenuModelRegistry): void {
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_INLINE_MENU, {
+      commandId: GitCommands.STAGE_ALL.id,
+      label: "Stage All Changes",
+      icon: "codicon codicon-add",
+      order: "1",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_INLINE_MENU, {
+      commandId: GitCommands.UNSTAGE_ALL.id,
+      label: "Unstage All Changes",
+      icon: "codicon codicon-remove",
+      order: "1",
+    });
+    for (const cmd of [GitCommands.STAGE_ALL, GitCommands.UNSTAGE_ALL]) {
+      menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });
+    }
+
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.STAGE_FILE.id,
+      label: "Stage",
+      icon: "codicon codicon-add",
+      order: "1",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.UNSTAGE_FILE.id,
+      label: "Unstage",
+      icon: "codicon codicon-remove",
+      order: "2",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.DISCARD_FILE.id,
+      label: "Discard",
+      icon: "codicon codicon-discard",
+      order: "3",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.MARK_RESOLVED.id,
+      label: "Mark Resolved",
+      icon: "codicon codicon-check",
+      order: "4",
+    });
+    for (const cmd of [GitCommands.STAGE_FILE, GitCommands.UNSTAGE_FILE, GitCommands.DISCARD_FILE, GitCommands.MARK_RESOLVED]) {
+      menus.registerMenuAction(ScmTreeWidget.RESOURCE_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });
+    }
   }
 
   private async stageAll(): Promise<void> {
+    const root = this.provider.root;
+    if (!root) return;
     const paths = this.provider.groups
       .find((g) => g.id === "workingTree")
-      ?.resources.map((r) => r.sourceUri.path.toString()) ?? [];
+      ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
     if (paths.length === 0) return;
     await this.provider.stage(paths);
   }
 
   private async unstageAll(): Promise<void> {
+    const root = this.provider.root;
+    if (!root) return;
     const paths = this.provider.groups
       .find((g) => g.id === "index")
-      ?.resources.map((r) => r.sourceUri.path.toString()) ?? [];
+      ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
     if (paths.length === 0) return;
     await this.provider.unstage(paths);
   }
@@ -133,6 +221,33 @@ export class SpexrGitCommandsContribution implements CommandContribution {
       () => this.provider.createBranch(branchName, true),
       `Created and checked out branch: ${branchName}`,
     );
+  }
+
+  /**
+   * Repository-relative paths for the SCM rows the command was invoked on.
+   * The SCM tree spreads the selected resources as individual arguments
+   * (see ActionMenuNode.run in @theia/core), not as a single array — so
+   * this must accept the already-spread rest args, not `arg: unknown`.
+   */
+  private pathsOf(items: unknown[]): string[] {
+    const root = this.provider.root;
+    if (!root) return [];
+    return resourcePaths(root, items);
+  }
+
+  private async discardWithConfirm(paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const listed = paths.length <= 5
+      ? paths.join("\n")
+      : `${paths.slice(0, 5).join("\n")}\n…and ${paths.length - 5} more`;
+    const ok = await new ConfirmDialog({
+      title: paths.length === 1 ? "Discard changes" : `Discard changes in ${paths.length} files`,
+      msg: `${listed}\n\nUntracked files will be deleted. Other changes will revert to their staged content. This cannot be undone.`,
+      ok: "Discard",
+      cancel: "Cancel",
+    }).open();
+    if (!ok) return;
+    await this.runGitOp("Discard changes", () => this.provider.discard(paths), "Changes discarded.");
   }
 
   /**

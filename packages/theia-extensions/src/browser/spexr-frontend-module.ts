@@ -63,9 +63,12 @@ import { AboutDialog } from "@theia/core/lib/browser/about-dialog.js";
 import { SpexrAboutDialog } from "./about/spexr-about-dialog.js";
 import { SpexrGitScmProvider } from "./scm/git-scm-provider.js";
 import { GitIgnoredDecorationProvider } from "./scm/git-ignored-decoration-provider.js";
+import { GitStateDecorationProvider } from "./scm/git-state-decoration-provider.js";
 import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-proxy.js";
+import { SpexrGitClientDispatcher, SpexrGitClientToken } from "./scm/git-client.js";
 import { SpexrGitCommandsContribution } from "./scm/git-commands-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
+import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
 import { GitOriginalResourceResolver } from "./scm/git-original-resource.js";
 import { ResourceResolver } from "@theia/core/lib/common/resource";
 import { SpexrGitBlameDecorator } from "./blame/blame-decorator.js";
@@ -214,21 +217,40 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   rebind(AboutDialog).toService(SpexrAboutDialog);
 
   // --- Git SCM ---
+  bind(SpexrGitClientDispatcher).toSelf().inSingletonScope();
+  bind(SpexrGitClientToken).toService(SpexrGitClientDispatcher);
   bind(SpexrGitServiceProxySymbol)
     .toDynamicValue((ctx) => {
       const connection = ctx.container.get(WebSocketConnectionProvider);
-      return connection.createProxy(GIT_SERVICE_PATH);
+      const client = ctx.container.get(SpexrGitClientDispatcher);
+      return connection.createProxy(GIT_SERVICE_PATH, client);
     })
     .inSingletonScope();
 
   bind(SpexrGitScmProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrGitScmProvider);
 
+  bind(GitStatusBarContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(GitStatusBarContribution);
+
   bind(GitIgnoredDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitIgnoredDecorationProvider);
 
+  // Bound after GitIgnoredDecorationProvider: DecorationsService#getDecoration
+  // returns one entry per registered provider that has a decoration for a URI, in
+  // the order registerDecorationsProvider() was called (which follows onStart()
+  // call order, itself normally following bind order), and the tree consumes only
+  // index [0] — so first-registered would win a collision. In practice this never
+  // fires: GitIgnoredDecorationProvider's set comes from `git ls-files -o -i
+  // --exclude-standard`, and `-o` (others) restricts it to untracked paths, so a
+  // tracked, changed file — the only thing this provider decorates — can never
+  // also appear in that set.
+  bind(GitStateDecorationProvider).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(GitStateDecorationProvider);
+
   bind(SpexrGitCommandsContribution).toSelf().inSingletonScope();
   bind(CommandContribution).toService(SpexrGitCommandsContribution);
+  bind(MenuContribution).toService(SpexrGitCommandsContribution);
 
   bind(SpexrGitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrGitToolbarContribution);

@@ -1,13 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { execSync } from "child_process";
+import type { FSWatcher } from "node:fs";
 import {
   SpexrGitBackendService,
   parseBlamePorcelain,
   normalizeRemoteUrl,
   parseIgnoredPaths,
+  pickRemote,
+  mapFileChange,
 } from "./spexr-git-backend-service.js";
 
 describe("SpexrGitBackendService", () => {
@@ -43,8 +46,37 @@ describe("SpexrGitBackendService", () => {
     expect(status.isClean).toBe(false);
     const f = status.files.find((x) => x.path === "new.txt");
     expect(f).toBeDefined();
-    expect(f!.unstagedState).toBe("U");
+    expect(f!.unstagedState).toBe("?");
     expect(f!.stagedState).toBeUndefined();
+  });
+
+  it("getStatus: detects a real merge conflict as unmerged (U), end to end", async () => {
+    // Both branches modify the same line of the same file — a classic "both
+    // modified" (UU) conflict. This exercises simple-git's real status
+    // parsing, not just mapFileChange in isolation: simple-git routes
+    // conflicted entries into status.conflicted, and this asserts that its
+    // index/working_dir chars still arrive at getStatus as "U"/"U".
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "line one\n");
+    execSync("git add f.txt && git commit -m base", { cwd: tmpDir });
+
+    execSync("git checkout -b branchA", { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "line one from A\n");
+    execSync('git commit -am "A: modify"', { cwd: tmpDir });
+
+    execSync("git checkout -", { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "line one from main\n");
+    execSync('git commit -am "main: modify"', { cwd: tmpDir });
+
+    try {
+      execSync("git merge branchA", { cwd: tmpDir, stdio: "ignore" });
+    } catch {
+      // Merge conflict — expected; git exits non-zero.
+    }
+
+    const status = await service.getStatus(tmpDir);
+    const f = status.files.find((x) => x.path === "f.txt");
+    expect(f?.unstagedState).toBe("U");
+    expect(f?.stagedState).toBeUndefined();
   });
 
   it("getIgnoredPaths: returns ignored files and collapses ignored dirs", async () => {
@@ -85,7 +117,56 @@ describe("SpexrGitBackendService", () => {
     const status = await service.getStatus(tmpDir);
     const f = status.files.find((x) => x.path === "new.txt");
     expect(f?.stagedState).toBeUndefined();
-    expect(f?.unstagedState).toBe("U");
+    expect(f?.unstagedState).toBe("?");
+  });
+
+  it("unstage: an empty path list is a no-op, not a full index reset", async () => {
+    // git reset HEAD -- (no paths) exits 0 and empties the WHOLE index,
+    // unlike `git add` with no paths, which is a no-op. stage/unstage must
+    // stay symmetric.
+    fs.writeFileSync(path.join(tmpDir, "new.txt"), "hello");
+    await service.stage(tmpDir, ["new.txt"]);
+    await service.unstage(tmpDir, []);
+    const status = await service.getStatus(tmpDir);
+    const f = status.files.find((x) => x.path === "new.txt");
+    expect(f?.stagedState).toBe("A");
+  });
+
+  it("discard: restores a tracked modified file", async () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "changed");
+    await service.discard(tmpDir, ["README.md"]);
+    expect(fs.readFileSync(path.join(tmpDir, "README.md"), "utf8")).toBe("init");
+  });
+
+  it("discard: deletes an untracked file", async () => {
+    fs.writeFileSync(path.join(tmpDir, "junk.txt"), "x");
+    await service.discard(tmpDir, ["junk.txt"]);
+    expect(fs.existsSync(path.join(tmpDir, "junk.txt"))).toBe(false);
+  });
+
+  it("discard: handles a mixed list in one call", async () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "changed");
+    fs.writeFileSync(path.join(tmpDir, "junk.txt"), "x");
+    await service.discard(tmpDir, ["README.md", "junk.txt"]);
+    expect(fs.readFileSync(path.join(tmpDir, "README.md"), "utf8")).toBe("init");
+    expect(fs.existsSync(path.join(tmpDir, "junk.txt"))).toBe(false);
+  });
+
+  it("discard: ignores paths that are already clean", async () => {
+    await expect(service.discard(tmpDir, ["README.md"])).resolves.toBeUndefined();
+  });
+
+  it("discard: reverts to staged content, not HEAD, when both differ", async () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "staged");
+    await service.stage(tmpDir, ["README.md"]);
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "unstaged");
+
+    await service.discard(tmpDir, ["README.md"]);
+
+    expect(fs.readFileSync(path.join(tmpDir, "README.md"), "utf8")).toBe("staged");
+    const status = await service.getStatus(tmpDir);
+    const f = status.files.find((x) => x.path === "README.md");
+    expect(f?.stagedState).toBe("M");
   });
 
   it("commit: staged file produces clean status", async () => {
@@ -94,20 +175,6 @@ describe("SpexrGitBackendService", () => {
     await service.commit(tmpDir, "test commit");
     const status = await service.getStatus(tmpDir);
     expect(status.isClean).toBe(true);
-  });
-
-  it("getDiff: returns diff for unstaged modification", async () => {
-    fs.writeFileSync(path.join(tmpDir, "README.md"), "changed content");
-    const diff = await service.getDiff(tmpDir, "README.md", false);
-    expect(diff).toContain("-init");
-    expect(diff).toContain("+changed content");
-  });
-
-  it("getDiff: returns diff for staged modification", async () => {
-    fs.writeFileSync(path.join(tmpDir, "README.md"), "staged change");
-    await service.stage(tmpDir, ["README.md"]);
-    const diff = await service.getDiff(tmpDir, "README.md", true);
-    expect(diff).toContain("+staged change");
   });
 
   it("getLog: returns at least the initial commit", async () => {
@@ -122,6 +189,49 @@ describe("SpexrGitBackendService", () => {
     const current = branches.find((b) => b.isCurrent);
     expect(current).toBeDefined();
     expect(current!.isRemote).toBe(false);
+  });
+
+  describe("pickRemote", () => {
+    it("prefers origin", () => expect(pickRemote(["upstream", "origin"])).toBe("origin"));
+    it("takes the sole remote when there is no origin", () => expect(pickRemote(["fork"])).toBe("fork"));
+    it("throws, naming candidates, when ambiguous", () => {
+      expect(() => pickRemote(["a", "b"])).toThrow(/a, b/);
+    });
+    it("throws when there are none", () => expect(() => pickRemote([])).toThrow(/no remote/i));
+  });
+
+  it("push: sets upstream on a branch that has none", async () => {
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-bare-"));
+    execSync("git init --bare", { cwd: bare });
+    execSync(`git remote add origin ${bare}`, { cwd: tmpDir });
+    execSync("git checkout -b feature", { cwd: tmpDir });
+
+    await service.push(tmpDir); // must not throw despite no upstream
+
+    const status = await service.getStatus(tmpDir);
+    expect(status.upstream).toBe("origin/feature");
+    fs.rmSync(bare, { recursive: true, force: true });
+  });
+
+  it("getBranches: reports the upstream of a tracking branch", async () => {
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-bare2-"));
+    execSync("git init --bare", { cwd: bare });
+    execSync(`git remote add origin ${bare}`, { cwd: tmpDir });
+    execSync("git push -u origin HEAD", { cwd: tmpDir });
+
+    const branches = await service.getBranches(tmpDir);
+    const current = branches.find((b) => b.isCurrent);
+    expect(current?.upstream).toMatch(/^origin\//);
+    fs.rmSync(bare, { recursive: true, force: true });
+  });
+
+  it("getBranches: does not mistake a bracketed commit subject for an upstream", async () => {
+    execSync("git checkout -b jira", { cwd: tmpDir });
+    execSync('git commit --allow-empty -m "[JIRA-123] fix the thing"', { cwd: tmpDir });
+
+    const branches = await service.getBranches(tmpDir);
+    const current = branches.find((b) => b.isCurrent);
+    expect(current?.upstream).toBeUndefined();
   });
 
   it("createBranch + checkout: switches to new branch", async () => {
@@ -172,6 +282,48 @@ describe("SpexrGitBackendService", () => {
   it("getRemoteUrl: normalizes the origin remote", async () => {
     execSync("git remote add origin git@github.com:foo/bar.git", { cwd: tmpDir });
     expect(await service.getRemoteUrl(tmpDir)).toBe("https://github.com/foo/bar");
+  });
+
+  it("git(): returns the same instance for one root and serializes it", () => {
+    const svc = service as unknown as { git(root: string): unknown };
+    const a = svc.git(tmpDir);
+    const b = svc.git(tmpDir);
+    expect(a).toBe(b);
+  });
+
+  it("git(): distinct instances for distinct roots", () => {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-other-"));
+    execSync("git init", { cwd: other });
+    const svc = service as unknown as { git(root: string): unknown };
+    expect(svc.git(tmpDir)).not.toBe(svc.git(other));
+    fs.rmSync(other, { recursive: true, force: true });
+  });
+
+  it("resolveGitDir: returns the .git directory of a normal repo", async () => {
+    const dir = await service.resolveGitDir(tmpDir);
+    expect(dir).toBeDefined();
+    expect(fs.existsSync(path.join(dir!, "HEAD"))).toBe(true);
+  });
+
+  it("resolveGitDir: follows the gitdir pointer of a linked worktree", async () => {
+    const wt = path.join(os.tmpdir(), `spexr-wt-${Date.now()}`);
+    execSync(`git worktree add -b wt-branch ${wt}`, { cwd: tmpDir });
+    try {
+      // In a linked worktree `.git` is a FILE containing "gitdir: <path>".
+      expect(fs.statSync(path.join(wt, ".git")).isFile()).toBe(true);
+
+      const dir = await service.resolveGitDir(wt);
+      expect(dir).toBeDefined();
+      expect(fs.existsSync(path.join(dir!, "HEAD"))).toBe(true);
+    } finally {
+      execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+    }
+  });
+
+  it("resolveGitDir: returns undefined outside a repository", async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-plain-"));
+    expect(await service.resolveGitDir(plain)).toBeUndefined();
+    fs.rmSync(plain, { recursive: true, force: true });
   });
 });
 
@@ -264,6 +416,128 @@ describe("SpexrGitBackendService — virgin repo (no commits)", () => {
     const status = await service.getStatus(tmpDir);
     const f = status.files.find((x) => x.path === "new.txt");
     expect(f?.stagedState).toBeUndefined();
-    expect(f?.unstagedState).toBe("U");
+    expect(f?.unstagedState).toBe("?");
+  });
+});
+
+describe("SpexrGitBackendService — repository watcher", () => {
+  let tmpDir: string;
+  let watched: { dir: string; recursive: boolean }[];
+  let fire: (() => void)[];
+  let service: SpexrGitBackendService;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-watch-"));
+    execSync("git init", { cwd: tmpDir });
+    watched = [];
+    fire = [];
+    service = new SpexrGitBackendService({
+      watchDir: (dir, recursive, onChange) => {
+        watched.push({ dir, recursive });
+        fire.push(onChange);
+        return { close: () => {} } as unknown as FSWatcher;
+      },
+    });
+  });
+
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  it("arms watchers on the resolved git dir after setClient", async () => {
+    service.setClient({ onRepositoryChanged: () => {} });
+    await service.getStatus(tmpDir); // first call binds the root
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+
+    const dirs = watched.map((w) => path.basename(w.dir));
+    expect(dirs).toContain(".git");
+    expect(watched.some((w) => w.dir.endsWith(path.join(".git", "refs")) && w.recursive)).toBe(true);
+  });
+
+  it("debounces a burst of changes into one notification", async () => {
+    let calls = 0;
+    service.setClient({ onRepositoryChanged: () => { calls += 1; } });
+    await service.getStatus(tmpDir);
+    await vi.waitFor(() => expect(fire.length).toBeGreaterThan(0));
+
+    fire[0]!(); fire[0]!(); fire[0]!();
+    expect(calls).toBe(0);                       // nothing yet — debounced
+    await new Promise((r) => setTimeout(r, 250));
+    expect(calls).toBe(1);                       // exactly one, not three
+  });
+
+  it("does not throw when the watch target cannot be watched", async () => {
+    const failing = new SpexrGitBackendService({
+      watchDir: () => { throw new Error("EPERM"); },
+    });
+    failing.setClient({ onRepositoryChanged: () => {} });
+    await expect(failing.getStatus(tmpDir)).resolves.toBeDefined();
+  });
+
+  it("does not stack another watcher on a second getStatus for the same root", async () => {
+    service.setClient({ onRepositoryChanged: () => {} });
+    await service.getStatus(tmpDir);
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+    const countAfterFirst = watched.length;
+
+    await service.getStatus(tmpDir);
+    expect(watched.length).toBe(countAfterFirst);
+  });
+
+  it("retries arming on the next getStatus after every watch attempt failed, instead of muting the root forever", async () => {
+    let shouldFail = true;
+    const flaky = new SpexrGitBackendService({
+      watchDir: (dir, recursive, onChange) => {
+        if (shouldFail) throw new Error("EPERM");
+        watched.push({ dir, recursive });
+        fire.push(onChange);
+        return { close: () => {} } as unknown as FSWatcher;
+      },
+    });
+    flaky.setClient({ onRepositoryChanged: () => {} });
+    await flaky.getStatus(tmpDir); // both watch attempts throw → root must stay unarmed
+    expect(watched.length).toBe(0);
+
+    shouldFail = false;
+    await flaky.getStatus(tmpDir); // permissions recovered → arming must be retried, not skipped
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+  });
+
+  it("watches refs under the common dir, not the worktree's own empty one", async () => {
+    execSync('git config user.email "t@t.t"', { cwd: tmpDir });
+    execSync('git config user.name "T"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, "a.txt"), "x");
+    execSync("git add a.txt && git commit -m init", { cwd: tmpDir });
+    const wt = path.join(os.tmpdir(), `spexr-wt-watch-${Date.now()}`);
+    execSync(`git worktree add -b wt-watch ${wt}`, { cwd: tmpDir });
+
+    try {
+      service.setClient({ onRepositoryChanged: () => {} });
+      await service.getStatus(wt);
+      await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+
+      const refsWatch = watched.find((w) => w.dir.endsWith(`${path.sep}refs`));
+      expect(refsWatch).toBeDefined();
+      // The common dir's refs, which actually holds heads/ — not the worktree's.
+      expect(fs.existsSync(path.join(refsWatch!.dir, "heads"))).toBe(true);
+    } finally {
+      execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+    }
+  });
+});
+
+describe("mapFileChange — conflict and untracked states", () => {
+  it("marks untracked with ?, not U", () => {
+    expect(mapFileChange("new.txt", "?", "?")).toEqual({ path: "new.txt", unstagedState: "?" });
+  });
+
+  it.each([["U", "U"], ["A", "A"], ["D", "D"], ["A", "U"], ["U", "A"], ["D", "U"], ["U", "D"]])(
+    "treats %s%s as a conflict",
+    (index, worktree) => {
+      const r = mapFileChange("f.txt", index, worktree);
+      expect(r?.unstagedState).toBe("U");
+    },
+  );
+
+  it("still maps a plain staged modification", () => {
+    expect(mapFileChange("f.txt", "M", " ")).toEqual({ path: "f.txt", stagedState: "M" });
   });
 });

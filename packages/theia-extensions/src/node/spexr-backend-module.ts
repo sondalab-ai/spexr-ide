@@ -1,7 +1,7 @@
 import { ContainerModule } from "@theia/core/shared/inversify";
 import { ConnectionHandler, RpcConnectionHandler } from "@theia/core/lib/common/messaging";
 import { AGENT_SESSION_SERVICE_PATH } from "../common/agent-protocol.js";
-import { GIT_SERVICE_PATH } from "../common/git-protocol.js";
+import { GIT_SERVICE_PATH, type SpexrGitClient } from "../common/git-protocol.js";
 import { SpexrAgentBackendService } from "./spexr-agent-backend-service.js";
 import { SpexrGitBackendService } from "./spexr-git-backend-service.js";
 import { SEARCH_SERVICE_PATH, type SpexrSearchClient } from "../common/search-protocol.js";
@@ -25,7 +25,10 @@ export default new ContainerModule((bind) => {
   bind(ConnectionHandler)
     .toDynamicValue((ctx) => {
       const service = ctx.container.get(SpexrGitBackendService);
-      return new RpcConnectionHandler(GIT_SERVICE_PATH, () => service);
+      return new RpcConnectionHandler<SpexrGitClient>(GIT_SERVICE_PATH, (client) => {
+        service.setClient(client);
+        return service;
+      });
     })
     .inSingletonScope();
 

@@ -719,9 +719,9 @@ export async function resolveAndValidateExecutable(executableOverride?: string):
 export function formatGitContext(status: GitStatusDto): string {
   const staged = status.files.filter((f) => f.stagedState).length;
   const modified = status.files.filter(
-    (f) => f.unstagedState && f.unstagedState !== "U",
+    (f) => f.unstagedState && f.unstagedState !== "?",
   ).length;
-  const untracked = status.files.filter((f) => f.unstagedState === "U").length;
+  const untracked = status.files.filter((f) => f.unstagedState === "?").length;
 
   const header = `Git: branch=${status.branch}${status.upstream ? `, upstream=${status.upstream}` : ""}, ahead=${status.ahead}, behind=${status.behind}`;
   if (staged === 0 && modified === 0 && untracked === 0) {

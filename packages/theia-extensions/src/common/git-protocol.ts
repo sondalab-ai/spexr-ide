@@ -1,6 +1,11 @@
 export const GIT_SERVICE_PATH = "/services/spexr-git";
 
-export type GitFileState = "A" | "M" | "D" | "R" | "U" | "C";
+/**
+ * `?` untracked · `U` unmerged (conflict) · the rest are git's own index
+ * letters. These two were previously conflated: untracked was reported as `U`
+ * while git's unmerged `U` was folded into `C`.
+ */
+export type GitFileState = "A" | "M" | "D" | "R" | "C" | "U" | "?";
 
 export interface GitFileChangeDto {
   readonly path: string;
@@ -58,12 +63,30 @@ export interface BlameResultDto {
   readonly lines: readonly BlameLineDto[];
 }
 
+/** Push channel: backend → frontend. */
+export interface SpexrGitClient {
+  /** The repository changed on disk — from this IDE, a terminal, or anything else. */
+  onRepositoryChanged(): void;
+}
+
 export interface SpexrGitService {
+  /**
+   * Registers the push channel. The repository watcher is armed lazily, per
+   * root, on that root's first `getStatus` call — `setClient` itself has no
+   * root to arm yet.
+   */
+  setClient(client: SpexrGitClient): void;
   getStatus(root: string): Promise<GitStatusDto>;
   stage(root: string, paths: string[]): Promise<void>;
   unstage(root: string, paths: string[]): Promise<void>;
+  /**
+   * Throw away working-tree changes. For tracked paths, unstaged edits are
+   * discarded and the file reverts to its staged (index) content — a staged
+   * edit survives and the file stays staged. Untracked paths are deleted from
+   * disk. Irreversible — callers confirm first.
+   */
+  discard(root: string, paths: string[]): Promise<void>;
   commit(root: string, message: string): Promise<void>;
-  getDiff(root: string, filePath: string, staged: boolean): Promise<string>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;

@@ -1,7 +1,11 @@
-import { injectable } from "@theia/core/shared/inversify";
-import simpleGit from "simple-git";
+import { injectable, unmanaged } from "@theia/core/shared/inversify";
+import { isAbsolute, resolve as resolvePath, join } from "node:path";
+import { watch, type FSWatcher } from "node:fs";
+import { rm } from "node:fs/promises";
+import simpleGit, { type SimpleGit } from "simple-git";
 import type {
   SpexrGitService,
+  SpexrGitClient,
   GitStatusDto,
   GitFileChangeDto,
   GitFileState,
@@ -13,6 +17,14 @@ import type {
 } from "../common/git-protocol.js";
 
 const BLAME_HEADER = /^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/;
+
+/** Coalesce a burst of git-dir writes (one operation touches several files). */
+const WATCH_DEBOUNCE_MS = 150;
+
+export interface GitBackendDeps {
+  /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
+  watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
+}
 
 /**
  * Parse `git blame --line-porcelain` output into a {@link BlameResultDto}.
@@ -72,18 +84,28 @@ function mapStateChar(char: string): GitFileState | undefined {
     case "D": return "D";
     case "R": return "R";
     case "C": return "C";
-    case "U": return "C"; // merge conflict → treat as conflicted
     default: return undefined;
   }
 }
 
-function mapFileChange(
+/**
+ * Index/worktree pairs git uses for an unmerged path — see `git help status`,
+ * the "unmerged" section of the short-format table. Neither column can carry
+ * these codes for a non-conflicted file: `U` only ever appears here, and `A`
+ * never appears in the worktree column outside a conflict.
+ */
+const CONFLICT_PAIRS = new Set(["UU", "AA", "DD", "AU", "UA", "DU", "UD"]);
+
+export function mapFileChange(
   filePath: string,
   indexChar: string,
   workingDirChar: string,
 ): GitFileChangeDto | undefined {
-  if (indexChar === "?" && workingDirChar === "?") {
+  if (CONFLICT_PAIRS.has(`${indexChar}${workingDirChar}`)) {
     return { path: filePath, unstagedState: "U" };
+  }
+  if (indexChar === "?" && workingDirChar === "?") {
+    return { path: filePath, unstagedState: "?" };
   }
   const stagedState =
     indexChar !== " " && indexChar !== "?" ? mapStateChar(indexChar) : undefined;
@@ -120,10 +142,159 @@ export function parseIgnoredPaths(raw: string): string[] {
   return raw.split("\0").filter((p) => p.length > 0);
 }
 
+/**
+ * The remote to push to when the caller did not name one. `origin` wins by
+ * convention; a single remote under another name is unambiguous; anything
+ * else is a real choice the user has to make, so say so rather than guess.
+ */
+export function pickRemote(remotes: string[]): string {
+  if (remotes.includes("origin")) return "origin";
+  if (remotes.length === 1) return remotes[0]!;
+  if (remotes.length === 0) throw new Error("This repository has no remote configured.");
+  throw new Error(
+    `Several remotes and no "origin" — push explicitly to one of: ${remotes.join(", ")}.`,
+  );
+}
+
 @injectable()
 export class SpexrGitBackendService implements SpexrGitService {
+  /**
+   * One SimpleGit per repository root. `maxConcurrentProcesses: 1` makes
+   * simple-git's own scheduler serialize every task for that repo, which is
+   * why no hand-written queue is needed — constructing a fresh instance per
+   * call (as this service used to) defeated that scheduler entirely.
+   */
+  private readonly clients = new Map<string, SimpleGit>();
+
+  private readonly watchDir: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
+  private client?: SpexrGitClient;
+  private readonly watchers: FSWatcher[] = [];
+  /** Roots with at least one watch actually established — not stacked on repeat getStatus calls. */
+  private readonly armed = new Set<string>();
+  /** Roots confirmed not to be a repository, so getStatus stops re-running rev-parse on them. */
+  private readonly notARepo = new Set<string>();
+  private debounce?: ReturnType<typeof setTimeout>;
+
+  constructor(@unmanaged() deps: GitBackendDeps = {}) {
+    this.watchDir =
+      deps.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
+  }
+
+  setClient(client: SpexrGitClient): void {
+    this.client = client;
+  }
+
+  private git(root: string): SimpleGit {
+    let client = this.clients.get(root);
+    if (!client) {
+      client = simpleGit(root, { maxConcurrentProcesses: 1 });
+      this.clients.set(root, client);
+    }
+    return client;
+  }
+
+  /**
+   * Resolves both git directories with a single `rev-parse` process: the
+   * repository's own git dir and its COMMON git dir (identical outside a
+   * linked worktree). Two separate `rev-parse` calls would queue rather than
+   * run in parallel — `maxConcurrentProcesses: 1` in {@link git} serializes
+   * every call for a root — so this is also strictly faster than resolving
+   * them one at a time.
+   */
+  private async resolveGitDirs(root: string): Promise<{ gitDir: string; commonDir: string } | undefined> {
+    try {
+      const out = (await this.git(root).raw(["rev-parse", "--git-dir", "--git-common-dir"])).trim();
+      const [gitDirRaw, commonDirRaw] = out.split("\n");
+      if (!gitDirRaw) return undefined;
+      const gitDir = isAbsolute(gitDirRaw) ? gitDirRaw : resolvePath(root, gitDirRaw);
+      const commonDir = !commonDirRaw
+        ? gitDir
+        : isAbsolute(commonDirRaw)
+          ? commonDirRaw
+          : resolvePath(root, commonDirRaw);
+      return { gitDir, commonDir };
+    } catch {
+      return undefined; // not a repository
+    }
+  }
+
+  /**
+   * Absolute path of the repository's git directory.
+   *
+   * Must not be derived as `root + "/.git"`: in a linked worktree `.git` is a
+   * FILE holding a `gitdir:` pointer, so assuming a directory there yields a
+   * path that never emits watch events. `rev-parse --git-dir` answers
+   * correctly for plain repos, worktrees, and submodules alike.
+   */
+  async resolveGitDir(root: string): Promise<string | undefined> {
+    return (await this.resolveGitDirs(root))?.gitDir;
+  }
+
+  /**
+   * Absolute path of the repository's COMMON git directory — shared by every
+   * linked worktree. Branch refs live here; a worktree's own `refs/` is empty,
+   * so watching that instead would never see a branch move.
+   */
+  async resolveGitCommonDir(root: string): Promise<string | undefined> {
+    return (await this.resolveGitDirs(root))?.commonDir;
+  }
+
+  /**
+   * Watch the git dir so operations that touch only `.git` — commit, fetch,
+   * branch create, and `git add` from a terminal — reach the panel. Theia's
+   * file watcher excludes `.git` by default, so without this the panel only
+   * ever sees its own writes.
+   *
+   * `root` is marked armed only once a watch is actually established: if
+   * every attempt throws (permissions blip, path not yet created), the
+   * failure must stay retryable on the next `getStatus` rather than
+   * permanently muting the root.
+   */
+  private armWatch(root: string, gitDir: string, commonDir: string): void {
+    const notify = (): void => {
+      if (this.debounce) clearTimeout(this.debounce);
+      this.debounce = setTimeout(() => this.client?.onRepositoryChanged(), WATCH_DEBOUNCE_MS);
+    };
+    // HEAD / index / MERGE_HEAD / ORIG_HEAD are per-worktree and live in gitDir.
+    // Branch refs are shared, so they come from the common dir — in a linked
+    // worktree gitDir/refs exists but is empty.
+    const targets: readonly (readonly [string, boolean])[] = [
+      [gitDir, false],
+      [join(commonDir, "refs"), true],
+    ];
+    let established = false;
+    for (const [dir, recursive] of targets) {
+      try {
+        this.watchers.push(this.watchDir(dir, recursive, () => { notify(); }));
+        established = true;
+      } catch {
+        // Unwatchable path or permission error: degrade to the previous
+        // behavior rather than failing the whole service.
+      }
+    }
+    if (established) this.armed.add(root);
+  }
+
+  dispose(): void {
+    if (this.debounce) clearTimeout(this.debounce);
+    for (const w of this.watchers) {
+      try { w.close(); } catch { /* already closed */ }
+    }
+    this.watchers.length = 0;
+    this.armed.clear();
+    this.notARepo.clear();
+  }
+
   async getStatus(root: string): Promise<GitStatusDto> {
-    const git = simpleGit(root);
+    if (this.client && !this.armed.has(root) && !this.notARepo.has(root)) {
+      const dirs = await this.resolveGitDirs(root);
+      if (dirs) {
+        this.armWatch(root, dirs.gitDir, dirs.commonDir);
+      } else {
+        this.notARepo.add(root);
+      }
+    }
+    const git = this.git(root);
     const status = await git.status();
     const files: GitFileChangeDto[] = status.files
       .map((f) => mapFileChange(f.path, f.index, f.working_dir))
@@ -139,11 +310,15 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async stage(root: string, paths: string[]): Promise<void> {
-    await simpleGit(root).add(paths);
+    await this.git(root).add(paths);
   }
 
   async unstage(root: string, paths: string[]): Promise<void> {
-    const git = simpleGit(root);
+    // `git reset HEAD --` with no paths is a full mixed reset — it empties
+    // the entire index, unlike `git add` with no paths, which is a no-op.
+    // stage/unstage must stay symmetric no-ops on an empty list.
+    if (paths.length === 0) return;
+    const git = this.git(root);
     // On a virgin repo (no commits yet) HEAD doesn't exist; git reset HEAD fails.
     // Use git rm --cached instead, which is the correct unstage for that state.
     const hasHead = await git.raw(["rev-parse", "--verify", "HEAD"]).then(() => true).catch(() => false);
@@ -154,56 +329,98 @@ export class SpexrGitBackendService implements SpexrGitService {
     }
   }
 
-  async commit(root: string, message: string): Promise<void> {
-    await simpleGit(root).commit(message);
+  async discard(root: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const status = await this.git(root).status();
+    const untracked = new Set(status.not_added);
+    const toDelete = paths.filter((p) => untracked.has(p));
+    const toRestore = paths.filter((p) => !untracked.has(p));
+
+    if (toRestore.length > 0) {
+      await this.git(root).checkout(["--", ...toRestore]);
+    }
+    for (const p of toDelete) {
+      await rm(resolvePath(root, p), { force: true });
+    }
   }
 
-  async getDiff(root: string, filePath: string, staged: boolean): Promise<string> {
-    return staged
-      ? simpleGit(root).diff(["--cached", "--", filePath])
-      : simpleGit(root).diff(["--", filePath]);
+  async commit(root: string, message: string): Promise<void> {
+    await this.git(root).commit(message);
   }
 
   async getBranches(root: string): Promise<GitBranchDto[]> {
-    const result = await simpleGit(root).branch(["-a", "-vv"]);
-    return Object.values(result.branches).map((b) => ({
-      name: b.name,
-      isCurrent: b.current,
-      isRemote: b.name.startsWith("remotes/"),
-    }));
+    const git = this.git(root);
+    const result = await git.branch(["-a", "-vv"]);
+    // `-vv`'s tracking marker sits in the same spot in `label` as a commit
+    // subject that itself begins with a bracket (e.g. "[JIRA-123] fix the
+    // thing"), so it can't be parsed out reliably. Ask git directly instead.
+    // `for-each-ref refs/heads` only covers local branches — remote-tracking
+    // entries from the `-a` listing above have no upstream of their own, so
+    // leaving theirs undefined is correct.
+    const raw = await git.raw([
+      "for-each-ref", "--format=%(refname:short) %(upstream:short)", "refs/heads",
+    ]);
+    const upstreams = new Map<string, string>();
+    for (const line of raw.split("\n")) {
+      if (!line) continue;
+      // Ref names can't contain a space, so splitting on the first one is safe.
+      const i = line.indexOf(" ");
+      const upstream = line.slice(i + 1);
+      if (upstream) upstreams.set(line.slice(0, i), upstream);
+    }
+    return Object.values(result.branches).map((b) => {
+      const upstream = upstreams.get(b.name);
+      return {
+        name: b.name,
+        isCurrent: b.current,
+        isRemote: b.name.startsWith("remotes/"),
+        ...(upstream && { upstream }),
+      };
+    });
   }
 
   async checkout(root: string, branch: string): Promise<void> {
-    await simpleGit(root).checkout(branch);
+    await this.git(root).checkout(branch);
   }
 
   async createBranch(root: string, name: string, checkoutAfter: boolean): Promise<void> {
     if (checkoutAfter) {
-      await simpleGit(root).checkoutLocalBranch(name);
+      await this.git(root).checkoutLocalBranch(name);
     } else {
-      await simpleGit(root).branch([name]);
+      await this.git(root).branch([name]);
     }
   }
 
   async push(root: string, remote?: string, branch?: string): Promise<void> {
-    const git = simpleGit(root);
+    const git = this.git(root);
     if (remote && branch) {
       await git.push(remote, branch);
-    } else {
-      await git.push();
+      return;
     }
+    const status = await git.status();
+    if (status.tracking) {
+      await git.push();
+      return;
+    }
+    // No upstream yet — a freshly created branch. A bare push fails here, so
+    // establish tracking as part of the first push.
+    const names = (await git.getRemotes(false)).map((r) => r.name);
+    const target = remote ?? pickRemote(names);
+    const head = branch ?? status.current;
+    if (!head) throw new Error("Cannot push: no current branch (detached HEAD?).");
+    await git.push(["--set-upstream", target, head]);
   }
 
   async pull(root: string): Promise<void> {
-    await simpleGit(root).pull();
+    await this.git(root).pull();
   }
 
   async fetch(root: string): Promise<void> {
-    await simpleGit(root).fetch();
+    await this.git(root).fetch();
   }
 
   async getLog(root: string, maxCount = 20): Promise<GitLogEntryDto[]> {
-    const log = await simpleGit(root).log({ maxCount });
+    const log = await this.git(root).log({ maxCount });
     return log.all.map((c) => ({
       hash: c.hash.slice(0, 7),
       message: c.message,
@@ -219,14 +436,14 @@ export class SpexrGitBackendService implements SpexrGitService {
     if (filePath.startsWith("-") || filePath.includes("..")) {
       throw new Error(`Invalid file path: "${filePath}"`);
     }
-    return simpleGit(root).show([`${rev}:${filePath}`]);
+    return this.git(root).show([`${rev}:${filePath}`]);
   }
 
   async getBlame(root: string, filePath: string): Promise<BlameResultDto> {
     if (filePath.startsWith("-") || filePath.includes("..")) {
       throw new Error(`Invalid file path: "${filePath}"`);
     }
-    const raw = await simpleGit(root).raw([
+    const raw = await this.git(root).raw([
       "blame",
       "--line-porcelain",
       "--",
@@ -240,7 +457,7 @@ export class SpexrGitBackendService implements SpexrGitService {
       // -o others (untracked), -i ignored, --exclude-standard honors repo + nested
       // .gitignore, the global core.excludesFile, and .git/info/exclude; --directory
       // collapses a fully-ignored dir to one entry; -z NUL-separates for safe paths.
-      const raw = await simpleGit(root).raw([
+      const raw = await this.git(root).raw([
         "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z",
       ]);
       return parseIgnoredPaths(raw);
@@ -251,7 +468,7 @@ export class SpexrGitBackendService implements SpexrGitService {
 
   async getRemoteUrl(root: string): Promise<string | undefined> {
     try {
-      const remotes = await simpleGit(root).getRemotes(true);
+      const remotes = await this.git(root).getRemotes(true);
       const origin = remotes.find((r) => r.name === "origin") ?? remotes[0];
       const url = origin?.refs?.fetch;
       return url ? normalizeRemoteUrl(url) : undefined;

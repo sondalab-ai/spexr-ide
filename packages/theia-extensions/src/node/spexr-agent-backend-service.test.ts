@@ -30,7 +30,7 @@ describe("formatGitContext", () => {
       files: [
         { path: "a.ts", stagedState: "A" },
         { path: "b.ts", unstagedState: "M" },
-        { path: "c.ts", unstagedState: "U" },
+        { path: "c.ts", unstagedState: "?" },
       ],
     };
     const result = formatGitContext(status);
