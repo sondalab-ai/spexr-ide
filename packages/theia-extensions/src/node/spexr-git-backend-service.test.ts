@@ -89,6 +89,30 @@ describe("SpexrGitBackendService", () => {
     expect(f?.unstagedState).toBe("U");
   });
 
+  it("discard: restores a tracked modified file", async () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "changed");
+    await service.discard(tmpDir, ["README.md"]);
+    expect(fs.readFileSync(path.join(tmpDir, "README.md"), "utf8")).toBe("init");
+  });
+
+  it("discard: deletes an untracked file", async () => {
+    fs.writeFileSync(path.join(tmpDir, "junk.txt"), "x");
+    await service.discard(tmpDir, ["junk.txt"]);
+    expect(fs.existsSync(path.join(tmpDir, "junk.txt"))).toBe(false);
+  });
+
+  it("discard: handles a mixed list in one call", async () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "changed");
+    fs.writeFileSync(path.join(tmpDir, "junk.txt"), "x");
+    await service.discard(tmpDir, ["README.md", "junk.txt"]);
+    expect(fs.readFileSync(path.join(tmpDir, "README.md"), "utf8")).toBe("init");
+    expect(fs.existsSync(path.join(tmpDir, "junk.txt"))).toBe(false);
+  });
+
+  it("discard: ignores paths that are already clean", async () => {
+    await expect(service.discard(tmpDir, ["README.md"])).resolves.toBeUndefined();
+  });
+
   it("commit: staged file produces clean status", async () => {
     fs.writeFileSync(path.join(tmpDir, "new.txt"), "hello");
     await service.stage(tmpDir, ["new.txt"]);

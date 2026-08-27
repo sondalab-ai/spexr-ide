@@ -1,6 +1,7 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { isAbsolute, resolve as resolvePath, join } from "node:path";
 import { watch, type FSWatcher } from "node:fs";
+import { rm } from "node:fs/promises";
 import simpleGit, { type SimpleGit } from "simple-git";
 import type {
   SpexrGitService,
@@ -297,6 +298,21 @@ export class SpexrGitBackendService implements SpexrGitService {
       await git.reset(["HEAD", "--", ...paths]);
     } else {
       await git.raw(["rm", "--cached", "--", ...paths]);
+    }
+  }
+
+  async discard(root: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const status = await this.git(root).status();
+    const untracked = new Set(status.not_added);
+    const toDelete = paths.filter((p) => untracked.has(p));
+    const toRestore = paths.filter((p) => !untracked.has(p));
+
+    if (toRestore.length > 0) {
+      await this.git(root).checkout(["--", ...toRestore]);
+    }
+    for (const p of toDelete) {
+      await rm(resolvePath(root, p), { force: true });
     }
   }
 

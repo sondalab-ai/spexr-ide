@@ -74,6 +74,11 @@ export interface SpexrGitService {
   getStatus(root: string): Promise<GitStatusDto>;
   stage(root: string, paths: string[]): Promise<void>;
   unstage(root: string, paths: string[]): Promise<void>;
+  /**
+   * Throw away working-tree changes. Tracked paths are restored from HEAD;
+   * untracked paths are deleted from disk. Irreversible — callers confirm first.
+   */
+  discard(root: string, paths: string[]): Promise<void>;
   commit(root: string, message: string): Promise<void>;
   getDiff(root: string, filePath: string, staged: boolean): Promise<string>;
   getBranches(root: string): Promise<GitBranchDto[]>;
