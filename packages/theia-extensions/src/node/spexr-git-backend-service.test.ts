@@ -120,6 +120,18 @@ describe("SpexrGitBackendService", () => {
     expect(f?.unstagedState).toBe("?");
   });
 
+  it("unstage: an empty path list is a no-op, not a full index reset", async () => {
+    // git reset HEAD -- (no paths) exits 0 and empties the WHOLE index,
+    // unlike `git add` with no paths, which is a no-op. stage/unstage must
+    // stay symmetric.
+    fs.writeFileSync(path.join(tmpDir, "new.txt"), "hello");
+    await service.stage(tmpDir, ["new.txt"]);
+    await service.unstage(tmpDir, []);
+    const status = await service.getStatus(tmpDir);
+    const f = status.files.find((x) => x.path === "new.txt");
+    expect(f?.stagedState).toBe("A");
+  });
+
   it("discard: restores a tracked modified file", async () => {
     fs.writeFileSync(path.join(tmpDir, "README.md"), "changed");
     await service.discard(tmpDir, ["README.md"]);
@@ -296,14 +308,16 @@ describe("SpexrGitBackendService", () => {
   it("resolveGitDir: follows the gitdir pointer of a linked worktree", async () => {
     const wt = path.join(os.tmpdir(), `spexr-wt-${Date.now()}`);
     execSync(`git worktree add -b wt-branch ${wt}`, { cwd: tmpDir });
-    // In a linked worktree `.git` is a FILE containing "gitdir: <path>".
-    expect(fs.statSync(path.join(wt, ".git")).isFile()).toBe(true);
+    try {
+      // In a linked worktree `.git` is a FILE containing "gitdir: <path>".
+      expect(fs.statSync(path.join(wt, ".git")).isFile()).toBe(true);
 
-    const dir = await service.resolveGitDir(wt);
-    expect(dir).toBeDefined();
-    expect(fs.existsSync(path.join(dir!, "HEAD"))).toBe(true);
-
-    execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+      const dir = await service.resolveGitDir(wt);
+      expect(dir).toBeDefined();
+      expect(fs.existsSync(path.join(dir!, "HEAD"))).toBe(true);
+    } finally {
+      execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+    }
   });
 
   it("resolveGitDir: returns undefined outside a repository", async () => {
@@ -495,16 +509,18 @@ describe("SpexrGitBackendService — repository watcher", () => {
     const wt = path.join(os.tmpdir(), `spexr-wt-watch-${Date.now()}`);
     execSync(`git worktree add -b wt-watch ${wt}`, { cwd: tmpDir });
 
-    service.setClient({ onRepositoryChanged: () => {} });
-    await service.getStatus(wt);
-    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+    try {
+      service.setClient({ onRepositoryChanged: () => {} });
+      await service.getStatus(wt);
+      await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
 
-    const refsWatch = watched.find((w) => w.dir.endsWith(`${path.sep}refs`));
-    expect(refsWatch).toBeDefined();
-    // The common dir's refs, which actually holds heads/ — not the worktree's.
-    expect(fs.existsSync(path.join(refsWatch!.dir, "heads"))).toBe(true);
-
-    execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+      const refsWatch = watched.find((w) => w.dir.endsWith(`${path.sep}refs`));
+      expect(refsWatch).toBeDefined();
+      // The common dir's refs, which actually holds heads/ — not the worktree's.
+      expect(fs.existsSync(path.join(refsWatch!.dir, "heads"))).toBe(true);
+    } finally {
+      execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+    }
   });
 });
 

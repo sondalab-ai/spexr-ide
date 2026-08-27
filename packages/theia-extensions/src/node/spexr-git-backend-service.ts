@@ -314,6 +314,10 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async unstage(root: string, paths: string[]): Promise<void> {
+    // `git reset HEAD --` with no paths is a full mixed reset — it empties
+    // the entire index, unlike `git add` with no paths, which is a no-op.
+    // stage/unstage must stay symmetric no-ops on an empty list.
+    if (paths.length === 0) return;
     const git = this.git(root);
     // On a virgin repo (no commits yet) HEAD doesn't exist; git reset HEAD fails.
     // Use git rm --cached instead, which is the correct unstage for that state.
