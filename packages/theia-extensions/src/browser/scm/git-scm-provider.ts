@@ -121,6 +121,9 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     return this._lastStatus;
   }
 
+  private readonly conflictGroup = new GitScmResourceGroup(
+    "conflicts", "Merge Conflicts", this as unknown as ScmProvider,
+  );
   private readonly indexGroup = new GitScmResourceGroup("index", "Staged Changes", this as unknown as ScmProvider);
   private readonly workingTreeGroup = new GitScmResourceGroup("workingTree", "Changes", this as unknown as ScmProvider);
 
@@ -136,8 +139,14 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
 
   readonly acceptInputCommand = { command: "spexr.git.commitFromPanel", title: "Commit" };
 
+  constructor() {
+    // Unlike the other two groups, an empty conflict group should not take up
+    // space in the SCM panel — most refreshes have no conflicts at all.
+    this.conflictGroup.hideWhenEmpty = true;
+  }
+
   get groups(): ScmResourceGroup[] {
-    return [this.indexGroup, this.workingTreeGroup];
+    return [this.conflictGroup, this.indexGroup, this.workingTreeGroup];
   }
 
   get rootUri(): string {
@@ -183,8 +192,24 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
       this._onDidChangeStatusEmitter.fire(status);
       const root = this.rootFsPath;
 
+      // A conflicted path reports only unstagedState: "U" (mapFileChange never
+      // sets stagedState alongside it), so this exclusion is belt-and-braces:
+      // the staged/unstaged filters below already can't match it.
+      const conflicted = status.files.filter((f) => f.unstagedState === "U");
+      const conflictPaths = new Set(conflicted.map((f) => f.path));
+
+      const conflicts = conflicted.map((f) => {
+        const fileUri = buildFileUri(root, f.path);
+        return new GitScmResource(
+          this.conflictGroup,
+          fileUri,
+          { letter: STATE_LETTER[f.unstagedState!], tooltip: stateLabel(f.unstagedState!) },
+          async () => { await open(this.openerService, fileUri); },
+        );
+      });
+
       const staged = status.files
-        .filter((f) => f.stagedState !== undefined)
+        .filter((f) => f.stagedState !== undefined && !conflictPaths.has(f.path))
         .map((f) => {
           const isNew = f.stagedState === "A";
           const fileUri = buildFileUri(root, f.path);
@@ -197,7 +222,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
         });
 
       const unstaged = status.files
-        .filter((f) => f.unstagedState !== undefined)
+        .filter((f) => f.unstagedState !== undefined && f.unstagedState !== "U")
         .map((f) => {
           const isNew = f.unstagedState === "?";
           const fileUri = buildFileUri(root, f.path);
@@ -209,11 +234,13 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
           );
         });
 
+      this.conflictGroup.updateResources(conflicts);
       this.indexGroup.updateResources(staged);
       this.workingTreeGroup.updateResources(unstaged);
       this._onDidChangeEmitter.fire();
     } catch {
       // Non-git workspace: clear groups silently.
+      this.conflictGroup.updateResources([]);
       this.indexGroup.updateResources([]);
       this.workingTreeGroup.updateResources([]);
     }
@@ -309,6 +336,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     this._onDidChangeEmitter.dispose();
     this._onDidChangeCommitTemplateEmitter.dispose();
     this._onDidChangeStatusEmitter.dispose();
+    this.conflictGroup.dispose();
     this.indexGroup.dispose();
     this.workingTreeGroup.dispose();
   }
@@ -321,7 +349,7 @@ function buildFileUri(root: string, filePath: string): URI {
 function stateLabel(state: GitFileState): string {
   const labels: Record<GitFileState, string> = {
     A: "Added", M: "Modified", D: "Deleted",
-    R: "Renamed", C: "Conflicted", U: "Conflicted", "?": "Untracked",
+    R: "Renamed", C: "Copied", U: "Conflicted", "?": "Untracked",
   };
   return labels[state];
 }

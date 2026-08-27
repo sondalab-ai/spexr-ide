@@ -1,7 +1,7 @@
 ---
 slug: 0014-git-hardening
 title: Git hardening — reliable daily loop
-status: planned
+status: complete
 createdAt: 2026-08-27
 workflowStep: plan
 updatedAt: 2026-08-27

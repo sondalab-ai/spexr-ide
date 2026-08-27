@@ -28,6 +28,7 @@ export const GitCommands = {
   STAGE_FILE: { id: "spexr.git.stageFile", label: "Git: Stage File" } satisfies Command,
   UNSTAGE_FILE: { id: "spexr.git.unstageFile", label: "Git: Unstage File" } satisfies Command,
   DISCARD_FILE: { id: "spexr.git.discardFile", label: "Git: Discard File Changes" } satisfies Command,
+  MARK_RESOLVED: { id: "spexr.git.markResolved", label: "Git: Mark Conflict Resolved" } satisfies Command,
 } as const;
 
 @injectable()
@@ -98,6 +99,12 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       // edit the user did not click on.
       isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
     });
+    commands.registerCommand(GitCommands.MARK_RESOLVED, {
+      execute: (...args: unknown[]) =>
+        // Staging IS resolution, in git's own terms.
+        this.runGitOp("Mark resolved", () => this.provider.stage(this.pathsOf(args)), "Marked resolved."),
+      isVisible: (...args: unknown[]) => allInGroup(args, "conflicts"),
+    });
   }
 
   registerMenus(menus: MenuModelRegistry): void {
@@ -113,7 +120,13 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       icon: "codicon codicon-discard",
       order: "2",
     });
-    for (const cmd of [GitCommands.STAGE_FILE, GitCommands.UNSTAGE_FILE, GitCommands.DISCARD_FILE]) {
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.MARK_RESOLVED.id,
+      label: "Mark Resolved",
+      icon: "codicon codicon-check",
+      order: "3",
+    });
+    for (const cmd of [GitCommands.STAGE_FILE, GitCommands.UNSTAGE_FILE, GitCommands.DISCARD_FILE, GitCommands.MARK_RESOLVED]) {
       menus.registerMenuAction(ScmTreeWidget.RESOURCE_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });
     }
   }
