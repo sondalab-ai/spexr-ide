@@ -1,8 +1,10 @@
-import { injectable } from "@theia/core/shared/inversify";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { injectable, unmanaged } from "@theia/core/shared/inversify";
+import { isAbsolute, resolve as resolvePath, join } from "node:path";
+import { watch, type FSWatcher } from "node:fs";
 import simpleGit, { type SimpleGit } from "simple-git";
 import type {
   SpexrGitService,
+  SpexrGitClient,
   GitStatusDto,
   GitFileChangeDto,
   GitFileState,
@@ -14,6 +16,14 @@ import type {
 } from "../common/git-protocol.js";
 
 const BLAME_HEADER = /^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/;
+
+/** Coalesce a burst of git-dir writes (one operation touches several files). */
+const WATCH_DEBOUNCE_MS = 150;
+
+export interface GitBackendDeps {
+  /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
+  watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
+}
 
 /**
  * Parse `git blame --line-porcelain` output into a {@link BlameResultDto}.
@@ -131,6 +141,22 @@ export class SpexrGitBackendService implements SpexrGitService {
    */
   private readonly clients = new Map<string, SimpleGit>();
 
+  private readonly watchDir: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
+  private client?: SpexrGitClient;
+  private readonly watchers: FSWatcher[] = [];
+  /** Roots already armed, so repeated getStatus calls do not stack watchers. */
+  private readonly armed = new Set<string>();
+  private debounce?: ReturnType<typeof setTimeout>;
+
+  constructor(@unmanaged() deps: GitBackendDeps = {}) {
+    this.watchDir =
+      deps.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
+  }
+
+  setClient(client: SpexrGitClient): void {
+    this.client = client;
+  }
+
   private git(root: string): SimpleGit {
     let client = this.clients.get(root);
     if (!client) {
@@ -158,7 +184,67 @@ export class SpexrGitBackendService implements SpexrGitService {
     }
   }
 
+  /**
+   * Absolute path of the repository's COMMON git directory — shared by every
+   * linked worktree. Branch refs live here; a worktree's own `refs/` is empty,
+   * so watching that instead would never see a branch move.
+   */
+  async resolveGitCommonDir(root: string): Promise<string | undefined> {
+    try {
+      const out = (await this.git(root).raw(["rev-parse", "--git-common-dir"])).trim();
+      if (!out) return undefined;
+      return isAbsolute(out) ? out : resolvePath(root, out);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Watch the git dir so operations that touch only `.git` — commit, fetch,
+   * branch create, and `git add` from a terminal — reach the panel. Theia's
+   * file watcher excludes `.git` by default, so without this the panel only
+   * ever sees its own writes.
+   */
+  private armWatch(root: string, gitDir: string, commonDir: string): void {
+    if (this.armed.has(root)) return;
+    this.armed.add(root);
+    const notify = (): void => {
+      if (this.debounce) clearTimeout(this.debounce);
+      this.debounce = setTimeout(() => this.client?.onRepositoryChanged(), WATCH_DEBOUNCE_MS);
+    };
+    // HEAD / index / MERGE_HEAD / ORIG_HEAD are per-worktree and live in gitDir.
+    // Branch refs are shared, so they come from the common dir — in a linked
+    // worktree gitDir/refs exists but is empty.
+    const targets: readonly (readonly [string, boolean])[] = [
+      [gitDir, false],
+      [join(commonDir, "refs"), true],
+    ];
+    for (const [dir, recursive] of targets) {
+      try {
+        this.watchers.push(this.watchDir(dir, recursive, () => { notify(); }));
+      } catch {
+        // Unwatchable path or permission error: degrade to the previous
+        // behavior rather than failing the whole service.
+      }
+    }
+  }
+
+  dispose(): void {
+    if (this.debounce) clearTimeout(this.debounce);
+    for (const w of this.watchers) {
+      try { w.close(); } catch { /* already closed */ }
+    }
+    this.watchers.length = 0;
+  }
+
   async getStatus(root: string): Promise<GitStatusDto> {
+    if (this.client && !this.armed.has(root)) {
+      const [gitDir, commonDir] = await Promise.all([
+        this.resolveGitDir(root),
+        this.resolveGitCommonDir(root),
+      ]);
+      if (gitDir) this.armWatch(root, gitDir, commonDir ?? gitDir);
+    }
     const git = this.git(root);
     const status = await git.status();
     const files: GitFileChangeDto[] = status.files

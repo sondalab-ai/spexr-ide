@@ -58,7 +58,15 @@ export interface BlameResultDto {
   readonly lines: readonly BlameLineDto[];
 }
 
+/** Push channel: backend → frontend. */
+export interface SpexrGitClient {
+  /** The repository changed on disk — from this IDE, a terminal, or anything else. */
+  onRepositoryChanged(): void;
+}
+
 export interface SpexrGitService {
+  /** Registers the push channel and arms the repository watcher. */
+  setClient(client: SpexrGitClient): void;
   getStatus(root: string): Promise<GitStatusDto>;
   stage(root: string, paths: string[]): Promise<void>;
   unstage(root: string, paths: string[]): Promise<void>;

@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { execSync } from "child_process";
+import type { FSWatcher } from "node:fs";
 import {
   SpexrGitBackendService,
   parseBlamePorcelain,
@@ -305,5 +306,78 @@ describe("SpexrGitBackendService — virgin repo (no commits)", () => {
     const f = status.files.find((x) => x.path === "new.txt");
     expect(f?.stagedState).toBeUndefined();
     expect(f?.unstagedState).toBe("U");
+  });
+});
+
+describe("SpexrGitBackendService — repository watcher", () => {
+  let tmpDir: string;
+  let watched: { dir: string; recursive: boolean }[];
+  let fire: (() => void)[];
+  let service: SpexrGitBackendService;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-watch-"));
+    execSync("git init", { cwd: tmpDir });
+    watched = [];
+    fire = [];
+    service = new SpexrGitBackendService({
+      watchDir: (dir, recursive, onChange) => {
+        watched.push({ dir, recursive });
+        fire.push(onChange);
+        return { close: () => {} } as unknown as FSWatcher;
+      },
+    });
+  });
+
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  it("arms watchers on the resolved git dir after setClient", async () => {
+    service.setClient({ onRepositoryChanged: () => {} });
+    await service.getStatus(tmpDir); // first call binds the root
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+
+    const dirs = watched.map((w) => path.basename(w.dir));
+    expect(dirs).toContain(".git");
+    expect(watched.some((w) => w.dir.endsWith(path.join(".git", "refs")) && w.recursive)).toBe(true);
+  });
+
+  it("debounces a burst of changes into one notification", async () => {
+    let calls = 0;
+    service.setClient({ onRepositoryChanged: () => { calls += 1; } });
+    await service.getStatus(tmpDir);
+    await vi.waitFor(() => expect(fire.length).toBeGreaterThan(0));
+
+    fire[0]!(); fire[0]!(); fire[0]!();
+    expect(calls).toBe(0);                       // nothing yet — debounced
+    await new Promise((r) => setTimeout(r, 250));
+    expect(calls).toBe(1);                       // exactly one, not three
+  });
+
+  it("does not throw when the watch target cannot be watched", async () => {
+    const failing = new SpexrGitBackendService({
+      watchDir: () => { throw new Error("EPERM"); },
+    });
+    failing.setClient({ onRepositoryChanged: () => {} });
+    await expect(failing.getStatus(tmpDir)).resolves.toBeDefined();
+  });
+
+  it("watches refs under the common dir, not the worktree's own empty one", async () => {
+    execSync('git config user.email "t@t.t"', { cwd: tmpDir });
+    execSync('git config user.name "T"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, "a.txt"), "x");
+    execSync("git add a.txt && git commit -m init", { cwd: tmpDir });
+    const wt = path.join(os.tmpdir(), `spexr-wt-watch-${Date.now()}`);
+    execSync(`git worktree add -b wt-watch ${wt}`, { cwd: tmpDir });
+
+    service.setClient({ onRepositoryChanged: () => {} });
+    await service.getStatus(wt);
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+
+    const refsWatch = watched.find((w) => w.dir.endsWith(`${path.sep}refs`));
+    expect(refsWatch).toBeDefined();
+    // The common dir's refs, which actually holds heads/ — not the worktree's.
+    expect(fs.existsSync(path.join(refsWatch!.dir, "heads"))).toBe(true);
+
+    execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
   });
 });
