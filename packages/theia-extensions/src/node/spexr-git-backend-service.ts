@@ -1,5 +1,5 @@
 import { injectable } from "@theia/core/shared/inversify";
-import simpleGit from "simple-git";
+import simpleGit, { type SimpleGit } from "simple-git";
 import type {
   SpexrGitService,
   GitStatusDto,
@@ -122,8 +122,25 @@ export function parseIgnoredPaths(raw: string): string[] {
 
 @injectable()
 export class SpexrGitBackendService implements SpexrGitService {
+  /**
+   * One SimpleGit per repository root. `maxConcurrentProcesses: 1` makes
+   * simple-git's own scheduler serialize every task for that repo, which is
+   * why no hand-written queue is needed — constructing a fresh instance per
+   * call (as this service used to) defeated that scheduler entirely.
+   */
+  private readonly clients = new Map<string, SimpleGit>();
+
+  private git(root: string): SimpleGit {
+    let client = this.clients.get(root);
+    if (!client) {
+      client = simpleGit(root, { maxConcurrentProcesses: 1 });
+      this.clients.set(root, client);
+    }
+    return client;
+  }
+
   async getStatus(root: string): Promise<GitStatusDto> {
-    const git = simpleGit(root);
+    const git = this.git(root);
     const status = await git.status();
     const files: GitFileChangeDto[] = status.files
       .map((f) => mapFileChange(f.path, f.index, f.working_dir))
@@ -139,11 +156,11 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async stage(root: string, paths: string[]): Promise<void> {
-    await simpleGit(root).add(paths);
+    await this.git(root).add(paths);
   }
 
   async unstage(root: string, paths: string[]): Promise<void> {
-    const git = simpleGit(root);
+    const git = this.git(root);
     // On a virgin repo (no commits yet) HEAD doesn't exist; git reset HEAD fails.
     // Use git rm --cached instead, which is the correct unstage for that state.
     const hasHead = await git.raw(["rev-parse", "--verify", "HEAD"]).then(() => true).catch(() => false);
@@ -155,17 +172,17 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async commit(root: string, message: string): Promise<void> {
-    await simpleGit(root).commit(message);
+    await this.git(root).commit(message);
   }
 
   async getDiff(root: string, filePath: string, staged: boolean): Promise<string> {
     return staged
-      ? simpleGit(root).diff(["--cached", "--", filePath])
-      : simpleGit(root).diff(["--", filePath]);
+      ? this.git(root).diff(["--cached", "--", filePath])
+      : this.git(root).diff(["--", filePath]);
   }
 
   async getBranches(root: string): Promise<GitBranchDto[]> {
-    const result = await simpleGit(root).branch(["-a", "-vv"]);
+    const result = await this.git(root).branch(["-a", "-vv"]);
     return Object.values(result.branches).map((b) => ({
       name: b.name,
       isCurrent: b.current,
@@ -174,19 +191,19 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async checkout(root: string, branch: string): Promise<void> {
-    await simpleGit(root).checkout(branch);
+    await this.git(root).checkout(branch);
   }
 
   async createBranch(root: string, name: string, checkoutAfter: boolean): Promise<void> {
     if (checkoutAfter) {
-      await simpleGit(root).checkoutLocalBranch(name);
+      await this.git(root).checkoutLocalBranch(name);
     } else {
-      await simpleGit(root).branch([name]);
+      await this.git(root).branch([name]);
     }
   }
 
   async push(root: string, remote?: string, branch?: string): Promise<void> {
-    const git = simpleGit(root);
+    const git = this.git(root);
     if (remote && branch) {
       await git.push(remote, branch);
     } else {
@@ -195,15 +212,15 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async pull(root: string): Promise<void> {
-    await simpleGit(root).pull();
+    await this.git(root).pull();
   }
 
   async fetch(root: string): Promise<void> {
-    await simpleGit(root).fetch();
+    await this.git(root).fetch();
   }
 
   async getLog(root: string, maxCount = 20): Promise<GitLogEntryDto[]> {
-    const log = await simpleGit(root).log({ maxCount });
+    const log = await this.git(root).log({ maxCount });
     return log.all.map((c) => ({
       hash: c.hash.slice(0, 7),
       message: c.message,
@@ -219,14 +236,14 @@ export class SpexrGitBackendService implements SpexrGitService {
     if (filePath.startsWith("-") || filePath.includes("..")) {
       throw new Error(`Invalid file path: "${filePath}"`);
     }
-    return simpleGit(root).show([`${rev}:${filePath}`]);
+    return this.git(root).show([`${rev}:${filePath}`]);
   }
 
   async getBlame(root: string, filePath: string): Promise<BlameResultDto> {
     if (filePath.startsWith("-") || filePath.includes("..")) {
       throw new Error(`Invalid file path: "${filePath}"`);
     }
-    const raw = await simpleGit(root).raw([
+    const raw = await this.git(root).raw([
       "blame",
       "--line-porcelain",
       "--",
@@ -240,7 +257,7 @@ export class SpexrGitBackendService implements SpexrGitService {
       // -o others (untracked), -i ignored, --exclude-standard honors repo + nested
       // .gitignore, the global core.excludesFile, and .git/info/exclude; --directory
       // collapses a fully-ignored dir to one entry; -z NUL-separates for safe paths.
-      const raw = await simpleGit(root).raw([
+      const raw = await this.git(root).raw([
         "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z",
       ]);
       return parseIgnoredPaths(raw);
@@ -251,7 +268,7 @@ export class SpexrGitBackendService implements SpexrGitService {
 
   async getRemoteUrl(root: string): Promise<string | undefined> {
     try {
-      const remotes = await simpleGit(root).getRemotes(true);
+      const remotes = await this.git(root).getRemotes(true);
       const origin = remotes.find((r) => r.name === "origin") ?? remotes[0];
       const url = origin?.refs?.fetch;
       return url ? normalizeRemoteUrl(url) : undefined;

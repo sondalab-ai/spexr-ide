@@ -173,6 +173,21 @@ describe("SpexrGitBackendService", () => {
     execSync("git remote add origin git@github.com:foo/bar.git", { cwd: tmpDir });
     expect(await service.getRemoteUrl(tmpDir)).toBe("https://github.com/foo/bar");
   });
+
+  it("git(): returns the same instance for one root and serializes it", () => {
+    const svc = service as unknown as { git(root: string): unknown };
+    const a = svc.git(tmpDir);
+    const b = svc.git(tmpDir);
+    expect(a).toBe(b);
+  });
+
+  it("git(): distinct instances for distinct roots", () => {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-other-"));
+    execSync("git init", { cwd: other });
+    const svc = service as unknown as { git(root: string): unknown };
+    expect(svc.git(tmpDir)).not.toBe(svc.git(other));
+    fs.rmSync(other, { recursive: true, force: true });
+  });
 });
 
 describe("normalizeRemoteUrl", () => {
