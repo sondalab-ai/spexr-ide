@@ -341,16 +341,32 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async getBranches(root: string): Promise<GitBranchDto[]> {
-    const result = await this.git(root).branch(["-a", "-vv"]);
+    const git = this.git(root);
+    const result = await git.branch(["-a", "-vv"]);
+    // `-vv`'s tracking marker sits in the same spot in `label` as a commit
+    // subject that itself begins with a bracket (e.g. "[JIRA-123] fix the
+    // thing"), so it can't be parsed out reliably. Ask git directly instead.
+    // `for-each-ref refs/heads` only covers local branches — remote-tracking
+    // entries from the `-a` listing above have no upstream of their own, so
+    // leaving theirs undefined is correct.
+    const raw = await git.raw([
+      "for-each-ref", "--format=%(refname:short) %(upstream:short)", "refs/heads",
+    ]);
+    const upstreams = new Map<string, string>();
+    for (const line of raw.split("\n")) {
+      if (!line) continue;
+      // Ref names can't contain a space, so splitting on the first one is safe.
+      const i = line.indexOf(" ");
+      const upstream = line.slice(i + 1);
+      if (upstream) upstreams.set(line.slice(0, i), upstream);
+    }
     return Object.values(result.branches).map((b) => {
-      // `-vv` renders tracking as "[origin/main] <subject>" or
-      // "[origin/main: ahead 1] <subject>" at the start of simple-git's `label`.
-      const tracking = /^\[([^\]:]+)(?::[^\]]*)?\]/.exec(b.label)?.[1];
+      const upstream = upstreams.get(b.name);
       return {
         name: b.name,
         isCurrent: b.current,
         isRemote: b.name.startsWith("remotes/"),
-        ...(tracking && { upstream: tracking }),
+        ...(upstream && { upstream }),
       };
     });
   }

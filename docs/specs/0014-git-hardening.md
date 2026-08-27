@@ -143,8 +143,13 @@ Everything in this spec is `Planned` until its slice merges.
   therefore succeeds end to end.
 
 - **AC-12 `upstream` is populated.** `getBranches` fills the `upstream` field
-  that `GitBranchDto` already declares, from the `branch -vv` output it already
-  requests.
+  that `GitBranchDto` already declares. The branch list, current-branch, and
+  remote flags still come from the `branch -vv` output it already requests,
+  but `upstream` itself comes from a separate `for-each-ref
+  --format=%(refname:short) %(upstream:short) refs/heads` call: `branch -vv`'s
+  tracking marker sits in the same spot in its output as a commit subject that
+  itself begins with a bracket (e.g. `[JIRA-123] fix the thing`), so it cannot
+  be distinguished from one by parsing.
 
 - **AC-13 Status bar indicator.** A status-bar entry shows the current branch
   with ahead/behind counts (`main ↑2↓1`), following the pattern of

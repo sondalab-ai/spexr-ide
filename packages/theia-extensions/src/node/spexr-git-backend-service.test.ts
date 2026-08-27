@@ -197,6 +197,15 @@ describe("SpexrGitBackendService", () => {
     fs.rmSync(bare, { recursive: true, force: true });
   });
 
+  it("getBranches: does not mistake a bracketed commit subject for an upstream", async () => {
+    execSync("git checkout -b jira", { cwd: tmpDir });
+    execSync('git commit --allow-empty -m "[JIRA-123] fix the thing"', { cwd: tmpDir });
+
+    const branches = await service.getBranches(tmpDir);
+    const current = branches.find((b) => b.isCurrent);
+    expect(current?.upstream).toBeUndefined();
+  });
+
   it("createBranch + checkout: switches to new branch", async () => {
     await service.createBranch(tmpDir, "feature/test", true);
     const status = await service.getStatus(tmpDir);
