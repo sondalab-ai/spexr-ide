@@ -21,6 +21,7 @@ describe("formatGitContext", () => {
       behind: 0,
       files: [],
       isClean: true,
+      mergeInProgress: false,
     };
     const result = formatGitContext(status);
     expect(result).toContain("branch=main");
@@ -34,6 +35,7 @@ describe("formatGitContext", () => {
       ahead: 1,
       behind: 0,
       isClean: false,
+      mergeInProgress: false,
       files: [
         { path: "a.ts", stagedState: "A" },
         { path: "b.ts", unstagedState: "M" },
@@ -55,6 +57,7 @@ describe("formatGitContext", () => {
       ahead: 0,
       behind: 0,
       isClean: false,
+      mergeInProgress: true,
       files: [
         { path: "a.ts", unstagedState: "U" },
         { path: "b.ts", unstagedState: "M" },
@@ -63,17 +66,34 @@ describe("formatGitContext", () => {
     const result = formatGitContext(status);
     expect(result).toContain("Conflicted: 1 file");
     expect(result).toContain("Modified: 1 file");
-    expect(result).toContain("merge is in progress");
+    expect(result).toContain("resolve the conflicted files");
   });
 
-  it("does not claim a merge is in progress without conflicts", () => {
+  it("does not claim a merge is in progress when none is", () => {
     const status: GitStatusDto = {
       branch: "main",
       ahead: 0,
       behind: 0,
       isClean: false,
+      mergeInProgress: false,
       files: [{ path: "b.ts", unstagedState: "M" }],
     };
     expect(formatGitContext(status)).not.toContain("merge is in progress");
+  });
+
+  it("never calls the tree clean while a merge is open", () => {
+    // Accepting the deletion on a delete/modify conflict resolves it by staging
+    // nothing, so the status is empty with the merge still uncommitted.
+    const status: GitStatusDto = {
+      branch: "main",
+      ahead: 0,
+      behind: 0,
+      files: [],
+      isClean: true,
+      mergeInProgress: true,
+    };
+    const result = formatGitContext(status);
+    expect(result).not.toContain("Working tree clean");
+    expect(result).toContain("nothing left to resolve");
   });
 });

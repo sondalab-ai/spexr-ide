@@ -775,8 +775,16 @@ export function formatGitContext(status: GitStatusDto): string {
   const untracked = status.files.filter((f) => f.unstagedState === "?").length;
 
   const header = `Git: branch=${status.branch}${status.upstream ? `, upstream=${status.upstream}` : ""}, ahead=${status.ahead}, behind=${status.behind}`;
+  // Keyed on the merge state, not on the conflict count: accepting a deletion
+  // as the resolution of a delete/modify conflict can empty the status while
+  // the merge is still open, and "clean" would then be a lie.
+  const merge = status.mergeInProgress
+    ? conflicted > 0
+      ? "\nA merge is in progress: resolve the conflicted files before committing."
+      : "\nA merge is in progress with nothing left to resolve: commit to conclude it."
+    : "";
   if (staged === 0 && modified === 0 && untracked === 0 && conflicted === 0) {
-    return header + "\nWorking tree clean.";
+    return header + (merge || "\nWorking tree clean.");
   }
   const parts = [
     staged > 0 ? `Staged: ${staged} file${staged !== 1 ? "s" : ""}` : "",
@@ -784,9 +792,5 @@ export function formatGitContext(status: GitStatusDto): string {
     untracked > 0 ? `Untracked: ${untracked} file${untracked !== 1 ? "s" : ""}` : "",
     conflicted > 0 ? `Conflicted: ${conflicted} file${conflicted !== 1 ? "s" : ""}` : "",
   ].filter(Boolean);
-  const merge =
-    conflicted > 0
-      ? "\nA merge is in progress: resolve the conflicted files before committing."
-      : "";
   return header + "\n" + parts.join(" | ") + merge;
 }

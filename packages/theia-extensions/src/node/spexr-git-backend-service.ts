@@ -1,6 +1,6 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { isAbsolute, resolve as resolvePath, join } from "node:path";
-import { statSync, watch, type FSWatcher } from "node:fs";
+import { existsSync, statSync, watch, type FSWatcher } from "node:fs";
 import { rm } from "node:fs/promises";
 import simpleGit, { type SimpleGit } from "simple-git";
 import type {
@@ -213,6 +213,13 @@ export class SpexrGitBackendService implements SpexrGitService {
     string,
     { gitDir: string; gitDirId: string; watchers: FSWatcher[] }
   >();
+  /**
+   * Git-dir path per root, resolved once. The path is stable for the life of a
+   * repository — a `.git` recreated in place lands at the same one, and a root
+   * that stops being a repository fails at `status()` regardless — so unlike the
+   * watcher bookkeeping this needs no staleness check.
+   */
+  private readonly gitDirs = new Map<string, string>();
   private debounce?: ReturnType<typeof setTimeout>;
 
   constructor(@unmanaged() deps: GitBackendDeps = {}) {
@@ -352,9 +359,19 @@ export class SpexrGitBackendService implements SpexrGitService {
     }
   }
 
+  /** Git-dir path for a root, resolved on first use; undefined outside a repository. */
+  private async gitDirOf(root: string): Promise<string | undefined> {
+    const cached = this.gitDirs.get(root);
+    if (cached !== undefined) return cached;
+    const dirs = await this.resolveGitDirs(root);
+    if (dirs) this.gitDirs.set(root, dirs.gitDir);
+    return dirs?.gitDir;
+  }
+
   dispose(): void {
     if (this.debounce) clearTimeout(this.debounce);
     for (const root of [...this.armed.keys()]) this.disarm(root);
+    this.gitDirs.clear();
   }
 
   async getStatus(root: string): Promise<GitStatusDto> {
@@ -375,6 +392,7 @@ export class SpexrGitBackendService implements SpexrGitService {
     }
     const git = this.git(root);
     const status = await git.status();
+    const gitDir = this.armed.get(root)?.gitDir ?? (await this.gitDirOf(root));
     const files: GitFileChangeDto[] = status.files
       .map((f) => mapFileChange(f.path, f.index, f.working_dir))
       .filter((f): f is GitFileChangeDto => f !== undefined);
@@ -385,6 +403,7 @@ export class SpexrGitBackendService implements SpexrGitService {
       behind: status.behind,
       files,
       isClean: status.isClean(),
+      mergeInProgress: gitDir !== undefined && existsSync(join(gitDir, "MERGE_HEAD")),
     };
   }
 

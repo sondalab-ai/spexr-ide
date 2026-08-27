@@ -31,6 +31,16 @@ export interface GitStatusDto {
   readonly behind: number;
   readonly files: readonly GitFileChangeDto[];
   readonly isClean: boolean;
+  /**
+   * A merge is started and not yet committed (`MERGE_HEAD` exists). Independent
+   * of `files`: resolving a delete/modify conflict in favour of the deletion can
+   * leave the status completely empty with the merge still open, so a clean tree
+   * is not evidence that there is nothing to finish.
+   *
+   * Covers `git merge` only. A rebase or cherry-pick left mid-flight is not
+   * reported here.
+   */
+  readonly mergeInProgress: boolean;
 }
 
 export interface GitBranchDto {

@@ -36,6 +36,7 @@ describe("SpexrGitBackendService", () => {
   it("getStatus: returns clean state on fresh repo", async () => {
     const status = await service.getStatus(tmpDir);
     expect(status.isClean).toBe(true);
+    expect(status.mergeInProgress).toBe(false);
     expect(status.files).toHaveLength(0);
     expect(typeof status.branch).toBe("string");
     expect(status.branch.length).toBeGreaterThan(0);
@@ -688,6 +689,71 @@ describe("SpexrGitBackendService — accepting a deletion on a conflict", () => 
   it("removePath is a no-op on an empty path list", async () => {
     await expect(service.removePath(tmpDir, [])).resolves.toBeUndefined();
     expect(fs.existsSync(path.join(tmpDir, "f.txt"))).toBe(true);
+  });
+
+  it("reports the merge as in progress while it is unresolved", async () => {
+    expect((await service.getStatus(tmpDir)).mergeInProgress).toBe(true);
+  });
+});
+
+describe("SpexrGitBackendService — a merge that resolves to an empty status", () => {
+  let tmpDir: string;
+  let service: SpexrGitBackendService;
+
+  /**
+   * The mirror image of the case above: `theirs` modifies f.txt, we delete it,
+   * so the conflict is `DU`. Accepting the deletion stages nothing — the
+   * deletion is already in HEAD — and leaves the status completely empty with
+   * the merge still open. That is the state this suite exists to pin.
+   */
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-du-"));
+    const run = (cmd: string): void => void execSync(cmd, { cwd: tmpDir, stdio: "ignore" });
+    run("git init");
+    run('git config user.email "test@test.com"');
+    run('git config user.name "Test"');
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "base\n");
+    run("git add f.txt");
+    run("git commit -m base");
+    const base = execSync("git rev-parse --abbrev-ref HEAD", { cwd: tmpDir }).toString().trim();
+    run("git checkout -b theirs");
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "theirs\n");
+    run('git commit -am "they modify"');
+    run(`git checkout ${base}`);
+    run("git rm f.txt");
+    run('git commit -m "we delete"');
+    try {
+      run("git merge theirs");
+    } catch {
+      /* expected to conflict */
+    }
+    service = new SpexrGitBackendService();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("reports DU before the conflict is resolved", async () => {
+    const status = await service.getStatus(tmpDir);
+    expect(status.files.find((f) => f.path === "f.txt")?.conflict).toBe("DU");
+    expect(status.mergeInProgress).toBe(true);
+  });
+
+  it("still reports the merge after accepting the deletion empties the status", async () => {
+    await service.removePath(tmpDir, ["f.txt"]);
+
+    const status = await service.getStatus(tmpDir);
+    expect(status.files).toHaveLength(0);
+    expect(status.isClean).toBe(true);
+    expect(status.mergeInProgress).toBe(true); // MERGE_HEAD is still there
+  });
+
+  it("stops reporting the merge once it is committed", async () => {
+    await service.removePath(tmpDir, ["f.txt"]);
+    await service.commit(tmpDir, "merge theirs");
+
+    expect((await service.getStatus(tmpDir)).mergeInProgress).toBe(false);
   });
 });
 
