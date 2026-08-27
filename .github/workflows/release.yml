@@ -55,7 +55,7 @@ jobs:
       - name: Run E2E tests
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
-            bash -c "pnpm --filter @spexr/e2e test"
+            bash -c "pnpm --filter @spexr/e2e test:e2e"
         env:
           DISPLAY: ":99"
 

@@ -305,10 +305,10 @@ The E2E job is a hard gate: if any Playwright test fails the build and release j
 pnpm build:dev
 
 # Mac / Windows (no display server needed)
-pnpm --filter @spexr/e2e test
+pnpm --filter @spexr/e2e test:e2e
 
 # Linux (needs xvfb)
-xvfb-run --auto-servernum pnpm --filter @spexr/e2e test
+xvfb-run --auto-servernum pnpm --filter @spexr/e2e test:e2e
 
 # Interactive UI mode
 pnpm --filter @spexr/e2e test:ui

@@ -8,9 +8,15 @@ describe("EXPERT_CATALOG", () => {
   });
 
   it("includes the built-in presets", () => {
-    expect(EXPERT_CATALOG.map((e) => e.id).sort()).toEqual(
-      ["brainstorming", "design", "dri", "marketing", "review", "software-engineering"],
-    );
+    expect(EXPERT_CATALOG.map((e) => e.id).sort()).toEqual([
+      "brainstorming",
+      "changelog-writer",
+      "design",
+      "dri",
+      "marketing",
+      "review",
+      "software-engineering",
+    ]);
   });
 
   it("has all required fields non-empty", () => {
