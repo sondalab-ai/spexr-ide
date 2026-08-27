@@ -111,6 +111,16 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   /** Last known status, so consumers need not spawn their own git process. */
   readonly onDidChangeStatus: Event<GitStatusDto> = this._onDidChangeStatusEmitter.event;
 
+  private _lastStatus: GitStatusDto | undefined;
+
+  /**
+   * Most recent status, for consumers that start after the first refresh and
+   * would otherwise miss it on `onDidChangeStatus` (e.g. the status bar).
+   */
+  get lastStatus(): GitStatusDto | undefined {
+    return this._lastStatus;
+  }
+
   private readonly indexGroup = new GitScmResourceGroup("index", "Staged Changes", this as unknown as ScmProvider);
   private readonly workingTreeGroup = new GitScmResourceGroup("workingTree", "Changes", this as unknown as ScmProvider);
 
@@ -169,6 +179,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     if (!this.rootFsPath) return;
     try {
       const status = await this.gitService.getStatus(this.rootFsPath);
+      this._lastStatus = status;
       this._onDidChangeStatusEmitter.fire(status);
       const root = this.rootFsPath;
 
