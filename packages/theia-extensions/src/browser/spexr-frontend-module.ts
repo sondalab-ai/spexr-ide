@@ -233,6 +233,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
 
   bind(SpexrGitCommandsContribution).toSelf().inSingletonScope();
   bind(CommandContribution).toService(SpexrGitCommandsContribution);
+  bind(MenuContribution).toService(SpexrGitCommandsContribution);
 
   bind(SpexrGitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrGitToolbarContribution);

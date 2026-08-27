@@ -235,6 +235,12 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     await this.refresh();
   }
 
+  async discard(paths: string[]): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.discard(this.rootFsPath, paths);
+    await this.refresh();
+  }
+
   async commit(message: string): Promise<void> {
     if (!this.rootFsPath) return;
     if (!message.trim()) throw new Error("Commit message cannot be empty.");

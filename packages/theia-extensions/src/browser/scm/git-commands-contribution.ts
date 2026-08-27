@@ -3,10 +3,13 @@ import {
   type CommandContribution,
   type CommandRegistry,
   type Command,
+  type MenuContribution,
+  type MenuModelRegistry,
   MessageService,
 } from "@theia/core";
-import { QuickInputService } from "@theia/core/lib/browser";
+import { ConfirmDialog, QuickInputService } from "@theia/core/lib/browser";
 import { ProgressService } from "@theia/core/lib/common/progress-service";
+import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { toRepoRelative } from "./relative-path.js";
 
@@ -21,10 +24,13 @@ export const GitCommands = {
   CHECKOUT: { id: "spexr.git.checkout", label: "Git: Checkout Branch" } satisfies Command,
   CREATE_BRANCH: { id: "spexr.git.createBranch", label: "Git: Create Branch" } satisfies Command,
   REFRESH: { id: "spexr.git.refresh", label: "Git: Refresh" } satisfies Command,
+  STAGE_FILE: { id: "spexr.git.stageFile", label: "Git: Stage File" } satisfies Command,
+  UNSTAGE_FILE: { id: "spexr.git.unstageFile", label: "Git: Unstage File" } satisfies Command,
+  DISCARD_FILE: { id: "spexr.git.discardFile", label: "Git: Discard File Changes" } satisfies Command,
 } as const;
 
 @injectable()
-export class SpexrGitCommandsContribution implements CommandContribution {
+export class SpexrGitCommandsContribution implements CommandContribution, MenuContribution {
   @inject(SpexrGitScmProvider)
   private readonly provider!: SpexrGitScmProvider;
 
@@ -73,6 +79,35 @@ export class SpexrGitCommandsContribution implements CommandContribution {
     commands.registerCommand(GitCommands.REFRESH, {
       execute: () => this.runGitOp("Refresh", () => this.provider.refresh()),
     });
+    commands.registerCommand(GitCommands.STAGE_FILE, {
+      execute: (...args: unknown[]) =>
+        this.runGitOp("Stage file", () => this.provider.stage(this.pathsOf(args))),
+    });
+    commands.registerCommand(GitCommands.UNSTAGE_FILE, {
+      execute: (...args: unknown[]) =>
+        this.runGitOp("Unstage file", () => this.provider.unstage(this.pathsOf(args))),
+    });
+    commands.registerCommand(GitCommands.DISCARD_FILE, {
+      execute: (...args: unknown[]) => this.discardWithConfirm(this.pathsOf(args)),
+    });
+  }
+
+  registerMenus(menus: MenuModelRegistry): void {
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.STAGE_FILE.id,
+      label: "Stage",
+      icon: "codicon codicon-add",
+      order: "1",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.DISCARD_FILE.id,
+      label: "Discard",
+      icon: "codicon codicon-discard",
+      order: "2",
+    });
+    for (const cmd of [GitCommands.STAGE_FILE, GitCommands.UNSTAGE_FILE, GitCommands.DISCARD_FILE]) {
+      menus.registerMenuAction(ScmTreeWidget.RESOURCE_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });
+    }
   }
 
   private async stageAll(): Promise<void> {
@@ -138,6 +173,39 @@ export class SpexrGitCommandsContribution implements CommandContribution {
       () => this.provider.createBranch(branchName, true),
       `Created and checked out branch: ${branchName}`,
     );
+  }
+
+  /**
+   * Repository-relative paths for the SCM rows the command was invoked on.
+   * The SCM tree spreads the selected resources as individual arguments
+   * (see ActionMenuNode.run in @theia/core), not as a single array — so
+   * this must accept the already-spread rest args, not `arg: unknown`.
+   * Deduplicated because a file with both a staged and unstaged change is
+   * two distinct rows sharing one repo-relative path.
+   */
+  private pathsOf(items: unknown[]): string[] {
+    const root = this.provider.root;
+    if (!root) return [];
+    const paths = items
+      .map((i) => (i as { sourceUri?: { path?: { toString(): string } } })?.sourceUri?.path?.toString())
+      .filter((p): p is string => typeof p === "string")
+      .map((p) => toRepoRelative(root, p));
+    return [...new Set(paths)];
+  }
+
+  private async discardWithConfirm(paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const listed = paths.length <= 5
+      ? paths.join("\n")
+      : `${paths.slice(0, 5).join("\n")}\n…and ${paths.length - 5} more`;
+    const ok = await new ConfirmDialog({
+      title: paths.length === 1 ? "Discard changes" : `Discard changes in ${paths.length} files`,
+      msg: `${listed}\n\nChanges will be lost. This cannot be undone.`,
+      ok: "Discard",
+      cancel: "Cancel",
+    }).open();
+    if (!ok) return;
+    await this.runGitOp("Discard changes", () => this.provider.discard(paths), "Changes discarded.");
   }
 
   /**
