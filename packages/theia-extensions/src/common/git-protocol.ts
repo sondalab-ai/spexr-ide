@@ -90,7 +90,12 @@ export interface SpexrGitService {
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;
-  push(root: string, remote?: string, branch?: string): Promise<void>;
+  /**
+   * Push the current branch. The upstream decision belongs to the backend: a
+   * branch with tracking pushes bare, one without gets `--set-upstream` against
+   * the remote picked from the repository's own remotes.
+   */
+  push(root: string): Promise<void>;
   pull(root: string): Promise<void>;
   fetch(root: string): Promise<void>;
   getLog(root: string, maxCount?: number): Promise<GitLogEntryDto[]>;

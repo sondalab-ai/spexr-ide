@@ -261,18 +261,14 @@ export class SpexrGitBackendService implements SpexrGitService {
    * FILE holding a `gitdir:` pointer, so assuming a directory there yields a
    * path that never emits watch events. `rev-parse --git-dir` answers
    * correctly for plain repos, worktrees, and submodules alike.
+   *
+   * Public deliberately: `resolveGitDirs` is private, and this is the seam
+   * those rules are tested through. `SpexrGitService` does not declare it, but
+   * `RpcConnectionHandler` exposes the whole object, so it is reachable over
+   * the wire either way — it only reads a path.
    */
   async resolveGitDir(root: string): Promise<string | undefined> {
     return (await this.resolveGitDirs(root))?.gitDir;
-  }
-
-  /**
-   * Absolute path of the repository's COMMON git directory — shared by every
-   * linked worktree. Branch refs live here; a worktree's own `refs/` is empty,
-   * so watching that instead would never see a branch move.
-   */
-  async resolveGitCommonDir(root: string): Promise<string | undefined> {
-    return (await this.resolveGitDirs(root))?.commonDir;
   }
 
   /**
@@ -329,6 +325,10 @@ export class SpexrGitBackendService implements SpexrGitService {
       }
       return;
     }
+    // Arming is check-then-await-then-act, so two concurrent getStatus calls
+    // for one root can both reach here. Closing whatever is already recorded
+    // keeps that from orphaning a live set of watchers.
+    this.disarm(root);
     this.armed.set(root, { gitDir, gitDirId, watchers });
   }
 
@@ -469,12 +469,8 @@ export class SpexrGitBackendService implements SpexrGitService {
     }
   }
 
-  async push(root: string, remote?: string, branch?: string): Promise<void> {
+  async push(root: string): Promise<void> {
     const git = this.git(root);
-    if (remote && branch) {
-      await git.push(remote, branch);
-      return;
-    }
     const status = await git.status();
     if (status.tracking) {
       await git.push();
@@ -483,10 +479,9 @@ export class SpexrGitBackendService implements SpexrGitService {
     // No upstream yet — a freshly created branch. A bare push fails here, so
     // establish tracking as part of the first push.
     const names = (await git.getRemotes(false)).map((r) => r.name);
-    const target = remote ?? pickRemote(names);
-    const head = branch ?? status.current;
+    const head = status.current;
     if (!head) throw new Error("Cannot push: no current branch (detached HEAD?).");
-    await git.push(["--set-upstream", target, head]);
+    await git.push(["--set-upstream", pickRemote(names), head]);
   }
 
   async pull(root: string): Promise<void> {
