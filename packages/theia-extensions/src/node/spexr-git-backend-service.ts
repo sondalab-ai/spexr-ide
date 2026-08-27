@@ -1,4 +1,5 @@
 import { injectable } from "@theia/core/shared/inversify";
+import { isAbsolute, resolve as resolvePath } from "node:path";
 import simpleGit, { type SimpleGit } from "simple-git";
 import type {
   SpexrGitService,
@@ -137,6 +138,24 @@ export class SpexrGitBackendService implements SpexrGitService {
       this.clients.set(root, client);
     }
     return client;
+  }
+
+  /**
+   * Absolute path of the repository's git directory.
+   *
+   * Must not be derived as `root + "/.git"`: in a linked worktree `.git` is a
+   * FILE holding a `gitdir:` pointer, so assuming a directory there yields a
+   * path that never emits watch events. `rev-parse --git-dir` answers
+   * correctly for plain repos, worktrees, and submodules alike.
+   */
+  async resolveGitDir(root: string): Promise<string | undefined> {
+    try {
+      const out = (await this.git(root).raw(["rev-parse", "--git-dir"])).trim();
+      if (!out) return undefined;
+      return isAbsolute(out) ? out : resolvePath(root, out);
+    } catch {
+      return undefined; // not a repository
+    }
   }
 
   async getStatus(root: string): Promise<GitStatusDto> {

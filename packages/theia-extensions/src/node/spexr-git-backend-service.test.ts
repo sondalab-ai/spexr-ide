@@ -188,6 +188,31 @@ describe("SpexrGitBackendService", () => {
     expect(svc.git(tmpDir)).not.toBe(svc.git(other));
     fs.rmSync(other, { recursive: true, force: true });
   });
+
+  it("resolveGitDir: returns the .git directory of a normal repo", async () => {
+    const dir = await service.resolveGitDir(tmpDir);
+    expect(dir).toBeDefined();
+    expect(fs.existsSync(path.join(dir!, "HEAD"))).toBe(true);
+  });
+
+  it("resolveGitDir: follows the gitdir pointer of a linked worktree", async () => {
+    const wt = path.join(os.tmpdir(), `spexr-wt-${Date.now()}`);
+    execSync(`git worktree add -b wt-branch ${wt}`, { cwd: tmpDir });
+    // In a linked worktree `.git` is a FILE containing "gitdir: <path>".
+    expect(fs.statSync(path.join(wt, ".git")).isFile()).toBe(true);
+
+    const dir = await service.resolveGitDir(wt);
+    expect(dir).toBeDefined();
+    expect(fs.existsSync(path.join(dir!, "HEAD"))).toBe(true);
+
+    execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+  });
+
+  it("resolveGitDir: returns undefined outside a repository", async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-plain-"));
+    expect(await service.resolveGitDir(plain)).toBeUndefined();
+    fs.rmSync(plain, { recursive: true, force: true });
+  });
 });
 
 describe("normalizeRemoteUrl", () => {
