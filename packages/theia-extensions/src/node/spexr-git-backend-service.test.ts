@@ -10,6 +10,7 @@ import {
   normalizeRemoteUrl,
   parseIgnoredPaths,
   pickRemote,
+  mapFileChange,
 } from "./spexr-git-backend-service.js";
 
 describe("SpexrGitBackendService", () => {
@@ -45,8 +46,37 @@ describe("SpexrGitBackendService", () => {
     expect(status.isClean).toBe(false);
     const f = status.files.find((x) => x.path === "new.txt");
     expect(f).toBeDefined();
-    expect(f!.unstagedState).toBe("U");
+    expect(f!.unstagedState).toBe("?");
     expect(f!.stagedState).toBeUndefined();
+  });
+
+  it("getStatus: detects a real merge conflict as unmerged (U), end to end", async () => {
+    // Both branches modify the same line of the same file — a classic "both
+    // modified" (UU) conflict. This exercises simple-git's real status
+    // parsing, not just mapFileChange in isolation: simple-git routes
+    // conflicted entries into status.conflicted, and this asserts that its
+    // index/working_dir chars still arrive at getStatus as "U"/"U".
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "line one\n");
+    execSync("git add f.txt && git commit -m base", { cwd: tmpDir });
+
+    execSync("git checkout -b branchA", { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "line one from A\n");
+    execSync('git commit -am "A: modify"', { cwd: tmpDir });
+
+    execSync("git checkout -", { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "line one from main\n");
+    execSync('git commit -am "main: modify"', { cwd: tmpDir });
+
+    try {
+      execSync("git merge branchA", { cwd: tmpDir, stdio: "ignore" });
+    } catch {
+      // Merge conflict — expected; git exits non-zero.
+    }
+
+    const status = await service.getStatus(tmpDir);
+    const f = status.files.find((x) => x.path === "f.txt");
+    expect(f?.unstagedState).toBe("U");
+    expect(f?.stagedState).toBeUndefined();
   });
 
   it("getIgnoredPaths: returns ignored files and collapses ignored dirs", async () => {
@@ -87,7 +117,7 @@ describe("SpexrGitBackendService", () => {
     const status = await service.getStatus(tmpDir);
     const f = status.files.find((x) => x.path === "new.txt");
     expect(f?.stagedState).toBeUndefined();
-    expect(f?.unstagedState).toBe("U");
+    expect(f?.unstagedState).toBe("?");
   });
 
   it("discard: restores a tracked modified file", async () => {
@@ -372,7 +402,7 @@ describe("SpexrGitBackendService — virgin repo (no commits)", () => {
     const status = await service.getStatus(tmpDir);
     const f = status.files.find((x) => x.path === "new.txt");
     expect(f?.stagedState).toBeUndefined();
-    expect(f?.unstagedState).toBe("U");
+    expect(f?.unstagedState).toBe("?");
   });
 });
 
@@ -475,5 +505,23 @@ describe("SpexrGitBackendService — repository watcher", () => {
     expect(fs.existsSync(path.join(refsWatch!.dir, "heads"))).toBe(true);
 
     execSync(`git worktree remove --force ${wt}`, { cwd: tmpDir });
+  });
+});
+
+describe("mapFileChange — conflict and untracked states", () => {
+  it("marks untracked with ?, not U", () => {
+    expect(mapFileChange("new.txt", "?", "?")).toEqual({ path: "new.txt", unstagedState: "?" });
+  });
+
+  it.each([["U", "U"], ["A", "A"], ["D", "D"], ["A", "U"], ["U", "A"], ["D", "U"], ["U", "D"]])(
+    "treats %s%s as a conflict",
+    (index, worktree) => {
+      const r = mapFileChange("f.txt", index, worktree);
+      expect(r?.unstagedState).toBe("U");
+    },
+  );
+
+  it("still maps a plain staged modification", () => {
+    expect(mapFileChange("f.txt", "M", " ")).toEqual({ path: "f.txt", stagedState: "M" });
   });
 });

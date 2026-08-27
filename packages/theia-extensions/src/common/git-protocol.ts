@@ -1,6 +1,11 @@
 export const GIT_SERVICE_PATH = "/services/spexr-git";
 
-export type GitFileState = "A" | "M" | "D" | "R" | "U" | "C";
+/**
+ * `?` untracked · `U` unmerged (conflict) · the rest are git's own index
+ * letters. These two were previously conflated: untracked was reported as `U`
+ * while git's unmerged `U` was folded into `C`.
+ */
+export type GitFileState = "A" | "M" | "D" | "R" | "C" | "U" | "?";
 
 export interface GitFileChangeDto {
   readonly path: string;

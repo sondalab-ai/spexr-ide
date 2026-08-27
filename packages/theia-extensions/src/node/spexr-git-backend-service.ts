@@ -84,18 +84,28 @@ function mapStateChar(char: string): GitFileState | undefined {
     case "D": return "D";
     case "R": return "R";
     case "C": return "C";
-    case "U": return "C"; // merge conflict → treat as conflicted
     default: return undefined;
   }
 }
 
-function mapFileChange(
+/**
+ * Index/worktree pairs git uses for an unmerged path — see `git help status`,
+ * the "unmerged" section of the short-format table. Neither column can carry
+ * these codes for a non-conflicted file: `U` only ever appears here, and `A`
+ * never appears in the worktree column outside a conflict.
+ */
+const CONFLICT_PAIRS = new Set(["UU", "AA", "DD", "AU", "UA", "DU", "UD"]);
+
+export function mapFileChange(
   filePath: string,
   indexChar: string,
   workingDirChar: string,
 ): GitFileChangeDto | undefined {
-  if (indexChar === "?" && workingDirChar === "?") {
+  if (CONFLICT_PAIRS.has(`${indexChar}${workingDirChar}`)) {
     return { path: filePath, unstagedState: "U" };
+  }
+  if (indexChar === "?" && workingDirChar === "?") {
+    return { path: filePath, unstagedState: "?" };
   }
   const stagedState =
     indexChar !== " " && indexChar !== "?" ? mapStateChar(indexChar) : undefined;

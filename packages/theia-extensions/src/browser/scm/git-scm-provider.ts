@@ -22,7 +22,7 @@ import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client
 import { SingleFlight } from "./single-flight.js";
 
 const STATE_LETTER: Record<GitFileState, string> = {
-  A: "A", M: "M", D: "D", R: "R", U: "U", C: "C",
+  A: "A", M: "M", D: "D", R: "R", C: "C", U: "!", "?": "U",
 };
 
 /**
@@ -199,7 +199,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
       const unstaged = status.files
         .filter((f) => f.unstagedState !== undefined)
         .map((f) => {
-          const isNew = f.unstagedState === "U";
+          const isNew = f.unstagedState === "?";
           const fileUri = buildFileUri(root, f.path);
           return new GitScmResource(
             this.workingTreeGroup,
@@ -321,7 +321,7 @@ function buildFileUri(root: string, filePath: string): URI {
 function stateLabel(state: GitFileState): string {
   const labels: Record<GitFileState, string> = {
     A: "Added", M: "Modified", D: "Deleted",
-    R: "Renamed", U: "Untracked", C: "Conflicted",
+    R: "Renamed", C: "Conflicted", U: "Conflicted", "?": "Untracked",
   };
   return labels[state];
 }
