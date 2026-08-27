@@ -88,8 +88,8 @@ Everything in this spec is `Planned` until its slice merges.
   `setClient(client: SpexrGitClient): void`. The backend module's binding for
   `GIT_SERVICE_PATH` switches from `new RpcConnectionHandler(path, () => service)`
   to the client-taking form already used for `SEARCH_SERVICE_PATH` and
-  `DARKFACTORY_SERVICE_PATH`. Watchers are armed on the first `setClient` call
-  and guarded against re-entry.
+  `DARKFACTORY_SERVICE_PATH`. Watchers are armed lazily, on the first
+  `getStatus` call for a given root, and guarded against re-entry.
 
 - **AC-5 Reactive refresh.** `SpexrGitScmProvider` implements
   `SpexrGitClient`; `onRepositoryChanged` calls `scheduleRefresh()`. The

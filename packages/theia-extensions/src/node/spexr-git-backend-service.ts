@@ -144,8 +144,10 @@ export class SpexrGitBackendService implements SpexrGitService {
   private readonly watchDir: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
   private client?: SpexrGitClient;
   private readonly watchers: FSWatcher[] = [];
-  /** Roots already armed, so repeated getStatus calls do not stack watchers. */
+  /** Roots with at least one watch actually established — not stacked on repeat getStatus calls. */
   private readonly armed = new Set<string>();
+  /** Roots confirmed not to be a repository, so getStatus stops re-running rev-parse on them. */
+  private readonly notARepo = new Set<string>();
   private debounce?: ReturnType<typeof setTimeout>;
 
   constructor(@unmanaged() deps: GitBackendDeps = {}) {
@@ -167,6 +169,31 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   /**
+   * Resolves both git directories with a single `rev-parse` process: the
+   * repository's own git dir and its COMMON git dir (identical outside a
+   * linked worktree). Two separate `rev-parse` calls would queue rather than
+   * run in parallel — `maxConcurrentProcesses: 1` in {@link git} serializes
+   * every call for a root — so this is also strictly faster than resolving
+   * them one at a time.
+   */
+  private async resolveGitDirs(root: string): Promise<{ gitDir: string; commonDir: string } | undefined> {
+    try {
+      const out = (await this.git(root).raw(["rev-parse", "--git-dir", "--git-common-dir"])).trim();
+      const [gitDirRaw, commonDirRaw] = out.split("\n");
+      if (!gitDirRaw) return undefined;
+      const gitDir = isAbsolute(gitDirRaw) ? gitDirRaw : resolvePath(root, gitDirRaw);
+      const commonDir = !commonDirRaw
+        ? gitDir
+        : isAbsolute(commonDirRaw)
+          ? commonDirRaw
+          : resolvePath(root, commonDirRaw);
+      return { gitDir, commonDir };
+    } catch {
+      return undefined; // not a repository
+    }
+  }
+
+  /**
    * Absolute path of the repository's git directory.
    *
    * Must not be derived as `root + "/.git"`: in a linked worktree `.git` is a
@@ -175,13 +202,7 @@ export class SpexrGitBackendService implements SpexrGitService {
    * correctly for plain repos, worktrees, and submodules alike.
    */
   async resolveGitDir(root: string): Promise<string | undefined> {
-    try {
-      const out = (await this.git(root).raw(["rev-parse", "--git-dir"])).trim();
-      if (!out) return undefined;
-      return isAbsolute(out) ? out : resolvePath(root, out);
-    } catch {
-      return undefined; // not a repository
-    }
+    return (await this.resolveGitDirs(root))?.gitDir;
   }
 
   /**
@@ -190,13 +211,7 @@ export class SpexrGitBackendService implements SpexrGitService {
    * so watching that instead would never see a branch move.
    */
   async resolveGitCommonDir(root: string): Promise<string | undefined> {
-    try {
-      const out = (await this.git(root).raw(["rev-parse", "--git-common-dir"])).trim();
-      if (!out) return undefined;
-      return isAbsolute(out) ? out : resolvePath(root, out);
-    } catch {
-      return undefined;
-    }
+    return (await this.resolveGitDirs(root))?.commonDir;
   }
 
   /**
@@ -204,10 +219,13 @@ export class SpexrGitBackendService implements SpexrGitService {
    * branch create, and `git add` from a terminal — reach the panel. Theia's
    * file watcher excludes `.git` by default, so without this the panel only
    * ever sees its own writes.
+   *
+   * `root` is marked armed only once a watch is actually established: if
+   * every attempt throws (permissions blip, path not yet created), the
+   * failure must stay retryable on the next `getStatus` rather than
+   * permanently muting the root.
    */
   private armWatch(root: string, gitDir: string, commonDir: string): void {
-    if (this.armed.has(root)) return;
-    this.armed.add(root);
     const notify = (): void => {
       if (this.debounce) clearTimeout(this.debounce);
       this.debounce = setTimeout(() => this.client?.onRepositoryChanged(), WATCH_DEBOUNCE_MS);
@@ -219,14 +237,17 @@ export class SpexrGitBackendService implements SpexrGitService {
       [gitDir, false],
       [join(commonDir, "refs"), true],
     ];
+    let established = false;
     for (const [dir, recursive] of targets) {
       try {
         this.watchers.push(this.watchDir(dir, recursive, () => { notify(); }));
+        established = true;
       } catch {
         // Unwatchable path or permission error: degrade to the previous
         // behavior rather than failing the whole service.
       }
     }
+    if (established) this.armed.add(root);
   }
 
   dispose(): void {
@@ -235,15 +256,18 @@ export class SpexrGitBackendService implements SpexrGitService {
       try { w.close(); } catch { /* already closed */ }
     }
     this.watchers.length = 0;
+    this.armed.clear();
+    this.notARepo.clear();
   }
 
   async getStatus(root: string): Promise<GitStatusDto> {
-    if (this.client && !this.armed.has(root)) {
-      const [gitDir, commonDir] = await Promise.all([
-        this.resolveGitDir(root),
-        this.resolveGitCommonDir(root),
-      ]);
-      if (gitDir) this.armWatch(root, gitDir, commonDir ?? gitDir);
+    if (this.client && !this.armed.has(root) && !this.notARepo.has(root)) {
+      const dirs = await this.resolveGitDirs(root);
+      if (dirs) {
+        this.armWatch(root, dirs.gitDir, dirs.commonDir);
+      } else {
+        this.notARepo.add(root);
+      }
     }
     const git = this.git(root);
     const status = await git.status();

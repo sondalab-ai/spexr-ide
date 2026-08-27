@@ -361,6 +361,35 @@ describe("SpexrGitBackendService — repository watcher", () => {
     await expect(failing.getStatus(tmpDir)).resolves.toBeDefined();
   });
 
+  it("does not stack another watcher on a second getStatus for the same root", async () => {
+    service.setClient({ onRepositoryChanged: () => {} });
+    await service.getStatus(tmpDir);
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+    const countAfterFirst = watched.length;
+
+    await service.getStatus(tmpDir);
+    expect(watched.length).toBe(countAfterFirst);
+  });
+
+  it("retries arming on the next getStatus after every watch attempt failed, instead of muting the root forever", async () => {
+    let shouldFail = true;
+    const flaky = new SpexrGitBackendService({
+      watchDir: (dir, recursive, onChange) => {
+        if (shouldFail) throw new Error("EPERM");
+        watched.push({ dir, recursive });
+        fire.push(onChange);
+        return { close: () => {} } as unknown as FSWatcher;
+      },
+    });
+    flaky.setClient({ onRepositoryChanged: () => {} });
+    await flaky.getStatus(tmpDir); // both watch attempts throw → root must stay unarmed
+    expect(watched.length).toBe(0);
+
+    shouldFail = false;
+    await flaky.getStatus(tmpDir); // permissions recovered → arming must be retried, not skipped
+    await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
+  });
+
   it("watches refs under the common dir, not the worktree's own empty one", async () => {
     execSync('git config user.email "t@t.t"', { cwd: tmpDir });
     execSync('git config user.name "T"', { cwd: tmpDir });

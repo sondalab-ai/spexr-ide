@@ -65,7 +65,11 @@ export interface SpexrGitClient {
 }
 
 export interface SpexrGitService {
-  /** Registers the push channel and arms the repository watcher. */
+  /**
+   * Registers the push channel. The repository watcher is armed lazily, per
+   * root, on that root's first `getStatus` call — `setClient` itself has no
+   * root to arm yet.
+   */
   setClient(client: SpexrGitClient): void;
   getStatus(root: string): Promise<GitStatusDto>;
   stage(root: string, paths: string[]): Promise<void>;
