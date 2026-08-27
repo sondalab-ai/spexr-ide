@@ -14,4 +14,22 @@ describe("toRepoRelative", () => {
   it("does not strip a sibling directory that merely shares a prefix", () => {
     expect(toRepoRelative("/w/repo", "/w/repo-other/a.ts")).toBe("/w/repo-other/a.ts");
   });
+  it("handles the root itself when root carries a trailing slash", () => {
+    expect(toRepoRelative("/w/repo/", "/w/repo")).toBe("");
+  });
+  it("strips a trailing-slash root from a nested path", () => {
+    expect(toRepoRelative("/w/repo/", "/w/repo/src/a.ts")).toBe("src/a.ts");
+  });
+
+  const underRootCases: Array<[string, string]> = [
+    ["/w/repo", "/w/repo/src/a.ts"],
+    ["/w/repo", "/w/repo"],
+    ["/w/repo/", "/w/repo"],
+    ["/w/repo/", "/w/repo/src/a.ts"],
+  ];
+  it("never returns an absolute path for input genuinely under the root", () => {
+    for (const [root, fsPath] of underRootCases) {
+      expect(toRepoRelative(root, fsPath).startsWith("/")).toBe(false);
+    }
+  });
 });

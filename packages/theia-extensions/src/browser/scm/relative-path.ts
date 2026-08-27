@@ -5,8 +5,9 @@
  */
 export function toRepoRelative(root: string, fsPath: string): string {
   if (!fsPath.startsWith("/")) return fsPath;
-  const base = root.endsWith("/") ? root : `${root}/`;
-  if (fsPath === root) return "";
+  const normalized = root.endsWith("/") ? root.slice(0, -1) : root;
+  if (fsPath === normalized) return "";
+  const base = `${normalized}/`;
   // The trailing separator check prevents /w/repo matching /w/repo-other.
   return fsPath.startsWith(base) ? fsPath.slice(base.length) : fsPath;
 }
