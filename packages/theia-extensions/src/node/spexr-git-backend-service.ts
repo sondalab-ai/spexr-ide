@@ -111,10 +111,14 @@ const CONFLICT_PAIRS = new Set(["UU", "AA", "DD", "AU", "UA", "DU", "UD"]);
  * timestamps do not: `ctime` changes every time git adds or removes an entry,
  * and `birthtime` degrades to `ctime` on filesystems without creation times.
  *
- * The trade-off is deliberate. A reused inode (or a filesystem that reports
- * `0` for every file) means a recreated git dir goes undetected — today's
- * behaviour — whereas a volatile identity would disarm and re-arm on every
- * call, leaking watchers. Missing the rare case beats that.
+ * The trade-off is deliberate. A reused inode (ext4 can hand the same number
+ * back to a directory recreated in place) or a filesystem reporting `0` for
+ * every file means a recreated git dir goes undetected here. That is a backstop
+ * failing, not the only signal: deleting `.git` fires the watcher, and the
+ * refresh that follows sees the directory missing and disarms the root while it
+ * is still absent. A volatile identity would be worse — `ctime` changes on
+ * every git command that rewrites the index, so the root would disarm and
+ * re-arm on essentially every refresh.
  *
  * Returns undefined when the directory is gone.
  */

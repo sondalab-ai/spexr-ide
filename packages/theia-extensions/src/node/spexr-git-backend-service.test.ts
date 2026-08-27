@@ -535,9 +535,15 @@ describe("SpexrGitBackendService — repository watcher", () => {
     await vi.waitFor(() => expect(watched.length).toBeGreaterThan(0));
     const countAfterFirst = watched.length;
 
+    // Deleting `.git` fires the watcher, so the panel refreshes while the
+    // directory is still gone: that call is what disarms the root. Splitting
+    // the two steps also keeps the test off inode-allocation behaviour, which
+    // differs per filesystem.
     fs.rmSync(path.join(tmpDir, ".git"), { recursive: true, force: true });
-    execSync("git init", { cwd: tmpDir });
+    await expect(service.getStatus(tmpDir)).rejects.toThrow();
+    expect(watched.length).toBe(countAfterFirst); // nothing to arm yet
 
+    execSync("git init", { cwd: tmpDir });
     await service.getStatus(tmpDir);
     expect(watched.length).toBeGreaterThan(countAfterFirst);
   });
