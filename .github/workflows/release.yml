@@ -191,7 +191,7 @@ jobs:
             '/^## \[?[0-9]/ { if (found) exit; if (index($0, ver)) found=1; next } found { print }' \
             CHANGELOG.md)
           if [ -z "$NOTES" ]; then
-            NOTES="See [CHANGELOG.md](https://github.com/marcellobarile/spexr-ide/blob/main/CHANGELOG.md) for details."
+            NOTES="See [CHANGELOG.md](https://github.com/sondalab-ai/spexr-ide/blob/main/CHANGELOG.md) for details."
           fi
           {
             echo "notes<<EOF"

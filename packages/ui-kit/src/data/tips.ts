@@ -130,7 +130,7 @@ export const SPEXR_TIPS: readonly SpexrTip[] = [
     id: "a11y-focus",
     category: "accessibility",
     title: "Focus rings are 3:1 contrast",
-    body: "The focus indicator uses a dedicated token (--spexr-focus-ring) that meets 2.4.11 contrast requirements against every theme surface.",
+    body: "The focus indicator uses a dedicated token (--sl-focus-ring) that meets 2.4.11 contrast requirements against every theme surface.",
   },
   {
     id: "a11y-motion",

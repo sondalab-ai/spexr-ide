@@ -1,7 +1,7 @@
 /**
  * Theme registry. Built-in themes are first-class; custom themes load from JSON
  * via `loadCustomTheme`. The shell applies the active theme by setting
- * `data-spexr-theme` on the root element — CSS variable cascades do the rest.
+ * `data-sl-theme` on the root element — CSS variable cascades do the rest.
  */
 
 export type ThemeId = "light" | "dark" | "high-contrast" | (string & {});
@@ -42,7 +42,7 @@ export interface CustomThemeDefinition {
 }
 
 export function applyTheme(themeId: ThemeId, root: HTMLElement = document.documentElement): void {
-  root.setAttribute("data-spexr-theme", themeId);
+  root.setAttribute("data-sl-theme", themeId);
 }
 
 export function applyCustomThemeTokens(
@@ -50,12 +50,12 @@ export function applyCustomThemeTokens(
   root: HTMLElement = document.documentElement,
 ): void {
   for (const [name, value] of Object.entries(theme.tokens)) {
-    if (!name.startsWith("--spexr-")) {
-      throw new Error(`Custom theme token "${name}" must use --spexr- prefix`);
+    if (!name.startsWith("--sl-")) {
+      throw new Error(`Custom theme token "${name}" must use --sl- prefix`);
     }
     root.style.setProperty(name, value);
   }
-  root.setAttribute("data-spexr-theme", theme.id);
+  root.setAttribute("data-sl-theme", theme.id);
 }
 
 export function detectSystemPreferredKind(): "light" | "dark" {

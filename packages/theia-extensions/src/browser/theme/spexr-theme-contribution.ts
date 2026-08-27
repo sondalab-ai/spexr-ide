@@ -10,7 +10,7 @@ const THEIA_THEME_BY_SPEXR: Record<string, string> = {
 };
 
 /**
- * Sets the `data-spexr-theme` attribute on the document so the design tokens
+ * Sets the `data-sl-theme` attribute on the document so the design tokens
  * resolve to a concrete theme, and syncs Theia's own color theme so native
  * chrome (tab bars, editor, terminal) matches the SPEXR tokens. Reads the saved
  * preference (or system) and subscribes to changes via prefers-color-scheme.
@@ -28,7 +28,7 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     // setTimeout(0): Theia may apply CSS vars asynchronously after firing this event;
     // delaying ensures we always run after Theia's <style> is written.
     this.themeService.onDidColorThemeChange(() => {
-      const current = document.documentElement.getAttribute("data-spexr-theme") ?? resolved;
+      const current = document.documentElement.getAttribute("data-sl-theme") ?? resolved;
       setTimeout(() => this.applyAccentOverrides(current), 0);
     });
 
@@ -44,7 +44,7 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
 
   /** Apply a SPEXR theme to both the design tokens and Theia's native chrome. */
   private applyTheme(spexrTheme: string): void {
-    document.documentElement.setAttribute("data-spexr-theme", spexrTheme);
+    document.documentElement.setAttribute("data-sl-theme", spexrTheme);
     const theiaId = THEIA_THEME_BY_SPEXR[spexrTheme];
     if (theiaId && this.themeService.getCurrentTheme().id !== theiaId) {
       if (this.themeService.getThemes().some((t) => t.id === theiaId)) {
@@ -67,6 +67,17 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     const accentActive  = isDark ? "#6b78f0" : "#3645d4";
     const accentSubtle  = isDark ? "rgba(139,150,255,0.12)" : "rgba(91,108,255,0.1)";
     const onAccent      = "#ffffff";
+
+    // Sondalab surface neutrals — pushed into Theia's native chrome so the
+    // editor/sidebar/tabs/terminal share the same (slightly teal) grays as the
+    // SPEXR-styled panels, instead of Theia's default neutral gray. High
+    // contrast is left to Theia's own HC theme (see the guard below).
+    const canvas  = isDark ? "#070A0D" : "#ECE4D4";  // deepest — activity bar, status bar, editor
+    const surface = isDark ? "#0F151A" : "#F6F1E6";  // sidebar, panels, active tab
+    const raised  = isDark ? "#131C23" : "#FFFFFF";  // menus, dropdowns, widgets, inputs
+    const fg      = isDark ? "#DAE3E4" : "#15211F";
+    const fgMuted = isDark ? "#6E8088" : "#6E7B78";
+    const line    = isDark ? "#1C2830" : "#D8CEBC";  // solid border matching the surfaces
 
     const css = `
 :root {
@@ -134,13 +145,68 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   --theia-gitDecoration-addedResourceForeground: ${accent} !important;
 }`;
 
+    // Neutral surfaces: only for light/dark. In high contrast, leave Theia's own
+    // HC theme untouched (its grays are WCAG-tuned; a teal cast would break it).
+    const neutralsCss = spexrTheme === "high-contrast" ? "" : `
+:root {
+  /* Base surfaces */
+  --theia-editor-background: ${canvas} !important;
+  --theia-editorGutter-background: ${canvas} !important;
+  --theia-breadcrumb-background: ${canvas} !important;
+  --theia-activityBar-background: ${canvas} !important;
+  --theia-statusBar-background: ${canvas} !important;
+  --theia-statusBar-noFolderBackground: ${canvas} !important;
+  --theia-titleBar-activeBackground: ${canvas} !important;
+  --theia-titleBar-inactiveBackground: ${canvas} !important;
+  --theia-terminal-background: ${canvas} !important;
+  --theia-editorGroupHeader-tabsBackground: ${canvas} !important;
+  --theia-tab-inactiveBackground: ${canvas} !important;
+
+  /* Raised-once surfaces */
+  --theia-sideBar-background: ${surface} !important;
+  --theia-sideBarSectionHeader-background: ${surface} !important;
+  --theia-panel-background: ${surface} !important;
+  --theia-panelSectionHeader-background: ${surface} !important;
+  --theia-tab-activeBackground: ${surface} !important;
+  --theia-tab-hoverBackground: ${surface} !important;
+
+  /* Floating surfaces (menus, dropdowns, inputs, widgets) */
+  --theia-menu-background: ${raised} !important;
+  --theia-dropdown-background: ${raised} !important;
+  --theia-input-background: ${raised} !important;
+  --theia-quickInput-background: ${raised} !important;
+  --theia-editorWidget-background: ${raised} !important;
+  --theia-notifications-background: ${raised} !important;
+
+  /* Foreground */
+  --theia-foreground: ${fg} !important;
+  --theia-editor-foreground: ${fg} !important;
+  --theia-tab-activeForeground: ${fg} !important;
+  --theia-tab-inactiveForeground: ${fgMuted} !important;
+  --theia-descriptionForeground: ${fgMuted} !important;
+  --theia-statusBar-foreground: ${fgMuted} !important;
+  --theia-titleBar-activeForeground: ${fgMuted} !important;
+
+  /* Borders */
+  --theia-sideBar-border: ${line} !important;
+  --theia-panel-border: ${line} !important;
+  --theia-editorGroup-border: ${line} !important;
+  --theia-tab-border: ${line} !important;
+  --theia-titleBar-border: ${line} !important;
+  --theia-statusBar-border: ${line} !important;
+  --theia-menu-border: ${line} !important;
+  --theia-input-border: ${line} !important;
+  --theia-editorWidget-border: ${line} !important;
+  --theia-activityBar-border: ${line} !important;
+}`;
+
     // Always move our <style> to end of <head> so it wins the source-order cascade
     // regardless of when Theia inserts its own theme <style> elements.
     let el = document.getElementById("spexr-theia-accent-overrides");
     if (el) el.remove();
     el = document.createElement("style");
     el.id = "spexr-theia-accent-overrides";
-    el.textContent = css;
+    el.textContent = css + neutralsCss;
     document.head.appendChild(el);
   }
 
