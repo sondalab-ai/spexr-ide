@@ -17,7 +17,7 @@ export function resourcePaths(root: string, items: unknown[]): string[] {
   return [...new Set(paths)];
 }
 
-/** The SCM resource group id ("index" or "workingTree") a resource belongs to, if any. */
+/** The SCM resource group id ("index", "workingTree", or "conflicts") a resource belongs to, if any. */
 export function resourceGroupId(item: unknown): string | undefined {
   return (item as { group?: { id?: string } })?.group?.id;
 }

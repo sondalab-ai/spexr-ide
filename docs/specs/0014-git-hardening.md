@@ -1,7 +1,7 @@
 ---
 slug: 0014-git-hardening
 title: Git hardening — reliable daily loop
-status: complete
+status: in-progress
 createdAt: 2026-08-27
 workflowStep: plan
 updatedAt: 2026-08-27
@@ -177,11 +177,18 @@ Everything in this spec is `Planned` until its slice merges.
 
 - **AC-17 Separate conflict group.** A third `ScmResourceGroup`, "Merge
   Conflicts", with `hideWhenEmpty = true`, ordered above staged and unstaged
-  changes. A conflicted file appears there and nowhere else.
+  changes. A conflicted file appears there and nowhere else. A consequence: a
+  conflicted file no longer belongs to the working-tree group, so "Stage All
+  Changes" no longer sweeps it up — previously that command would silently
+  `git add` a file still full of conflict markers.
 
-- **AC-18 Mark resolved.** `spexr.git.markResolved` stages the file, which is
-  git's own definition of resolution. It is offered only on rows in the
-  conflict group.
+- **AC-18 Mark resolved.** `spexr.git.markResolved` stages the file. For a
+  conflict that leaves a file in the working tree (`UU`, `AA`, `AU`, `UA`,
+  `DU`, `UD`), staging it is git's own definition of resolution. A
+  both-deleted (`DD`) conflict has no working-tree file to stage — git's own
+  resolution there is `git rm` — so `markResolved` fails visibly on `DD` and
+  must be resolved from the terminal instead. It is offered only on rows in
+  the conflict group.
 
 ### Across all slices
 

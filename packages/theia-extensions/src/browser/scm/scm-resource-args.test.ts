@@ -56,4 +56,10 @@ describe("allInGroup", () => {
   it("is false for an empty selection", () => {
     expect(allInGroup([], "workingTree")).toBe(false);
   });
+
+  it("scopes the conflicts group to itself, e.g. for markResolved's visibility gate", () => {
+    const args = [resource("/w/repo/a.ts", "conflicts")];
+    expect(allInGroup(args, "conflicts")).toBe(true);
+    expect(allInGroup(args, "workingTree")).toBe(false);
+  });
 });
