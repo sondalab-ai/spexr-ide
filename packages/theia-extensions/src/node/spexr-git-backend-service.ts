@@ -132,6 +132,20 @@ export function parseIgnoredPaths(raw: string): string[] {
   return raw.split("\0").filter((p) => p.length > 0);
 }
 
+/**
+ * The remote to push to when the caller did not name one. `origin` wins by
+ * convention; a single remote under another name is unambiguous; anything
+ * else is a real choice the user has to make, so say so rather than guess.
+ */
+export function pickRemote(remotes: string[]): string {
+  if (remotes.includes("origin")) return "origin";
+  if (remotes.length === 1) return remotes[0]!;
+  if (remotes.length === 0) throw new Error("This repository has no remote configured.");
+  throw new Error(
+    `Several remotes and no "origin" — push explicitly to one of: ${remotes.join(", ")}.`,
+  );
+}
+
 @injectable()
 export class SpexrGitBackendService implements SpexrGitService {
   /**
@@ -328,11 +342,17 @@ export class SpexrGitBackendService implements SpexrGitService {
 
   async getBranches(root: string): Promise<GitBranchDto[]> {
     const result = await this.git(root).branch(["-a", "-vv"]);
-    return Object.values(result.branches).map((b) => ({
-      name: b.name,
-      isCurrent: b.current,
-      isRemote: b.name.startsWith("remotes/"),
-    }));
+    return Object.values(result.branches).map((b) => {
+      // `-vv` renders tracking as "[origin/main] <subject>" or
+      // "[origin/main: ahead 1] <subject>" at the start of simple-git's `label`.
+      const tracking = /^\[([^\]:]+)(?::[^\]]*)?\]/.exec(b.label)?.[1];
+      return {
+        name: b.name,
+        isCurrent: b.current,
+        isRemote: b.name.startsWith("remotes/"),
+        ...(tracking && { upstream: tracking }),
+      };
+    });
   }
 
   async checkout(root: string, branch: string): Promise<void> {
@@ -351,9 +371,20 @@ export class SpexrGitBackendService implements SpexrGitService {
     const git = this.git(root);
     if (remote && branch) {
       await git.push(remote, branch);
-    } else {
-      await git.push();
+      return;
     }
+    const status = await git.status();
+    if (status.tracking) {
+      await git.push();
+      return;
+    }
+    // No upstream yet — a freshly created branch. A bare push fails here, so
+    // establish tracking as part of the first push.
+    const names = (await git.getRemotes(false)).map((r) => r.name);
+    const target = remote ?? pickRemote(names);
+    const head = branch ?? status.current;
+    if (!head) throw new Error("Cannot push: no current branch (detached HEAD?).");
+    await git.push(["--set-upstream", target, head]);
   }
 
   async pull(root: string): Promise<void> {

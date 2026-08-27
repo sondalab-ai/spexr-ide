@@ -9,6 +9,7 @@ import {
   parseBlamePorcelain,
   normalizeRemoteUrl,
   parseIgnoredPaths,
+  pickRemote,
 } from "./spexr-git-backend-service.js";
 
 describe("SpexrGitBackendService", () => {
@@ -160,6 +161,40 @@ describe("SpexrGitBackendService", () => {
     const current = branches.find((b) => b.isCurrent);
     expect(current).toBeDefined();
     expect(current!.isRemote).toBe(false);
+  });
+
+  describe("pickRemote", () => {
+    it("prefers origin", () => expect(pickRemote(["upstream", "origin"])).toBe("origin"));
+    it("takes the sole remote when there is no origin", () => expect(pickRemote(["fork"])).toBe("fork"));
+    it("throws, naming candidates, when ambiguous", () => {
+      expect(() => pickRemote(["a", "b"])).toThrow(/a, b/);
+    });
+    it("throws when there are none", () => expect(() => pickRemote([])).toThrow(/no remote/i));
+  });
+
+  it("push: sets upstream on a branch that has none", async () => {
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-bare-"));
+    execSync("git init --bare", { cwd: bare });
+    execSync(`git remote add origin ${bare}`, { cwd: tmpDir });
+    execSync("git checkout -b feature", { cwd: tmpDir });
+
+    await service.push(tmpDir); // must not throw despite no upstream
+
+    const status = await service.getStatus(tmpDir);
+    expect(status.upstream).toBe("origin/feature");
+    fs.rmSync(bare, { recursive: true, force: true });
+  });
+
+  it("getBranches: reports the upstream of a tracking branch", async () => {
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-bare2-"));
+    execSync("git init --bare", { cwd: bare });
+    execSync(`git remote add origin ${bare}`, { cwd: tmpDir });
+    execSync("git push -u origin HEAD", { cwd: tmpDir });
+
+    const branches = await service.getBranches(tmpDir);
+    const current = branches.find((b) => b.isCurrent);
+    expect(current?.upstream).toMatch(/^origin\//);
+    fs.rmSync(bare, { recursive: true, force: true });
   });
 
   it("createBranch + checkout: switches to new branch", async () => {
