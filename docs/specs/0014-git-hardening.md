@@ -198,6 +198,45 @@ Everything in this spec is `Planned` until its slice merges.
   does for the other six pairs. It is offered only on rows in the conflict
   group.
 
+### Slice 5 — Panel affordances
+
+Added after manual verification of Slices 1-4 showed the panel was missing two
+things a source-control view is expected to have.
+
+- **AC-20 Group-level stage and unstage.** `spexr.git.stageAll` and
+  `spexr.git.unstageAll` already exist as commands but are surfaced nowhere —
+  no toolbar item, no menu — so they are reachable only from the command
+  palette. Register them on `ScmTreeWidget.RESOURCE_GROUP_INLINE_MENU` and
+  `RESOURCE_GROUP_CONTEXT_MENU`, gated by group: Stage All only on the
+  working-tree group, Unstage All only on the staged group. A group menu
+  receives the `ScmResourceGroup` itself as a single argument, not the spread
+  list of resources that the per-resource menus receive.
+
+- **AC-21 Per-file state letters.** Each changed file shows a letter and colour
+  for its state: `M` modified, `A` added, `D` deleted, `R` renamed, `U`
+  untracked, `!` conflicted — the VS Code convention.
+
+  These must come from a `DecorationsProvider` registered with Theia's
+  `DecorationsService`, not from the `ScmResourceDecorations` the provider
+  already attaches to each resource. Theia's SCM row reads two different
+  objects: `treeNode.decorations` (the resource's own) supplies only `icon`,
+  `iconDark` and `strikeThrough`, while `letter`, `colorId` and `tooltip` come
+  from the `DecorationsService`. Both types declare a `letter` field with the
+  same name, so setting it on the resource compiles cleanly and never renders.
+  `browser/scm/git-ignored-decoration-provider.ts` is the working precedent in
+  this repository, written for the same reason: without `@theia/git` the
+  standard decorations are absent and must be supplied.
+
+  The provider is fed by the status the SCM provider already emits on
+  `onDidChangeStatus`; it must not perform its own git call.
+
+- **AC-22 Decoration colours.** `colorId` values use the standard
+  `gitDecoration.*` ids, which Theia maps to `--theia-gitDecoration-*` CSS
+  variables. `spexr-theme-contribution.ts` already defines
+  `addedResourceForeground`; the remaining five — modified, deleted, untracked,
+  renamed and conflicting — are defined alongside it, following the same
+  pattern, so the letters are legible in light, dark and high-contrast themes.
+
 ### Across all slices
 
 - **AC-19 No regression.** `pnpm run typecheck`, `pnpm run lint` and the full
