@@ -18,6 +18,8 @@ import type {
 import { SpexrGitServiceProxySymbol } from "./git-service-proxy.js";
 import { GIT_ORIGINAL_SCHEME } from "./git-original-resource.js";
 import type { SpexrGitService, GitFileState, GitBranchDto } from "../../common/git-protocol.js";
+import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
+import { SingleFlight } from "./single-flight.js";
 
 const STATE_LETTER: Record<GitFileState, string> = {
   A: "A", M: "M", D: "D", R: "R", U: "U", C: "C",
@@ -94,6 +96,11 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   @inject(OpenerService)
   private readonly openerService!: OpenerService;
 
+  @inject(SpexrGitClientToken)
+  private readonly gitClient!: SpexrGitClientDispatcher;
+
+  private readonly refresher = new SingleFlight(() => this.doRefresh());
+
   private readonly _onDidChangeEmitter = new Emitter<void>();
   readonly onDidChange: Event<void> = this._onDidChangeEmitter.event;
 
@@ -135,6 +142,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     this.toDispose.push(
       this.fileService.onDidFilesChange(() => this.scheduleRefresh()),
     );
+    this.toDispose.push(this.gitClient.onRepositoryChanged$(() => this.scheduleRefresh()));
 
     await this.refresh();
   }
@@ -145,6 +153,10 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   }
 
   async refresh(): Promise<void> {
+    await this.refresher.run();
+  }
+
+  private async doRefresh(): Promise<void> {
     if (!this.rootFsPath) return;
     try {
       const status = await this.gitService.getStatus(this.rootFsPath);

@@ -64,6 +64,7 @@ import { SpexrAboutDialog } from "./about/spexr-about-dialog.js";
 import { SpexrGitScmProvider } from "./scm/git-scm-provider.js";
 import { GitIgnoredDecorationProvider } from "./scm/git-ignored-decoration-provider.js";
 import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-proxy.js";
+import { SpexrGitClientDispatcher, SpexrGitClientToken } from "./scm/git-client.js";
 import { SpexrGitCommandsContribution } from "./scm/git-commands-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
 import { GitOriginalResourceResolver } from "./scm/git-original-resource.js";
@@ -214,10 +215,13 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   rebind(AboutDialog).toService(SpexrAboutDialog);
 
   // --- Git SCM ---
+  bind(SpexrGitClientDispatcher).toSelf().inSingletonScope();
+  bind(SpexrGitClientToken).toService(SpexrGitClientDispatcher);
   bind(SpexrGitServiceProxySymbol)
     .toDynamicValue((ctx) => {
       const connection = ctx.container.get(WebSocketConnectionProvider);
-      return connection.createProxy(GIT_SERVICE_PATH);
+      const client = ctx.container.get(SpexrGitClientDispatcher);
+      return connection.createProxy(GIT_SERVICE_PATH, client);
     })
     .inSingletonScope();
 
