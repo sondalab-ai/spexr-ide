@@ -12,6 +12,7 @@ import { ProgressService } from "@theia/core/lib/common/progress-service";
 import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { toRepoRelative } from "./relative-path.js";
+import { allInGroup, resourcePaths } from "./scm-resource-args.js";
 
 export const GitCommands = {
   STAGE_ALL: { id: "spexr.git.stageAll", label: "Git: Stage All Changes" } satisfies Command,
@@ -82,13 +83,20 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     commands.registerCommand(GitCommands.STAGE_FILE, {
       execute: (...args: unknown[]) =>
         this.runGitOp("Stage file", () => this.provider.stage(this.pathsOf(args))),
+      isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
     });
     commands.registerCommand(GitCommands.UNSTAGE_FILE, {
       execute: (...args: unknown[]) =>
         this.runGitOp("Unstage file", () => this.provider.unstage(this.pathsOf(args))),
+      isVisible: (...args: unknown[]) => allInGroup(args, "index"),
     });
     commands.registerCommand(GitCommands.DISCARD_FILE, {
       execute: (...args: unknown[]) => this.discardWithConfirm(this.pathsOf(args)),
+      // Never on a Staged Changes row: a file with both a staged edit and a
+      // further unstaged edit is two rows sharing one repo-relative path, and
+      // discarding from the staged row would silently destroy the unstaged
+      // edit the user did not click on.
+      isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
     });
   }
 
@@ -180,17 +188,11 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * The SCM tree spreads the selected resources as individual arguments
    * (see ActionMenuNode.run in @theia/core), not as a single array — so
    * this must accept the already-spread rest args, not `arg: unknown`.
-   * Deduplicated because a file with both a staged and unstaged change is
-   * two distinct rows sharing one repo-relative path.
    */
   private pathsOf(items: unknown[]): string[] {
     const root = this.provider.root;
     if (!root) return [];
-    const paths = items
-      .map((i) => (i as { sourceUri?: { path?: { toString(): string } } })?.sourceUri?.path?.toString())
-      .filter((p): p is string => typeof p === "string")
-      .map((p) => toRepoRelative(root, p));
-    return [...new Set(paths)];
+    return resourcePaths(root, items);
   }
 
   private async discardWithConfirm(paths: string[]): Promise<void> {
@@ -200,7 +202,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       : `${paths.slice(0, 5).join("\n")}\n…and ${paths.length - 5} more`;
     const ok = await new ConfirmDialog({
       title: paths.length === 1 ? "Discard changes" : `Discard changes in ${paths.length} files`,
-      msg: `${listed}\n\nChanges will be lost. This cannot be undone.`,
+      msg: `${listed}\n\nUntracked files will be deleted. Other changes will revert to their staged content. This cannot be undone.`,
       ok: "Discard",
       cancel: "Cancel",
     }).open();
