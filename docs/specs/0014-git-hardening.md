@@ -3,7 +3,7 @@ slug: 0014-git-hardening
 title: Git hardening — reliable daily loop
 status: in-progress
 createdAt: 2026-08-27
-workflowStep: plan
+workflowStep: validate
 updatedAt: 2026-08-27
 ---
 > **What is this file.** Implementation contract for hardening SPEXR's git
@@ -95,10 +95,17 @@ Everything in this spec is `Planned` until its slice merges.
   `DARKFACTORY_SERVICE_PATH`. Watchers are armed lazily, on the first
   `getStatus` call for a given root, and guarded against re-entry.
 
-- **AC-5 Reactive refresh.** `SpexrGitScmProvider` implements
-  `SpexrGitClient`; `onRepositoryChanged` calls `scheduleRefresh()`. The
-  existing `fileService.onDidFilesChange` subscription is kept — it covers
-  working-tree edits, which produce no git-directory activity.
+- **AC-5 Reactive refresh.** A separate `SpexrGitClientDispatcher`
+  (`browser/scm/git-client.ts`) implements `SpexrGitClient` and is the object
+  registered on the RPC connection; `SpexrGitScmProvider` subscribes to its
+  `onRepositoryChanged$` event and calls `scheduleRefresh()`. `SpexrGitClient`
+  is deliberately not implemented on the provider itself: the frontend module
+  must pass the client instance into `connection.createProxy()` when it
+  constructs the git service proxy, and that construction happens before the
+  provider exists — implementing the interface on the provider would require
+  the provider at proxy-construction time, a dependency cycle. The existing
+  `fileService.onDidFilesChange` subscription is kept — it covers working-tree
+  edits, which produce no git-directory activity.
 
   Concretely, after this slice: `git add` in an embedded terminal moves the
   file into "Staged Changes" without further user action, and a commit made by
@@ -182,13 +189,14 @@ Everything in this spec is `Planned` until its slice merges.
   Changes" no longer sweeps it up — previously that command would silently
   `git add` a file still full of conflict markers.
 
-- **AC-18 Mark resolved.** `spexr.git.markResolved` stages the file. For a
-  conflict that leaves a file in the working tree (`UU`, `AA`, `AU`, `UA`,
-  `DU`, `UD`), staging it is git's own definition of resolution. A
-  both-deleted (`DD`) conflict has no working-tree file to stage — git's own
-  resolution there is `git rm` — so `markResolved` fails visibly on `DD` and
-  must be resolved from the terminal instead. It is offered only on rows in
-  the conflict group.
+- **AC-18 Mark resolved.** `spexr.git.markResolved` stages the file. Staging
+  is git's own definition of resolution for every one of the seven pairs in
+  `CONFLICT_PAIRS`, `DD` included: a real `DD` arises from rename/rename (base
+  has one file, each branch renames it to something different), not
+  delete/delete — which auto-merges cleanly with no conflict at all — and on
+  that state `git add <path>` exits 0 and clears the `DD` row exactly as it
+  does for the other six pairs. It is offered only on rows in the conflict
+  group.
 
 ### Across all slices
 
@@ -208,7 +216,8 @@ New and modified modules:
 | `common/git-protocol.ts` | + `SpexrGitClient`, `setClient`, `discard`; `GitFileState` gains `"?"` and narrows `"U"`; − `getDiff` (AC-4, AC-8, AC-14, AC-15) |
 | `node/spexr-git-backend-service.ts` | per-root `SimpleGit` cache, `git(root)` accessor, git-dir resolution, watcher, `discard`, upstream-aware `push`, `upstream` in `getBranches` (AC-1 – AC-3, AC-8, AC-11, AC-12) |
 | `node/spexr-backend-module.ts` | `GIT_SERVICE_PATH` binding takes a client (AC-4) |
-| `browser/scm/git-scm-provider.ts` | implements `SpexrGitClient`, single-flight `refresh`, relative paths, conflict group, `onDidChangeStatus` (AC-5 – AC-7, AC-17) |
+| `browser/scm/git-client.ts` | **new** — `SpexrGitClientDispatcher` implements `SpexrGitClient`, registered on the RPC connection (AC-5) |
+| `browser/scm/git-scm-provider.ts` | subscribes to `SpexrGitClientDispatcher`, single-flight `refresh`, relative paths, conflict group, `onDidChangeStatus` (AC-5 – AC-7, AC-17) |
 | `browser/scm/git-commands-contribution.ts` | per-file commands, discard confirmation, mark-resolved (AC-9, AC-10, AC-18) |
 | `browser/scm/git-status-bar-contribution.ts` | **new** — branch and ahead/behind indicator (AC-13) |
 
