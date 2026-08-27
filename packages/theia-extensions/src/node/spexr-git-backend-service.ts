@@ -9,6 +9,7 @@ import type {
   GitStatusDto,
   GitFileChangeDto,
   GitFileState,
+  GitConflictKind,
   GitBranchDto,
   GitLogEntryDto,
   BlameResultDto,
@@ -135,8 +136,9 @@ export function mapFileChange(
   indexChar: string,
   workingDirChar: string,
 ): GitFileChangeDto | undefined {
-  if (CONFLICT_PAIRS.has(`${indexChar}${workingDirChar}`)) {
-    return { path: filePath, unstagedState: "U" };
+  const pair = `${indexChar}${workingDirChar}`;
+  if (CONFLICT_PAIRS.has(pair)) {
+    return { path: filePath, unstagedState: "U", conflict: pair as GitConflictKind };
   }
   if (indexChar === "?" && workingDirChar === "?") {
     return { path: filePath, unstagedState: "?" };
@@ -407,6 +409,13 @@ export class SpexrGitBackendService implements SpexrGitService {
     } else {
       await git.raw(["rm", "--cached", "--", ...paths]);
     }
+  }
+
+  async removePath(root: string, paths: string[]): Promise<void> {
+    // `git rm` with no pathspec fails outright; the guard keeps it a no-op,
+    // like every other path-taking operation here.
+    if (paths.length === 0) return;
+    await this.git(root).raw(["rm", "--", ...paths]);
   }
 
   async discard(root: string, paths: string[]): Promise<void> {

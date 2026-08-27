@@ -198,6 +198,14 @@ Everything in this spec is `Planned` until its slice merges.
   does for the other six pairs. It is offered only on rows in the conflict
   group.
 
+  > **Superseded in part**, by
+  > https://github.com/sondalab-ai/spexr-ide/issues/16. The claim above is
+  > accurate but incomplete: for `UD` and `DU` — delete/modify — staging is one
+  > of *two* legitimate resolutions, and calling it "Mark Resolved" hid that
+  > choice. Those rows now offer **Keep File** and **Accept Deletion**
+  > (`git rm`) instead, and Mark Resolved is no longer shown on them. The other
+  > five pairs are unchanged.
+
 ### Slice 5 — Panel affordances
 
 Added after manual verification of Slices 1-4 showed the panel was missing two

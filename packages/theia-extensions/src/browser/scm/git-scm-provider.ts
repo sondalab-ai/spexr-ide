@@ -20,6 +20,7 @@ import { GIT_ORIGINAL_SCHEME } from "./git-original-resource.js";
 import type {
   SpexrGitService,
   GitFileState,
+  GitConflictKind,
   GitBranchDto,
   GitStatusDto,
 } from "../../common/git-protocol.js";
@@ -53,6 +54,12 @@ class GitScmResource {
     readonly sourceUri: URI,
     readonly decorations: ScmResourceDecorations,
     private readonly openHandler: () => Promise<void>,
+    /**
+     * Which conflict this row is, on conflict rows only. Command visibility
+     * reads it off the row: a delete/modify conflict offers two resolutions
+     * where the others offer one, and the menus must differ accordingly.
+     */
+    readonly conflict?: GitConflictKind,
   ) {}
 
   async open(): Promise<void> {
@@ -234,6 +241,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
           async () => {
             await open(this.openerService, fileUri);
           },
+          f.conflict,
         );
       });
 
@@ -319,6 +327,13 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   async discard(paths: string[]): Promise<void> {
     if (!this.rootFsPath) return;
     await this.gitService.discard(this.rootFsPath, paths);
+    await this.refresh();
+  }
+
+  /** Accept a deletion: `git rm` the paths, staging the removal. */
+  async removePath(paths: string[]): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.removePath(this.rootFsPath, paths);
     await this.refresh();
   }
 

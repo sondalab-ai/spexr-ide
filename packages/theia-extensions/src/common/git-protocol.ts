@@ -7,11 +7,21 @@ export const GIT_SERVICE_PATH = "/services/spexr-git";
  */
 export type GitFileState = "A" | "M" | "D" | "R" | "C" | "U" | "?";
 
+/**
+ * The seven unmerged index/worktree pairs of `git status --porcelain`. `U`
+ * alone loses which side did what, and two of these — `UD` (deleted by them,
+ * modified by us) and `DU` (deleted by us, modified by them) — have two
+ * legitimate resolutions rather than one.
+ */
+export type GitConflictKind = "UU" | "AA" | "DD" | "AU" | "UA" | "DU" | "UD";
+
 export interface GitFileChangeDto {
   readonly path: string;
   readonly originalPath?: string;
   readonly stagedState?: GitFileState;
   readonly unstagedState?: GitFileState;
+  /** Set exactly when `unstagedState` is `"U"`: which kind of conflict it is. */
+  readonly conflict?: GitConflictKind;
 }
 
 export interface GitStatusDto {
@@ -86,6 +96,12 @@ export interface SpexrGitService {
    * disk. Irreversible — callers confirm first.
    */
   discard(root: string, paths: string[]): Promise<void>;
+  /**
+   * `git rm` — removes the paths from the working tree and stages the removal.
+   * On a delete/modify conflict this is the "accept the deletion" resolution,
+   * the counterpart of staging the file to keep it.
+   */
+  removePath(root: string, paths: string[]): Promise<void>;
   commit(root: string, message: string): Promise<void>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;

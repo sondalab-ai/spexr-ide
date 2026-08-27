@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { allInGroup, isResourceGroup, resourceGroupId, resourcePaths } from "./scm-resource-args.js";
+import {
+  allDeleteModifyConflicts,
+  allInGroup,
+  allSingleOutcomeConflicts,
+  isResourceGroup,
+  resourceGroupId,
+  resourcePaths,
+} from "./scm-resource-args.js";
 
 function resource(path: string, groupId?: string): unknown {
   return {
@@ -78,6 +85,55 @@ describe("isResourceGroup", () => {
   });
 
   it("is false for a spread list of resources rather than a single group", () => {
-    expect(isResourceGroup([{ id: "workingTree" }, { id: "workingTree" }], "workingTree")).toBe(false);
+    expect(isResourceGroup([{ id: "workingTree" }, { id: "workingTree" }], "workingTree")).toBe(
+      false,
+    );
+  });
+});
+
+/** A conflict row as the SCM tree spreads it into a command handler. */
+function conflictRow(path: string, conflict?: string): unknown {
+  return {
+    sourceUri: { path: { toString: () => path } },
+    group: { id: "conflicts" },
+    ...(conflict !== undefined && { conflict }),
+  };
+}
+
+describe("conflict resolution predicates", () => {
+  it.each(["UD", "DU"])("treats %s as a two-resolution conflict", (kind) => {
+    const rows = [conflictRow("/r/f.txt", kind)];
+    expect(allDeleteModifyConflicts(rows)).toBe(true);
+    expect(allSingleOutcomeConflicts(rows)).toBe(false);
+  });
+
+  it.each(["UU", "AA", "DD", "AU", "UA"])("treats %s as resolved by staging", (kind) => {
+    const rows = [conflictRow("/r/f.txt", kind)];
+    expect(allDeleteModifyConflicts(rows)).toBe(false);
+    expect(allSingleOutcomeConflicts(rows)).toBe(true);
+  });
+
+  it("falls back to staging for a row carrying no conflict kind", () => {
+    const rows = [conflictRow("/r/f.txt")];
+    expect(allDeleteModifyConflicts(rows)).toBe(false);
+    expect(allSingleOutcomeConflicts(rows)).toBe(true);
+  });
+
+  it("offers neither resolution for a mixed selection", () => {
+    const rows = [conflictRow("/r/a.txt", "UD"), conflictRow("/r/b.txt", "UU")];
+    expect(allDeleteModifyConflicts(rows)).toBe(false);
+    expect(allSingleOutcomeConflicts(rows)).toBe(false);
+  });
+
+  it("is false outside the conflicts group and on an empty selection", () => {
+    const staged = {
+      sourceUri: { path: { toString: () => "/r/f.txt" } },
+      group: { id: "index" },
+      conflict: "UD",
+    };
+    expect(allDeleteModifyConflicts([staged])).toBe(false);
+    expect(allSingleOutcomeConflicts([staged])).toBe(false);
+    expect(allDeleteModifyConflicts([])).toBe(false);
+    expect(allSingleOutcomeConflicts([])).toBe(false);
   });
 });

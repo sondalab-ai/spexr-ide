@@ -612,13 +612,82 @@ describe("mapFileChange — conflict and untracked states", () => {
     ["U", "A"],
     ["D", "U"],
     ["U", "D"],
-  ])("treats %s%s as a conflict", (index, worktree) => {
+  ])("treats %s%s as a conflict and reports which one", (index, worktree) => {
     const r = mapFileChange("f.txt", index, worktree);
     expect(r?.unstagedState).toBe("U");
+    expect(r?.conflict).toBe(`${index}${worktree}`);
+  });
+
+  it("leaves conflict unset on a file that is not unmerged", () => {
+    expect(mapFileChange("f.txt", "M", " ")?.conflict).toBeUndefined();
+    expect(mapFileChange("new.txt", "?", "?")?.conflict).toBeUndefined();
   });
 
   it("still maps a plain staged modification", () => {
     expect(mapFileChange("f.txt", "M", " ")).toEqual({ path: "f.txt", stagedState: "M" });
+  });
+});
+
+describe("SpexrGitBackendService — accepting a deletion on a conflict", () => {
+  let tmpDir: string;
+  let service: SpexrGitBackendService;
+
+  /** Build a modify/delete conflict: `theirs` removes f.txt, we modify it. */
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-conflict-"));
+    const run = (cmd: string): void => void execSync(cmd, { cwd: tmpDir, stdio: "ignore" });
+    run("git init");
+    run('git config user.email "test@test.com"');
+    run('git config user.name "Test"');
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "base\n");
+    run("git add f.txt");
+    run("git commit -m base");
+    const base = execSync("git rev-parse --abbrev-ref HEAD", { cwd: tmpDir }).toString().trim();
+    run("git checkout -b theirs");
+    run("git rm f.txt");
+    run('git commit -m "they delete"');
+    run(`git checkout ${base}`);
+    fs.writeFileSync(path.join(tmpDir, "f.txt"), "ours\n");
+    run("git add f.txt");
+    run('git commit -m "we modify"');
+    try {
+      run("git merge theirs");
+    } catch {
+      /* the merge is expected to conflict */
+    }
+    service = new SpexrGitBackendService();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("reports the conflict as UD — deleted by them, modified by us", async () => {
+    const status = await service.getStatus(tmpDir);
+    const file = status.files.find((f) => f.path === "f.txt");
+    expect(file?.unstagedState).toBe("U");
+    expect(file?.conflict).toBe("UD");
+  });
+
+  it("removePath resolves it by deleting the file and staging the removal", async () => {
+    await service.removePath(tmpDir, ["f.txt"]);
+
+    expect(fs.existsSync(path.join(tmpDir, "f.txt"))).toBe(false);
+    expect(execSync("git ls-files -u", { cwd: tmpDir }).toString().trim()).toBe(""); // no longer unmerged
+    const status = await service.getStatus(tmpDir);
+    expect(status.files.find((f) => f.path === "f.txt")?.stagedState).toBe("D");
+  });
+
+  it("stage resolves it the other way, keeping the file", async () => {
+    await service.stage(tmpDir, ["f.txt"]);
+
+    expect(fs.existsSync(path.join(tmpDir, "f.txt"))).toBe(true);
+    expect(execSync("git ls-files -u", { cwd: tmpDir }).toString().trim()).toBe("");
+  });
+
+  it("removePath is a no-op on an empty path list", async () => {
+    await expect(service.removePath(tmpDir, [])).resolves.toBeUndefined();
+    expect(fs.existsSync(path.join(tmpDir, "f.txt"))).toBe(true);
   });
 });
 
