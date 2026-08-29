@@ -9,7 +9,7 @@ import { SpexrCommands, SpexrCommandsContribution } from "../commands/spexr-comm
 import { SPEC_PREVIEW_TOGGLE_COMMAND } from "./spec-preview-contribution.js";
 
 /**
- * Surfaces "Send to agent" and "Toggle linked resources" actions in the editor
+ * Surfaces "Send to agent" and "Toggle markdown preview" actions in the editor
  * tab toolbar whenever the active editor is a spec file under
  * `<workspace>/docs/specs/`.
  */
@@ -28,19 +28,11 @@ export class SpexrSpecEditorToolbarContribution implements TabBarToolbarContribu
       isVisible: (widget?: Widget) => this.isSpecEditor(widget),
     });
     registry.registerItem({
-      id: "spexr.spec.editor.resources",
-      command: SpexrCommands.SPEC_RESOURCES_TOGGLE.id,
-      icon: "codicon codicon-link",
-      tooltip: "Toggle linked resources panel",
-      priority: 1,
-      isVisible: (widget?: Widget) => this.isSpecEditor(widget),
-    });
-    registry.registerItem({
       id: "spexr.spec.editor.preview",
       command: SPEC_PREVIEW_TOGGLE_COMMAND.id,
       icon: "codicon codicon-open-preview",
       tooltip: "Toggle markdown preview",
-      priority: 2,
+      priority: 1,
       isVisible: (widget?: Widget) => this.isSpecEditor(widget),
     });
   }

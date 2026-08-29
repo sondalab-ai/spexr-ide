@@ -30,13 +30,12 @@ import {
   SPEC_RESOURCES_VIEW_ID,
 } from "./views/spec-resources-view-contribution.js";
 import { SpexrSpecResourcesWidget } from "./views/spec-resources-widget.js";
-import { SpexrSpecResourcesVisibilityContribution } from "./views/spec-resources-visibility-contribution.js";
 import {
   SpexrSpecLintViewContribution,
   SPEC_LINT_VIEW_ID,
 } from "./views/spec-lint-view-contribution.js";
 import { SpexrSpecLintWidget } from "./views/spec-lint-widget.js";
-import { SpexrSpecLintVisibilityContribution } from "./views/spec-lint-visibility-contribution.js";
+import { SpexrSpecCompanionPanelsContribution } from "./views/spec-companion-panels-contribution.js";
 import { SpexrSpecPreviewWidget, SPEC_PREVIEW_VIEW_ID } from "./views/spec-preview-widget.js";
 import { SpexrSpecPreviewContribution } from "./views/spec-preview-contribution.js";
 import { SpexrSpecExternalReloadContribution } from "./views/spec-external-reload-contribution.js";
@@ -136,8 +135,6 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       createWidget: () => ctx.container.get(SpexrSpecResourcesWidget),
     }))
     .inSingletonScope();
-  bind(SpexrSpecResourcesVisibilityContribution).toSelf().inSingletonScope();
-  bind(FrontendApplicationContribution).toService(SpexrSpecResourcesVisibilityContribution);
 
   bindViewContribution(bind, SpexrSpecLintViewContribution);
   bind(SpexrSpecLintWidget).toSelf();
@@ -147,8 +144,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       createWidget: () => ctx.container.get(SpexrSpecLintWidget),
     }))
     .inSingletonScope();
-  bind(SpexrSpecLintVisibilityContribution).toSelf().inSingletonScope();
-  bind(FrontendApplicationContribution).toService(SpexrSpecLintVisibilityContribution);
+  bind(SpexrSpecCompanionPanelsContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrSpecCompanionPanelsContribution);
 
   bind(SpexrSpecPreviewWidget).toSelf();
   bind(WidgetFactory)
