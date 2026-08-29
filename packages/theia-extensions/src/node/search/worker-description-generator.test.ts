@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { Container } from "@theia/core/shared/inversify";
 import { WorkerDescriptionGenerator, type WorkerLike } from "./worker-description-generator.js";
 import { DescriptionGeneratorToken, type WorkerRequest, type WorkerResponse } from "./description-format.js";
+import { DEFAULT_GENERATION_MODEL } from "../../common/generation-model.js";
+
+const OTHER_MODEL = { id: "onnx-community/Qwen3-1.7B-ONNX", dtype: "q4" } as const;
 
 /** Controllable fake worker: records requests, lets the test push responses. */
 class FakeWorker implements WorkerLike {
@@ -117,6 +120,66 @@ describe("WorkerDescriptionGenerator", () => {
     expect(await p).toBe("fixing auth");
   });
 
+  it("spawns the worker with the model most recently set", async () => {
+    const factory = vi.fn(() => new FakeWorker());
+    const gen = new WorkerDescriptionGenerator(factory);
+    gen.setModel(OTHER_MODEL);
+    void gen.generate("a.ts", "x");
+    expect(factory).toHaveBeenCalledWith(OTHER_MODEL);
+  });
+
+  it("restarts a running worker when the model changes", async () => {
+    const factory = vi.fn(() => new FakeWorker());
+    const gen = new WorkerDescriptionGenerator(factory);
+    void gen.generate("a.ts", "x");
+    const first = factory.mock.results[0]!.value as FakeWorker;
+
+    gen.setModel(OTHER_MODEL);
+    expect(first.terminated).toBe(true);
+
+    void gen.generate("b.ts", "y");
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(factory).toHaveBeenLastCalledWith(OTHER_MODEL);
+  });
+
+  it("leaves the running worker alone when the model does not change", () => {
+    const factory = vi.fn(() => new FakeWorker());
+    const gen = new WorkerDescriptionGenerator(factory);
+    void gen.generate("a.ts", "x");
+    gen.setModel(DEFAULT_GENERATION_MODEL);
+    expect((factory.mock.results[0]!.value as FakeWorker).terminated).toBe(false);
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves in-flight work when a model change tears the worker down", async () => {
+    const gen = new WorkerDescriptionGenerator(() => new FakeWorker());
+    const p = gen.generate("a.ts", "x");
+    gen.setModel(OTHER_MODEL);
+    expect(await p).toBeNull();
+  });
+
+  it("still respawns after a crash that follows a model change", async () => {
+    const factory = vi.fn(() => new FakeWorker());
+    const gen = new WorkerDescriptionGenerator(factory);
+    void gen.generate("a.ts", "x");
+    gen.setModel(OTHER_MODEL);
+    void gen.generate("b.ts", "y");
+    (factory.mock.results[1]!.value as FakeWorker).crash();
+
+    const p = gen.generate("c.ts", "z");
+    const third = factory.mock.results[2]!.value as FakeWorker;
+    third.emit({ id: third.requests[0]!.id, type: "done", text: "Ok." });
+    expect(await p).toBe("Ok.");
+  });
+
+  it("gives a model that disabled generation a fresh chance", () => {
+    const gen = new WorkerDescriptionGenerator(() => { throw new Error("spawn failed"); });
+    void gen.generate("a.ts", "x");
+    expect(gen.isAvailable()).toBe(false);
+    gen.setModel(OTHER_MODEL);
+    expect(gen.isAvailable()).toBe(true);
+  });
+
   it("resolves via inversify DI without binding the unmanaged factory", () => {
     const container = new Container();
     container.bind(DescriptionGeneratorToken).to(WorkerDescriptionGenerator);
@@ -128,15 +191,26 @@ describe("WorkerDescriptionGenerator", () => {
 describe("buildWorkerEnv", () => {
   it("strips inherited ELECTRON_RUN_AS_NODE for a genuine-Node child (regression: it forced the CPU provider)", async () => {
     const { buildWorkerEnv } = await import("./worker-description-generator.js");
-    const env = buildWorkerEnv({ ELECTRON_RUN_AS_NODE: "1", HOME: "/h" }, true);
+    const env = buildWorkerEnv(
+      { ELECTRON_RUN_AS_NODE: "1", HOME: "/h" },
+      true,
+      DEFAULT_GENERATION_MODEL,
+    );
     expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
     expect(env.HOME).toBe("/h");
     expect(env.SPEXR_MODELS_DIR).toBeTruthy();
   });
 
+  it("carries the model choice to the worker", async () => {
+    const { buildWorkerEnv } = await import("./worker-description-generator.js");
+    const env = buildWorkerEnv({}, true, OTHER_MODEL);
+    expect(env.SPEXR_GEN_MODEL).toBe(OTHER_MODEL.id);
+    expect(env.SPEXR_GEN_DTYPE).toBe(OTHER_MODEL.dtype);
+  });
+
   it("sets ELECTRON_RUN_AS_NODE when the child must run as Electron-as-node", async () => {
     const { buildWorkerEnv } = await import("./worker-description-generator.js");
-    const env = buildWorkerEnv({}, false);
+    const env = buildWorkerEnv({}, false, DEFAULT_GENERATION_MODEL);
     expect(env.ELECTRON_RUN_AS_NODE).toBe("1");
   });
 });

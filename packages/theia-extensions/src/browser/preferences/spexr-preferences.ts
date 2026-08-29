@@ -1,5 +1,9 @@
 import { injectable } from "@theia/core/shared/inversify";
 import type { PreferenceContribution, PreferenceSchema } from "@theia/core/lib/common/preferences/preference-schema";
+import {
+  DEFAULT_GENERATION_MODEL,
+  GENERATION_DTYPES,
+} from "../../common/generation-model.js";
 
 /**
  * Key for the Claude Code executable path preference.
@@ -46,6 +50,16 @@ export const SPEXR_SEARCH_AI_DESCRIPTIONS_PREFERENCE = "spexr.search.aiDescripti
  */
 export const SPEXR_SEARCH_GLOBAL_IGNORE_PROMPTED = "spexr.search.globalIgnore.prompted";
 
+/**
+ * Hugging Face repo id of the ONNX model used for local descriptions and
+ * summaries. Empty means the vendored default. Machine-scoped, not project:
+ * it is about what is on disk and what the machine can run.
+ */
+export const SPEXR_SEARCH_GEN_MODEL_PREFERENCE = "spexr.search.generationModel";
+
+/** Quantisation the generation model is loaded at. See the model's `onnx/` files. */
+export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDtype";
+
 const SpexrPreferencesSchema: PreferenceSchema = {
   properties: {
     [SPEXR_CLAUDE_EXECUTABLE_PREFERENCE]: {
@@ -89,6 +103,24 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "Generate AI file descriptions locally for search results. " +
         "Turn off to skip the local model and show heuristic descriptions only.",
+    },
+    [SPEXR_SEARCH_GEN_MODEL_PREFERENCE]: {
+      type: "string",
+      default: "",
+      description:
+        "Hugging Face repo id of the ONNX text-generation model used for local file " +
+        `descriptions and session summaries. Empty uses the built-in ${DEFAULT_GENERATION_MODEL.id}. ` +
+        "The model must already sit in the app's models directory — fetch it first with " +
+        "`SPEXR_GEN_MODEL=<id> pnpm fetch-model`, since the runtime never downloads at " +
+        "startup. Applies to descriptions only: the embedding model is fixed. User-scoped.",
+    },
+    [SPEXR_SEARCH_GEN_DTYPE_PREFERENCE]: {
+      type: "string",
+      enum: [...GENERATION_DTYPES],
+      default: DEFAULT_GENERATION_MODEL.dtype,
+      description:
+        "Quantisation the generation model is loaded at. Must match a file the model " +
+        "publishes under `onnx/` (e.g. `model_q4.onnx` for q4). User-scoped.",
     },
   },
 };

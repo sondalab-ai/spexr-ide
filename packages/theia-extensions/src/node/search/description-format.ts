@@ -1,12 +1,12 @@
 // Pure helpers + types shared by the description worker (which loads the model)
 // and the worker host (which does not). Kept free of @huggingface/transformers
 // so the host and its tests never pull the model runtime.
+import type { GenerationModelConfig } from "../../common/generation-model.js";
 
-// 1.5B (not 0.5B): on-demand descriptions are computed for only the top-N search
-// hits and streamed, so the ~2s/file (vs ~0.6s) is acceptable, and the quality gain
-// is large — the 1.5B grounds descriptions in the actual symbols/API instead of the
-// 0.5B's generic guesses. Model file is ~1.9GB q4 (delivery: see search-model-delivery).
-export const GEN_MODEL_ID = "onnx-community/Qwen2.5-Coder-1.5B-Instruct";
+// Model choice (and the reasoning behind the default) lives in
+// `common/generation-model.ts`, shared with the preference schema and the fetch
+// script. Re-exported here so the worker keeps one import for its constants.
+export { DEFAULT_GENERATION_MODEL } from "../../common/generation-model.js";
 export const MAX_NEW_TOKENS = 40;
 
 /**
@@ -90,6 +90,8 @@ export interface DescriptionGenerator {
   generate(relPath: string, content: string): Promise<string | null>;
   summarize(prompt: string, kind: "now" | "overview"): Promise<string | null>;
   isAvailable(): boolean;
+  /** Point generation at different weights; implementations restart on a change. */
+  setModel?(config: GenerationModelConfig): void;
   dispose?(): void;
 }
 

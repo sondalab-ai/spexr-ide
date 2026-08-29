@@ -1,3 +1,4 @@
+import type { GenerationModelConfig } from "./generation-model.js";
 export const SEARCH_SERVICE_PATH = "/services/spexr-search";
 
 /** One ranked search result. */
@@ -96,6 +97,12 @@ export interface SpexrSearchService {
    * while the workspace is `ready`. Cheap write-back; no-op if files already exist.
    */
   persistIfMissing(root: string): Promise<void>;
+  /**
+   * Point local description generation at different weights. Process-global, not
+   * root-scoped: one model process serves every workspace. Restarts the worker
+   * when the choice differs from what it is running.
+   */
+  setGenerationModel(config: GenerationModelConfig): Promise<void>;
   /** True if `.spexr/` is already ignored at the user's global git level. */
   isSpexrGloballyIgnored(): Promise<boolean>;
   /** Append `.spexr/` to the user's global git ignore; resolves true once it is present. */

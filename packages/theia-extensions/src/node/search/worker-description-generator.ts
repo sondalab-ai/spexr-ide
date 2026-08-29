@@ -1,6 +1,13 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { fork, execFileSync } from "node:child_process";
 import { resolveModelsDir, resolveWorkerPath } from "./models-dir.js";
+import {
+  DEFAULT_GENERATION_MODEL,
+  GEN_DTYPE_ENV,
+  GEN_MODEL_ENV,
+  sameGenerationModel,
+  type GenerationModelConfig,
+} from "../../common/generation-model.js";
 import type {
   DescriptionGenerator,
   WorkerRequest,
@@ -44,17 +51,28 @@ function resolveNodeBinary(): string | undefined {
  * it keys on `process.versions.electron`, which env injection cannot fake.)
  * Electron-as-node children need the flag set instead.
  */
-export function buildWorkerEnv(base: NodeJS.ProcessEnv, realNode: boolean): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...base, SPEXR_MODELS_DIR: resolveModelsDir() };
+export function buildWorkerEnv(
+  base: NodeJS.ProcessEnv,
+  realNode: boolean,
+  model: GenerationModelConfig,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...base,
+    SPEXR_MODELS_DIR: resolveModelsDir(),
+    [GEN_MODEL_ENV]: model.id,
+    [GEN_DTYPE_ENV]: model.dtype,
+  };
   if (realNode) delete env.ELECTRON_RUN_AS_NODE;
   else env.ELECTRON_RUN_AS_NODE = "1";
   return env;
 }
 
-function defaultWorkerFactory(): WorkerLike {
+function defaultWorkerFactory(model: GenerationModelConfig): WorkerLike {
   const node = resolveNodeBinary();
-  const env = buildWorkerEnv(process.env, !!node);
-  console.error(`[darkfactory] forking model worker via ${node ?? "electron-as-node"}`);
+  const env = buildWorkerEnv(process.env, !!node, model);
+  console.error(
+    `[darkfactory] forking model worker via ${node ?? "electron-as-node"} for ${model.id} (${model.dtype})`,
+  );
   const child = fork(resolveWorkerPath(), [], {
     ...(node ? { execPath: node } : {}),
     env,
@@ -92,8 +110,30 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
   private seq = 0;
   private readonly pending = new Map<number, Pending>();
 
+  /** Choice the next worker will be spawned with. */
+  private model: GenerationModelConfig = DEFAULT_GENERATION_MODEL;
+  /** Choice the *running* worker was spawned with, or undefined when none runs. */
+  private spawnedWith: GenerationModelConfig | undefined;
+
   // @unmanaged(): inversify must not try to inject this defaulted factory param.
-  constructor(@unmanaged() private readonly factory: () => WorkerLike = defaultWorkerFactory) {}
+  constructor(
+    @unmanaged()
+    private readonly factory: (model: GenerationModelConfig) => WorkerLike = defaultWorkerFactory,
+  ) {}
+
+  /**
+   * Choose the weights generation runs on. Compares against what the *running*
+   * worker was spawned with rather than the last value set, so a preference push
+   * that loses the race with a worker already starting still takes effect.
+   *
+   * A change clears the crash streak: different weights deserve a fresh chance,
+   * including after a model that could not load disabled generation.
+   */
+  setModel(config: GenerationModelConfig): void {
+    this.model = config;
+    if (this.spawnedWith && !sameGenerationModel(this.spawnedWith, config)) this.restart();
+    else if (this.failed) this.reset();
+  }
 
   isAvailable(): boolean {
     return !this.failed;
@@ -123,17 +163,46 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
     this.disposing = true;
     this.worker?.terminate();
     this.worker = undefined;
+    this.spawnedWith = undefined;
+  }
+
+  /**
+   * Tear the worker down so the next request respawns it on the current model.
+   *
+   * Deliberately not `dispose()`: that latches `disposing`, which would make
+   * every later crash invisible — in-flight promises would never resolve and the
+   * crash streak would stop counting. Here the flag is cleared synchronously,
+   * before the terminate-induced `exit` can be delivered.
+   */
+  private restart(): void {
+    this.disposing = true;
+    try {
+      this.worker?.terminate();
+    } finally {
+      this.disposing = false;
+    }
+    for (const entry of this.pending.values()) entry.resolve(null);
+    this.pending.clear();
+    this.reset();
+  }
+
+  private reset(): void {
+    this.worker = undefined;
+    this.spawnedWith = undefined;
+    this.crashes = 0;
+    this.failed = false;
   }
 
   private ensureWorker(): WorkerLike | undefined {
     if (this.failed) return undefined;
     if (!this.worker) {
       try {
-        const worker = this.factory();
+        const worker = this.factory(this.model);
         worker.on("message", (msg: WorkerResponse) => this.onMessage(msg));
         worker.on("error", (err) => this.onCrash("error", err));
         worker.on("exit", (code) => this.onCrash("exit", code));
         this.worker = worker;
+        this.spawnedWith = this.model;
         console.error("[darkfactory] description worker started");
       } catch (err) {
         console.error("[darkfactory] description worker failed to spawn:", err);
@@ -169,6 +238,7 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
     for (const entry of this.pending.values()) entry.resolve(null);
     this.pending.clear();
     this.worker = undefined;
+    this.spawnedWith = undefined;
     if (this.crashes >= MAX_CONSECUTIVE_CRASHES) {
       console.error("[darkfactory] too many description-worker crashes; disabling local model");
       this.failed = true;
@@ -180,5 +250,6 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
     for (const entry of this.pending.values()) entry.resolve(null);
     this.pending.clear();
     this.worker = undefined;
+    this.spawnedWith = undefined;
   }
 }

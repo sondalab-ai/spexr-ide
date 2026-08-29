@@ -10,10 +10,12 @@
 // Isolating the model in its own process keeps the backend doing zero native
 // work, so the connection stays healthy. The intra-op pool is still capped (see
 // getPipe) to leave cores for the rest of the machine.
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { cpus } from "node:os";
 import { env, pipeline } from "@huggingface/transformers";
+import { resolveGenerationModel } from "../../common/generation-model.js";
 import {
-  GEN_MODEL_ID,
   MAX_NEW_TOKENS,
   DESCRIPTION_SYSTEM_PROMPT,
   SUMMARY_MAX_NEW_TOKENS,
@@ -26,6 +28,7 @@ import {
 } from "./description-format.js";
 
 const modelsDir: string = process.env.SPEXR_MODELS_DIR ?? "";
+const model = resolveGenerationModel(process.env);
 
 // Surface JS-level crashes in the backend output (the host only sees the exit).
 process.on("uncaughtException", (err) => {
@@ -68,8 +71,8 @@ const INTRA_OP_THREADS = Math.max(1, Math.floor(cpus().length / 2));
 const PREFER_GPU = process.versions.electron === undefined;
 
 function loadPipe(device: "webgpu" | "cpu"): Promise<TextGenPipeline> {
-  return pipeline("text-generation", GEN_MODEL_ID, {
-    dtype: "q4",
+  return pipeline("text-generation", model.id, {
+    dtype: model.dtype,
     device,
     // intraOpNumThreads bounds the CPU pool; ignored by the WebGPU provider.
     session_options: { intraOpNumThreads: INTRA_OP_THREADS, interOpNumThreads: 1 },
@@ -79,6 +82,14 @@ function loadPipe(device: "webgpu" | "cpu"): Promise<TextGenPipeline> {
 async function buildPipe(): Promise<TextGenPipeline> {
   env.allowRemoteModels = false;
   env.localModelPath = modelsDir;
+  // Remote loading is off, so a model that was never fetched fails deep inside
+  // the runtime with a file-not-found. Say what is actually wrong instead.
+  if (!existsSync(join(modelsDir, model.id))) {
+    throw new Error(
+      `Model "${model.id}" is not in ${modelsDir}. Fetch it first: ` +
+        `SPEXR_GEN_MODEL=${model.id} SPEXR_GEN_DTYPE=${model.dtype} pnpm fetch-model`,
+    );
+  }
   const t0 = Date.now();
   if (PREFER_GPU) {
     try {

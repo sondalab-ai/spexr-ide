@@ -6,6 +6,7 @@ import type {
   IndexStatus,
   DescriptionJobStatus,
 } from "../../common/search-protocol.js";
+import type { GenerationModelConfig } from "../../common/generation-model.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Embedder as EmbedderType } from "./embedding-model.js";
@@ -55,6 +56,10 @@ export class SpexrSearchBackendService implements SpexrSearchService {
   /** Wired by the RPC connection handler so the backend can stream to the frontend. */
   setClient(client: SpexrSearchClient | undefined): void {
     this.client = client;
+  }
+
+  async setGenerationModel(config: GenerationModelConfig): Promise<void> {
+    this.generator.setModel?.(config);
   }
 
   private getOrCreate(root: string): Workspace {

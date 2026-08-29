@@ -3,6 +3,16 @@ import { env, pipeline, type FeatureExtractionPipeline } from "@huggingface/tran
 import { resolveModelsDir } from "./models-dir.js";
 
 export const EMBEDDING_DIM = 384;
+
+/**
+ * Deliberately NOT user-configurable, unlike the generation model
+ * (`common/generation-model.ts`). `EMBEDDING_DIM` is a compile-time constant and
+ * the vectors this encoder produced are persisted under `.spexr/`, gated by
+ * `INDEX_VERSION` rather than by model id — so a different encoder would be
+ * scored against an index that still looks valid, throwing in `vector-math` at
+ * best and returning meaningless similarities at worst. Changing it means
+ * bumping `INDEX_VERSION` and forcing a full reindex.
+ */
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
 /** Produces sentence embeddings for a batch of texts. */

@@ -80,6 +80,7 @@ import {
 } from "./search/smart-search-contribution.js";
 import { SmartSearchWidget } from "./search/smart-search-widget.js";
 import { SpexrSearchServiceProxy, SEARCH_SERVICE_PATH } from "./search/smart-search-service.js";
+import { SpexrGenerationModelContribution } from "./search/generation-model-contribution.js";
 import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/smart-search-client.js";
 import { DescriptionJobStatusBarContribution } from "./search/description-job-status-bar-contribution.js";
 import { SpexrDarkfactoryWidget } from "./darkfactory/darkfactory-wall-widget.js";
@@ -281,6 +282,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       return connection.createProxy(SEARCH_SERVICE_PATH, client);
     })
     .inSingletonScope();
+  bind(SpexrGenerationModelContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrGenerationModelContribution);
   bindSmartSearchWidgetFactory(bind);
   bind(WidgetFactory)
     .toDynamicValue((ctx) => ({
