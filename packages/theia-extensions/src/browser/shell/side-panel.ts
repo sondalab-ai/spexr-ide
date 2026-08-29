@@ -1,4 +1,13 @@
-import type { ApplicationShell } from "@theia/core/lib/browser";
+/**
+ * The part of Theia's `ApplicationShell` these helpers actually touch.
+ *
+ * Structural rather than nominal so callers can be unit-tested with a plain
+ * object — importing `ApplicationShell` as a value drags in Lumino's DOM code.
+ */
+export interface SidePanelShell {
+  readonly leftPanelHandler: unknown;
+  readonly rightPanelHandler: unknown;
+}
 
 /** Minimum width (px) for the left side panel that hosts the agent terminal. */
 export const MIN_LEFT_PANEL_WIDTH = 480;
@@ -26,33 +35,31 @@ interface SidePanelHandlerLike {
  * @param shell  The application shell.
  * @param side   Which side panel to expand.
  * @param min    Minimum width in pixels to enforce.
+ * @returns Resolves once the expansion has settled, so callers that later read
+ *   the panel's expansion state do not observe the mid-animation value.
  */
-export function expandSidePanelWithMinWidth(
-  shell: ApplicationShell,
+export async function expandSidePanelWithMinWidth(
+  shell: SidePanelShell,
   side: PanelSide,
   min: number,
-): void {
+): Promise<void> {
   const raw = side === "left" ? shell.leftPanelHandler : shell.rightPanelHandler;
   const handler = raw as unknown as SidePanelHandlerLike | undefined;
   if (typeof handler?.expand !== "function") return;
   handler.expand();
-  const enforce = (): void => {
-    const size = handler.getPanelSize?.();
-    if (typeof size !== "number" || size < min) {
-      handler.resize?.(min);
-    }
-  };
-  const pending = handler.state?.pendingUpdate;
-  if (pending) void pending.then(enforce);
-  else enforce();
+  await handler.state?.pendingUpdate;
+  const size = handler.getPanelSize?.();
+  if (typeof size !== "number" || size < min) {
+    handler.resize?.(min);
+  }
 }
 
 /** Expand the left side panel and enforce {@link MIN_LEFT_PANEL_WIDTH}. */
-export function expandLeftPanelWithMinWidth(shell: ApplicationShell): void {
-  expandSidePanelWithMinWidth(shell, "left", MIN_LEFT_PANEL_WIDTH);
+export function expandLeftPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
+  return expandSidePanelWithMinWidth(shell, "left", MIN_LEFT_PANEL_WIDTH);
 }
 
 /** Expand the right side panel and enforce {@link MIN_RIGHT_PANEL_WIDTH}. */
-export function expandRightPanelWithMinWidth(shell: ApplicationShell): void {
-  expandSidePanelWithMinWidth(shell, "right", MIN_RIGHT_PANEL_WIDTH);
+export function expandRightPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
+  return expandSidePanelWithMinWidth(shell, "right", MIN_RIGHT_PANEL_WIDTH);
 }

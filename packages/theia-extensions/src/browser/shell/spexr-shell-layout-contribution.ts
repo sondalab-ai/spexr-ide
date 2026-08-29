@@ -12,7 +12,8 @@ import { SpexrExpertsViewContribution } from "../views/experts-view-contribution
 import { SpexrWelcomeViewContribution, WELCOME_VIEW_ID } from "../views/welcome-view-contribution.js";
 import { SPEC_VIEW_ID } from "../views/spec-view-contribution.js";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
-import { expandLeftPanelWithMinWidth, expandRightPanelWithMinWidth } from "./side-panel.js";
+import { expandLeftPanelWithMinWidth } from "./side-panel.js";
+import { SpexrDarkfactorySidebarVisibilityContribution } from "../darkfactory/darkfactory-sidebar-visibility-contribution.js";
 import { SpexrRevealOnRestore, type RevealOnRestoreView } from "./reveal-on-restore.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
@@ -57,6 +58,9 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   @multiInject(SpexrRevealOnRestore)
   private readonly revealOnRestore!: RevealOnRestoreView[];
 
+  @inject(SpexrDarkfactorySidebarVisibilityContribution)
+  private readonly darkfactorySidebar!: SpexrDarkfactorySidebarVisibilityContribution;
+
   onStart(app: FrontendApplication): void {
     void app;
     this.setupTabPinning();
@@ -87,7 +91,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       await this.revealRegisteredDefaults();
       if (!alreadyConfigured) await this.openTerminal();
       this.expandLeftPanel();
-      expandRightPanelWithMinWidth(this.shell);
+      await this.darkfactorySidebar.syncRightPanel(true);
     } catch (err) {
       console.error("[spexr] onDidInitializeLayout error", err);
     }
@@ -150,7 +154,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       await this.openSideViews();
       await this.openTerminal();
       this.expandLeftPanel();
-      expandRightPanelWithMinWidth(this.shell);
+      await this.darkfactorySidebar.syncRightPanel(true);
     } catch (err) {
       console.error("[spexr] applyDefaultLayout error", err);
     }

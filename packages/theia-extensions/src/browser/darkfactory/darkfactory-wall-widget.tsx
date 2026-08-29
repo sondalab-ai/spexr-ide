@@ -8,6 +8,7 @@ import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { sortTiles } from "./darkfactory-format.js";
 import { AgentTileCard, AgentCondensedRow, AgentPinnedCard } from "./agent-tile.js";
+import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
@@ -61,7 +62,7 @@ function shouldRefresh(tile: AgentTile, cur: SummaryState, now: number): boolean
 /** Machine-wide monitoring wall of every agent session (Claude Code, opencode). */
 @injectable()
 export class SpexrDarkfactoryWidget extends ReactWidget {
-  static readonly ID = "spexr.view.darkfactory";
+  static readonly ID = DARKFACTORY_VIEW_ID;
 
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;

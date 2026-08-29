@@ -92,6 +92,7 @@ import {
   SpexrDarkfactoryClientToken,
 } from "./darkfactory/darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory/darkfactory-terminal-manager.js";
+import { SpexrDarkfactorySidebarVisibilityContribution } from "./darkfactory/darkfactory-sidebar-visibility-contribution.js";
 
 /**
  * Frontend contributions for SPEXR. Theia handles DI via Inversify and
@@ -301,6 +302,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       createWidget: () => ctx.container.get(SpexrDarkfactoryWidget),
     }))
     .inSingletonScope();
+  bind(SpexrDarkfactorySidebarVisibilityContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrDarkfactorySidebarVisibilityContribution);
   bind(SpexrDarkfactoryTerminalManager).toSelf().inSingletonScope();
   bind(SpexrDarkfactoryClientDispatcher).toSelf().inSingletonScope();
   bind(SpexrDarkfactoryClientToken).toService(SpexrDarkfactoryClientDispatcher);
