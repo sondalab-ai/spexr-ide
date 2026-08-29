@@ -285,6 +285,10 @@ function lintSections(
 function lintAcBullets(bullets: readonly AcBullet[], out: SpecLintFinding[]): void {
   const seen = new Map<string, number>();
   const seqByPrefix = new Map<string, number>();
+  // Every id up front, so a gap can name where the missing criterion actually is
+  // instead of describing a position the reader has to reconstruct.
+  const lineById = new Map<string, number>();
+  for (const b of bullets) if (b.id && !lineById.has(b.id)) lineById.set(b.id, b.line);
 
   for (const b of bullets) {
     if (!b.id) {
@@ -325,7 +329,7 @@ function lintAcBullets(bullets: readonly AcBullet[], out: SpecLintFinding[]): vo
           severity: "warn",
           section: "Acceptance Criteria",
           message: `Non-sequential id ${b.id} (expected ${prefix}-${expected}).`,
-          suggestion: `Either renumber this criterion to ${prefix}-${expected}, or move it to where ${prefix}-${expected} belongs — then check the ids after it are still contiguous.`,
+          suggestion: sequenceSuggestion(prefix, num, expected, lineById),
           line: b.line,
         });
       }
@@ -417,6 +421,40 @@ function count(text: string, char: string): number {
   let n = 0;
   for (const c of text) if (c === char) n++;
   return n;
+}
+
+/**
+ * How to repair a break in the numbering.
+ *
+ * The expected number is positional — the sequence counter's next value — so it
+ * names a real criterion only sometimes. Never tell the reader to "move it to
+ * where AC-23 belongs" when AC-23 does not exist: that instruction has no
+ * referent, and an agent asked to follow it stalls looking for the missing text.
+ *
+ * Two different defects hide behind one message:
+ * - the id runs ahead (a gap) — the criterion that should fill it may be
+ *   declared further down, in which case saying where is the whole fix;
+ * - the id runs behind (out of order) — the bullet sits in the wrong place, and
+ *   the fix is stated against its own neighbour, not against the expected number.
+ */
+function sequenceSuggestion(
+  prefix: string,
+  num: number,
+  expected: number,
+  lineById: ReadonlyMap<string, number>,
+): string {
+  const expectedId = `${prefix}-${expected}`;
+  if (num > expected) {
+    const declaredAt = lineById.get(expectedId);
+    return declaredAt === undefined
+      ? `Renumber this criterion to ${expectedId}, or add the criterion the numbering skips.`
+      : `${expectedId} is declared further down at L${declaredAt} — move that criterion up to here.`;
+  }
+  const predecessor = `${prefix}-${num - 1}`;
+  const predecessorAt = num > 1 ? lineById.get(predecessor) : undefined;
+  return predecessorAt === undefined
+    ? `Renumber this criterion to ${expectedId} to leave it where it is.`
+    : `Move it back to follow ${predecessor} (L${predecessorAt}), or renumber it to ${expectedId} to leave it where it is.`;
 }
 
 /** An AC is vague when it is short and carries no verifiable-predicate signal. */

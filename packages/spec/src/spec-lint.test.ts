@@ -30,6 +30,11 @@ Some notes.
 
 const OPTS = { filename: "0010-sample.md" } as const;
 
+/** 1-based line of the first row containing `needle`, so expectations track the fixture. */
+function lineOf(raw: string, needle: string): number {
+  return raw.split("\n").findIndex((l) => l.includes(needle)) + 1;
+}
+
 function has(
   findings: readonly SpecLintFinding[],
   severity: SpecLintSeverity,
@@ -192,6 +197,50 @@ describe("lintSpec", () => {
       "- **AC-1 Registry.** `harness-registry.ts` exports\n  `installedHarnesses`, and returns the active harness.",
     );
     expect(lintSpec(raw, OPTS).findings).toEqual([]);
+  });
+
+  it("names where a skipped id is actually declared, instead of a position", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      [
+        "- **AC-1** The panel renders findings grouped by severity.",
+        "- **AC-3** The panel shows a neutral state when no spec is open.",
+        "- **AC-2** The panel reveals the line of a finding when clicked.",
+      ].join("\n"),
+    );
+    const findings = lintSpec(raw, OPTS).findings.filter((f) => /non-sequential/i.test(f.message));
+    expect(findings[0]!.suggestion).toBe(
+      `AC-2 is declared further down at L${lineOf(raw, "**AC-2**")} — move that criterion up to here.`,
+    );
+  });
+
+  it("states an out-of-order fix against its own neighbour, never an id that does not exist", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      [
+        "- **AC-1** The panel renders findings grouped by severity.",
+        "- **AC-2** The panel reveals the line of a finding when clicked.",
+        "- **AC-4** The panel refreshes when the editor content changes.",
+        "- **AC-3** The panel shows a neutral state when no spec is open.",
+      ].join("\n"),
+    );
+    const findings = lintSpec(raw, OPTS).findings.filter((f) => /non-sequential/i.test(f.message));
+    const last = findings.at(-1)!;
+    expect(last.message).toBe("Non-sequential id AC-3 (expected AC-5).");
+    expect(last.suggestion).toBe(
+      `Move it back to follow AC-2 (L${lineOf(raw, "**AC-2**")}), or renumber it to AC-5 to leave it where it is.`,
+    );
+  });
+
+  it("falls back to a renumber when the skipped criterion is nowhere in the file", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      "- **AC-3** The panel renders findings grouped by severity.",
+    );
+    const findings = lintSpec(raw, OPTS).findings.filter((f) => /non-sequential/i.test(f.message));
+    expect(findings[0]!.suggestion).toBe(
+      "Renumber this criterion to AC-1, or add the criterion the numbering skips.",
+    );
   });
 
   it("flags a vague AC as info", () => {
