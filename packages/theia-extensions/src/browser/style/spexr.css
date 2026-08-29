@@ -2498,6 +2498,50 @@ code {
 /* Only the first button takes the free space: several autos would spread them apart. */
 .spexr-df-pinned__actions .spexr-button:first-of-type { margin-left: auto; }
 
+/*
+ * One project's sessions, under a header that carries the identity every member
+ * would otherwise repeat. The accent is the project's, so the whole group reads
+ * as one block.
+ */
+.spexr-df-group { display: flex; flex-direction: column; gap: var(--sl-space-3); min-width: 0; }
+.spexr-df-group[data-collapsed="true"] { gap: 0; }
+.spexr-df-group__bar {
+  display: flex; align-items: center; gap: var(--sl-space-2); min-width: 0;
+  padding-bottom: var(--sl-space-2);
+  border-bottom: 1px solid var(--sl-border-subtle);
+}
+.spexr-df-group__toggle {
+  display: flex; align-items: center; justify-content: center; flex: none;
+  width: 18px; height: 18px; padding: 0;
+  background: transparent; border: none; border-radius: var(--sl-radius-sm);
+  color: var(--sl-text-muted); cursor: pointer;
+}
+.spexr-df-group__toggle:hover {
+  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary);
+}
+.spexr-df-group__bar[data-state="working"] .spexr-df-card__led {
+  background: var(--tile-accent); animation: spexr-df-pulse 1.6s ease-in-out infinite;
+}
+.spexr-df-group__bar[data-state="done"] .spexr-df-card__led { background: var(--sl-border-default); }
+.spexr-df-group__name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--sl-text-sm); font-weight: 600; color: var(--sl-text-primary);
+}
+.spexr-df-group__count {
+  margin-left: auto; flex: none;
+  font-size: var(--sl-text-xs); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--sl-text-muted);
+}
+.spexr-df-group__attn {
+  flex: none;
+  font-size: var(--sl-text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.spexr-df-group__attn[data-kind="attn"] { color: var(--tile-accent); }
+.spexr-df-group__attn[data-kind="error"] { color: var(--sl-status-danger, #e5484d); }
+/* The folder action reveals on card hover; in a header there is no card to hover. */
+.spexr-df-group__bar .spexr-df-card__open { opacity: 0; }
+.spexr-df-group__bar:hover .spexr-df-card__open { opacity: 1; }
+
 /* Top-priority sessions: 3 wide cards per row. */
 .spexr-df-grid {
   display: grid;

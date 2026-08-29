@@ -7,16 +7,26 @@ import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
-import { sortTiles } from "./darkfactory-format.js";
-import { AgentTileCard, AgentCondensedRow, AgentPinnedCard } from "./agent-tile.js";
+import { sortTiles, groupTiles, summaryTargets } from "./darkfactory-format.js";
+import type { TileGroup } from "./darkfactory-format.js";
+import { AgentTileCard, AgentCondensedRow, AgentPinnedCard, AgentGroupHeader } from "./agent-tile.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
 
 /**
- * How many top sessions get an AI summary. Each summary is a ~13s local-model
- * inference (in a separate worker process), so keep this small.
+ * How many project groups render their sessions as full cards. Past this the
+ * remaining projects are still listed, but condensed — the card budget is spent
+ * per project rather than globally, so a project is never split between the grid
+ * and the tail.
+ */
+const GROUP_CARD_LIMIT = 4;
+
+/**
+ * How many top sessions get an AI summary, before the per-group heads are added
+ * (see {@link summaryTargets}). Each summary is a ~13s local-model inference (in a
+ * separate worker process), so keep this small.
  */
 const SUMMARY_EAGER = 5;
 
@@ -78,6 +88,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   /** Sessions awaiting a summary; drained one inference at a time by {@link drainSummaries}. */
   private readonly summaryQueue: string[] = [];
   private summaryRunning = false;
+
+  /** Project paths the user has shut; groups are open by default and this is not persisted. */
+  private readonly collapsedGroups = new Set<string>();
 
   /** The session lifted into the expanded pinned card. */
   private pinnedSessionId: string | undefined;
@@ -178,6 +191,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   private unpin(): void {
+    // The session drops back into its group — open it, or the tile just vanishes.
+    const tile = this.tiles.find((t) => t.sessionId === this.pinnedSessionId);
+    if (tile) this.collapsedGroups.delete(tile.projectPath);
     this.clearPinned();
     this.pinnedSessionId = undefined;
     this.pinnedEvents = [];
@@ -213,19 +229,32 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const id of this.summaries.keys()) {
       if (!live.has(id)) this.summaries.delete(id);
     }
+    const liveProjects = new Set(tiles.map((t) => t.projectPath));
+    for (const path of this.collapsedGroups) {
+      if (!liveProjects.has(path)) this.collapsedGroups.delete(path);
+    }
     // Drop the pinned card if its session is gone (stops the orphaned follow).
     if (this.pinnedSessionId && !live.has(this.pinnedSessionId)) this.unpin();
     // First compute for a newly-seen session; then keep a WORKING session's summary
     // fresh, but only when the agent has meaningfully moved (see shouldRefresh).
     // Idle/done sessions are computed once.
     const now = Date.now();
-    for (const t of sortTiles(tiles).slice(0, SUMMARY_EAGER)) {
-      const cur = this.summaries.get(t.sessionId);
+    const byId = new Map(tiles.map((t) => [t.sessionId, t]));
+    const targets = summaryTargets(
+      tiles,
+      this.projectSwitch.currentProjectPath(),
+      SUMMARY_EAGER,
+      GROUP_CARD_LIMIT,
+    );
+    for (const id of targets) {
+      const t = byId.get(id);
+      if (!t) continue;
+      const cur = this.summaries.get(id);
       if (!cur) {
         this.enqueueSummary(t, true);
         continue;
       }
-      if (shouldRefresh(t, cur, now) && !this.summaryQueue.includes(t.sessionId)) {
+      if (shouldRefresh(t, cur, now) && !this.summaryQueue.includes(id)) {
         this.enqueueSummary(t, false);
       }
     }
@@ -267,6 +296,85 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     }
   }
 
+  /** Open or shut one project group. */
+  private toggleGroup(projectPath: string): void {
+    if (this.collapsedGroups.has(projectPath)) this.collapsedGroups.delete(projectPath);
+    else this.collapsedGroups.add(projectPath);
+    this.update();
+  }
+
+  private renderCard(tile: AgentTile, now: number, showProject: boolean): React.ReactNode {
+    return (
+      <AgentTileCard
+        key={tile.sessionId}
+        tile={tile}
+        now={now}
+        summary={this.summaries.get(tile.sessionId)}
+        onOpen={(t) => this.pin(t)}
+        onOpenProject={(t) => this.openProject(t)}
+        isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
+        showProject={showProject}
+      />
+    );
+  }
+
+  private renderRow(tile: AgentTile, now: number, showProject: boolean): React.ReactNode {
+    return (
+      <AgentCondensedRow
+        key={tile.sessionId}
+        tile={tile}
+        now={now}
+        onOpen={(t) => this.pin(t)}
+        isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
+        showProject={showProject}
+      />
+    );
+  }
+
+  /** Ungrouped wall: one project's sessions need no headers to tell them apart. */
+  private renderFlat(tiles: AgentTile[], now: number): React.ReactNode {
+    const condensed = tiles.slice(CARD_LIMIT);
+    return (
+      <>
+        <div className="spexr-df-grid">{tiles.slice(0, CARD_LIMIT).map((t) => this.renderCard(t, now, true))}</div>
+        {condensed.length > 0 && (
+          <div className="spexr-df-condensed">
+            <div className="spexr-df-condensed__label">{condensed.length} more</div>
+            {condensed.map((t) => this.renderRow(t, now, true))}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /**
+   * One project's sessions under their own header. Groups past
+   * {@link GROUP_CARD_LIMIT} stay visible as condensed rows rather than dropping
+   * to a nameless tail.
+   */
+  private renderGroup(group: TileGroup, index: number, now: number): React.ReactNode {
+    const collapsed = this.collapsedGroups.has(group.projectPath);
+    const asCards = index < GROUP_CARD_LIMIT;
+    const cards = asCards ? group.tiles.slice(0, CARD_LIMIT) : [];
+    const condensed = asCards ? group.tiles.slice(CARD_LIMIT) : group.tiles;
+    return (
+      <section className="spexr-df-group" key={group.projectPath} data-collapsed={collapsed}>
+        <AgentGroupHeader
+          group={group}
+          collapsed={collapsed}
+          onToggle={(path) => this.toggleGroup(path)}
+          onOpenProject={(t) => this.openProject(t)}
+        />
+        {!collapsed && cards.length > 0 && (
+          <div className="spexr-df-grid">{cards.map((t) => this.renderCard(t, now, false))}</div>
+        )}
+        {!collapsed && condensed.length > 0 && (
+          <div className="spexr-df-condensed">{condensed.map((t) => this.renderRow(t, now, false))}</div>
+        )}
+      </section>
+    );
+  }
+
   protected render(): React.ReactNode {
     if (!this.loaded) {
       return (
@@ -283,16 +391,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         <div className="spexr-df-empty">No agent sessions found. Start a Claude or opencode session to see it here.</div>
       );
     }
-    const pin = (tile: AgentTile): void => this.pin(tile);
-    const openProject = (tile: AgentTile): void => this.openProject(tile);
-    const isCurrent = (tile: AgentTile): boolean => this.projectSwitch.isCurrentProject(tile.projectPath);
     // The pinned session is lifted out of the grid; the rest keep their order below.
     const pinned = this.pinnedSessionId
       ? tiles.find((t) => t.sessionId === this.pinnedSessionId)
       : undefined;
     const rest = pinned ? tiles.filter((t) => t.sessionId !== pinned.sessionId) : tiles;
-    const cards = rest.slice(0, CARD_LIMIT);
-    const condensed = rest.slice(CARD_LIMIT);
+    // Headers earn their space only once there is more than one project to tell apart.
+    const groups = groupTiles(rest, this.projectSwitch.currentProjectPath());
     return (
       <div className="spexr-df-root">
         {pinned && (
@@ -304,31 +409,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             terminal={this.pinnedTerminal}
             onClose={() => this.unpin()}
             onFork={(t) => this.forkTakeover(t)}
-            onOpenProject={openProject}
-            isCurrent={isCurrent(pinned)}
+            onOpenProject={(t) => this.openProject(t)}
+            isCurrent={this.projectSwitch.isCurrentProject(pinned.projectPath)}
           />
         )}
-        <div className="spexr-df-grid">
-          {cards.map((t) => (
-            <AgentTileCard
-              key={t.sessionId}
-              tile={t}
-              now={now}
-              summary={this.summaries.get(t.sessionId)}
-              onOpen={pin}
-              onOpenProject={openProject}
-              isCurrent={isCurrent(t)}
-            />
-          ))}
-        </div>
-        {condensed.length > 0 && (
-          <div className="spexr-df-condensed">
-            <div className="spexr-df-condensed__label">{condensed.length} more</div>
-            {condensed.map((t) => (
-              <AgentCondensedRow key={t.sessionId} tile={t} now={now} onOpen={pin} isCurrent={isCurrent(t)} />
-            ))}
-          </div>
-        )}
+        {groups.length > 1
+          ? groups.map((g, i) => this.renderGroup(g, i, now))
+          : this.renderFlat(rest, now)}
       </div>
     );
   }

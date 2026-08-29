@@ -4,6 +4,7 @@ import { MessageLoop } from "@theia/core/shared/@lumino/messaging";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { AgentSummary, AgentTile, FollowEvent } from "../../common/darkfactory-protocol.js";
 import { stateLabel, relativeTime } from "./darkfactory-format.js";
+import type { TileGroup } from "./darkfactory-format.js";
 
 /**
  * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
@@ -129,6 +130,60 @@ function OpenProjectAction(props: {
   );
 }
 
+/**
+ * Header for one project's sessions. Carries the identity the member tiles no
+ * longer need to repeat, plus the group's aggregate state, and toggles the group
+ * open or shut.
+ */
+export function AgentGroupHeader(props: {
+  group: TileGroup;
+  collapsed: boolean;
+  onToggle: (projectPath: string) => void;
+  onOpenProject: (t: AgentTile) => void;
+}): React.ReactElement {
+  const { group, collapsed, onToggle, onOpenProject } = props;
+  const head = group.tiles[0]!;
+  // Same precedence as a tile's own status: a failure outranks a wait, and the two
+  // keep the wall's colours apart — accent for waiting, danger for failed.
+  const failed = group.tiles.filter((t) => t.lastFailed).length;
+  const waiting = group.tiles.filter((t) => !t.lastFailed && t.needsYou).length;
+  const state = group.tiles.some((t) => t.state === "working") ? "working" : head.state;
+  return (
+    <header
+      className="spexr-df-group__bar"
+      data-state={state}
+      style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${group.accentId})` }}
+    >
+      <button
+        className="spexr-df-group__toggle"
+        aria-expanded={!collapsed}
+        title={collapsed ? "Expand this project" : "Collapse this project"}
+        onClick={() => onToggle(group.projectPath)}
+      >
+        <i className={`codicon codicon-chevron-${collapsed ? "right" : "down"}`} />
+      </button>
+      <span className="spexr-df-card__led" />
+      <span className="spexr-df-group__name" title={group.projectPath}>
+        {group.label}
+      </span>
+      {group.isCurrent ? <CurrentProjectChip /> : <OpenProjectAction tile={head} onOpenProject={onOpenProject} />}
+      <span className="spexr-df-group__count">
+        {group.tiles.length} {group.tiles.length === 1 ? "session" : "sessions"}
+      </span>
+      {waiting > 0 && (
+        <span className="spexr-df-group__attn" data-kind="attn">
+          {waiting} need you
+        </span>
+      )}
+      {failed > 0 && (
+        <span className="spexr-df-group__attn" data-kind="error">
+          {failed} failed
+        </span>
+      )}
+    </header>
+  );
+}
+
 /** Full agent card: goal (anchor, expandable), then AI now/overview lines, then branch. */
 export function AgentTileCard(props: {
   tile: AgentTile;
@@ -138,8 +193,10 @@ export function AgentTileCard(props: {
   onOpenProject: (t: AgentTile) => void;
   /** True when this tile's project is the one loaded in the window. */
   isCurrent: boolean;
+  /** False inside a project group, whose header already names the project. */
+  showProject: boolean;
 }): React.ReactElement {
-  const { tile, now, summary, onOpen, onOpenProject, isCurrent } = props;
+  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject } = props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
   const primary = capitalize(tile.goal || tile.actionLine);
@@ -157,8 +214,12 @@ export function AgentTileCard(props: {
     >
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
-        <span className="spexr-df-card__project">{tile.projectName}</span>
-        {isCurrent ? <CurrentProjectChip /> : <OpenProjectAction tile={tile} onOpenProject={onOpenProject} />}
+        {showProject && (
+          <>
+            <span className="spexr-df-card__project">{tile.projectName}</span>
+            {isCurrent ? <CurrentProjectChip /> : <OpenProjectAction tile={tile} onOpenProject={onOpenProject} />}
+          </>
+        )}
         <span className="spexr-df-card__harness">{tile.harness}</span>
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
@@ -322,8 +383,10 @@ export function AgentCondensedRow(props: {
   onOpen: (t: AgentTile) => void;
   /** True when this tile's project is the one loaded in the window. */
   isCurrent: boolean;
+  /** False inside a project group, whose header already names the project. */
+  showProject: boolean;
 }): React.ReactElement {
-  const { tile, now, onOpen, isCurrent } = props;
+  const { tile, now, onOpen, isCurrent, showProject } = props;
   const status = statusOf(tile);
   return (
     <button
@@ -335,8 +398,12 @@ export function AgentCondensedRow(props: {
       title={`${tile.projectPath} · ${status.label}`}
     >
       <span className="spexr-df-row__led" />
-      <span className="spexr-df-row__project">{tile.projectName}</span>
-      {isCurrent && <CurrentProjectChip />}
+      {showProject && (
+        <>
+          <span className="spexr-df-row__project">{tile.projectName}</span>
+          {isCurrent && <CurrentProjectChip />}
+        </>
+      )}
       <span className="spexr-df-row__harness">{tile.harness}</span>
       <span className="spexr-df-row__action">{tile.goal || tile.actionLine}</span>
       {(tile.lastFailed || tile.needsYou) && (
