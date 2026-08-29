@@ -15,6 +15,7 @@ import {
   type SpecLintReport,
   type SpecLintSeverity,
 } from "@spexr/spec";
+import type { SpecLintFixFinding } from "@spexr/agent";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
 import { SPEC_LINT_VIEW_ID } from "./spec-lint-view-contribution.js";
 import { specsDir } from "../workspace-paths.js";
@@ -28,6 +29,8 @@ interface LintState {
   readonly specUri: string;
   readonly title: string;
   readonly report: SpecLintReport;
+  /** Buffer the report was computed from, so a finding can quote its line. */
+  readonly lines: readonly string[];
 }
 
 const SEVERITY_META: Record<
@@ -138,7 +141,12 @@ export class SpexrSpecLintWidget extends ReactWidget {
     if (this.knownSlugs.length === 0) await this.refreshKnownSlugs();
     const raw = widget.editor.document.getText();
     const report = lintSpec(raw, { filename: uri.path.base, knownSlugs: this.knownSlugs });
-    this.state = { specUri: uri.toString(), title: specTitle(raw, uri), report };
+    this.state = {
+      specUri: uri.toString(),
+      title: specTitle(raw, uri),
+      report,
+      lines: raw.split(/\r?\n/),
+    };
     const errors = report.findings.filter((f) => f.severity === "error").length;
     const warns = report.findings.filter((f) => f.severity === "warn").length;
     const count = errors + warns;
@@ -181,15 +189,18 @@ export class SpexrSpecLintWidget extends ReactWidget {
     });
   };
 
-  /** Hand the findings on screen to the agent so it can correct the spec. */
+  /**
+   * Hand the findings on screen to the agent so it can correct the spec, each
+   * carrying the source line it anchors to.
+   */
   private readonly handleFix = (): void => {
     const state = this.state;
     if (!state || state.report.findings.length === 0) return;
-    void this.commands.executeCommand(
-      SpexrCommands.SPEC_LINT_FIX.id,
-      state.specUri,
-      state.report.findings,
-    );
+    const findings: SpecLintFixFinding[] = state.report.findings.map((f) => {
+      const sourceLine = f.line === undefined ? undefined : state.lines[f.line - 1];
+      return { ...f, ...(sourceLine !== undefined ? { sourceLine } : {}) };
+    });
+    void this.commands.executeCommand(SpexrCommands.SPEC_LINT_FIX.id, state.specUri, findings);
   };
 
   protected override onActivateRequest(msg: Message): void {

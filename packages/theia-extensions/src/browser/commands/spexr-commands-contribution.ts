@@ -38,7 +38,6 @@ import {
   WORKFLOW_STEP_LABEL,
   WORKFLOW_STEP_ORDER,
   type DriftReport,
-  type SpecLintFinding,
   type WorkflowStep,
 } from "@spexr/spec";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
@@ -51,6 +50,7 @@ import {
   parseLinksFile,
   type ContextFileEntry,
   type ContextLink,
+  type SpecLintFixFinding,
 } from "@spexr/agent";
 import { serializeExpertFile } from "../views/experts-format.js";
 import { SpexrAgentServiceProxy } from "../agent/agent-service-proxy.js";
@@ -273,16 +273,17 @@ const RETROSPECTIVE_PROMPT = (slug: string, specBody: string): string =>
 const LINT_SEVERITIES: ReadonlySet<string> = new Set(["error", "warn", "info"]);
 
 /** Keep only well-formed findings out of raw command arguments. */
-function resolveLintFindings(raw: unknown): SpecLintFinding[] {
+function resolveLintFindings(raw: unknown): SpecLintFixFinding[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((entry): entry is SpecLintFinding => {
+  return raw.filter((entry): entry is SpecLintFixFinding => {
     if (!entry || typeof entry !== "object") return false;
-    const f = entry as Partial<SpecLintFinding>;
+    const f = entry as Partial<SpecLintFixFinding>;
     return (
       typeof f.severity === "string" &&
       LINT_SEVERITIES.has(f.severity) &&
       typeof f.section === "string" &&
-      typeof f.message === "string"
+      typeof f.message === "string" &&
+      (f.sourceLine === undefined || typeof f.sourceLine === "string")
     );
   });
 }
@@ -1226,7 +1227,7 @@ export class SpexrCommandsContribution
    */
   private async fixSpecLint(
     uri: URI | undefined,
-    findings: readonly SpecLintFinding[],
+    findings: readonly SpecLintFixFinding[],
   ): Promise<void> {
     if (!uri) {
       this.messages.warn("Fixing spec findings requires a spec file URI.");
@@ -1237,10 +1238,11 @@ export class SpexrCommandsContribution
       return;
     }
     try {
+      // The agent reads the file rather than a copy in the prompt, so unsaved
+      // edits have to reach disk first.
       await this.flushDirtyEditor(uri);
-      const content = await this.fileService.read(uri);
       const slug = uri.path.base.replace(/\.md$/, "");
-      const prompt = buildSpecLintFixPrompt({ slug, specBody: content.value, findings });
+      const prompt = buildSpecLintFixPrompt({ path: this.workspacePath(uri), findings });
       await this.claudeTerminal.ensureStarted();
       await this.sendAndSubmit(prompt);
       await this.claudeTerminal.reveal();
@@ -1750,6 +1752,11 @@ export class SpexrCommandsContribution
     } catch {
       return false;
     }
+  }
+
+  /** Workspace-relative path of `uri`, falling back to its filename. */
+  private workspacePath(uri: URI): string {
+    return this.workspaceRoot()?.relative(uri)?.toString() ?? uri.path.base;
   }
 
   private workspaceRoot(): URI | undefined {

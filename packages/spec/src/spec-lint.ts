@@ -292,6 +292,8 @@ function lintAcBullets(bullets: readonly AcBullet[], out: SpecLintFinding[]): vo
         severity: "warn",
         section: "Acceptance Criteria",
         message: "Acceptance criterion has no **AC-N** id.",
+        suggestion:
+          "Prefix it with `**AC-N**` (or `**AC-N Short title.**`), continuing the numbering of the criteria above.",
         line: b.line,
       });
       continue;
@@ -303,6 +305,7 @@ function lintAcBullets(bullets: readonly AcBullet[], out: SpecLintFinding[]): vo
         severity: "error",
         section: "Acceptance Criteria",
         message: `Duplicate id ${b.id} (first seen at L${firstAt}).`,
+        suggestion: "Give this criterion the next free id, then update every reference to it.",
         line: b.line,
       });
     } else {
@@ -322,6 +325,7 @@ function lintAcBullets(bullets: readonly AcBullet[], out: SpecLintFinding[]): vo
           severity: "warn",
           section: "Acceptance Criteria",
           message: `Non-sequential id ${b.id} (expected ${prefix}-${expected}).`,
+          suggestion: `Either renumber this criterion to ${prefix}-${expected}, or move it to where ${prefix}-${expected} belongs — then check the ids after it are still contiguous.`,
           line: b.line,
         });
       }

@@ -1,56 +1,50 @@
 import { describe, expect, it } from "vitest";
-import type { SpecLintFinding } from "@spexr/spec";
-import { buildSpecLintFixPrompt } from "./spec-lint-fix.js";
+import { buildSpecLintFixPrompt, type SpecLintFixFinding } from "./spec-lint-fix.js";
 
-const FINDINGS: readonly SpecLintFinding[] = [
+const FINDINGS: readonly SpecLintFixFinding[] = [
   {
     severity: "warn",
     section: "Acceptance Criteria",
     message: "Non-sequential id AC-20 (expected AC-19).",
+    suggestion: "Either renumber this criterion to AC-19, or move it to where AC-19 belongs.",
     line: 215,
+    sourceLine: "- **AC-20 Push channel.** `git-protocol.ts` exports",
   },
   {
     severity: "error",
     section: "Frontmatter",
     message: 'Invalid status "done".',
-    suggestion: "Use one of: draft, ready, in-progress.",
   },
 ];
 
-describe("buildSpecLintFixPrompt", () => {
-  it("lists every finding with its severity, anchor and suggestion", () => {
-    const prompt = buildSpecLintFixPrompt({
-      slug: "0014-git-hardening",
-      specBody: "## Goal\n\nHarden git.",
-      findings: FINDINGS,
-    });
-    expect(prompt).toContain("Findings (2):");
-    expect(prompt).toContain(
-      "- [warning] Acceptance Criteria L215: Non-sequential id AC-20 (expected AC-19).",
-    );
-    expect(prompt).toContain(
-      '- [error] Frontmatter: Invalid status "done". Suggested fix: Use one of: draft, ready, in-progress.',
-    );
-  });
+const PATH = "docs/specs/0014-git-hardening.md";
 
-  it("names the spec file and fences the task to it", () => {
-    const prompt = buildSpecLintFixPrompt({
-      slug: "0014-git-hardening",
-      specBody: "## Goal\n\nHarden git.",
-      findings: FINDINGS,
-    });
-    expect(prompt.startsWith("Fix the spec validation findings on `0014-git-hardening.md`.")).toBe(
-      true,
-    );
+describe("buildSpecLintFixPrompt", () => {
+  it("points the agent at the file instead of pasting its content", () => {
+    const prompt = buildSpecLintFixPrompt({ path: PATH, findings: FINDINGS });
+    expect(prompt.startsWith(`Fix the spec validation findings in \`${PATH}\`.`)).toBe(true);
+    expect(prompt).toContain("Read the file, then edit it in place.");
     expect(prompt).toContain("do not change code or tests");
   });
 
-  it("ends with the spec body after a separator", () => {
-    const prompt = buildSpecLintFixPrompt({
-      slug: "0014-git-hardening",
-      specBody: "## Goal\n\nHarden git.",
-      findings: FINDINGS,
-    });
-    expect(prompt.endsWith("\n---\n\n## Goal\n\nHarden git.")).toBe(true);
+  it("quotes the source line and the suggestion under each finding", () => {
+    const prompt = buildSpecLintFixPrompt({ path: PATH, findings: FINDINGS });
+    expect(prompt).toContain(
+      "1. [warning] Acceptance Criteria, line 215 — Non-sequential id AC-20 (expected AC-19).",
+    );
+    expect(prompt).toContain("   > - **AC-20 Push channel.** `git-protocol.ts` exports");
+    expect(prompt).toContain(
+      "   Suggested fix: Either renumber this criterion to AC-19, or move it to where AC-19 belongs.",
+    );
+  });
+
+  it("omits the anchor and quote for a finding that has neither", () => {
+    const prompt = buildSpecLintFixPrompt({ path: PATH, findings: FINDINGS });
+    expect(prompt).toContain('2. [error] Frontmatter — Invalid status "done".');
+    expect(prompt).not.toContain("Frontmatter, line");
+  });
+
+  it("counts the findings it lists", () => {
+    expect(buildSpecLintFixPrompt({ path: PATH, findings: FINDINGS })).toContain("Findings (2):");
   });
 });
