@@ -6,9 +6,15 @@
 @import "@spexr/ui-kit/themes/spexr-overrides.css";
 
 /* App shell */
-html,
+html[data-sl-theme],
 body {
-  background: var(--sl-bg-canvas);
+  /* `html` is qualified by the attribute on purpose: index.html carries an
+     inline <style> painting it dark before the bundle runs (see
+     `theia.generator.config.preloadTemplate`), and a body-positioned style beats
+     this one at equal specificity. The attribute lands exactly when the token
+     becomes valid, so the qualified rule takes over from the flash guard.
+     The literal fallback covers `body` in that same pre-theme window. */
+  background: var(--sl-bg-canvas, #070A0D);
   color: var(--sl-text-primary);
   font-family: var(--sl-font-sans);
   font-size: var(--sl-text-md);
@@ -64,6 +70,16 @@ body {
   padding-left: 4px;
   padding-right: 4px;
   white-space: nowrap;
+}
+
+/*
+ * Clickable status-bar entries: the bar's foreground is deliberately muted, so
+ * a hovered entry reads no differently from a dead one. Only the color is set
+ * here — the hover background comes from --theia-statusBarItem-hoverBackground,
+ * which Theia's own styling participant writes with this exact selector.
+ */
+#theia-statusBar .area .element.hasCommand:hover {
+  color: var(--sl-text-primary);
 }
 
 /* Agent chat */
@@ -2375,14 +2391,32 @@ code {
 /* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
 .spexr-df-pinned {
   display: flex; flex-direction: column; gap: var(--sl-space-3); min-width: 0;
-  min-height: 58vh; padding: var(--sl-space-4);
+  /* Bounded on purpose: without a ceiling the card grows with the transcript,
+     `__scroll` never scrolls, and the grid below is pushed off-screen. */
+  min-height: 34vh; max-height: 62vh; padding: var(--sl-space-4);
   background: var(--sl-bg-surface);
   border: 1px solid var(--tile-accent);
   border-radius: var(--sl-radius-md);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-accent) 25%, transparent),
     0 12px 40px -12px color-mix(in srgb, var(--tile-accent) 30%, transparent);
 }
+/*
+ * Identity + CTAs, kept at the top and sticky against the wall's scroll: the
+ * card's own body is the tall part, and the actions must never be something the
+ * user has to scroll to find. Negative margins bleed the bar over the card
+ * padding so it reads as a toolbar rather than a floating row.
+ */
+.spexr-df-pinned__bar {
+  position: sticky; top: calc(-1 * var(--sl-space-4)); z-index: 2;
+  display: flex; flex-direction: column; gap: var(--sl-space-2); min-width: 0;
+  margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
+  padding: var(--sl-space-4) var(--sl-space-4) var(--sl-space-3);
+  background: var(--sl-bg-surface);
+  border-bottom: 1px solid var(--sl-border-subtle);
+  border-radius: var(--sl-radius-md) var(--sl-radius-md) 0 0;
+}
 .spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; }
+.spexr-df-pinned__actions { display: flex; align-items: center; gap: var(--sl-space-3); min-width: 0; }
 .spexr-df-pinned__project {
   font-size: var(--sl-text-lg); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -2443,13 +2477,13 @@ code {
 .spexr-df-term__line[data-kind="result"] { color: var(--sl-text-muted); padding-left: calc(1ch + 8px); }
 /* Error output: red. */
 .spexr-df-term__line[data-kind="error"] { color: var(--sl-status-danger, #e5484d); }
-.spexr-df-pinned__foot { display: flex; align-items: center; gap: var(--sl-space-3); }
 .spexr-df-pinned__tag {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: var(--sl-text-xs); color: var(--sl-text-muted);
 }
 .spexr-df-pinned__tag .codicon { font-size: 0.9em; }
-.spexr-df-pinned__foot .spexr-button { margin-left: auto; }
+/* Only the first button takes the free space: several autos would spread them apart. */
+.spexr-df-pinned__actions .spexr-button:first-of-type { margin-left: auto; }
 
 /* Top-priority sessions: 3 wide cards per row. */
 .spexr-df-grid {
@@ -2493,6 +2527,32 @@ code {
   flex: none; font-family: var(--theia-code-font-family);
   font-size: var(--sl-text-xs); color: var(--sl-text-muted);
 }
+/* The project this window has loaded — takes the place of the jump action. */
+.spexr-df-card__current {
+  flex: none; align-self: center; padding: 0 var(--sl-space-1);
+  font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs); line-height: 1.5;
+  color: var(--tile-accent);
+  background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
+  border-radius: var(--sl-radius-sm);
+}
+
+/* Jump to the tile's project: muted until the card is hovered, accent on its own hover. */
+.spexr-df-card__open {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  align-self: center; /* the head row is baseline-aligned; this box is not text */
+  width: 20px; height: 20px; border-radius: var(--sl-radius-sm);
+  color: var(--sl-text-muted); opacity: 0; cursor: pointer;
+  transition: opacity var(--sl-motion-fast) var(--sl-motion-ease),
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-df-card__open .codicon { font-size: 0.95em; }
+.spexr-df-card:hover .spexr-df-card__open { opacity: 1; }
+.spexr-df-card__open:hover {
+  color: var(--tile-accent);
+  background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
+}
+
 .spexr-df-card__branch {
   margin-top: auto; /* pin to the bottom regardless of how tall the other content is */
   display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0;

@@ -42,6 +42,9 @@ function TerminalMount(props: { term: TerminalWidget }): React.ReactElement {
   return <div className="spexr-df-termhost" ref={hostRef} />;
 }
 
+/** Distance (px) from the bottom still counted as following the live tail. */
+const TAIL_SLACK = 24;
+
 /** Terminal-like prefix glyph per follow-event kind. */
 const FOLLOW_PREFIX: Record<FollowEvent["kind"], string> = {
   prompt: "❯",
@@ -92,14 +95,51 @@ function statusOf(tile: AgentTile): { label: string; kind: string } {
   return { label: stateLabel(tile.state), kind: tile.state };
 }
 
+/** Marks the tile whose project this window has loaded. */
+function CurrentProjectChip(): React.ReactElement {
+  return (
+    <span className="spexr-df-card__current" title="This is the project loaded in this window">
+      current
+    </span>
+  );
+}
+
+/**
+ * Load the tile's project in this window. Rendered as a `span` because the card
+ * itself is a `button` and nested buttons are invalid HTML; the click is stopped
+ * so it does not also pin the session.
+ */
+function OpenProjectAction(props: {
+  tile: AgentTile;
+  onOpenProject: (t: AgentTile) => void;
+}): React.ReactElement {
+  const { tile, onOpenProject } = props;
+  return (
+    <span
+      className="spexr-df-card__open"
+      role="button"
+      title={`Open ${tile.projectPath} — reloads the window`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpenProject(tile);
+      }}
+    >
+      <i className="codicon codicon-folder-opened" />
+    </span>
+  );
+}
+
 /** Full agent card: goal (anchor, expandable), then AI now/overview lines, then branch. */
 export function AgentTileCard(props: {
   tile: AgentTile;
   now: number;
   summary?: { summary: AgentSummary; loading: boolean } | undefined;
   onOpen: (t: AgentTile) => void;
+  onOpenProject: (t: AgentTile) => void;
+  /** True when this tile's project is the one loaded in the window. */
+  isCurrent: boolean;
 }): React.ReactElement {
-  const { tile, now, summary, onOpen } = props;
+  const { tile, now, summary, onOpen, onOpenProject, isCurrent } = props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
   const primary = capitalize(tile.goal || tile.actionLine);
@@ -118,6 +158,7 @@ export function AgentTileCard(props: {
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
         <span className="spexr-df-card__project">{tile.projectName}</span>
+        {isCurrent ? <CurrentProjectChip /> : <OpenProjectAction tile={tile} onOpenProject={onOpenProject} />}
         <span className="spexr-df-card__harness">{tile.harness}</span>
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
@@ -184,9 +225,25 @@ export function AgentPinnedCard(props: {
   terminal?: TerminalWidget | undefined;
   onClose: () => void;
   onFork: (t: AgentTile) => void;
+  onOpenProject: (t: AgentTile) => void;
+  /** True when this tile's project is the one loaded in the window. */
+  isCurrent: boolean;
 }): React.ReactElement {
-  const { tile, now, summary, events, terminal, onClose, onFork } = props;
+  const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, isCurrent } = props;
   const status = statusOf(tile);
+  // The card is height-bounded so its CTAs stay in view, which makes the
+  // transcript the scrolling region — keep it on the newest line, unless the
+  // user has scrolled up to read back.
+  const scroller = React.useRef<HTMLDivElement | null>(null);
+  const followTail = React.useRef(true);
+  React.useEffect(() => {
+    const el = scroller.current;
+    if (el && followTail.current) el.scrollTop = el.scrollHeight;
+  }, [events.length]);
+  const onScroll = (): void => {
+    const el = scroller.current;
+    if (el) followTail.current = el.scrollHeight - el.scrollTop - el.clientHeight <= TAIL_SLACK;
+  };
   return (
     <section
       className="spexr-df-pinned"
@@ -194,17 +251,47 @@ export function AgentPinnedCard(props: {
       data-status={status.kind}
       style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
     >
-      <header className="spexr-df-pinned__head">
-        <span className="spexr-df-card__led" />
-        <span className="spexr-df-pinned__project">{tile.projectName}</span>
-        <span className="spexr-df-card__harness">{tile.harness}</span>
-        <span className="spexr-df-card__status" data-kind={status.kind}>
-          {status.label}
-        </span>
-        <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
-        <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
-          <i className="codicon codicon-close" />
-        </button>
+      <header className="spexr-df-pinned__bar">
+        <div className="spexr-df-pinned__head">
+          <span className="spexr-df-card__led" />
+          <span className="spexr-df-pinned__project">{tile.projectName}</span>
+          {isCurrent && <CurrentProjectChip />}
+          <span className="spexr-df-card__harness">{tile.harness}</span>
+          <span className="spexr-df-card__status" data-kind={status.kind}>
+            {status.label}
+          </span>
+          <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
+          <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
+            <i className="codicon codicon-close" />
+          </button>
+        </div>
+        <div className="spexr-df-pinned__actions">
+          <span className="spexr-df-pinned__tag">
+            {terminal ? (
+              <>
+                <i className="codicon codicon-terminal" /> interactive — resumed in this card
+              </>
+            ) : tile.harness === "opencode" ? (
+              <>
+                <i className="codicon codicon-run" /> live elsewhere
+              </>
+            ) : (
+              <>
+                <i className="codicon codicon-eye" /> read-only live view
+              </>
+            )}
+          </span>
+          {!isCurrent && (
+            <button className="spexr-button" onClick={() => onOpenProject(tile)} title={tile.projectPath}>
+              Open project
+            </button>
+          )}
+          {!terminal && (
+            <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
+              Fork &amp; continue
+            </button>
+          )}
+        </div>
       </header>
       {summary && !summary.loading && summaryLines(summary.summary).headline && (
         <span className="spexr-df-card__ai">
@@ -220,34 +307,10 @@ export function AgentPinnedCard(props: {
           Fork it to continue the work in this card.
         </div>
       ) : (
-        <div className="spexr-df-pinned__scroll">
+        <div className="spexr-df-pinned__scroll" ref={scroller} onScroll={onScroll}>
           <FollowTranscript events={events} />
         </div>
       )}
-      <footer className="spexr-df-pinned__foot">
-        {terminal ? (
-          <span className="spexr-df-pinned__tag">
-            <i className="codicon codicon-terminal" /> interactive — resumed in this card
-          </span>
-        ) : (
-          <>
-            <span className="spexr-df-pinned__tag">
-              {tile.harness === "opencode" ? (
-                <>
-                  <i className="codicon codicon-run" /> live elsewhere
-                </>
-              ) : (
-                <>
-                  <i className="codicon codicon-eye" /> read-only live view
-                </>
-              )}
-            </span>
-            <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
-              Fork &amp; continue
-            </button>
-          </>
-        )}
-      </footer>
     </section>
   );
 }
@@ -257,8 +320,10 @@ export function AgentCondensedRow(props: {
   tile: AgentTile;
   now: number;
   onOpen: (t: AgentTile) => void;
+  /** True when this tile's project is the one loaded in the window. */
+  isCurrent: boolean;
 }): React.ReactElement {
-  const { tile, now, onOpen } = props;
+  const { tile, now, onOpen, isCurrent } = props;
   const status = statusOf(tile);
   return (
     <button
@@ -271,6 +336,7 @@ export function AgentCondensedRow(props: {
     >
       <span className="spexr-df-row__led" />
       <span className="spexr-df-row__project">{tile.projectName}</span>
+      {isCurrent && <CurrentProjectChip />}
       <span className="spexr-df-row__harness">{tile.harness}</span>
       <span className="spexr-df-row__action">{tile.goal || tile.actionLine}</span>
       {(tile.lastFailed || tile.needsYou) && (

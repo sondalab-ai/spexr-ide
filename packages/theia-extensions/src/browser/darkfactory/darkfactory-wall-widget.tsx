@@ -6,6 +6,7 @@ import type { AgentSummary, AgentTile, FollowEvent, SpexrDarkfactoryService } fr
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 import { sortTiles } from "./darkfactory-format.js";
 import { AgentTileCard, AgentCondensedRow, AgentPinnedCard } from "./agent-tile.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
@@ -67,6 +68,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
+  @inject(SpexrProjectSwitchService) private readonly projectSwitch!: SpexrProjectSwitchService;
 
   private tiles: AgentTile[] = [];
   /** False until the first tile snapshot lands — the wall shows a loading state until then. */
@@ -164,6 +166,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     })().catch(() => {
       /* ignore */
     });
+  }
+
+  /**
+   * Load a tile's project in this window. Kept separate from {@link pin}: pinning
+   * drives the session in place, this repoints the whole workspace and costs a
+   * window reload.
+   */
+  private openProject(tile: AgentTile): void {
+    this.projectSwitch.switchTo(tile.projectPath);
   }
 
   private unpin(): void {
@@ -273,6 +284,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       );
     }
     const pin = (tile: AgentTile): void => this.pin(tile);
+    const openProject = (tile: AgentTile): void => this.openProject(tile);
+    const isCurrent = (tile: AgentTile): boolean => this.projectSwitch.isCurrentProject(tile.projectPath);
     // The pinned session is lifted out of the grid; the rest keep their order below.
     const pinned = this.pinnedSessionId
       ? tiles.find((t) => t.sessionId === this.pinnedSessionId)
@@ -291,6 +304,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             terminal={this.pinnedTerminal}
             onClose={() => this.unpin()}
             onFork={(t) => this.forkTakeover(t)}
+            onOpenProject={openProject}
+            isCurrent={isCurrent(pinned)}
           />
         )}
         <div className="spexr-df-grid">
@@ -301,6 +316,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               now={now}
               summary={this.summaries.get(t.sessionId)}
               onOpen={pin}
+              onOpenProject={openProject}
+              isCurrent={isCurrent(t)}
             />
           ))}
         </div>
@@ -308,7 +325,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           <div className="spexr-df-condensed">
             <div className="spexr-df-condensed__label">{condensed.length} more</div>
             {condensed.map((t) => (
-              <AgentCondensedRow key={t.sessionId} tile={t} now={now} onOpen={pin} />
+              <AgentCondensedRow key={t.sessionId} tile={t} now={now} onOpen={pin} isCurrent={isCurrent(t)} />
             ))}
           </div>
         )}

@@ -11,6 +11,8 @@ import { ColorContribution } from "@theia/core/lib/browser/color-application-con
 import { PreferenceContribution } from "@theia/core/lib/common/preferences/preference-schema";
 import { WebSocketConnectionProvider } from "@theia/core/lib/browser/messaging/ws-connection-provider";
 import { SpexrCommandsContribution } from "./commands/spexr-commands-contribution.js";
+import { SpexrProjectSwitchService } from "./project/spexr-project-switch-service.js";
+import { SpexrProjectStatusBarContribution } from "./project/project-status-bar-contribution.js";
 import { SpexrSpecEditorToolbarContribution } from "./views/spec-editor-toolbar-contribution.js";
 import { SpexrAgentTerminalToolbarContribution } from "./views/agent-terminal-toolbar-contribution.js";
 import { SpexrSpecRelationsContribution } from "./spec/spec-relations-contribution.js";
@@ -188,8 +190,13 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     })
     .inSingletonScope();
 
+  bind(SpexrProjectSwitchService).toSelf().inSingletonScope();
+  bind(SpexrProjectStatusBarContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrProjectStatusBarContribution);
+
   bind(SpexrCommandsContribution).toSelf().inSingletonScope();
   bind(CommandContribution).toService(SpexrCommandsContribution);
+  bind(KeybindingContribution).toService(SpexrCommandsContribution);
   bind(MenuContribution).toService(SpexrCommandsContribution);
 
   bind(SpexrSpecEditorToolbarContribution).toSelf().inSingletonScope();

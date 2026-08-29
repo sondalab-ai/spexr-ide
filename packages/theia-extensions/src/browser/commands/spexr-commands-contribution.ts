@@ -7,7 +7,14 @@ import {
   type MenuModelRegistry,
   MessageService,
 } from "@theia/core";
-import { CommonMenus, ConfirmDialog, QuickInputService } from "@theia/core/lib/browser";
+import {
+  CommonMenus,
+  ConfirmDialog,
+  QuickInputService,
+  type QuickPickItem,
+  type KeybindingContribution,
+  type KeybindingRegistry,
+} from "@theia/core/lib/browser";
 import { nls } from "@theia/core/lib/common/nls";
 import { EditorManager } from "@theia/editor/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
@@ -44,10 +51,12 @@ import type { SpexrAgentService, ExpertAgentDto, DriftReportDto } from "../../co
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { PreferenceScope } from "@theia/core/lib/common/preferences/preference-scope";
 import { SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE } from "../preferences/spexr-preferences.js";
+import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 
 export const SpexrCommands = {
   CREATE_SPEC: { id: "spexr.spec.create", label: "Spexr: Create new spec" } satisfies Command,
   NEW_PROJECT: { id: "spexr.project.new", label: "Spexr: New project" } satisfies Command,
+  SWITCH_PROJECT: { id: "spexr.project.switch", label: "Spexr: Switch project" } satisfies Command,
   SPEC_HANDOFF: {
     id: "spexr.spec.handoff",
     label: "Spexr: Send spec to agent",
@@ -250,8 +259,13 @@ const WORKFLOW_PROMPTS: Record<WorkflowStep, WorkflowPromptBuilder> = {
 const RETROSPECTIVE_PROMPT = (slug: string, specBody: string): string =>
   `Run a retrospective on spec ${slug}. The work is complete — do NOT propose new implementation or edit files. Analyze what was done against the spec below.\n\n1. For each acceptance criterion, state whether it was met, partially met, or dropped — and why.\n2. Note deviations from the original spec and what drove them.\n3. Call out what went well and what slowed delivery.\n4. List residual risks, tech debt, and concrete follow-up items.\n5. Propose any project-memory entries worth saving (decisions, gotchas) under docs/memory/.\n\n---\n${specBody}`;
 
+/** Quick-pick entry for {@link SpexrCommands.SWITCH_PROJECT}, carrying the project root. */
+type ProjectPick = QuickPickItem & { path: string };
+
 @injectable()
-export class SpexrCommandsContribution implements CommandContribution, MenuContribution {
+export class SpexrCommandsContribution
+  implements CommandContribution, KeybindingContribution, MenuContribution
+{
   @inject(QuickInputService)
   private readonly quickInput!: QuickInputService;
 
@@ -286,12 +300,18 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
   @inject(PreferenceService)
   private readonly preferences!: PreferenceService;
 
+  @inject(SpexrProjectSwitchService)
+  private readonly projectSwitch!: SpexrProjectSwitchService;
+
   registerCommands(commands: CommandRegistry): void {
     commands.registerCommand(SpexrCommands.CREATE_SPEC, {
       execute: () => this.createSpec(),
     });
     commands.registerCommand(SpexrCommands.NEW_PROJECT, {
       execute: () => this.newProject(),
+    });
+    commands.registerCommand(SpexrCommands.SWITCH_PROJECT, {
+      execute: () => this.switchProject(),
     });
     commands.registerCommand(SpexrCommands.SPEC_HANDOFF, {
       execute: (raw: unknown) => this.handoffSpec(this.resolveSpecUri(raw)),
@@ -733,6 +753,13 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
     const title = `${WORKFLOW_STEP_LABEL[step]} — ${slug}`;
     const body = WORKFLOW_PROMPTS[step](slug, specBody, "");
     return { title, body };
+  }
+
+  registerKeybindings(keybindings: KeybindingRegistry): void {
+    keybindings.registerKeybinding({
+      command: SpexrCommands.SWITCH_PROJECT.id,
+      keybinding: "ctrlcmd+alt+p",
+    });
   }
 
   registerMenus(menus: MenuModelRegistry): void {
@@ -1552,6 +1579,35 @@ export class SpexrCommandsContribution implements CommandContribution, MenuContr
     });
     if (!picked || Array.isArray(picked)) return undefined;
     return { uri: picked, openAfter: true };
+  }
+
+  /**
+   * Load another project in this window, picked from the sessions on the
+   * Darkfactory wall and Theia's recent workspaces.
+   *
+   * The pick is deliberately explicit: the desktop app reuses the window, so
+   * every switch costs a reload — the placeholder says so.
+   */
+  private async switchProject(): Promise<void> {
+    const targets = await this.projectSwitch.listTargets();
+    if (targets.length === 0) {
+      this.messages.info("No other project to switch to yet.");
+      return;
+    }
+    const items: ProjectPick[] = targets.map((target) => ({
+      label: target.name,
+      description: target.path,
+      // Spread rather than an `undefined` value: `exactOptionalPropertyTypes` is on.
+      ...(target.sessions > 0
+        ? { detail: `${target.sessions} agent session${target.sessions > 1 ? "s" : ""} running` }
+        : {}),
+      path: target.path,
+    }));
+    const choice = await this.quickInput.pick<ProjectPick>(items, {
+      placeHolder: "Switch project (reloads the window)",
+    });
+    if (!choice) return;
+    this.projectSwitch.switchTo(choice.path);
   }
 
   private async newProject(): Promise<void> {

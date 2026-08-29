@@ -6,6 +6,8 @@ import type {
 } from "@theia/core/lib/browser";
 import { CommandService } from "@theia/core/lib/common/command";
 import { FileNavigatorContribution } from "@theia/navigator/lib/browser/navigator-contribution";
+import { WorkspaceService } from "@theia/workspace/lib/browser";
+import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
 import { SpexrSpecViewContribution } from "../views/spec-view-contribution.js";
 import { SpexrMemoryViewContribution } from "../views/memory-view-contribution.js";
 import { SpexrExpertsViewContribution } from "../views/experts-view-contribution.js";
@@ -14,6 +16,7 @@ import { SPEC_VIEW_ID } from "../views/spec-view-contribution.js";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
 import { expandLeftPanelWithMinWidth } from "./side-panel.js";
 import { SpexrDarkfactorySidebarVisibilityContribution } from "../darkfactory/darkfactory-sidebar-visibility-contribution.js";
+import { consumeProjectLanding } from "../project/project-landing-intent.js";
 import { SpexrRevealOnRestore, type RevealOnRestoreView } from "./reveal-on-restore.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
@@ -61,6 +64,13 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   @inject(SpexrDarkfactorySidebarVisibilityContribution)
   private readonly darkfactorySidebar!: SpexrDarkfactorySidebarVisibilityContribution;
 
+  @inject(WorkspaceService)
+  private readonly workspace!: WorkspaceService;
+
+  @inject(TerminalService)
+  @optional()
+  private readonly terminalService?: TerminalService;
+
   onStart(app: FrontendApplication): void {
     void app;
     this.setupTabPinning();
@@ -90,10 +100,34 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       await this.openSideViews();
       await this.revealRegisteredDefaults();
       if (!alreadyConfigured) await this.openTerminal();
+      // A project switch has to land on a project tab: the restored layout, plus
+      // the Darkfactory reveal above, would otherwise leave the dashboard in
+      // front — the tab the user just navigated away from, and the one that
+      // keeps the project sidebar collapsed. Read as late as possible: the
+      // intent is consumed on read, so a throw above would otherwise burn it
+      // and the next launch could not retry.
+      if (await this.landedFromProjectSwitch()) await this.openWelcome();
       this.expandLeftPanel();
       await this.darkfactorySidebar.syncRightPanel(true);
     } catch (err) {
       console.error("[spexr] onDidInitializeLayout error", err);
+    }
+  }
+
+  /**
+   * Whether this launch is the tail of a project switch, and clear the intent.
+   *
+   * Switching project reloads the window, so the intent travels through
+   * `localStorage`; it is honoured only when the root actually loaded is the one
+   * the switch aimed at. See project-landing-intent.ts.
+   */
+  private async landedFromProjectSwitch(): Promise<boolean> {
+    try {
+      const roots = await this.workspace.roots;
+      return consumeProjectLanding(localStorage, roots[0]?.resource.path.toString());
+    } catch (err) {
+      console.warn("[spexr] landing intent check failed", err);
+      return false;
     }
   }
 
@@ -181,12 +215,33 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     }
   }
 
+  /**
+   * Spawn the default bottom-panel terminal, unless one is already there.
+   *
+   * `layoutAlreadyConfigured()` inspects the *main* panel only, so a launch that
+   * restores a bottom-panel terminal while the main area is empty reads as
+   * unconfigured — and without this guard the restored terminal is joined by a
+   * second, freshly spawned one.
+   */
   private async openTerminal(): Promise<void> {
+    if (this.hasBottomTerminal()) return;
     try {
       await this.commands.executeCommand(TERMINAL_NEW_COMMAND);
     } catch {
       // Terminal extension may be unavailable in some packages; ignore.
     }
+  }
+
+  /**
+   * Whether a terminal is already docked in the bottom panel. Membership is
+   * tested against that panel rather than by id, so neither the agent terminal
+   * (left panel) nor Darkfactory's embedded resume terminals (attached outside
+   * the shell) count as one.
+   */
+  private hasBottomTerminal(): boolean {
+    if (!this.terminalService) return false;
+    const bottom = new Set(this.shell.getWidgets("bottom").map((w) => w.id));
+    return this.terminalService.all.some((t) => bottom.has(t.id));
   }
 
   private expandLeftPanel(): void {
