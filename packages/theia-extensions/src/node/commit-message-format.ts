@@ -226,15 +226,7 @@ export function buildCommitPrompt(files: readonly StagedFile[], diff: string): s
     ? named
     : collectNames(files, sides);
 
-  const prose: string[] = [];
-  for (const file of files) {
-    const side = sides.get(file.path);
-    if (!side || !isProsePath(file.path)) continue;
-    for (const line of side.added.split("\n")) {
-      const text = line.trim();
-      if (text.length > 0) prose.push(text.slice(0, PROSE_LINE_CHARS));
-    }
-  }
+  const prose = sampleProse(files, sides);
 
   const rest = files.length - MAX_PROMPT_FILES;
   const parts = [
@@ -257,6 +249,41 @@ export function buildCommitPrompt(files: readonly StagedFile[], diff: string): s
   }
   parts.push("\nWrite the one-line summary.");
   return parts.join("\n");
+}
+
+/** Shortest line worth showing; below this it is a fence, a bracket or a bullet. */
+const MIN_PROSE_CHARS = 4;
+
+/**
+ * The added prose of the changeset, one line per file per round. Sampling in file
+ * order instead lets one chatty file fill the whole budget — four specs sharing a
+ * frontmatter block yielded nothing but three repeated keys, and the paragraphs
+ * that said what the change was never reached the model. Duplicates are dropped
+ * for the same reason.
+ */
+function sampleProse(files: readonly StagedFile[], sides: ReadonlyMap<string, DiffSides>): string[] {
+  const perFile = files
+    .filter((f) => isProsePath(f.path) && sides.has(f.path))
+    .map((f) =>
+      sides
+        .get(f.path)!
+        .added.split("\n")
+        .map((l) => l.trim().slice(0, PROSE_LINE_CHARS))
+        .filter((l) => l.length >= MIN_PROSE_CHARS),
+    );
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const deepest = Math.max(0, ...perFile.map((lines) => lines.length));
+  for (let round = 0; round < deepest && out.length < MAX_PROSE_LINES; round++) {
+    for (const lines of perFile) {
+      const line = lines[round];
+      if (line === undefined || seen.has(line)) continue;
+      seen.add(line);
+      out.push(line);
+      if (out.length >= MAX_PROSE_LINES) break;
+    }
+  }
+  return out;
 }
 
 /** Declaration names a set of files introduces and drops, ignoring in-place edits. */

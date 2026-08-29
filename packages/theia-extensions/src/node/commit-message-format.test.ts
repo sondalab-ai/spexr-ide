@@ -222,6 +222,29 @@ describe("buildCommitPrompt", () => {
     expect(prompt).toContain("## Running the migration");
   });
 
+  const proseDiff = (path: string, lines: readonly string[]): string =>
+    [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,2 @@", ...lines.map((l) => `+${l}`)].join(
+      "\n",
+    );
+
+  test("never shows the same added line twice", () => {
+    const diff = [
+      proseDiff("docs/a.md", ["updatedAt: 2026-08-29", "status: ship"]),
+      proseDiff("docs/b.md", ["updatedAt: 2026-08-29", "status: ship"]),
+    ].join("\n");
+    const prompt = buildCommitPrompt([file("docs/a.md"), file("docs/b.md")], diff);
+    expect(prompt.match(/updatedAt: 2026-08-29/g)).toHaveLength(1);
+  });
+
+  test("lets every changed file speak before any file speaks twice", () => {
+    const diff = [
+      proseDiff("docs/loud.md", Array.from({ length: 12 }, (_, i) => `loud line ${i}`)),
+      proseDiff("docs/quiet.md", ["the one line that matters"]),
+    ].join("\n");
+    const prompt = buildCommitPrompt([file("docs/loud.md"), file("docs/quiet.md")], diff);
+    expect(prompt).toContain("the one line that matters");
+  });
+
   test("caps a large changeset and says how many paths were left out", () => {
     const files = Array.from({ length: 25 }, (_, i) => file(`src/f${i}.ts`));
     const prompt = buildCommitPrompt(files, "");
