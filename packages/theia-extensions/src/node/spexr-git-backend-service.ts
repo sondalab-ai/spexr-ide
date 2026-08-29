@@ -24,6 +24,13 @@ const BLAME_HEADER = /^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/;
 /** Coalesce a burst of git-dir writes (one operation touches several files). */
 const WATCH_DEBOUNCE_MS = 150;
 
+/**
+ * Ceiling on the staged diff read for a commit message. Only declaration names and
+ * added prose survive the distillation, so a giant changeset gains nothing from a
+ * bigger read — and this keeps one from being held in memory whole.
+ */
+const MAX_COMMIT_DIFF_CHARS = 512_000;
+
 export interface GitBackendDeps {
   /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
   watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
@@ -468,11 +475,12 @@ export class SpexrGitBackendService implements SpexrGitService {
    * Ask the local model for a commit subject. The model runs in the backend, so
    * the changeset never crosses the RPC boundary; what crosses is one line.
    *
-   * The model is handed the staged paths and their status letters, never the
-   * diff — it invents specifics when given noisy input, and its budget here is
-   * ~30 tokens. It writes only the clause; {@link commitPrefix} derives the
-   * `type(scope):` part from the paths, which is structure the model is not
-   * reliable at.
+   * The model is handed the staged paths plus a distillation of the diff — the
+   * declarations added and removed, and the text a prose file gained — never the
+   * hunks themselves. Paths alone leave it nothing to say but a paraphrase of the
+   * file list; raw hunks drown it against a ~30 token budget. It writes only the
+   * clause; {@link commitPrefix} derives the `type(scope):` part from the paths,
+   * which is structure the model is not reliable at.
    */
   async generateCommitMessage(root: string): Promise<string | null> {
     const generator = this.generator;
@@ -482,7 +490,9 @@ export class SpexrGitBackendService implements SpexrGitService {
       .filter((f): f is GitFileChangeDto & { stagedState: GitFileState } => f.stagedState !== undefined)
       .map((f) => ({ path: f.path, state: f.stagedState }));
     if (staged.length === 0) return null;
-    const clause = await generator.summarize(buildCommitPrompt(staged), "commit");
+    // -U0 drops the context lines: what is left is exactly what changed.
+    const diff = (await this.git(root).diff(["--cached", "-U0"])).slice(0, MAX_COMMIT_DIFF_CHARS);
+    const clause = await generator.summarize(buildCommitPrompt(staged, diff), "commit");
     const subject = cleanCommitSubject(clause ?? "");
     return subject.length > 0 ? `${commitPrefix(staged)}: ${subject}` : null;
   }

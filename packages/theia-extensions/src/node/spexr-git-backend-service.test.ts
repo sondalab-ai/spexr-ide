@@ -223,13 +223,14 @@ describe("SpexrGitBackendService", () => {
       expect(await svc.generateCommitMessage(tmpDir)).toBe("feat(app): add the thing helper");
     });
 
-    it("prompts the model with the staged paths, not a diff", async () => {
+    it("prompts the model with the staged paths and declarations, never the file body", async () => {
       const gen = generator("tidy the helper");
       const svc = new SpexrGitBackendService({ generator: gen.fake });
-      stage("src/app/thing.ts", "content that must not reach the model");
+      stage("src/app/thing.ts", "export function shinyHelper(): void {\n  const secretBody = 1;\n}\n");
       await svc.generateCommitMessage(tmpDir);
       expect(gen.prompts[0]).toContain("src/app/thing.ts");
-      expect(gen.prompts[0]).not.toContain("content that must not reach the model");
+      expect(gen.prompts[0]).toContain("shinyHelper");
+      expect(gen.prompts[0]).not.toContain("secretBody");
     });
 
     it("returns nothing, and asks the model nothing, when the index is empty", async () => {

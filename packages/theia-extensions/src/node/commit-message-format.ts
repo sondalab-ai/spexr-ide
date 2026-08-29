@@ -1,4 +1,5 @@
 import type { GitFileState } from "../common/git-protocol.js";
+import { extractSymbolNames, PROSE_LIKE_EXTS } from "./search/description-format.js";
 
 /** One staged path with the index letter git reported for it. */
 export interface StagedFile {
@@ -7,13 +8,23 @@ export interface StagedFile {
 }
 
 /** How many paths the prompt lists before it stops and counts the rest. */
-const MAX_PROMPT_FILES = 20;
+const MAX_PROMPT_FILES = 12;
+
+/** Caps on the distilled change itself, so one huge commit cannot flood the prompt. */
+const MAX_ADDED_SYMBOLS = 8;
+const MAX_REMOVED_SYMBOLS = 4;
+const MAX_PROSE_LINES = 8;
+const PROSE_LINE_CHARS = 90;
 
 /**
- * Folders that group code without describing it — a scope of "src" or "packages"
- * tells a reader nothing, so they are skipped when picking one.
+ * Folders that group code without describing it. Build containers ("src") and the
+ * layer folders this codebase splits every extension into ("browser", "node",
+ * "common") both name where code lives, never what it is about.
  */
-const CONTAINER_DIRS = new Set(["packages", "apps", "src", "lib", "dist"]);
+const CONTAINER_DIRS = new Set([
+  "packages", "apps", "src", "lib", "dist",
+  "browser", "node", "common",
+]);
 
 function segments(path: string): string[] {
   return path.split("/").filter((s) => s.length > 0);
@@ -31,6 +42,37 @@ function isTestPath(path: string): boolean {
 
 function isDocPath(path: string): boolean {
   return path.endsWith(".md") || segments(path)[0] === "docs";
+}
+
+/** The deepest folder of `path` that names something, or "" when it has none. */
+function meaningfulDir(path: string): string {
+  const named = dirSegments(path).filter((s) => !CONTAINER_DIRS.has(s));
+  return named[named.length - 1] ?? "";
+}
+
+/**
+ * The folder most of the change lives in, when there is one. Preferred over the
+ * shared parent: a change that is four files in `darkfactory` and one stylesheet
+ * next door is about darkfactory, while their shared parent is only a layer.
+ */
+function modalDir(files: readonly StagedFile[]): string {
+  const counts = new Map<string, number>();
+  for (const file of files) {
+    const dir = meaningfulDir(file.path);
+    if (dir) counts.set(dir, (counts.get(dir) ?? 0) + 1);
+  }
+  let best = "";
+  let bestCount = 0;
+  for (const [dir, count] of counts) {
+    if (count > bestCount) {
+      best = dir;
+      bestCount = count;
+    }
+  }
+  // A plurality that is not a strict majority means the change is spread out: the
+  // shared parent describes it better than the largest of several minorities, and
+  // a tie would otherwise be broken by nothing more than file order.
+  return bestCount * 2 > files.length ? best : "";
 }
 
 /** Longest folder path every staged file shares. */
@@ -68,8 +110,8 @@ export function commitPrefix(files: readonly StagedFile[]): string {
       : files.some((f) => f.state === "A" && !isTestPath(f.path))
         ? "feat"
         : "fix";
-  const named = commonDir(files).filter((s) => !CONTAINER_DIRS.has(s));
-  const scope = named[named.length - 1];
+  const shared = commonDir(files).filter((s) => !CONTAINER_DIRS.has(s));
+  const scope = modalDir(files) || shared[shared.length - 1];
   return scope ? `${type}(${scope})` : type;
 }
 
@@ -107,17 +149,133 @@ export function cleanCommitSubject(raw: string): string {
   return cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
 }
 
+/** The added and removed line text of one file, as parsed out of a unified diff. */
+export interface DiffSides {
+  readonly path: string;
+  readonly added: string;
+  readonly removed: string;
+}
+
+/** Drop git's `a/`/`b/` prefix from a diff header path. */
+function headerPath(raw: string): string {
+  const path = raw.trim();
+  return path === "/dev/null" ? path : path.replace(/^[ab]\//, "");
+}
+
 /**
- * User message for the commit subject. Lists the staged paths and their status
- * letters rather than the diff: this model invents specifics when handed noisy
- * input, and a diff against a ~50 token budget is the noisiest input there is.
+ * Parse `git diff -U0` into the added and removed text of each file. Line
+ * indentation is preserved: {@link extractSymbolNames} anchors its patterns on it.
  */
-export function buildCommitPrompt(files: readonly StagedFile[]): string {
-  const shown = files
-    .slice(0, MAX_PROMPT_FILES)
-    .map((f) => `${f.state} ${f.path}`)
-    .join("\n");
+export function splitDiffByFile(diff: string): DiffSides[] {
+  const out: DiffSides[] = [];
+  let pre = "";
+  let post = "";
+  let added: string[] = [];
+  let removed: string[] = [];
+  let open = false;
+  const flush = (): void => {
+    if (!open) return;
+    // A deletion has no post-image, so the file is named by the side that exists.
+    const path = post && post !== "/dev/null" ? post : pre;
+    if (path && path !== "/dev/null") out.push({ path, added: added.join("\n"), removed: removed.join("\n") });
+  };
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      flush();
+      pre = post = "";
+      added = [];
+      removed = [];
+      open = true;
+      continue;
+    }
+    if (!open) continue;
+    if (line.startsWith("--- ")) pre = headerPath(line.slice(4));
+    else if (line.startsWith("+++ ")) post = headerPath(line.slice(4));
+    else if (line.startsWith("+")) added.push(line.slice(1));
+    else if (line.startsWith("-")) removed.push(line.slice(1));
+  }
+  flush();
+  return out;
+}
+
+function isProsePath(path: string): boolean {
+  return PROSE_LIKE_EXTS.has(path.split(".").pop()?.toLowerCase() ?? "");
+}
+
+function pushNew(into: string[], names: readonly string[]): void {
+  for (const name of names) if (!into.includes(name)) into.push(name);
+}
+
+/**
+ * User message for the commit subject: the staged paths, the declarations the
+ * change introduces or drops, and the text a prose file gained.
+ *
+ * Not the diff itself. Handed only paths the model can do no better than
+ * paraphrase them ("fix index.js and specs"); handed diff hunks it drowns in
+ * noise against a ~30 token budget. Declaration names are the same distillation
+ * {@link buildSymbolSummary} already uses for file descriptions, and they are what
+ * makes the reply name a real thing.
+ */
+export function buildCommitPrompt(files: readonly StagedFile[], diff: string): string {
+  const sides = new Map(splitDiffByFile(diff).map((s) => [s.path, s]));
+  // Test declarations scaffold a change rather than being it, so they are read
+  // only when skipping them would leave nothing to say.
+  const production = files.filter((f) => !isTestPath(f.path));
+  const named = collectNames(production, sides);
+  const { introduced, dropped } = named.introduced.length + named.dropped.length > 0
+    ? named
+    : collectNames(files, sides);
+
+  const prose: string[] = [];
+  for (const file of files) {
+    const side = sides.get(file.path);
+    if (!side || !isProsePath(file.path)) continue;
+    for (const line of side.added.split("\n")) {
+      const text = line.trim();
+      if (text.length > 0) prose.push(text.slice(0, PROSE_LINE_CHARS));
+    }
+  }
+
   const rest = files.length - MAX_PROMPT_FILES;
-  const more = rest > 0 ? `\n… and ${rest} more files` : "";
-  return `Staged changes (git status letter, then path):\n${shown}${more}\n\nWrite the one-line summary.`;
+  const parts = [
+    "Staged changes (git status letter, then path):",
+    ...files.slice(0, MAX_PROMPT_FILES).map((f) => `${f.state} ${f.path}`),
+  ];
+  if (rest > 0) parts.push(`… and ${rest} more files`);
+  // Phrased as a sentence about the change, not as a labelled list: given a
+  // heading like "Declarations added:" the model answers by reading the list back
+  // ("add declarations for agent group header, tile group, …") instead of saying
+  // what the change is.
+  if (introduced.length > 0) {
+    parts.push(`\nThe change introduces: ${introduced.slice(0, MAX_ADDED_SYMBOLS).join(", ")}`);
+  }
+  if (dropped.length > 0) parts.push(`The change drops: ${dropped.slice(0, MAX_REMOVED_SYMBOLS).join(", ")}`);
+  // Prose is the fallback, not a supplement: given both, the model answers about
+  // the stylesheet comment it just read instead of the change it was shown.
+  if (introduced.length + dropped.length === 0 && prose.length > 0) {
+    parts.push(`\nText added:\n${prose.slice(0, MAX_PROSE_LINES).map((l) => `- ${l}`).join("\n")}`);
+  }
+  parts.push("\nWrite the one-line summary.");
+  return parts.join("\n");
+}
+
+/** Declaration names a set of files introduces and drops, ignoring in-place edits. */
+function collectNames(
+  files: readonly StagedFile[],
+  sides: ReadonlyMap<string, DiffSides>,
+): { introduced: string[]; dropped: string[] } {
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const file of files) {
+    const side = sides.get(file.path);
+    if (!side || isProsePath(file.path)) continue;
+    pushNew(added, extractSymbolNames(side.added));
+    pushNew(removed, extractSymbolNames(side.removed));
+  }
+  // A name on both sides was edited in place, not introduced or dropped; listing
+  // it under either heading would say something untrue about the change.
+  return {
+    introduced: added.filter((n) => !removed.includes(n)),
+    dropped: removed.filter((n) => !added.includes(n)),
+  };
 }

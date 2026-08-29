@@ -193,7 +193,7 @@ function extractHeaderComment(content: string): string {
 }
 
 // Markup/config/data formats where raw content is more descriptive than symbol extraction.
-const PROSE_LIKE_EXTS = new Set([
+export const PROSE_LIKE_EXTS = new Set([
   "md", "mdx", "markdown", "rst", "adoc", "txt",
   "html", "htm", "xhtml",
   "css", "scss", "less", "sass",
@@ -209,7 +209,7 @@ const PROSE_LIKE_EXTS = new Set([
  * JS/TS, Python, Go, Rust, Java, Kotlin, C#, Swift, Ruby, PHP, Elixir, etc.
  * Returns declaration names only — no values, no bodies, no imports.
  */
-function extractSymbolNames(content: string): string[] {
+export function extractSymbolNames(content: string): string[] {
   const names: string[] = [];
   const keep = (n: string | undefined): n is string =>
     !!n && n.length >= 2 && !SKIP_NAMES.has(n);
