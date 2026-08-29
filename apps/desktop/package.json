@@ -35,7 +35,8 @@
             "width": 1280,
             "height": 800,
             "minWidth": 1024,
-            "minHeight": 640
+            "minHeight": 640,
+            "backgroundColor": "#070A0D"
           }
         },
         "preferences": {
@@ -50,6 +51,11 @@
     "backend": {
       "config": {
         "startupTimeout": -1
+      }
+    },
+    "generator": {
+      "config": {
+        "preloadTemplate": "preload.html"
       }
     }
   },

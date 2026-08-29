@@ -17,7 +17,8 @@ FrontendApplicationConfigProvider.set({
             "width": 1280,
             "height": 800,
             "minWidth": 1024,
-            "minHeight": 640
+            "minHeight": 640,
+            "backgroundColor": "#070A0D"
         },
         "showWindowEarly": true,
         "splashScreenOptions": {},

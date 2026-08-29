@@ -1,7 +1,7 @@
 import { injectable } from "@theia/core/shared/inversify";
 import type { ColorContribution } from "@theia/core/lib/browser/color-application-contribution";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
-import { Color } from "@theia/core/lib/common/color";
+import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** SPEXR violet accent, per theme variant. */
 const ACCENT = {
@@ -97,22 +97,30 @@ export class SpexrColorContribution implements ColorContribution {
     accent(colors, "statusBar.foreground", "onAccent");
     accent(colors, "statusBar.noFolderBackground", "fill");
     accent(colors, "statusBar.focusBorder", "fill");
-    accent(colors, "statusBarItem.hoverBackground", "hover");
+    // statusBarItem.hoverBackground is deliberately NOT accented: the bar's
+    // foreground is muted, and muted text on the light violet hover is ~1.9:1.
+    // SpexrThemeContribution gives it a neutral raise instead.
 
     // Tree / list selection is contested: Theia core's CommonFrontendContribution
     // re-registers list.* with its blue after this runs, so the override lives in
     // SpexrThemeContribution's CSS !important layer instead.
 
+    // xterm paints onto a canvas from the *registry* value, so the CSS
+    // `--theia-terminal-background` override in SpexrThemeContribution never
+    // reaches it. Deriving this from `editor.background` would darken Theia's
+    // default gray — the registry never sees our canvas — which is how the
+    // terminal ended up a black unrelated to the palette. Register the SPEXR
+    // canvas directly: it still reads apart from the panel around it, which is
+    // one step lighter.
     colors.register({
       id: "terminal.background",
       defaults: {
-        dark: Color.darken("editor.background", 0.35),
-        light: Color.darken("editor.background", 0.05),
+        dark: SPEXR_NEUTRALS.dark.canvas,
+        light: SPEXR_NEUTRALS.light.canvas,
         hcDark: "editor.background",
         hcLight: "editor.background",
       },
-      description:
-        "SPEXR: darker terminal background, separating the Claude session from the editor.",
+      description: "SPEXR: terminal background on the SPEXR canvas neutral.",
     });
   }
 }

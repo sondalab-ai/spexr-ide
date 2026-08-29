@@ -1,6 +1,7 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { ThemeService } from "@theia/core/lib/browser/theming";
+import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** Maps a SPEXR theme id to the matching built-in Theia color theme. */
 const THEIA_THEME_BY_SPEXR: Record<string, string> = {
@@ -29,7 +30,12 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     // delaying ensures we always run after Theia's <style> is written.
     this.themeService.onDidColorThemeChange(() => {
       const current = document.documentElement.getAttribute("data-sl-theme") ?? resolved;
-      setTimeout(() => this.applyAccentOverrides(current), 0);
+      setTimeout(() => {
+        this.applyAccentOverrides(current);
+        // Theia rewrites `theme.background` on every color-theme change; re-assert
+        // ours after it, including for theme changes we did not originate.
+        this.rememberPreloadBackground(current);
+      }, 0);
     });
 
     this.applyTheme(resolved);
@@ -45,6 +51,10 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   /** Apply a SPEXR theme to both the design tokens and Theia's native chrome. */
   private applyTheme(spexrTheme: string): void {
     document.documentElement.setAttribute("data-sl-theme", spexrTheme);
+    // The anti-flash guard in index.html (apps/desktop/preload.html) paints the
+    // canvas with an inline style, which would outrank the stylesheet for every
+    // later theme change. Hand the element back now that the tokens are loaded.
+    document.documentElement.style.removeProperty("background");
     const theiaId = THEIA_THEME_BY_SPEXR[spexrTheme];
     if (theiaId && this.themeService.getCurrentTheme().id !== theiaId) {
       if (this.themeService.getThemes().some((t) => t.id === theiaId)) {
@@ -52,6 +62,29 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
       }
     }
     this.applyAccentOverrides(spexrTheme);
+    this.rememberPreloadBackground(spexrTheme);
+  }
+
+  /**
+   * Keep Theia's `theme.background` in sync with the SPEXR canvas.
+   *
+   * `ThemePreloadContribution` reads that localStorage key during preload and
+   * writes it into `--theia-editor-background`, which is what every shell
+   * surface paints with before any stylesheet has an opinion. Theia fills the
+   * key from `colors.getCurrentColor('editor.background')` — the built-in
+   * theme's white or #1E1E1E, since SPEXR overrides that color only in the CSS
+   * `!important` layer and never in the registry. Left alone, the next launch
+   * therefore paints the whole shell in the built-in theme until this
+   * contribution runs. Written last, so it wins over Theia's own update.
+   */
+  private rememberPreloadBackground(spexrTheme: string): void {
+    if (spexrTheme === "high-contrast") return;
+    try {
+      const { canvas } = SPEXR_NEUTRALS[spexrTheme === "light" ? "light" : "dark"];
+      globalThis.localStorage?.setItem("theme.background", canvas);
+    } catch {
+      // Storage unavailable; the next launch just falls back to Theia's value.
+    }
   }
 
   /**
@@ -72,12 +105,8 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     // editor/sidebar/tabs/terminal share the same (slightly teal) grays as the
     // SPEXR-styled panels, instead of Theia's default neutral gray. High
     // contrast is left to Theia's own HC theme (see the guard below).
-    const canvas  = isDark ? "#070A0D" : "#ECE4D4";  // deepest — activity bar, status bar, editor
-    const surface = isDark ? "#0F151A" : "#F6F1E6";  // sidebar, panels, active tab
-    const raised  = isDark ? "#131C23" : "#FFFFFF";  // menus, dropdowns, widgets, inputs
-    const fg      = isDark ? "#DAE3E4" : "#15211F";
-    const fgMuted = isDark ? "#6E8088" : "#6E7B78";
-    const line    = isDark ? "#1C2830" : "#D8CEBC";  // solid border matching the surfaces
+    const { canvas, surface, raised, fg, fgMuted, line } =
+      SPEXR_NEUTRALS[isDark ? "dark" : "light"];
 
     const css = `
 :root {
@@ -164,6 +193,8 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   --theia-activityBar-background: ${canvas} !important;
   --theia-statusBar-background: ${canvas} !important;
   --theia-statusBar-noFolderBackground: ${canvas} !important;
+  --theia-statusBarItem-hoverBackground: ${surface} !important;
+  --theia-statusBarItem-activeBackground: ${raised} !important;
   --theia-titleBar-activeBackground: ${canvas} !important;
   --theia-titleBar-inactiveBackground: ${canvas} !important;
   --theia-terminal-background: ${canvas} !important;
