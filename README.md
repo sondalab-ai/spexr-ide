@@ -316,6 +316,16 @@ pnpm --filter @spexr/e2e test:ui
 
 Playwright HTML report opens at `tests/e2e/playwright-report/index.html` after a run.
 
+#### Manual acceptance checks
+
+Some behaviour needs a running application and cannot be asserted from a test —
+whether the source-control panel notices a change made from a terminal, for one.
+Those checks live in [`docs/testing/`](docs/testing/), one file per area:
+
+| Area | File |
+|---|---|
+| Git integration | [`docs/testing/git-manual-tests.md`](docs/testing/git-manual-tests.md) |
+
 ### Contributing workflow
 
 SPEXR dogfoods its own spec-driven flow:
