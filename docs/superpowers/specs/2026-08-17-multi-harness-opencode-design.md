@@ -1,11 +1,13 @@
 ---
-slug: 2026-08-17-multi-harness-opencode
+slug: 2026-08-17-multi-harness-opencode-design
 title: Multi-harness support — opencode alongside Claude
 status: draft
 createdAt: 2026-08-17
 kind: design
+workflowStep: ship
+forcedSteps: [specify, context, clarify, plan, implement, validate, ship]
+updatedAt: 2026-08-29
 ---
-
 > **What is this file.** Design and trade-off record for extending SPEXR to run
 > [opencode](https://github.com/sst/opencode) as a first-class agent harness
 > alongside Claude Code, across both the Agent terminal and the Darkfactory
@@ -45,6 +47,23 @@ opencode support is additive.
 - No reimplementation of opencode's own session store. We read it only through
   opencode's command-line interface (CLI), never by opening its SQLite database
   file directly.
+
+## Acceptance Criteria
+
+- **AC-1** SPEXR detects whether `opencode` is installed alongside Claude Code
+  and exposes both as selectable harnesses behind a common `HarnessAdapter`
+  interface.
+- **AC-2** When exactly one harness is installed, SPEXR auto-selects it with no
+  configuration required; when both are installed, the `spexr.agent.harness`
+  preference (default `claude`) selects the active one, switchable via the
+  "SPEXR: Switch Agent Harness" command.
+- **AC-3** The Agent terminal and Darkfactory monitoring wall operate against
+  the active harness with full functional parity: launch, system-prompt
+  injection, readiness detection, session listing, transcript parsing,
+  live-follow, resume, and project-memory linking.
+- **AC-4** Existing Claude behavior is unchanged for users who have not
+  installed opencode; the opencode support is strictly additive, with no
+  migration of existing `spexr.claude.*` preference values.
 
 ## Verified opencode facts (v1.18.13, confirmed on this machine)
 

@@ -3,8 +3,9 @@ slug: 0014-git-hardening
 title: Git hardening — reliable daily loop
 status: in-progress
 createdAt: 2026-08-27
-workflowStep: validate
-updatedAt: 2026-08-27
+workflowStep: ship
+updatedAt: 2026-08-29
+forcedSteps: [validate, ship]
 ---
 > **What is this file.** Implementation contract for hardening SPEXR's git
 > integration so the everyday source-control loop is trustworthy. Audience:
@@ -206,6 +207,15 @@ Everything in this spec is `Planned` until its slice merges.
   > (`git rm`) instead, and Mark Resolved is no longer shown on them. The other
   > five pairs are unchanged.
 
+### Across all slices
+
+- **AC-19 No regression.** `pnpm run typecheck`, `pnpm run lint` and the full
+  `vitest run` for `packages/theia-extensions` pass at every slice boundary,
+  and every pre-existing test passes unchanged. Note the root `pnpm test` is
+  independently red on `main` for reasons tracked in
+  https://github.com/sondalab-ai/spexr-ide/issues/13; that is the baseline, not
+  a regression from this work.
+
 ### Slice 5 — Panel affordances
 
 Added after manual verification of Slices 1-4 showed the panel was missing two
@@ -244,15 +254,6 @@ things a source-control view is expected to have.
   `addedResourceForeground`; the remaining five — modified, deleted, untracked,
   renamed and conflicting — are defined alongside it, following the same
   pattern, so the letters are legible in light, dark and high-contrast themes.
-
-### Across all slices
-
-- **AC-19 No regression.** `pnpm run typecheck`, `pnpm run lint` and the full
-  `vitest run` for `packages/theia-extensions` pass at every slice boundary,
-  and every pre-existing test passes unchanged. Note the root `pnpm test` is
-  independently red on `main` for reasons tracked in
-  https://github.com/sondalab-ai/spexr-ide/issues/13; that is the baseline, not
-  a regression from this work.
 
 ## Architecture
 

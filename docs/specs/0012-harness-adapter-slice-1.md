@@ -4,7 +4,8 @@ title: HarnessAdapter extraction (multi-harness Slice 1)
 status: in-progress
 createdAt: 2026-08-17
 workflowStep: plan
-updatedAt: 2026-08-17
+updatedAt: 2026-08-29
+forcedSteps: [plan, implement, validate, ship]
 ---
 > **What is this file.** Implementation contract for Slice 1 of multi-harness
 > support — extracting a `HarnessAdapter` seam and a `ClaudeHarness` behind it,

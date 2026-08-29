@@ -3,8 +3,9 @@ slug: 0013-harness-adapter-slice-4
 title: Darkfactory opencode tiles + resume (multi-harness Slice 4)
 status: in-progress
 createdAt: 2026-08-17
-workflowStep: plan
-updatedAt: 2026-08-18
+workflowStep: ship
+updatedAt: 2026-08-29
+forcedSteps: [plan, implement, validate, ship]
 ---
 > **What is this file.** Implementation contract for Slice 4 of multi-harness
 > support — opencode sessions visible and resumable on the Darkfactory wall.
