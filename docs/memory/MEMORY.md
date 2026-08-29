@@ -12,6 +12,9 @@ One line per memory. Linked file holds the body.
 
 - [TypeScript version baseline](typescript-version-baseline.md) — repo runs TS 6.0.3 strict; spec 0001 was written for 5.6.
 - [Theia main-area widget visibility](theia-main-area-widget-visibility.md) — main-area ReactWidget needs tabIndex/focus or tab events never fire; use getCurrentWidget("main"), not currentEditor.
+- [Theia backend orphans](theia-backend-orphans.md) — the forked backend is killed only on app quit; an unclean main-process death leaves it running forever.
+- [Theia colors: CSS vs registry](theia-colors-css-vs-registry.md) — our `--theia-*` overrides never reach colors Theia reads from the registry in JS (xterm, preload background).
+- [Electron prefers-color-scheme](electron-prefers-color-scheme.md) — it follows nativeTheme.themeSource, pinned by Theia to the app's theme; not the OS setting.
 
 ## Feedback
 
