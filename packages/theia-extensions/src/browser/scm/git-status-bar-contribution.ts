@@ -36,7 +36,11 @@ export class GitStatusBarContribution implements FrontendApplicationContribution
       text: formatBranchEntry(s),
       alignment: StatusBarAlignment.LEFT,
       priority: 200,
-      tooltip: s.upstream ? `Tracking ${s.upstream}` : "No upstream branch",
+      tooltip: s.mergeInProgress
+        ? "Merge in progress — commit to conclude it"
+        : s.upstream
+          ? `Tracking ${s.upstream}`
+          : "No upstream branch",
       command: GitCommands.CHECKOUT.id,
     });
   }

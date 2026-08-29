@@ -7,11 +7,21 @@ export const GIT_SERVICE_PATH = "/services/spexr-git";
  */
 export type GitFileState = "A" | "M" | "D" | "R" | "C" | "U" | "?";
 
+/**
+ * The seven unmerged index/worktree pairs of `git status --porcelain`. `U`
+ * alone loses which side did what, and two of these — `UD` (deleted by them,
+ * modified by us) and `DU` (deleted by us, modified by them) — have two
+ * legitimate resolutions rather than one.
+ */
+export type GitConflictKind = "UU" | "AA" | "DD" | "AU" | "UA" | "DU" | "UD";
+
 export interface GitFileChangeDto {
   readonly path: string;
   readonly originalPath?: string;
   readonly stagedState?: GitFileState;
   readonly unstagedState?: GitFileState;
+  /** Set exactly when `unstagedState` is `"U"`: which kind of conflict it is. */
+  readonly conflict?: GitConflictKind;
 }
 
 export interface GitStatusDto {
@@ -21,6 +31,16 @@ export interface GitStatusDto {
   readonly behind: number;
   readonly files: readonly GitFileChangeDto[];
   readonly isClean: boolean;
+  /**
+   * A merge is started and not yet committed (`MERGE_HEAD` exists). Independent
+   * of `files`: resolving a delete/modify conflict in favour of the deletion can
+   * leave the status completely empty with the merge still open, so a clean tree
+   * is not evidence that there is nothing to finish.
+   *
+   * Covers `git merge` only. A rebase or cherry-pick left mid-flight is not
+   * reported here.
+   */
+  readonly mergeInProgress: boolean;
 }
 
 export interface GitBranchDto {
@@ -86,11 +106,22 @@ export interface SpexrGitService {
    * disk. Irreversible — callers confirm first.
    */
   discard(root: string, paths: string[]): Promise<void>;
+  /**
+   * `git rm` — removes the paths from the working tree and stages the removal.
+   * On a delete/modify conflict this is the "accept the deletion" resolution,
+   * the counterpart of staging the file to keep it.
+   */
+  removePath(root: string, paths: string[]): Promise<void>;
   commit(root: string, message: string): Promise<void>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;
-  push(root: string, remote?: string, branch?: string): Promise<void>;
+  /**
+   * Push the current branch. The upstream decision belongs to the backend: a
+   * branch with tracking pushes bare, one without gets `--set-upstream` against
+   * the remote picked from the repository's own remotes.
+   */
+  push(root: string): Promise<void>;
   pull(root: string): Promise<void>;
   fetch(root: string): Promise<void>;
   getLog(root: string, maxCount?: number): Promise<GitLogEntryDto[]>;

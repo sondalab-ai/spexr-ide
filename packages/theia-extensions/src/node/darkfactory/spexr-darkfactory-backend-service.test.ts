@@ -31,9 +31,18 @@ function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendS
               {
                 cwd: "/Users/x/src/proj",
                 type: "assistant",
-                message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }] },
+                message: {
+                  role: "assistant",
+                  content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }],
+                },
               },
-              { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } },
+              {
+                type: "user",
+                message: {
+                  role: "user",
+                  content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+                },
+              },
             ],
           },
           claude: {
@@ -114,13 +123,36 @@ describe("SpexrDarkfactoryBackendService v2", () => {
                     message: {
                       role: "user",
                       content: [
-                        { type: "text", text: "fix the login page: the session cookie is dropped after the redirect and users get logged out" },
+                        {
+                          type: "text",
+                          text: "fix the login page: the session cookie is dropped after the redirect and users get logged out",
+                        },
                       ],
                     },
                   },
-                  { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "I will inspect the redirect handler." }] } },
-                  { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }] } },
-                  { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } },
+                  {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [{ type: "text", text: "I will inspect the redirect handler." }],
+                    },
+                  },
+                  {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [
+                        { type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } },
+                      ],
+                    },
+                  },
+                  {
+                    type: "user",
+                    message: {
+                      role: "user",
+                      content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+                    },
+                  },
                 ],
               },
               claude: {
@@ -188,8 +220,18 @@ describe("SpexrDarkfactoryBackendService v2", () => {
               projectPath: "/Users/x/src/oc-live",
               mtimeMs: NOW - 5_000,
               loadEntries: async () => [
-                { message: { role: "user", content: [{ type: "text", text: "keep building the dashboard widgets" }] } },
-                { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+                {
+                  message: {
+                    role: "user",
+                    content: [{ type: "text", text: "keep building the dashboard widgets" }],
+                  },
+                },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }],
+                  },
+                },
                 { message: { role: "user", content: [{ type: "tool_result", is_error: false }] } },
               ],
             },
@@ -224,7 +266,12 @@ describe("SpexrDarkfactoryBackendService v2", () => {
               mtimeMs: NOW - 60_000,
               loadEntries: async () => [
                 { message: { role: "user", content: [{ type: "text", text: "fix the login" }] } },
-                { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }],
+                  },
+                },
               ],
             },
           },
@@ -233,7 +280,12 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     });
     const tiles = await s.listTiles();
     expect(tiles).toHaveLength(1);
-    expect(tiles[0]).toMatchObject({ sessionId: "ses_abc123", harness: "opencode", projectName: "oc-proj", goal: "fix the login" });
+    expect(tiles[0]).toMatchObject({
+      sessionId: "ses_abc123",
+      harness: "opencode",
+      projectName: "oc-proj",
+      goal: "fix the login",
+    });
     // idle + opencode → always resumable (no config-dir mismatch possible)
     expect((await s.planFocus("ses_abc123")).kind).toBe("resume-terminal");
   });
@@ -255,11 +307,26 @@ describe("SpexrDarkfactoryBackendService v2", () => {
                 {
                   message: {
                     role: "user",
-                    content: [{ type: "text", text: "fix the login page: the session cookie is dropped after the redirect and users get logged out" }],
+                    content: [
+                      {
+                        type: "text",
+                        text: "fix the login page: the session cookie is dropped after the redirect and users get logged out",
+                      },
+                    ],
                   },
                 },
-                { message: { role: "assistant", content: [{ type: "text", text: "I will inspect the redirect handler." }] } },
-                { message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "I will inspect the redirect handler." }],
+                  },
+                },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }],
+                  },
+                },
               ],
             },
           },
@@ -276,7 +343,10 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     });
     await s.listTiles();
     // Both lines model-written from real content (two separate single-clause asks).
-    expect(await s.summarize("ses_sum")).toEqual({ now: "Running the login tests", overview: "Fixing the login bug" });
+    expect(await s.summarize("ses_sum")).toEqual({
+      now: "Running the login tests",
+      overview: "Fixing the login bug",
+    });
     expect(seen.overview).toContain("fix the login page"); // overview is grounded in the session goal
     expect(seen.overview).toContain("inspect the redirect handler"); // …plus recent progress prose
     expect(seen.overview).not.toContain("[Bash:"); // tool chips stay out — no enumeration temptation
@@ -300,9 +370,36 @@ describe("SpexrDarkfactoryBackendService v2", () => {
               // because it added tool-chip lines; chip-free prose must still qualify.
               loadEntries: async () => [
                 { message: { role: "user", content: [{ type: "text", text: "continua" }] } },
-                { message: { role: "assistant", content: [{ type: "text", text: "tracing the redirect handler that drops the session cookie" }] } },
-                { message: { role: "assistant", content: [{ type: "text", text: "the cookie flag is cleared before the 302 response is written" }] } },
-                { message: { role: "assistant", content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }] } },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [
+                      {
+                        type: "text",
+                        text: "tracing the redirect handler that drops the session cookie",
+                      },
+                    ],
+                  },
+                },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [
+                      {
+                        type: "text",
+                        text: "the cookie flag is cleared before the 302 response is written",
+                      },
+                    ],
+                  },
+                },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [
+                      { type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } },
+                    ],
+                  },
+                },
               ],
             },
           },
@@ -313,7 +410,9 @@ describe("SpexrDarkfactoryBackendService v2", () => {
         isAvailable: () => true,
         summarize: async (_prompt, kind) => {
           calls++;
-          return kind === "overview" ? "restoring the dropped session cookie on redirect" : "editing the auth redirect handler";
+          return kind === "overview"
+            ? "restoring the dropped session cookie on redirect"
+            : "editing the auth redirect handler";
         },
       },
     });
@@ -339,7 +438,12 @@ describe("SpexrDarkfactoryBackendService v2", () => {
               mtimeMs: NOW - 60_000,
               loadEntries: async () => [
                 { message: { role: "user", content: [{ type: "text", text: "test" }] } },
-                { message: { role: "assistant", content: [{ type: "text", text: "Test ricevuto." }] } },
+                {
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "Test ricevuto." }],
+                  },
+                },
               ],
             },
           },
@@ -366,7 +470,12 @@ describe("SpexrDarkfactoryBackendService v2", () => {
         Promise.resolve([
           {
             harness: opencodeHarness,
-            ref: { sessionId: "ses_empty", projectPath: "", mtimeMs: NOW - 5_000, loadEntries: async () => [] },
+            ref: {
+              sessionId: "ses_empty",
+              projectPath: "",
+              mtimeMs: NOW - 5_000,
+              loadEntries: async () => [],
+            },
           },
         ]),
     });
@@ -380,10 +489,12 @@ interface WatchCall {
   recursive: boolean;
 }
 
-function fakeWatch(calls: WatchCall[]): (dir: string, recursive: boolean, onChange: () => void) => FSWatcher {
+function fakeWatch(
+  calls: WatchCall[],
+): (dir: string, recursive: boolean, onChange: () => void) => FSWatcher {
   return (dir, recursive) => {
     calls.push({ dir, recursive });
-    return { close: () => {} } as unknown as FSWatcher;
+    return { close: () => {}, on: () => {} } as unknown as FSWatcher;
   };
 }
 
@@ -399,7 +510,9 @@ describe("wall watcher", () => {
       watchDir: fakeWatch(calls),
     });
     s.setClient(fakeClient);
-    await vi.waitFor(() => expect(calls.some((c) => c.dir === "/oc/data")).toBe(true), { timeout: 1000 });
+    await vi.waitFor(() => expect(calls.some((c) => c.dir === "/oc/data")).toBe(true), {
+      timeout: 1000,
+    });
     expect(calls).toContainEqual({ dir: "/c1/projects", recursive: true });
     expect(calls).toContainEqual({ dir: "/c2/projects", recursive: true });
     expect(calls).toContainEqual({ dir: "/oc/data", recursive: false });
@@ -415,7 +528,9 @@ describe("wall watcher", () => {
       watchDir: fakeWatch(calls),
     });
     s.setClient(fakeClient);
-    await vi.waitFor(() => expect(calls.some((c) => c.dir === "/c1/projects")).toBe(true), { timeout: 1000 });
+    await vi.waitFor(() => expect(calls.some((c) => c.dir === "/c1/projects")).toBe(true), {
+      timeout: 1000,
+    });
     await new Promise((r) => setTimeout(r, 50)); // let the async arm complete before asserting absence
     expect(calls.some((c) => c.dir === "/oc/data")).toBe(false);
     s.dispose();
@@ -423,7 +538,9 @@ describe("wall watcher", () => {
 
   it("derives the opencode data dir from XDG_DATA_HOME, falling back to ~/.local/share/opencode", () => {
     expect(defaultOpencodeDataDir({ XDG_DATA_HOME: "/xdg" })).toBe("/xdg/opencode");
-    expect(defaultOpencodeDataDir({ XDG_DATA_HOME: "  " })).toBe(join(homedir(), ".local", "share", "opencode"));
+    expect(defaultOpencodeDataDir({ XDG_DATA_HOME: "  " })).toBe(
+      join(homedir(), ".local", "share", "opencode"),
+    );
     expect(defaultOpencodeDataDir({})).toBe(join(homedir(), ".local", "share", "opencode"));
   });
 });
@@ -457,11 +574,17 @@ describe("pushTiles coalescing + live-dir cache", () => {
   it("is single-flight: pushes during an in-flight scan coalesce into one follow-up scan", async () => {
     let scans = 0;
     let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
     const s = svc({
       configDirs: [],
       detect: () => false,
-      listTranscripts: async () => { scans++; await gate; return []; },
+      listTranscripts: async () => {
+        scans++;
+        await gate;
+        return [];
+      },
     });
     s.setClient(fakeClient);
     const push = s as unknown as Pushable;
@@ -481,7 +604,10 @@ describe("pushTiles coalescing + live-dir cache", () => {
     const s = svc({
       now: () => t,
       listTranscripts: () => Promise.resolve([]),
-      liveProjectDirs: async () => { psCalls++; return new Set<string>(); },
+      liveProjectDirs: async () => {
+        psCalls++;
+        return new Set<string>();
+      },
     });
     await s.listTiles();
     await s.listTiles();

@@ -64,7 +64,9 @@ export class SpexrAgentBackendService implements SpexrAgentService {
       const all = await specRegistry.list();
       const activeSpec = all.find((s) => s.frontmatter.status === "in-progress");
 
-      const expertPrompt = expertId ? readInstalledExpertPrompt(workspaceRoot, expertId) : undefined;
+      const expertPrompt = expertId
+        ? readInstalledExpertPrompt(workspaceRoot, expertId)
+        : undefined;
 
       const prompt = buildSystemPrompt({
         workspaceRoot,
@@ -172,7 +174,11 @@ function ensureSourceMemory(source: string): void {
   fs.mkdirSync(source, { recursive: true });
   const index = path.join(source, "MEMORY.md");
   if (!fs.existsSync(index)) {
-    fs.writeFileSync(index, "# MEMORY index\n\nOne line per memory. Linked file holds the body.\n", "utf8");
+    fs.writeFileSync(
+      index,
+      "# MEMORY index\n\nOne line per memory. Linked file holds the body.\n",
+      "utf8",
+    );
   }
 }
 
@@ -321,7 +327,12 @@ function resolveMemoryConflictSync(workspaceRoot: string, configDir?: string): M
         }
         fs.unlinkSync(target);
         fs.symlinkSync(source, target);
-        return { status: "linked", source, target, message: "Replaced a link that pointed elsewhere." };
+        return {
+          status: "linked",
+          source,
+          target,
+          message: "Replaced a link that pointed elsewhere.",
+        };
       }
 
       const backup = `${target}.spexr-backup-${Date.now()}`;
@@ -415,7 +426,13 @@ async function checkDriftImpl(
       specSlug: slug,
       checkedAt,
       impliedFiles: [],
-      findings: [{ criterionId: "structure", severity: "block", message: `Could not parse spec: ${String(err)}` }],
+      findings: [
+        {
+          criterionId: "structure",
+          severity: "block",
+          message: `Could not parse spec: ${String(err)}`,
+        },
+      ],
     };
   }
 
@@ -424,7 +441,12 @@ async function checkDriftImpl(
   const hasStructuralBlock = structural.findings.some((f) => f.severity === "block");
 
   if (hasStructuralBlock) {
-    const dto: DriftReportDto = { specSlug: slug, checkedAt, impliedFiles: [], findings: structural.findings };
+    const dto: DriftReportDto = {
+      specSlug: slug,
+      checkedAt,
+      impliedFiles: [],
+      findings: structural.findings,
+    };
     persistDriftReport(workspaceRoot, slug, dto);
     return dto;
   }
@@ -434,7 +456,12 @@ async function checkDriftImpl(
   const linkedPaths = extractLinkedPaths(specRaw);
   const allRelative = [...new Set([...trailerPaths, ...linkedPaths])];
   const impliedFiles = allRelative.filter((p) => {
-    try { fs.statSync(path.join(workspaceRoot, p)); return true; } catch { return false; }
+    try {
+      fs.statSync(path.join(workspaceRoot, p));
+      return true;
+    } catch {
+      return false;
+    }
   });
 
   const findings: DriftFindingDto[] = [...structural.findings];
@@ -443,7 +470,8 @@ async function checkDriftImpl(
     findings.push({
       criterionId: "coverage",
       severity: "warn",
-      message: "No code linked to this spec yet. Add `Spec: " + slug + "` trailers to relevant commits.",
+      message:
+        "No code linked to this spec yet. Add `Spec: " + slug + "` trailers to relevant commits.",
     });
     const dto: DriftReportDto = { specSlug: slug, checkedAt, impliedFiles, findings };
     persistDriftReport(workspaceRoot, slug, dto);
@@ -462,7 +490,9 @@ async function checkDriftImpl(
       let content = fs.readFileSync(path.join(workspaceRoot, rel), "utf8");
       const orig = content.length;
       if (content.length > DRIFT_FILE_CAP_BYTES) {
-        content = content.slice(0, DRIFT_FILE_CAP_BYTES) + `\n...(truncated, ${orig - DRIFT_FILE_CAP_BYTES} bytes omitted)`;
+        content =
+          content.slice(0, DRIFT_FILE_CAP_BYTES) +
+          `\n...(truncated, ${orig - DRIFT_FILE_CAP_BYTES} bytes omitted)`;
       }
       fileBlocks.push(`### ${rel}\n\`\`\`\n${content}\n\`\`\``);
       totalBytes += content.length;
@@ -472,9 +502,7 @@ async function checkDriftImpl(
   }
 
   // Build evaluation prompt
-  const acBlock = spec.acceptanceCriteria
-    .map((c) => `- **${c.id}**: ${c.text}`)
-    .join("\n");
+  const acBlock = spec.acceptanceCriteria.map((c) => `- **${c.id}**: ${c.text}`).join("\n");
 
   const prompt =
     `You are a code reviewer. Evaluate whether the acceptance criteria below are satisfied by the code provided.\n` +
@@ -486,7 +514,11 @@ async function checkDriftImpl(
   // Spawn claude --print
   const claudeExec = await resolveClaudeExecutableRobust();
   if (!claudeExec || claudeExec === "ambiguous") {
-    findings.push({ criterionId: "agent", severity: "warn", message: "Claude CLI not found; agent evaluation skipped." });
+    findings.push({
+      criterionId: "agent",
+      severity: "warn",
+      message: "Claude CLI not found; agent evaluation skipped.",
+    });
     const dto: DriftReportDto = { specSlug: slug, checkedAt, impliedFiles, findings };
     persistDriftReport(workspaceRoot, slug, dto);
     return dto;
@@ -501,15 +533,26 @@ async function checkDriftImpl(
   let agentFindings: DriftFindingDto[] = [];
   if (claudeResult.status === 0 && claudeResult.stdout) {
     try {
-      const envelope = JSON.parse(claudeResult.stdout as string) as { result?: string; is_error?: boolean };
+      const envelope = JSON.parse(claudeResult.stdout as string) as {
+        result?: string;
+        is_error?: boolean;
+      };
       const text = envelope.result ?? "";
       agentFindings = parseDriftVerdicts(text);
     } catch {
-      agentFindings = [{ criterionId: "agent", severity: "warn", message: "Agent output could not be parsed." }];
+      agentFindings = [
+        { criterionId: "agent", severity: "warn", message: "Agent output could not be parsed." },
+      ];
     }
   } else {
     const stderr = ((claudeResult.stderr as string) ?? "").trim();
-    agentFindings = [{ criterionId: "agent", severity: "warn", message: `Agent evaluation failed: ${stderr || "unknown error"}` }];
+    agentFindings = [
+      {
+        criterionId: "agent",
+        severity: "warn",
+        message: `Agent evaluation failed: ${stderr || "unknown error"}`,
+      },
+    ];
   }
 
   const allFindings = [...findings, ...agentFindings];
@@ -666,17 +709,22 @@ function shipSpecImpl(
  */
 export function warnIfVersionCheckFails(execPath: string): void {
   try {
-    const result = child_process.spawnSync(execPath, ["--version"], { encoding: "utf8", timeout: 5000 });
+    const result = child_process.spawnSync(execPath, ["--version"], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
     const output = (result.stdout ?? "") + (result.stderr ?? "");
     const looksLikeClaude = output.toLowerCase().includes("claude");
     if (!looksLikeClaude) {
       console.warn(
         `[spexr] Warning: '${execPath} --version' output did not mention "Claude". ` +
-        "Proceeding anyway, but verify the executable is the Claude Code CLI.",
+          "Proceeding anyway, but verify the executable is the Claude Code CLI.",
       );
     }
   } catch {
-    console.warn(`[spexr] Warning: could not run '${execPath} --version' to verify the Claude Code CLI.`);
+    console.warn(
+      `[spexr] Warning: could not run '${execPath} --version' to verify the Claude Code CLI.`,
+    );
   }
 }
 
@@ -693,7 +741,7 @@ export async function resolveAndValidateExecutable(executableOverride?: string):
     if (!isFileExecutable(executableOverride)) {
       throw new Error(
         `Claude Code executable override is not executable: "${executableOverride}". ` +
-        "Check the `spexr.claude.executablePath` preference.",
+          "Check the `spexr.claude.executablePath` preference.",
       );
     }
     return executableOverride;
@@ -718,19 +766,31 @@ export async function resolveAndValidateExecutable(executableOverride?: string):
 
 export function formatGitContext(status: GitStatusDto): string {
   const staged = status.files.filter((f) => f.stagedState).length;
+  // `U` is the unmerged marker, never an ordinary worktree edit — counting it
+  // under `modified` would both hide the merge and double-count the file.
+  const conflicted = status.files.filter((f) => f.unstagedState === "U").length;
   const modified = status.files.filter(
-    (f) => f.unstagedState && f.unstagedState !== "?",
+    (f) => f.unstagedState && f.unstagedState !== "?" && f.unstagedState !== "U",
   ).length;
   const untracked = status.files.filter((f) => f.unstagedState === "?").length;
 
   const header = `Git: branch=${status.branch}${status.upstream ? `, upstream=${status.upstream}` : ""}, ahead=${status.ahead}, behind=${status.behind}`;
-  if (staged === 0 && modified === 0 && untracked === 0) {
-    return header + "\nWorking tree clean.";
+  // Keyed on the merge state, not on the conflict count: accepting a deletion
+  // as the resolution of a delete/modify conflict can empty the status while
+  // the merge is still open, and "clean" would then be a lie.
+  const merge = status.mergeInProgress
+    ? conflicted > 0
+      ? "\nA merge is in progress: resolve the conflicted files before committing."
+      : "\nA merge is in progress with nothing left to resolve: commit to conclude it."
+    : "";
+  if (staged === 0 && modified === 0 && untracked === 0 && conflicted === 0) {
+    return header + (merge || "\nWorking tree clean.");
   }
   const parts = [
     staged > 0 ? `Staged: ${staged} file${staged !== 1 ? "s" : ""}` : "",
     modified > 0 ? `Modified: ${modified} file${modified !== 1 ? "s" : ""}` : "",
     untracked > 0 ? `Untracked: ${untracked} file${untracked !== 1 ? "s" : ""}` : "",
+    conflicted > 0 ? `Conflicted: ${conflicted} file${conflicted !== 1 ? "s" : ""}` : "",
   ].filter(Boolean);
-  return header + "\n" + parts.join(" | ");
+  return header + "\n" + parts.join(" | ") + merge;
 }

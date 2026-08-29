@@ -1,7 +1,7 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { Emitter, DisposableCollection } from "@theia/core";
 import type { Event } from "@theia/core";
-import type { FrontendApplicationContribution} from "@theia/core/lib/browser";
+import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { OpenerService, open } from "@theia/core/lib/browser";
 import { DiffUris } from "@theia/core/lib/browser/diff-uris";
 import URI from "@theia/core/lib/common/uri";
@@ -17,7 +17,13 @@ import type {
 } from "@theia/scm/lib/browser/scm-provider";
 import { SpexrGitServiceProxySymbol } from "./git-service-proxy.js";
 import { GIT_ORIGINAL_SCHEME } from "./git-original-resource.js";
-import type { SpexrGitService, GitFileState, GitBranchDto, GitStatusDto } from "../../common/git-protocol.js";
+import type {
+  SpexrGitService,
+  GitFileState,
+  GitConflictKind,
+  GitBranchDto,
+  GitStatusDto,
+} from "../../common/git-protocol.js";
 import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
 import { SingleFlight } from "./single-flight.js";
 
@@ -25,7 +31,13 @@ import { SingleFlight } from "./single-flight.js";
 // untracked, "!" for conflicted) — not the protocol's GitFileState letters,
 // which AC-15 deliberately keeps "?" and "U" apart on.
 const STATE_LETTER: Record<GitFileState, string> = {
-  A: "A", M: "M", D: "D", R: "R", C: "C", U: "!", "?": "U",
+  A: "A",
+  M: "M",
+  D: "D",
+  R: "R",
+  C: "C",
+  U: "!",
+  "?": "U",
 };
 
 /**
@@ -42,6 +54,12 @@ class GitScmResource {
     readonly sourceUri: URI,
     readonly decorations: ScmResourceDecorations,
     private readonly openHandler: () => Promise<void>,
+    /**
+     * Which conflict this row is, on conflict rows only. Command visibility
+     * reads it off the row: a delete/modify conflict offers two resolutions
+     * where the others offer one, and the menus must differ accordingly.
+     */
+    readonly conflict?: GitConflictKind,
   ) {}
 
   async open(): Promise<void> {
@@ -116,7 +134,8 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
    * Fires `undefined` when a refresh fails, so a status-bar-style consumer
    * can clear itself instead of showing a status the panel no longer has.
    */
-  readonly onDidChangeStatus: Event<GitStatusDto | undefined> = this._onDidChangeStatusEmitter.event;
+  readonly onDidChangeStatus: Event<GitStatusDto | undefined> =
+    this._onDidChangeStatusEmitter.event;
 
   private _lastStatus: GitStatusDto | undefined;
 
@@ -129,10 +148,20 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
   }
 
   private readonly conflictGroup = new GitScmResourceGroup(
-    "conflicts", "Merge Conflicts", this as unknown as ScmProvider,
+    "conflicts",
+    "Merge Conflicts",
+    this as unknown as ScmProvider,
   );
-  private readonly indexGroup = new GitScmResourceGroup("index", "Staged Changes", this as unknown as ScmProvider);
-  private readonly workingTreeGroup = new GitScmResourceGroup("workingTree", "Changes", this as unknown as ScmProvider);
+  private readonly indexGroup = new GitScmResourceGroup(
+    "index",
+    "Staged Changes",
+    this as unknown as ScmProvider,
+  );
+  private readonly workingTreeGroup = new GitScmResourceGroup(
+    "workingTree",
+    "Changes",
+    this as unknown as ScmProvider,
+  );
 
   private readonly toDispose = new DisposableCollection();
 
@@ -174,9 +203,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     const repository = this.scmService.registerScmProvider(this as unknown as ScmProvider);
     repository.input.placeholder = "Message (press Ctrl/Cmd+Enter to commit)";
     this.toDispose.push(repository);
-    this.toDispose.push(
-      this.fileService.onDidFilesChange(() => this.scheduleRefresh()),
-    );
+    this.toDispose.push(this.fileService.onDidFilesChange(() => this.scheduleRefresh()));
     this.toDispose.push(this.gitClient.onRepositoryChanged$(() => this.scheduleRefresh()));
 
     await this.refresh();
@@ -211,7 +238,10 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
           this.conflictGroup,
           fileUri,
           { letter: STATE_LETTER[f.unstagedState!], tooltip: stateLabel(f.unstagedState!) },
-          async () => { await open(this.openerService, fileUri); },
+          async () => {
+            await open(this.openerService, fileUri);
+          },
+          f.conflict,
         );
       });
 
@@ -257,7 +287,12 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     }
   }
 
-  private async openDiff(fileUri: URI, filePath: string, rev: string, isNew: boolean): Promise<void> {
+  private async openDiff(
+    fileUri: URI,
+    filePath: string,
+    rev: string,
+    isNew: boolean,
+  ): Promise<void> {
     if (isNew || !this.rootFsPath) {
       await open(this.openerService, fileUri);
       return;
@@ -295,6 +330,13 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     await this.refresh();
   }
 
+  /** Accept a deletion: `git rm` the paths, staging the removal. */
+  async removePath(paths: string[]): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.removePath(this.rootFsPath, paths);
+    await this.refresh();
+  }
+
   async commit(message: string): Promise<void> {
     if (!this.rootFsPath) return;
     if (!message.trim()) throw new Error("Commit message cannot be empty.");
@@ -302,9 +344,9 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     await this.refresh();
   }
 
-  async push(remote?: string, branch?: string): Promise<void> {
+  async push(): Promise<void> {
     if (!this.rootFsPath) return;
-    await this.gitService.push(this.rootFsPath, remote, branch);
+    await this.gitService.push(this.rootFsPath);
     await this.refresh();
   }
 
@@ -369,8 +411,13 @@ export function buildFileUri(root: string, filePath: string): URI {
 
 function stateLabel(state: GitFileState): string {
   const labels: Record<GitFileState, string> = {
-    A: "Added", M: "Modified", D: "Deleted",
-    R: "Renamed", C: "Copied", U: "Conflicted", "?": "Untracked",
+    A: "Added",
+    M: "Modified",
+    D: "Deleted",
+    R: "Renamed",
+    C: "Copied",
+    U: "Conflicted",
+    "?": "Untracked",
   };
   return labels[state];
 }

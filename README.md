@@ -305,16 +305,26 @@ The E2E job is a hard gate: if any Playwright test fails the build and release j
 pnpm build:dev
 
 # Mac / Windows (no display server needed)
-pnpm --filter @spexr/e2e test
+pnpm --filter @spexr/e2e test:e2e
 
 # Linux (needs xvfb)
-xvfb-run --auto-servernum pnpm --filter @spexr/e2e test
+xvfb-run --auto-servernum pnpm --filter @spexr/e2e test:e2e
 
 # Interactive UI mode
 pnpm --filter @spexr/e2e test:ui
 ```
 
 Playwright HTML report opens at `tests/e2e/playwright-report/index.html` after a run.
+
+#### Manual acceptance checks
+
+Some behaviour needs a running application and cannot be asserted from a test —
+whether the source-control panel notices a change made from a terminal, for one.
+Those checks live in [`docs/testing/`](docs/testing/), one file per area:
+
+| Area | File |
+|---|---|
+| Git integration | [`docs/testing/git-manual-tests.md`](docs/testing/git-manual-tests.md) |
 
 ### Contributing workflow
 

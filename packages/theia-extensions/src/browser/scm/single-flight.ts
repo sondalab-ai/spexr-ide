@@ -32,6 +32,9 @@ export class SingleFlight {
         await this.op();
       }
     } finally {
+      // A rejected `op` skips the rerun loop; without clearing here the flag
+      // survives and the NEXT run performs one cycle too many.
+      this.dirty = false;
       this.inFlight = undefined;
     }
   }

@@ -23,7 +23,7 @@
     "package:linux": "pnpm --filter @spexr/desktop run package:linux",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test --continue",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
     "generate:icon": "node scripts/generate-icon.js",

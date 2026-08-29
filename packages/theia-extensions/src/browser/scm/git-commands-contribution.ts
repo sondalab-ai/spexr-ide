@@ -12,7 +12,13 @@ import { ProgressService } from "@theia/core/lib/common/progress-service";
 import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { toRepoRelative } from "./relative-path.js";
-import { allInGroup, isResourceGroup, resourcePaths } from "./scm-resource-args.js";
+import {
+  allDeleteModifyConflicts,
+  allInGroup,
+  allSingleOutcomeConflicts,
+  isResourceGroup,
+  resourcePaths,
+} from "./scm-resource-args.js";
 
 export const GitCommands = {
   STAGE_ALL: { id: "spexr.git.stageAll", label: "Git: Stage All Changes" } satisfies Command,
@@ -27,8 +33,22 @@ export const GitCommands = {
   REFRESH: { id: "spexr.git.refresh", label: "Git: Refresh" } satisfies Command,
   STAGE_FILE: { id: "spexr.git.stageFile", label: "Git: Stage File" } satisfies Command,
   UNSTAGE_FILE: { id: "spexr.git.unstageFile", label: "Git: Unstage File" } satisfies Command,
-  DISCARD_FILE: { id: "spexr.git.discardFile", label: "Git: Discard File Changes" } satisfies Command,
-  MARK_RESOLVED: { id: "spexr.git.markResolved", label: "Git: Mark Conflict Resolved" } satisfies Command,
+  DISCARD_FILE: {
+    id: "spexr.git.discardFile",
+    label: "Git: Discard File Changes",
+  } satisfies Command,
+  MARK_RESOLVED: {
+    id: "spexr.git.markResolved",
+    label: "Git: Mark Conflict Resolved",
+  } satisfies Command,
+  KEEP_FILE: {
+    id: "spexr.git.keepFile",
+    label: "Git: Resolve Conflict Keeping the File",
+  } satisfies Command,
+  ACCEPT_DELETION: {
+    id: "spexr.git.acceptDeletion",
+    label: "Git: Resolve Conflict Accepting the Deletion",
+  } satisfies Command,
 } as const;
 
 @injectable()
@@ -107,8 +127,24 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     commands.registerCommand(GitCommands.MARK_RESOLVED, {
       execute: (...args: unknown[]) =>
         // Staging IS resolution, in git's own terms.
-        this.runGitOp("Mark resolved", () => this.provider.stage(this.pathsOf(args)), "Marked resolved."),
-      isVisible: (...args: unknown[]) => allInGroup(args, "conflicts"),
+        this.runGitOp(
+          "Mark resolved",
+          () => this.provider.stage(this.pathsOf(args)),
+          "Marked resolved.",
+        ),
+      // Not on a delete/modify row: there, staging is one of two legitimate
+      // resolutions, and a button called "Mark Resolved" would silently pick
+      // it. Those rows get Keep File / Accept Deletion instead.
+      isVisible: (...args: unknown[]) => allSingleOutcomeConflicts(args),
+    });
+    commands.registerCommand(GitCommands.KEEP_FILE, {
+      execute: (...args: unknown[]) =>
+        this.runGitOp("Keep file", () => this.provider.stage(this.pathsOf(args)), "File kept."),
+      isVisible: (...args: unknown[]) => allDeleteModifyConflicts(args),
+    });
+    commands.registerCommand(GitCommands.ACCEPT_DELETION, {
+      execute: (...args: unknown[]) => this.acceptDeletionWithConfirm(this.pathsOf(args)),
+      isVisible: (...args: unknown[]) => allDeleteModifyConflicts(args),
     });
   }
 
@@ -126,7 +162,10 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       order: "1",
     });
     for (const cmd of [GitCommands.STAGE_ALL, GitCommands.UNSTAGE_ALL]) {
-      menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });
+      menus.registerMenuAction(ScmTreeWidget.RESOURCE_GROUP_CONTEXT_MENU, {
+        commandId: cmd.id,
+        label: cmd.label,
+      });
     }
 
     menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
@@ -153,17 +192,42 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       icon: "codicon codicon-check",
       order: "4",
     });
-    for (const cmd of [GitCommands.STAGE_FILE, GitCommands.UNSTAGE_FILE, GitCommands.DISCARD_FILE, GitCommands.MARK_RESOLVED]) {
-      menus.registerMenuAction(ScmTreeWidget.RESOURCE_CONTEXT_MENU, { commandId: cmd.id, label: cmd.label });
+    // Mutually exclusive with Mark Resolved above — a conflict row shows
+    // either that one button or these two, never both.
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.KEEP_FILE.id,
+      label: "Keep File",
+      icon: "codicon codicon-check",
+      order: "4",
+    });
+    menus.registerMenuAction(ScmTreeWidget.RESOURCE_INLINE_MENU, {
+      commandId: GitCommands.ACCEPT_DELETION.id,
+      label: "Accept Deletion",
+      icon: "codicon codicon-trash",
+      order: "5",
+    });
+    for (const cmd of [
+      GitCommands.STAGE_FILE,
+      GitCommands.UNSTAGE_FILE,
+      GitCommands.DISCARD_FILE,
+      GitCommands.MARK_RESOLVED,
+      GitCommands.KEEP_FILE,
+      GitCommands.ACCEPT_DELETION,
+    ]) {
+      menus.registerMenuAction(ScmTreeWidget.RESOURCE_CONTEXT_MENU, {
+        commandId: cmd.id,
+        label: cmd.label,
+      });
     }
   }
 
   private async stageAll(): Promise<void> {
     const root = this.provider.root;
     if (!root) return;
-    const paths = this.provider.groups
-      .find((g) => g.id === "workingTree")
-      ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
+    const paths =
+      this.provider.groups
+        .find((g) => g.id === "workingTree")
+        ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
     if (paths.length === 0) return;
     await this.provider.stage(paths);
   }
@@ -171,9 +235,10 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   private async unstageAll(): Promise<void> {
     const root = this.provider.root;
     if (!root) return;
-    const paths = this.provider.groups
-      .find((g) => g.id === "index")
-      ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
+    const paths =
+      this.provider.groups
+        .find((g) => g.id === "index")
+        ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
     if (paths.length === 0) return;
     await this.provider.unstage(paths);
   }
@@ -237,9 +302,10 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
 
   private async discardWithConfirm(paths: string[]): Promise<void> {
     if (paths.length === 0) return;
-    const listed = paths.length <= 5
-      ? paths.join("\n")
-      : `${paths.slice(0, 5).join("\n")}\n…and ${paths.length - 5} more`;
+    const listed =
+      paths.length <= 5
+        ? paths.join("\n")
+        : `${paths.slice(0, 5).join("\n")}\n…and ${paths.length - 5} more`;
     const ok = await new ConfirmDialog({
       title: paths.length === 1 ? "Discard changes" : `Discard changes in ${paths.length} files`,
       msg: `${listed}\n\nUntracked files will be deleted. Other changes will revert to their staged content. This cannot be undone.`,
@@ -247,7 +313,37 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       cancel: "Cancel",
     }).open();
     if (!ok) return;
-    await this.runGitOp("Discard changes", () => this.provider.discard(paths), "Changes discarded.");
+    await this.runGitOp(
+      "Discard changes",
+      () => this.provider.discard(paths),
+      "Changes discarded.",
+    );
+  }
+
+  /**
+   * Accepting a deletion removes the file from the working tree, so it is
+   * confirmed like a discard. Unlike a discard it is recoverable — the content
+   * is still in HEAD or MERGE_HEAD — which the copy says rather than borrowing
+   * discard's "cannot be undone".
+   */
+  private async acceptDeletionWithConfirm(paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const listed =
+      paths.length <= 5
+        ? paths.join("\n")
+        : `${paths.slice(0, 5).join("\n")}\n…and ${paths.length - 5} more`;
+    const ok = await new ConfirmDialog({
+      title: paths.length === 1 ? "Accept deletion" : `Accept deletion of ${paths.length} files`,
+      msg: `${listed}\n\nThe file will be deleted from the working tree and the deletion staged. Its content stays reachable in the merge until you commit.`,
+      ok: "Accept Deletion",
+      cancel: "Cancel",
+    }).open();
+    if (!ok) return;
+    await this.runGitOp(
+      "Accept deletion",
+      () => this.provider.removePath(paths),
+      "Deletion accepted.",
+    );
   }
 
   /**

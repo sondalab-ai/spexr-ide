@@ -1,9 +1,17 @@
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
-import { configDirs as defaultConfigDirs, projectsDirOf } from "../../node/darkfactory/config-dirs.js";
+import {
+  configDirs as defaultConfigDirs,
+  projectsDirOf,
+} from "../../node/darkfactory/config-dirs.js";
 import { parseTranscript } from "../../node/darkfactory/transcript-parser.js";
 import { readBoundedLines } from "../../node/darkfactory/bounded-read.js";
-import type { HarnessAdapter, HarnessSessionRef, ParsedTranscript, FollowHandle } from "./harness-types.js";
+import type {
+  HarnessAdapter,
+  HarnessSessionRef,
+  ParsedTranscript,
+  FollowHandle,
+} from "./harness-types.js";
 import { claudeCore } from "./claude-harness-core.js";
 import { once } from "./once.js";
 
@@ -18,7 +26,9 @@ export interface TranscriptRef {
 }
 
 /** Walk every Claude config dir's `projects/` for `.jsonl` transcripts. */
-export async function scanClaudeTranscripts(configDirs: string[] = defaultConfigDirs()): Promise<TranscriptRef[]> {
+export async function scanClaudeTranscripts(
+  configDirs: string[] = defaultConfigDirs(),
+): Promise<TranscriptRef[]> {
   const refs: TranscriptRef[] = [];
   for (const configDir of configDirs) {
     const projectsDir = projectsDirOf(configDir);
@@ -79,6 +89,17 @@ function parseLine(line: string): ClaudeEntry | undefined {
  */
 export const claudeHarness: HarnessAdapter = {
   ...claudeCore,
+
+  /**
+   * Claude is SPEXR's hard dependency, and the app does not resolve its binary
+   * from PATH alone: `spexr.claude.executablePath` and the robust lookup exist
+   * precisely for installs a login-shell `command -v claude` would miss. A PATH
+   * probe here would hide a working user's sessions from the wall, so this
+   * harness answers for itself rather than being special-cased in the detector.
+   */
+  isInstalled(): Promise<boolean> {
+    return Promise.resolve(true);
+  },
 
   async listSessions(): Promise<HarnessSessionRef[]> {
     const refs = await scanClaudeTranscripts();
