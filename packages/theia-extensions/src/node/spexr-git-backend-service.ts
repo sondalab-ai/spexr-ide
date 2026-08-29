@@ -16,6 +16,8 @@ import type {
   BlameCommitDto,
   BlameLineDto,
 } from "../common/git-protocol.js";
+import type { DescriptionGenerator } from "./search/description-format.js";
+import { buildCommitPrompt, cleanCommitSubject, commitPrefix, type StagedFile } from "./commit-message-format.js";
 
 const BLAME_HEADER = /^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/;
 
@@ -25,6 +27,8 @@ const WATCH_DEBOUNCE_MS = 150;
 export interface GitBackendDeps {
   /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
   watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
+  /** Local model behind {@link SpexrGitBackendService.generateCommitMessage}; absent means no generation. */
+  generator?: DescriptionGenerator;
 }
 
 /**
@@ -222,9 +226,13 @@ export class SpexrGitBackendService implements SpexrGitService {
   private readonly gitDirs = new Map<string, string>();
   private debounce?: ReturnType<typeof setTimeout>;
 
+  /** Absent when the backend module could not supply one; generation then no-ops. */
+  private readonly generator: DescriptionGenerator | undefined;
+
   constructor(@unmanaged() deps: GitBackendDeps = {}) {
     this.watchDir =
       deps.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
+    this.generator = deps.generator;
   }
 
   setClient(client: SpexrGitClient): void {
@@ -454,6 +462,29 @@ export class SpexrGitBackendService implements SpexrGitService {
 
   async commit(root: string, message: string): Promise<void> {
     await this.git(root).commit(message);
+  }
+
+  /**
+   * Ask the local model for a commit subject. The model runs in the backend, so
+   * the changeset never crosses the RPC boundary; what crosses is one line.
+   *
+   * The model is handed the staged paths and their status letters, never the
+   * diff — it invents specifics when given noisy input, and its budget here is
+   * ~30 tokens. It writes only the clause; {@link commitPrefix} derives the
+   * `type(scope):` part from the paths, which is structure the model is not
+   * reliable at.
+   */
+  async generateCommitMessage(root: string): Promise<string | null> {
+    const generator = this.generator;
+    if (!generator?.isAvailable()) return null;
+    const status = await this.getStatus(root);
+    const staged: StagedFile[] = status.files
+      .filter((f): f is GitFileChangeDto & { stagedState: GitFileState } => f.stagedState !== undefined)
+      .map((f) => ({ path: f.path, state: f.stagedState }));
+    if (staged.length === 0) return null;
+    const clause = await generator.summarize(buildCommitPrompt(staged), "commit");
+    const subject = cleanCommitSubject(clause ?? "");
+    return subject.length > 0 ? `${commitPrefix(staged)}: ${subject}` : null;
   }
 
   async getBranches(root: string): Promise<GitBranchDto[]> {

@@ -63,6 +63,8 @@ import { LanguageGrammarDefinitionContribution } from "@theia/monaco/lib/browser
 import { AboutDialog } from "@theia/core/lib/browser/about-dialog.js";
 import { SpexrAboutDialog } from "./about/spexr-about-dialog.js";
 import { SpexrGitScmProvider } from "./scm/git-scm-provider.js";
+import { ScmCommitWidget } from "@theia/scm/lib/browser/scm-commit-widget";
+import { SpexrScmCommitWidget } from "./scm/spexr-scm-commit-widget.js";
 import { GitIgnoredDecorationProvider } from "./scm/git-ignored-decoration-provider.js";
 import { GitStateDecorationProvider } from "./scm/git-state-decoration-provider.js";
 import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-proxy.js";
@@ -232,6 +234,11 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       return connection.createProxy(GIT_SERVICE_PATH, client);
     })
     .inSingletonScope();
+
+  // The generate-message action lives inside the commit box; Theia's own widget
+  // renders that box, so it is replaced by the subclass that adds the action.
+  bind(SpexrScmCommitWidget).toSelf();
+  rebind(ScmCommitWidget).toService(SpexrScmCommitWidget);
 
   bind(SpexrGitScmProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrGitScmProvider);

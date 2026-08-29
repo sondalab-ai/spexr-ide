@@ -193,6 +193,74 @@ describe("SpexrGitBackendService", () => {
     expect(current!.isRemote).toBe(false);
   });
 
+  describe("generateCommitMessage", () => {
+    const generator = (reply: string | null, available = true) => {
+      const prompts: string[] = [];
+      return {
+        prompts,
+        fake: {
+          generate: async (): Promise<string | null> => null,
+          summarize: async (prompt: string): Promise<string | null> => {
+            prompts.push(prompt);
+            return reply;
+          },
+          isAvailable: () => available,
+        },
+      };
+    };
+
+    const stage = (relPath: string, content = "x"): void => {
+      const abs = path.join(tmpDir, relPath);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, content);
+      execSync(`git add ${relPath}`, { cwd: tmpDir });
+    };
+
+    it("composes the prefix from the paths and takes only the clause from the model", async () => {
+      const gen = generator("Add the thing helper.");
+      const svc = new SpexrGitBackendService({ generator: gen.fake });
+      stage("src/app/thing.ts");
+      expect(await svc.generateCommitMessage(tmpDir)).toBe("feat(app): add the thing helper");
+    });
+
+    it("prompts the model with the staged paths, not a diff", async () => {
+      const gen = generator("tidy the helper");
+      const svc = new SpexrGitBackendService({ generator: gen.fake });
+      stage("src/app/thing.ts", "content that must not reach the model");
+      await svc.generateCommitMessage(tmpDir);
+      expect(gen.prompts[0]).toContain("src/app/thing.ts");
+      expect(gen.prompts[0]).not.toContain("content that must not reach the model");
+    });
+
+    it("returns nothing, and asks the model nothing, when the index is empty", async () => {
+      const gen = generator("should never be asked");
+      const svc = new SpexrGitBackendService({ generator: gen.fake });
+      fs.writeFileSync(path.join(tmpDir, "unstaged.txt"), "hello");
+      expect(await svc.generateCommitMessage(tmpDir)).toBeNull();
+      expect(gen.prompts).toHaveLength(0);
+    });
+
+    it("returns nothing when the model is unavailable", async () => {
+      const gen = generator("ignored", false);
+      const svc = new SpexrGitBackendService({ generator: gen.fake });
+      stage("src/app/thing.ts");
+      expect(await svc.generateCommitMessage(tmpDir)).toBeNull();
+      expect(gen.prompts).toHaveLength(0);
+    });
+
+    it("returns nothing when the reply holds no usable subject", async () => {
+      const gen = generator("**Subject:**");
+      const svc = new SpexrGitBackendService({ generator: gen.fake });
+      stage("src/app/thing.ts");
+      expect(await svc.generateCommitMessage(tmpDir)).toBeNull();
+    });
+
+    it("returns nothing when no model is wired at all", async () => {
+      stage("src/app/thing.ts");
+      expect(await service.generateCommitMessage(tmpDir)).toBeNull();
+    });
+  });
+
   describe("pickRemote", () => {
     it("prefers origin", () => expect(pickRemote(["upstream", "origin"])).toBe("origin"));
     it("takes the sole remote when there is no origin", () =>

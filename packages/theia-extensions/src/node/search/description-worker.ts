@@ -21,8 +21,11 @@ import {
   SUMMARY_MAX_NEW_TOKENS,
   NOW_SYSTEM_PROMPT,
   OVERVIEW_SYSTEM_PROMPT,
+  COMMIT_MAX_NEW_TOKENS,
+  COMMIT_SYSTEM_PROMPT,
   buildPrompt,
   cleanGenerated,
+  type GenerationKind,
   type WorkerRequest,
   type WorkerResponse,
 } from "./description-format.js";
@@ -117,17 +120,34 @@ function post(msg: WorkerResponse): void {
   process.send?.(msg);
 }
 
+const SYSTEM_BY_KIND = {
+  description: DESCRIPTION_SYSTEM_PROMPT,
+  now: NOW_SYSTEM_PROMPT,
+  overview: OVERVIEW_SYSTEM_PROMPT,
+  commit: COMMIT_SYSTEM_PROMPT,
+} satisfies Record<GenerationKind, string>;
+
+const MAX_TOKENS_BY_KIND = {
+  description: MAX_NEW_TOKENS,
+  now: SUMMARY_MAX_NEW_TOKENS,
+  overview: SUMMARY_MAX_NEW_TOKENS,
+  commit: COMMIT_MAX_NEW_TOKENS,
+} satisfies Record<GenerationKind, number>;
+
 async function handle(req: WorkerRequest): Promise<void> {
   const { id, kind, relPath, content } = req;
   const t0 = Date.now();
   try {
     const pipe = await getPipe();
-    // Summary kinds ("now"/"overview") carry a fully-built user prompt in `content`;
-    // only the file-description path composes its prompt here from path + content.
-    const isSummary = kind === "now" || kind === "overview";
-    const system = kind === "overview" ? OVERVIEW_SYSTEM_PROMPT : kind === "now" ? NOW_SYSTEM_PROMPT : DESCRIPTION_SYSTEM_PROMPT;
-    const user = isSummary ? content : buildPrompt(relPath, content);
-    const maxTokens = isSummary ? SUMMARY_MAX_NEW_TOKENS : MAX_NEW_TOKENS;
+    // Every kind but "description" carries a fully-built user prompt in `content`;
+    // the file-description path composes its prompt here from path + content.
+    // Looked up rather than chained: a ternary fallthrough would silently hand a
+    // new kind the file-description prompt and its much smaller token budget.
+    const k = kind ?? "description";
+    const prebuilt = k !== "description";
+    const system = SYSTEM_BY_KIND[k];
+    const user = prebuilt ? content : buildPrompt(relPath, content);
+    const maxTokens = MAX_TOKENS_BY_KIND[k];
     const tInfer = Date.now();
     const out = await pipe(
       [
@@ -137,14 +157,14 @@ async function handle(req: WorkerRequest): Promise<void> {
       { max_new_tokens: maxTokens, do_sample: false },
     );
     console.error(
-      `[darkfactory worker] ${kind ?? "description"} done: total ${Date.now() - t0}ms, inference ${Date.now() - tInfer}ms`,
+      `[darkfactory worker] ${k} done: total ${Date.now() - t0}ms, inference ${Date.now() - tInfer}ms`,
     );
     const msgs = out[0]?.generated_text;
     const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : undefined;
     const raw = typeof last?.content === "string" ? last.content : "";
-    // Summary lines are cleaned by the caller (cleanSummaryLine); only the
-    // single-line file description goes through cleanGenerated.
-    const text = isSummary ? raw.trim() : cleanGenerated(raw);
+    // Prebuilt-prompt replies are cleaned by their caller (cleanSummaryLine,
+    // cleanCommitSubject); only the file description goes through cleanGenerated.
+    const text = prebuilt ? raw.trim() : cleanGenerated(raw);
     post({ id, type: "done", text: text.length > 0 ? text : null });
   } catch (err) {
     console.error(`[darkfactory worker] inference failed after ${Date.now() - t0}ms:`, err);

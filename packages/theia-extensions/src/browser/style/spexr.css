@@ -2049,6 +2049,24 @@ code {
   margin-top: 5px;
 }
 
+/* The generate-message action sits inside the commit box, so the message and the
+   way to ask for one are a single control. The textarea keeps room on its right
+   so a long message never runs under the button. */
+.spexr-scm-input { position: relative; }
+.spexr-scm-input .theia-scm-input-message { padding-right: 26px; }
+.spexr-scm-input__generate {
+  position: absolute; top: 3px; right: 4px;
+  display: flex; align-items: center; justify-content: center;
+  /* Small enough to sit inside a single-row textarea without overflowing it. */
+  width: 18px; height: 18px; padding: 0;
+  background: transparent; border: none; border-radius: var(--sl-radius-sm);
+  color: var(--sl-text-muted); cursor: pointer;
+}
+.spexr-scm-input__generate:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary);
+}
+.spexr-scm-input__generate:disabled { cursor: default; }
+
 /* Smart Search (Explorer) */
 .spexr-smart-search__body { padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
 .spexr-smart-search__input { width: 100%; box-sizing: border-box; }

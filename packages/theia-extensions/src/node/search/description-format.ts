@@ -59,6 +59,19 @@ export function buildOverviewPrompt(goal: string, progress: string): string {
   return `Session goal (the user's first request):\n${goal.slice(0, 400)}${ctx}\n\nWrite the one-line overview.`;
 }
 
+// Commit subjects are the one place the model is NOT asked for a full line: the
+// caller composes the `type(scope):` prefix from the paths (deterministic and
+// testable) and the model contributes only the clause after the colon. ~12 words
+// ≈ 24 tokens; the cap leaves a little headroom.
+export const COMMIT_MAX_NEW_TOKENS = 30;
+
+export const COMMIT_SYSTEM_PROMPT =
+  "You are given the list of files staged for a git commit, each with its status letter " +
+  "(A added, M modified, D deleted, R renamed). Write ONE line, max 12 words, in the imperative " +
+  "present tense ('add', 'fix', 'rename', 'move'), saying what the change does. No preamble, " +
+  "no markdown, no trailing period, and no 'feat:'/'fix:' prefix — the caller adds that. " +
+  "Use ONLY the given paths. Never invent files, tools, commands, or technologies.";
+
 /** User message for the one-line current-task ("now") summary. */
 export function buildNowPrompt(recentProse: string): string {
   return `Most recent activity:\n${recentProse.slice(0, 500)}\n\nWrite the one-line current task.`;
@@ -88,7 +101,8 @@ export function cleanSummaryLine(raw: string): string {
 /** Produces a one-sentence, whole-file description, or null if unavailable. */
 export interface DescriptionGenerator {
   generate(relPath: string, content: string): Promise<string | null>;
-  summarize(prompt: string, kind: "now" | "overview"): Promise<string | null>;
+  /** Run a prebuilt prompt under one of the single-line kinds. */
+  summarize(prompt: string, kind: PromptedKind): Promise<string | null>;
   isAvailable(): boolean;
   /** Point generation at different weights; implementations restart on a change. */
   setModel?(config: GenerationModelConfig): void;
@@ -97,10 +111,20 @@ export interface DescriptionGenerator {
 
 export const DescriptionGeneratorToken = Symbol("DescriptionGenerator");
 
+/**
+ * What the worker is being asked for. Everything but `description` carries a
+ * fully-built user prompt in `content`; `description` composes its own from the
+ * path and file content.
+ */
+export type GenerationKind = "description" | "now" | "overview" | "commit";
+
+/** The kinds whose prompt the caller builds. */
+export type PromptedKind = Exclude<GenerationKind, "description">;
+
 /** host → worker */
 export interface WorkerRequest {
   id: number;
-  kind?: "description" | "now" | "overview";
+  kind?: GenerationKind;
   relPath: string;
   content: string;
 }

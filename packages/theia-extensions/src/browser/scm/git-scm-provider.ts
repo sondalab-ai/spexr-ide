@@ -9,6 +9,7 @@ import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { MessageService } from "@theia/core/lib/common/message-service";
 import { ScmService } from "@theia/scm/lib/browser/scm-service";
+import type { ScmRepository } from "@theia/scm/lib/browser/scm-repository";
 import type {
   ScmProvider,
   ScmResourceGroup,
@@ -173,12 +174,31 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
 
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /** The registered repository, kept for its commit-message input box. */
+  private repository: ScmRepository | undefined;
+
   readonly acceptInputCommand = { command: "spexr.git.commitFromPanel", title: "Commit" };
 
   constructor() {
     // Unlike the other two groups, an empty conflict group should not take up
     // space in the SCM panel — most refreshes have no conflicts at all.
     this.conflictGroup.hideWhenEmpty = true;
+  }
+
+  /** Current text of the commit-message input box. */
+  get inputValue(): string {
+    return this.repository?.input.value ?? "";
+  }
+
+  /**
+   * Write a message into the commit-message input box. False when there is no box
+   * to write to — the provider registers one in `onStart`, which returns early
+   * outside a workspace.
+   */
+  setInputValue(message: string): boolean {
+    if (!this.repository) return false;
+    this.repository.input.value = message;
+    return true;
   }
 
   get groups(): ScmResourceGroup[] {
@@ -201,6 +221,7 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     this.rootUriStr = first.resource.toString();
 
     const repository = this.scmService.registerScmProvider(this as unknown as ScmProvider);
+    this.repository = repository;
     repository.input.placeholder = "Message (press Ctrl/Cmd+Enter to commit)";
     this.toDispose.push(repository);
     this.toDispose.push(this.fileService.onDidFilesChange(() => this.scheduleRefresh()));
@@ -342,6 +363,12 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     if (!message.trim()) throw new Error("Commit message cannot be empty.");
     await this.gitService.commit(this.rootFsPath, message);
     await this.refresh();
+  }
+
+  /** Ask the backend's local model for a commit subject; null when it has none to offer. */
+  async generateCommitMessage(): Promise<string | null> {
+    if (!this.rootFsPath) return null;
+    return this.gitService.generateCommitMessage(this.rootFsPath);
   }
 
   async push(): Promise<void> {

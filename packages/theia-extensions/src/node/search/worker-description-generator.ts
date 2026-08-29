@@ -10,6 +10,7 @@ import {
 } from "../../common/generation-model.js";
 import type {
   DescriptionGenerator,
+  PromptedKind,
   WorkerRequest,
   WorkerResponse,
 } from "./description-format.js";
@@ -149,7 +150,7 @@ export class WorkerDescriptionGenerator implements DescriptionGenerator {
     });
   }
 
-  summarize(prompt: string, kind: "now" | "overview"): Promise<string | null> {
+  summarize(prompt: string, kind: PromptedKind): Promise<string | null> {
     const worker = this.ensureWorker();
     if (!worker) return Promise.resolve(null);
     const id = ++this.seq;

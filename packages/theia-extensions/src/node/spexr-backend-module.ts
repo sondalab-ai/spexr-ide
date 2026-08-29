@@ -26,7 +26,14 @@ export default new ContainerModule((bind) => {
     })
     .inSingletonScope();
 
-  bind(SpexrGitBackendService).toSelf().inSingletonScope();
+  bind(SpexrGitBackendService)
+    .toDynamicValue(
+      (ctx) =>
+        new SpexrGitBackendService({
+          generator: ctx.container.get<DescriptionGenerator>(DescriptionGeneratorToken),
+        }),
+    )
+    .inSingletonScope();
   bind(ConnectionHandler)
     .toDynamicValue((ctx) => {
       const service = ctx.container.get(SpexrGitBackendService);

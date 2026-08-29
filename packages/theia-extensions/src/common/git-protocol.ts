@@ -113,6 +113,16 @@ export interface SpexrGitService {
    */
   removePath(root: string, paths: string[]): Promise<void>;
   commit(root: string, message: string): Promise<void>;
+  /**
+   * A Conventional Commits subject for what is currently staged, written by the
+   * local model. The `type(scope):` prefix is composed from the staged paths; the
+   * model contributes only the clause after it.
+   *
+   * `null` whenever no subject could be produced — nothing staged, no local model
+   * (unavailable or crashed out), or a reply with nothing usable in it. Callers
+   * distinguish "nothing staged" themselves, from the status they already hold.
+   */
+  generateCommitMessage(root: string): Promise<string | null>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;

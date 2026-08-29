@@ -25,6 +25,10 @@ export const GitCommands = {
   UNSTAGE_ALL: { id: "spexr.git.unstageAll", label: "Git: Unstage All Changes" } satisfies Command,
   COMMIT: { id: "spexr.git.commit", label: "Git: Commit Staged Changes" } satisfies Command,
   COMMIT_FROM_PANEL: { id: "spexr.git.commitFromPanel", label: "Commit" } satisfies Command,
+  GENERATE_MESSAGE: {
+    id: "spexr.git.generateCommitMessage",
+    label: "Git: Generate Commit Message",
+  } satisfies Command,
   PUSH: { id: "spexr.git.push", label: "Git: Push" } satisfies Command,
   PULL: { id: "spexr.git.pull", label: "Git: Pull" } satisfies Command,
   FETCH: { id: "spexr.git.fetch", label: "Git: Fetch" } satisfies Command,
@@ -87,6 +91,9 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
           () => this.provider.commit(typeof message === "string" ? message : ""),
           "Changes committed.",
         ),
+    });
+    commands.registerCommand(GitCommands.GENERATE_MESSAGE, {
+      execute: () => this.generateCommitMessage(),
     });
     commands.registerCommand(GitCommands.PUSH, {
       execute: () => this.runGitOp("Push", () => this.provider.push(), "Pushed to remote."),
@@ -353,6 +360,35 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * completion, an error notification on failure. The progress is always
    * dismissed.
    */
+  /**
+   * Fill the commit-message box from the local model. Refuses rather than guesses
+   * in the two cases where generating would be wrong: nothing staged (there is no
+   * change to describe) and a box the user has already typed in (their text wins).
+   * The single model worker is shared with the Darkfactory summaries, so this can
+   * queue behind one and take a while.
+   */
+  private async generateCommitMessage(): Promise<void> {
+    const staged = this.provider.lastStatus?.files.filter((f) => f.stagedState !== undefined) ?? [];
+    if (staged.length === 0) {
+      this.messages.info("Nothing staged — stage the changes you want described first.");
+      return;
+    }
+    if (this.provider.inputValue.trim().length > 0) {
+      this.messages.info("The commit message box already has text — clear it to generate a new message.");
+      return;
+    }
+    await this.runGitOp("Generate commit message", async () => {
+      const message = await this.provider.generateCommitMessage();
+      if (!message) {
+        this.messages.info("The local model could not write a commit message.");
+        return;
+      }
+      // Never drop a message the model spent real time on: if the box is gone,
+      // say so and hand the text over rather than discarding it silently.
+      if (!this.provider.setInputValue(message)) this.messages.info(`Suggested message: ${message}`);
+    });
+  }
+
   private async runGitOp(
     label: string,
     op: () => Promise<void>,
