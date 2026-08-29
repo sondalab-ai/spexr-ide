@@ -82,6 +82,27 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     this.applyAccentOverrides(spexrTheme);
     this.rememberPreloadBackground(spexrTheme);
     this.rememberRenderedTheme(spexrTheme);
+    this.reportWindowBackground(spexrTheme);
+  }
+
+  /**
+   * Tell the Electron main process what this window's background is.
+   *
+   * `saveWindowState` persists `customBackgroundColor ?? window.getBackgroundColor()`,
+   * and `getLastWindowOptions` applies that saved state *after* the configured
+   * `windowOptions`, so it decides the color the window is painted with before
+   * the document's first paint — around half a second, and the whole of the
+   * startup flash. Theia only sets `customBackgroundColor` from a theme
+   * *change* (`ElectronMenuContribution.handleThemeChange`), so an application
+   * that starts on the right theme and never switches never reports one: a
+   * stale value survives, is re-saved on every exit, and never heals.
+   */
+  private reportWindowBackground(spexrTheme: string): void {
+    if (spexrTheme === "high-contrast") return;
+    const api = (globalThis as { electronTheiaCore?: { setBackgroundColor?: (c: string) => void } })
+      .electronTheiaCore;
+    const { canvas } = SPEXR_NEUTRALS[spexrTheme === "light" ? "light" : "dark"];
+    api?.setBackgroundColor?.(canvas);
   }
 
   /**
