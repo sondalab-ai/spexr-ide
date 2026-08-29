@@ -35,6 +35,13 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (err) => {
   console.error("[darkfactory worker] unhandledRejection:", err);
 });
+// The backend that forked us is gone — killed, or crashed. Nothing will ever ask
+// for another description, and a resident model process is expensive to leave
+// behind; a backend that exits normally tears us down itself, this covers the
+// kills that skip its shutdown.
+process.on("disconnect", () => {
+  process.exit(0);
+});
 
 type TextGenPipeline = (
   messages: unknown,

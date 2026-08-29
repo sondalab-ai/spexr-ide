@@ -10,11 +10,23 @@ const THEIA_THEME_BY_SPEXR: Record<string, string> = {
   "high-contrast": "hc-theia",
 };
 
+/** The same pairing read the other way, for changes that start on Theia's side. */
+const SPEXR_THEME_BY_THEIA: Record<string, string> = Object.fromEntries(
+  Object.entries(THEIA_THEME_BY_SPEXR).map(([spexr, theia]) => [theia, spexr]),
+);
+
 /**
- * Sets the `data-sl-theme` attribute on the document so the design tokens
- * resolve to a concrete theme, and syncs Theia's own color theme so native
- * chrome (tab bars, editor, terminal) matches the SPEXR tokens. Reads the saved
- * preference (or system) and subscribes to changes via prefers-color-scheme.
+ * Keeps the design tokens and Theia's native chrome on the same theme.
+ *
+ * Sets `data-sl-theme` on the document so the tokens resolve, and syncs Theia's
+ * own color theme so tab bars, editor and terminal match. The two follow each
+ * other in both directions: picking a theme in Theia's own picker moves the
+ * tokens, and this contribution's resolution moves Theia's theme.
+ *
+ * Theia's restored theme is the source of truth when the user has expressed no
+ * SPEXR-specific choice — it is the one thing that actually persists a decision.
+ * The OS preference is the last resort, and is read from the value the startup
+ * guard captured, not live: see {@link systemPreference}.
  */
 @injectable()
 export class SpexrThemeContribution implements FrontendApplicationContribution {
@@ -23,19 +35,20 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
 
   onStart(): void {
     const stored = this.readStoredTheme();
-    const resolved = stored ?? this.systemPreference();
+    const resolved = stored ?? this.theiaTheme() ?? this.systemPreference();
 
     // Register BEFORE applyTheme so we catch the initial onDidColorThemeChange too.
     // setTimeout(0): Theia may apply CSS vars asynchronously after firing this event;
     // delaying ensures we always run after Theia's <style> is written.
-    this.themeService.onDidColorThemeChange(() => {
-      const current = document.documentElement.getAttribute("data-sl-theme") ?? resolved;
-      setTimeout(() => {
-        this.applyAccentOverrides(current);
-        // Theia rewrites `theme.background` on every color-theme change; re-assert
-        // ours after it, including for theme changes we did not originate.
-        this.rememberPreloadBackground(current);
-      }, 0);
+    this.themeService.onDidColorThemeChange((event) => {
+      // Derive the theme from the event rather than re-reading `data-sl-theme`:
+      // that attribute only ever changes here, so a theme picked in Theia's own
+      // picker used to leave the SPEXR tokens on the previous theme.
+      const next = SPEXR_THEME_BY_THEIA[event.newTheme.id];
+      // A theme SPEXR has no tokens for (a third-party one): leave the tokens
+      // where they are rather than guessing a mapping.
+      if (!next) return;
+      setTimeout(() => this.applyTheme(next), 0);
     });
 
     this.applyTheme(resolved);
@@ -46,6 +59,11 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
         this.applyTheme(event.matches ? "dark" : "light");
       });
     }
+  }
+
+  /** The SPEXR theme matching Theia's restored color theme, when it maps to one. */
+  private theiaTheme(): string | undefined {
+    return SPEXR_THEME_BY_THEIA[this.themeService.getCurrentTheme().id];
   }
 
   /** Apply a SPEXR theme to both the design tokens and Theia's native chrome. */
@@ -276,7 +294,23 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     }
   }
 
+  /**
+   * The OS color preference.
+   *
+   * Prefers the value the startup guard in index.html recorded, because a live
+   * `prefers-color-scheme` read is not the OS setting here: in Electron the
+   * renderer's media query follows `nativeTheme.themeSource`, which Theia pins
+   * to the application's own theme as soon as the bundle loads. The guard runs
+   * before that, while the query still answers honestly.
+   */
   private systemPreference(): string {
+    try {
+      const osDark = globalThis.localStorage?.getItem("spexr.os.dark");
+      if (osDark === "1") return "dark";
+      if (osDark === "0") return "light";
+    } catch {
+      // Storage unavailable; fall through to the live query.
+    }
     if (typeof window === "undefined") return "dark";
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }

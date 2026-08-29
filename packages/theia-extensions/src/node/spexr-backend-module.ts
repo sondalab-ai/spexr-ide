@@ -1,5 +1,7 @@
 import { ContainerModule } from "@theia/core/shared/inversify";
 import { ConnectionHandler, RpcConnectionHandler } from "@theia/core/lib/common/messaging";
+import { BackendApplicationContribution } from "@theia/core/lib/node/backend-application";
+import { SpexrParentWatchdog } from "./spexr-parent-watchdog.js";
 import { AGENT_SESSION_SERVICE_PATH } from "../common/agent-protocol.js";
 import { GIT_SERVICE_PATH, type SpexrGitClient } from "../common/git-protocol.js";
 import { SpexrAgentBackendService } from "./spexr-agent-backend-service.js";
@@ -13,6 +15,9 @@ import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common
 import { SpexrDarkfactoryBackendService } from "./darkfactory/spexr-darkfactory-backend-service.js";
 
 export default new ContainerModule((bind) => {
+  bind(SpexrParentWatchdog).toSelf().inSingletonScope();
+  bind(BackendApplicationContribution).toService(SpexrParentWatchdog);
+
   bind(SpexrAgentBackendService).toSelf().inSingletonScope();
   bind(ConnectionHandler)
     .toDynamicValue((ctx) => {

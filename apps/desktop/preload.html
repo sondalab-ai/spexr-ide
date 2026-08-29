@@ -42,5 +42,12 @@
     // built-in theme (white / #1E1E1E), so seed it here or the first launch
     // after a fresh profile still flashes.
     try { localStorage.setItem('theme.background', canvas); } catch (e) { /* storage blocked */ }
+    // The only honest reading of the OS preference in this process: Electron's
+    // renderer follows nativeTheme.themeSource, which Theia pins to the
+    // application's own theme once the bundle loads. SpexrThemeContribution
+    // reads this instead of querying live.
+    try {
+      localStorage.setItem('spexr.os.dark', matchMedia('(prefers-color-scheme: dark)').matches ? '1' : '0');
+    } catch (e) { /* storage blocked */ }
   })();
 </script>
