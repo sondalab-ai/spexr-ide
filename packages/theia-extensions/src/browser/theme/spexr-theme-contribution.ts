@@ -63,6 +63,25 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     }
     this.applyAccentOverrides(spexrTheme);
     this.rememberPreloadBackground(spexrTheme);
+    this.rememberRenderedTheme(spexrTheme);
+  }
+
+  /**
+   * Record the theme actually rendered, for the anti-flash guard in index.html.
+   *
+   * Deliberately a different key from `spexr.theme`: that one means "the user
+   * chose this", and its absence is what keeps the app following the OS. This
+   * one means "this is what the last run painted", which is all the guard needs
+   * — and without it the guard has nothing to go on, because in Electron
+   * `prefers-color-scheme` follows `nativeTheme.themeSource`, which still
+   * reports the OS until Theia loads its own theme from the bundle.
+   */
+  private rememberRenderedTheme(spexrTheme: string): void {
+    try {
+      globalThis.localStorage?.setItem("spexr.theme.last", spexrTheme);
+    } catch {
+      // Storage unavailable; the guard falls back to the OS preference.
+    }
   }
 
   /**

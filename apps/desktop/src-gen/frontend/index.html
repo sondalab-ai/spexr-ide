@@ -29,8 +29,18 @@
 <script>
   (function () {
     var theme;
-    try { theme = localStorage.getItem('spexr.theme'); } catch (e) { /* storage blocked */ }
+    try {
+      // The user's explicit choice, then the theme the last run actually
+      // painted, then Theia's own persisted theme id (present in profiles that
+      // predate the second key).
+      theme = localStorage.getItem('spexr.theme')
+        || localStorage.getItem('spexr.theme.last')
+        || ({ light: 'light', dark: 'dark', 'hc-theia': 'high-contrast' })[localStorage.getItem('theme')];
+    } catch (e) { /* storage blocked */ }
     if (theme !== 'light' && theme !== 'dark' && theme !== 'high-contrast') {
+      // Last resort. Note this is NOT the OS setting during startup: in Electron
+      // prefers-color-scheme follows nativeTheme.themeSource, which Theia only
+      // forces to the app's theme once the bundle has loaded.
       theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
     var canvas = theme === 'light' ? '#ECE4D4' : '#070A0D';
