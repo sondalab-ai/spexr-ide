@@ -88,6 +88,22 @@ describe("lintSpec", () => {
     expect(has(lintSpec(raw, OPTS).findings, "warn", /non-goals/i)).toBe(true);
   });
 
+  it("does not flag a scaffold string the spec is quoting", () => {
+    const raw = CLEAN.replace(
+      "The system shows a clear outcome to the user.",
+      'The validator flags the scaffold string "Describe the user-facing outcome this spec delivers." when it survives.',
+    );
+    expect(has(lintSpec(raw, OPTS).findings, "warn", /scaffold/i)).toBe(false);
+  });
+
+  it("does not flag a TBD/TODO marker the spec is quoting", () => {
+    const raw = CLEAN.replace(
+      "The system shows a clear outcome to the user.",
+      "The validator flags `TBD`/`TODO` markers left in a draft.",
+    );
+    expect(has(lintSpec(raw, OPTS).findings, "warn", /placeholder marker/i)).toBe(false);
+  });
+
   it("flags zero acceptance criteria", () => {
     const raw = CLEAN.replace(
       "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
@@ -119,6 +135,63 @@ describe("lintSpec", () => {
       "- **AC-3** The panel renders findings grouped by severity when a spec is open.",
     );
     expect(has(lintSpec(raw, OPTS).findings, "warn", /non-sequential/i)).toBe(true);
+  });
+
+  it("accepts the `**AC-1 Title.**` label form and keeps the title in the text", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      "- **AC-1 Findings panel.** The panel renders findings grouped by severity.",
+    );
+    expect(lintSpec(raw, OPTS).findings).toEqual([]);
+  });
+
+  it("treats indented bullets as details of the criterion above, not criteria", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      [
+        "- **AC-1 Findings panel.** The panel renders findings grouped by severity:",
+        "  - errors first, then warnings.",
+        "  - each row reveals its line in the editor.",
+      ].join("\n"),
+    );
+    expect(lintSpec(raw, OPTS).findings).toEqual([]);
+  });
+
+  it("does not read a cross-reference in the prose as the bullet's own id", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      "- The panel renders findings exactly as **AC-1** requires.",
+    );
+    const findings = lintSpec(raw, OPTS).findings;
+    expect(has(findings, "warn", /no \*\*AC-N\*\* id/i)).toBe(true);
+    expect(has(findings, "error", /duplicate/i)).toBe(false);
+  });
+
+  it("reports one misplaced id once instead of shifting every id after it", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      [
+        "- **AC-1** The panel renders findings grouped by severity.",
+        "- **AC-3** The panel reveals the line of a finding when clicked.",
+        "- **AC-4** The panel shows a neutral state when no spec is open.",
+        "- **AC-2** The panel refreshes when the editor content changes.",
+      ].join("\n"),
+    );
+    const nonSequential = lintSpec(raw, OPTS).findings.filter((f) =>
+      /non-sequential/i.test(f.message),
+    );
+    expect(nonSequential.map((f) => f.message)).toEqual([
+      "Non-sequential id AC-3 (expected AC-2).",
+      "Non-sequential id AC-2 (expected AC-5).",
+    ]);
+  });
+
+  it("judges an AC by its whole paragraph, not by its first line", () => {
+    const raw = CLEAN.replace(
+      "- **AC-1** The panel renders findings grouped by severity when a spec is open.",
+      "- **AC-1 Registry.** `harness-registry.ts` exports\n  `installedHarnesses`, and returns the active harness.",
+    );
+    expect(lintSpec(raw, OPTS).findings).toEqual([]);
   });
 
   it("flags a vague AC as info", () => {

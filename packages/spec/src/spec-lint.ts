@@ -31,10 +31,26 @@ const VALID_STATUSES: ReadonlySet<SpecStatus> = new Set<SpecStatus>([
 /** Scaffold strings emitted by the spec template that must be replaced. */
 const SCAFFOLD_SNIPPETS = ["Describe the user-facing outcome"];
 
+/** Markers a draft leaves behind where content is still owed. */
+const PLACEHOLDER_MARKER_RE = /\b(?:TBD|TODO)\b/g;
+
 const HEADING_RE = /^##\s+(.+?)\s*$/;
+/** Any markdown heading — ends the acceptance bullet being accumulated. */
+const ANY_HEADING_RE = /^#{1,6}\s/;
 const BULLET_RE = /^\s*[-*]\s+(\S.*?)\s*$/;
 const EMPTY_BULLET_RE = /^\s*[-*]\s*$/;
-const AC_ID_RE = /\*\*([A-Za-z]+-\d+)\*\*/;
+/**
+ * Leading `**AC-1**` or `**AC-1 Short title.**` label of an acceptance bullet.
+ * Anchored, so a cross-reference to another criterion inside the prose is not
+ * mistaken for this bullet's own id.
+ */
+const AC_ID_RE = /^\*\*([A-Za-z]+-\d+)\b\s*([^*]*?)\*\*\s*/;
+
+/**
+ * An acceptance criterion bullet. Top-level only: an indented bullet is a
+ * detail of the criterion above it, not a criterion of its own.
+ */
+const AC_BULLET_RE = /^[-*]\s+(\S.*?)\s*$/;
 const ID_PARTS_RE = /^([A-Za-z]+)-(\d+)$/;
 
 /**
@@ -201,11 +217,11 @@ function lintPlaceholders(
     if (section === "Frontmatter") continue;
     const at = { section, line: i + 1 };
 
-    if (SCAFFOLD_SNIPPETS.some((s) => line.includes(s))) {
+    if (SCAFFOLD_SNIPPETS.some((s) => hasUncited(line, s))) {
       out.push({ severity: "warn", message: "Unsubstituted scaffold text.", ...at });
       continue;
     }
-    if (/\bTBD\b/.test(line) || /\bTODO\b/.test(line)) {
+    if (hasUncitedMatch(line, PLACEHOLDER_MARKER_RE)) {
       out.push({ severity: "warn", message: "Placeholder marker (TBD/TODO).", ...at });
       continue;
     }
@@ -298,7 +314,9 @@ function lintAcBullets(bullets: readonly AcBullet[], out: SpecLintFinding[]): vo
       const prefix = parts[1]!;
       const num = Number(parts[2]);
       const expected = (seqByPrefix.get(prefix) ?? 0) + 1;
-      seqByPrefix.set(prefix, expected);
+      // Resync on the observed number, so one misplaced id reports once
+      // instead of shifting every id after it.
+      seqByPrefix.set(prefix, num);
       if (num !== expected && firstAt === undefined) {
         out.push({
           severity: "warn",
@@ -321,22 +339,80 @@ function lintAcBullets(bullets: readonly AcBullet[], out: SpecLintFinding[]): vo
   }
 }
 
+/**
+ * Acceptance bullets with their wrapped continuation lines folded in. A
+ * criterion is authored as a paragraph, so judging it by its first physical
+ * line alone would read a precise statement as a one-liner.
+ */
 function collectAcBullets(
   lines: readonly string[],
   sectionOf: readonly SpecLintSection[],
 ): AcBullet[] {
-  const out: AcBullet[] = [];
+  const out: { line: number; id?: string; parts: string[] }[] = [];
+  let current: (typeof out)[number] | undefined;
+
   for (let i = 0; i < lines.length; i++) {
-    if (sectionOf[i] !== "Acceptance Criteria") continue;
-    const m = BULLET_RE.exec(lines[i]!);
-    if (!m) continue;
-    const content = m[1]!;
-    const idMatch = AC_ID_RE.exec(content);
-    const id = idMatch?.[1];
-    const text = content.replace(AC_ID_RE, "").replace(/^\s*[:.-]\s*/, "").trim();
-    out.push({ line: i + 1, ...(id ? { id } : {}), text });
+    const line = lines[i]!;
+    if (sectionOf[i] !== "Acceptance Criteria" || ANY_HEADING_RE.test(line)) {
+      current = undefined;
+      continue;
+    }
+    const m = AC_BULLET_RE.exec(line);
+    if (m) {
+      const content = m[1]!;
+      const idMatch = AC_ID_RE.exec(content);
+      const body = (idMatch ? content.slice(idMatch[0].length) : content)
+        .replace(/^\s*[:.-]\s*/, "")
+        .trim();
+      current = {
+        line: i + 1,
+        ...(idMatch?.[1] ? { id: idMatch[1] } : {}),
+        parts: [idMatch?.[2]?.trim() ?? "", body],
+      };
+      out.push(current);
+      continue;
+    }
+    if (current && line.trim().length > 0) current.parts.push(line.trim());
   }
-  return out;
+
+  return out.map((b) => ({
+    line: b.line,
+    ...(b.id ? { id: b.id } : {}),
+    text: b.parts.filter((part) => part.length > 0).join(" "),
+  }));
+}
+
+/**
+ * Whether the text at `at` sits inside a code span or quotation marks. A spec
+ * that documents the template quotes its strings, and a citation is not
+ * leftover scaffolding.
+ */
+function isCited(line: string, at: number): boolean {
+  const before = line.slice(0, at);
+  return count(before, "`") % 2 === 1 || count(before, '"') % 2 === 1;
+}
+
+/** Whether `snippet` occurs on the line outside any citation. */
+function hasUncited(line: string, snippet: string): boolean {
+  for (let at = line.indexOf(snippet); at >= 0; at = line.indexOf(snippet, at + 1)) {
+    if (!isCited(line, at)) return true;
+  }
+  return false;
+}
+
+/** Whether `re` (global) matches the line outside any citation. */
+function hasUncitedMatch(line: string, re: RegExp): boolean {
+  re.lastIndex = 0;
+  for (let m = re.exec(line); m !== null; m = re.exec(line)) {
+    if (!isCited(line, m.index)) return true;
+  }
+  return false;
+}
+
+function count(text: string, char: string): number {
+  let n = 0;
+  for (const c of text) if (c === char) n++;
+  return n;
 }
 
 /** An AC is vague when it is short and carries no verifiable-predicate signal. */

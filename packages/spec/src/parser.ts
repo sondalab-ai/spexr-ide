@@ -117,7 +117,13 @@ function parseBulletList(text: string): readonly string[] {
   return items;
 }
 
-const CRITERION_RE = /^\s*[-*]\s+(?:\[([ xX])\]\s+)?(?:\*\*([A-Z]+-\d+)\*\*\s+)?(.+?)\s*$/;
+/**
+ * A top-level acceptance bullet, optionally checkboxed and optionally labelled
+ * `**AC-1**` or `**AC-1 Short title.**`. Indented bullets are details of the
+ * criterion above them, so they are not criteria themselves.
+ */
+const CRITERION_RE =
+  /^[-*]\s+(?:\[([ xX])\]\s+)?(?:\*\*([A-Za-z]+-\d+)\b\s*([^*]*?)\*\*\s+)?(.+?)\s*$/;
 
 function parseAcceptanceCriteria(text: string): readonly AcceptanceCriterion[] {
   const items: AcceptanceCriterion[] = [];
@@ -126,7 +132,9 @@ function parseAcceptanceCriteria(text: string): readonly AcceptanceCriterion[] {
     const m = CRITERION_RE.exec(line);
     if (!m) continue;
     const id = m[2] ?? `AC-${counter++}`;
-    items.push({ id, text: m[3]! });
+    const title = m[3]?.trim() ?? "";
+    const text = title.length > 0 ? `${title} ${m[4]!}` : m[4]!;
+    items.push({ id, text });
   }
   return items;
 }
