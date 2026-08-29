@@ -645,9 +645,22 @@ code {
 
 .spexr-spec-lint__header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--sl-space-2);
+}
+
+.spexr-spec-lint__fix {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: var(--sl-text-xs);
+  white-space: nowrap;
+}
+
+.spexr-spec-lint__fix .codicon {
+  font-size: 13px;
 }
 
 .spexr-spec-lint__title {

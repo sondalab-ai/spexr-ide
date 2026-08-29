@@ -1,6 +1,7 @@
 import * as React from "react";
 import { injectable, inject, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget, type Message } from "@theia/core/lib/browser";
+import { CommandService } from "@theia/core/lib/common/command";
 import { BadgeService } from "@theia/core/lib/browser/badges/badge-service.js";
 import { DisposableCollection } from "@theia/core/lib/common/disposable";
 import { EditorManager, type EditorWidget } from "@theia/editor/lib/browser";
@@ -14,6 +15,7 @@ import {
   type SpecLintReport,
   type SpecLintSeverity,
 } from "@spexr/spec";
+import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
 import { SPEC_LINT_VIEW_ID } from "./spec-lint-view-contribution.js";
 import { specsDir } from "../workspace-paths.js";
 
@@ -60,6 +62,9 @@ export class SpexrSpecLintWidget extends ReactWidget {
 
   @inject(BadgeService)
   private readonly badgeService!: BadgeService;
+
+  @inject(CommandService)
+  private readonly commands!: CommandService;
 
   private state: LintState | undefined;
   private knownSlugs: string[] = [];
@@ -176,13 +181,24 @@ export class SpexrSpecLintWidget extends ReactWidget {
     });
   };
 
+  /** Hand the findings on screen to the agent so it can correct the spec. */
+  private readonly handleFix = (): void => {
+    const state = this.state;
+    if (!state || state.report.findings.length === 0) return;
+    void this.commands.executeCommand(
+      SpexrCommands.SPEC_LINT_FIX.id,
+      state.specUri,
+      state.report.findings,
+    );
+  };
+
   protected override onActivateRequest(msg: Message): void {
     super.onActivateRequest(msg);
     this.node.focus();
   }
 
   protected render(): React.ReactNode {
-    return <SpecLintPanel state={this.state} onSelect={this.handleSelect} />;
+    return <SpecLintPanel state={this.state} onSelect={this.handleSelect} onFix={this.handleFix} />;
   }
 }
 
@@ -195,9 +211,10 @@ function specTitle(raw: string, uri: URI): string {
 interface SpecLintPanelProps {
   readonly state: LintState | undefined;
   readonly onSelect: (finding: SpecLintFinding) => void;
+  readonly onFix: () => void;
 }
 
-const SpecLintPanel: React.FC<SpecLintPanelProps> = ({ state, onSelect }) => {
+const SpecLintPanel: React.FC<SpecLintPanelProps> = ({ state, onSelect, onFix }) => {
   if (!state) {
     return (
       <section className="spexr-spec-lint" aria-label="Spec validation">
@@ -217,6 +234,17 @@ const SpecLintPanel: React.FC<SpecLintPanelProps> = ({ state, onSelect }) => {
         ) : (
           <span className="spexr-spec-lint__summary">{summaryText(report)}</span>
         )}
+        {total > 0 ? (
+          <button
+            type="button"
+            className="spexr-button spexr-button--compact spexr-spec-lint__fix"
+            onClick={onFix}
+            title="Send these findings to the agent and let it correct the spec"
+          >
+            <span className="codicon codicon-sparkle" aria-hidden />
+            Fix with agent
+          </button>
+        ) : null}
       </header>
       {SEVERITY_ORDER.map((severity) => {
         const group = report.findings.filter((f) => f.severity === severity);

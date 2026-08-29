@@ -38,13 +38,20 @@ import {
   WORKFLOW_STEP_LABEL,
   WORKFLOW_STEP_ORDER,
   type DriftReport,
+  type SpecLintFinding,
   type WorkflowStep,
 } from "@spexr/spec";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import { SpexrShellLayoutContribution } from "../shell/spexr-shell-layout-contribution.js";
 import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view-contribution.js";
 import { memoryDir, specsDir, specContextDir, agentsDir, allSpecsDirs, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
-import { buildSpecHandoff, parseLinksFile, type ContextFileEntry, type ContextLink } from "@spexr/agent";
+import {
+  buildSpecHandoff,
+  buildSpecLintFixPrompt,
+  parseLinksFile,
+  type ContextFileEntry,
+  type ContextLink,
+} from "@spexr/agent";
 import { serializeExpertFile } from "../views/experts-format.js";
 import { SpexrAgentServiceProxy } from "../agent/agent-service-proxy.js";
 import type { SpexrAgentService, ExpertAgentDto, DriftReportDto } from "../../common/agent-protocol.js";
@@ -64,6 +71,10 @@ export const SpexrCommands = {
   SPEC_RETROSPECTIVE: {
     id: "spexr.spec.retrospective",
     label: "Spexr: Run spec retrospective with agent",
+  } satisfies Command,
+  SPEC_LINT_FIX: {
+    id: "spexr.spec.lint.fix",
+    label: "Spexr: Fix spec validation findings with agent",
   } satisfies Command,
   SPEC_OPEN: {
     id: "spexr.spec.open",
@@ -259,6 +270,23 @@ const WORKFLOW_PROMPTS: Record<WorkflowStep, WorkflowPromptBuilder> = {
 const RETROSPECTIVE_PROMPT = (slug: string, specBody: string): string =>
   `Run a retrospective on spec ${slug}. The work is complete — do NOT propose new implementation or edit files. Analyze what was done against the spec below.\n\n1. For each acceptance criterion, state whether it was met, partially met, or dropped — and why.\n2. Note deviations from the original spec and what drove them.\n3. Call out what went well and what slowed delivery.\n4. List residual risks, tech debt, and concrete follow-up items.\n5. Propose any project-memory entries worth saving (decisions, gotchas) under docs/memory/.\n\n---\n${specBody}`;
 
+const LINT_SEVERITIES: ReadonlySet<string> = new Set(["error", "warn", "info"]);
+
+/** Keep only well-formed findings out of raw command arguments. */
+function resolveLintFindings(raw: unknown): SpecLintFinding[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((entry): entry is SpecLintFinding => {
+    if (!entry || typeof entry !== "object") return false;
+    const f = entry as Partial<SpecLintFinding>;
+    return (
+      typeof f.severity === "string" &&
+      LINT_SEVERITIES.has(f.severity) &&
+      typeof f.section === "string" &&
+      typeof f.message === "string"
+    );
+  });
+}
+
 /** Quick-pick entry for {@link SpexrCommands.SWITCH_PROJECT}, carrying the project root. */
 type ProjectPick = QuickPickItem & { path: string };
 
@@ -318,6 +346,10 @@ export class SpexrCommandsContribution
     });
     commands.registerCommand(SpexrCommands.SPEC_RETROSPECTIVE, {
       execute: (raw: unknown) => this.retrospectiveSpec(this.resolveSpecUri(raw)),
+    });
+    commands.registerCommand(SpexrCommands.SPEC_LINT_FIX, {
+      execute: (rawUri: unknown, rawFindings: unknown) =>
+        this.fixSpecLint(this.resolveSpecUri(rawUri), resolveLintFindings(rawFindings)),
     });
     commands.registerCommand(SpexrCommands.SPEC_OPEN, {
       execute: (raw: unknown) => this.openSpec(this.resolveSpecUri(raw)),
@@ -1183,6 +1215,41 @@ export class SpexrCommandsContribution
       console.error("[spexr] retrospectiveSpec failed", err);
       this.messages.error(
         `Spec retrospective failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Hand the spec's current validation findings to the agent so it can correct
+   * the document. The findings come from the panel rather than a fresh lint, so
+   * the agent is asked to fix exactly what the user is looking at.
+   */
+  private async fixSpecLint(
+    uri: URI | undefined,
+    findings: readonly SpecLintFinding[],
+  ): Promise<void> {
+    if (!uri) {
+      this.messages.warn("Fixing spec findings requires a spec file URI.");
+      return;
+    }
+    if (findings.length === 0) {
+      this.messages.info("No spec validation findings to fix.");
+      return;
+    }
+    try {
+      await this.flushDirtyEditor(uri);
+      const content = await this.fileService.read(uri);
+      const slug = uri.path.base.replace(/\.md$/, "");
+      const prompt = buildSpecLintFixPrompt({ slug, specBody: content.value, findings });
+      await this.claudeTerminal.ensureStarted();
+      await this.sendAndSubmit(prompt);
+      await this.claudeTerminal.reveal();
+      const count = findings.length;
+      this.messages.info(`Sent ${count} ${slug} finding${count === 1 ? "" : "s"} to agent.`);
+    } catch (err) {
+      console.error("[spexr] fixSpecLint failed", err);
+      this.messages.error(
+        `Spec fix handoff failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
