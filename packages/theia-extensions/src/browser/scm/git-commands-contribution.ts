@@ -85,12 +85,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       execute: () => this.commitWithPrompt(),
     });
     commands.registerCommand(GitCommands.COMMIT_FROM_PANEL, {
-      execute: (message: unknown) =>
-        this.runGitOp(
-          "Commit",
-          () => this.provider.commit(typeof message === "string" ? message : ""),
-          "Changes committed.",
-        ),
+      execute: (message: unknown) => this.commit(typeof message === "string" ? message : ""),
     });
     commands.registerCommand(GitCommands.GENERATE_MESSAGE, {
       execute: () => this.generateCommitMessage(),
@@ -250,7 +245,17 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     await this.provider.unstage(paths);
   }
 
+  /**
+   * Commit what the message box already holds, and ask for a message only when it
+   * is empty. Asking either way made the box — which the model now fills — a
+   * message the user had to type again into a second prompt.
+   */
   private async commitWithPrompt(): Promise<void> {
+    const typed = this.provider.inputValue.trim();
+    if (typed) {
+      await this.commit(typed);
+      return;
+    }
     const message = await this.quickInput.input({
       prompt: "Commit message",
       placeHolder: "feat: describe your change",
@@ -260,7 +265,19 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
           : Promise.resolve("Commit message cannot be empty."),
     });
     if (!message) return;
-    await this.runGitOp("Commit", () => this.provider.commit(message), "Changes committed.");
+    await this.commit(message);
+  }
+
+  /** Commit, then empty the box — on success only, so a failed commit keeps the text. */
+  private async commit(message: string): Promise<void> {
+    await this.runGitOp(
+      "Commit",
+      async () => {
+        await this.provider.commit(message);
+        this.provider.setInputValue("");
+      },
+      "Changes committed.",
+    );
   }
 
   private async checkoutWithPrompt(): Promise<void> {
