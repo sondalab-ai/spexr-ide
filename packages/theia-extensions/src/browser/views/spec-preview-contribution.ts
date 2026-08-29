@@ -12,6 +12,7 @@ import {
 } from "@theia/core/lib/common/command";
 import { EditorManager, EditorWidget } from "@theia/editor/lib/browser";
 import { SpexrSpecPreviewWidget } from "./spec-preview-widget.js";
+import { decideSpecPreview } from "./spec-preview-policy.js";
 
 const SPEC_FILE_RE = /^\d{4}-[a-z0-9][a-z0-9-]*\.md$/;
 
@@ -56,7 +57,12 @@ export class SpexrSpecPreviewContribution
       this.captureIntent(w, true);
       void this.handleWidgetAdded(w);
     });
-    this.shell.onDidRemoveWidget((w) => this.captureIntent(w, false));
+    this.shell.onDidRemoveWidget((w) => {
+      this.captureIntent(w, false);
+      // Closing a spec that was not in front changes no current widget, so the
+      // removal itself has to trigger the reconciliation.
+      if (this.isSpecEditorWidget(w)) void this.enforce(w);
+    });
     this.shell.onDidChangeCurrentWidget(() => void this.enforce());
   }
 
@@ -128,31 +134,39 @@ export class SpexrSpecPreviewContribution
   }
 
   /**
-   * Reconcile preview visibility against the main area's current widget (AC-4).
-   * Spec in front → open preview if needed. Preview itself in front → no-op.
-   * Non-spec in front → close preview only when NO spec editors remain open anywhere.
+   * Reconcile preview visibility against the main area (AC-4). The decision
+   * lives in {@link decideSpecPreview}; this only reads the shell and applies it.
+   *
+   * @param removed Widget being torn down, excluded from the "any spec still
+   *   open" count — during `onDidRemoveWidget` it is detached but not yet
+   *   marked disposed, so it would otherwise keep the preview alive.
    */
-  private async enforce(): Promise<void> {
+  private async enforce(removed?: Widget): Promise<void> {
     if (this.programmatic) return;
     const current = this.shell.getCurrentWidget("main");
-    const isSpec = this.isSpecEditorWidget(current);
-    const isPreview = current?.id === SpexrSpecPreviewWidget.ID;
+    const frontSpecUri = this.isSpecEditorWidget(current)
+      ? (current as EditorWidget).getResourceUri()?.toString()
+      : undefined;
 
-    if (isSpec) {
-      if (!this.preview.isAttached) {
-        const uri = (current as EditorWidget).getResourceUri()?.toString();
-        if (uri && (this.wantOpen || uri !== this.closedForUri)) {
-          await this.openPreviewFor(current as EditorWidget);
-        }
-      }
-    } else if (!isPreview && this.preview.isAttached) {
-      const anySpecOpen = this.editorManager.all.some(
-        (w) => !w.isDisposed && this.isSpecEditorWidget(w),
-      );
-      if (!anySpecOpen) {
-        await this.run(() => { this.preview.close(); });
-      }
+    const action = decideSpecPreview({
+      ...(frontSpecUri !== undefined ? { frontSpecUri } : {}),
+      attached: this.preview.isAttached,
+      anySpecOpen: this.anySpecOpen(removed),
+      wantOpen: this.wantOpen,
+      ...(this.closedForUri !== undefined ? { closedForUri: this.closedForUri } : {}),
+    });
+
+    if (action === "open") {
+      await this.openPreviewFor(current as EditorWidget);
+    } else if (action === "close") {
+      await this.run(() => { this.preview.close(); });
     }
+  }
+
+  private anySpecOpen(excluded?: Widget): boolean {
+    return this.editorManager.all.some(
+      (w) => w !== excluded && !w.isDisposed && this.isSpecEditorWidget(w),
+    );
   }
 
   private isSpecEditor(widget: EditorWidget): boolean {
