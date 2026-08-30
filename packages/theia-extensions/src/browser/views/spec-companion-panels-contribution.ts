@@ -82,7 +82,6 @@ export class SpexrSpecCompanionPanelsContribution implements FrontendApplication
 
   private asPanel(view: CompanionView): SpecCompanionPanel {
     return {
-      isVisible: () => view.tryGetWidget()?.isVisible ?? false,
       reveal: async () => {
         await view.openView({ reveal: true, activate: false });
       },
