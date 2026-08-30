@@ -1,0 +1,17 @@
+diff --git a/lib/browser/tree/tree-widget.js b/lib/browser/tree/tree-widget.js
+index 9910b08500e7f0d5d5d06143823b36940184dfa5..f61f937c0f79ac5bf72534af7a015639c834db07 100644
+--- a/lib/browser/tree/tree-widget.js
++++ b/lib/browser/tree/tree-widget.js
+@@ -1413,8 +1413,11 @@ exports.TreeWidget = TreeWidget = TreeWidget_1 = tslib_1.__decorate([
+         render() {
+             const { rows, width, height, scrollToRow, renderNodeRow, onScrollEmitter, ...other } = this.props;
+             return React.createElement(react_virtuoso_1.Virtuoso, { ref: list => {
++                    // SPEXR patch: do not scroll from this ref. It is an inline arrow, so React
++                    // re-attaches it on every commit, and scrolling here dragged the tree back to
++                    // the focused row on every unrelated update (decorations, git status, resize).
++                    // Mount is covered by componentDidMount, later changes by componentDidUpdate.
+                     this.list = (list || undefined);
+-                    this.scrollIntoViewIfNeeded();
+                 }, 
+                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 onScroll: (e) => {
