@@ -19,6 +19,7 @@ release-builds/
 
 # Theia
 gen-webpack*.js
+gen-esbuild*.mjs
 .theia/
 
 # IDE local

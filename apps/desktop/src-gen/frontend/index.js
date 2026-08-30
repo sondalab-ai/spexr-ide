@@ -22,6 +22,7 @@ FrontendApplicationConfigProvider.set({
         },
         "showWindowEarly": true,
         "splashScreenOptions": {},
+        "appUserModelId": "",
         "uriScheme": "theia"
     },
     "defaultLocale": "",
@@ -105,6 +106,7 @@ module.exports = (async () => {
         await load(container, import('@theia/filesystem/lib/electron-browser/file-dialog/electron-file-dialog-module'));
         await load(container, import('@theia/process/lib/common/process-common-module'));
         await load(container, import('@theia/workspace/lib/browser/workspace-frontend-module'));
+        await load(container, import('@theia/workspace/lib/electron-browser/electron-workspace-module'));
         await load(container, import('@theia/file-search/lib/browser/file-search-frontend-module'));
         await load(container, import('@theia/markers/lib/browser/problem/problem-frontend-module'));
         await load(container, import('@theia/outline-view/lib/browser/outline-view-frontend-module'));

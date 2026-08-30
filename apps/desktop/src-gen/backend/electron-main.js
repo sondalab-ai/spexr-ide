@@ -46,6 +46,7 @@ process.env.LC_NUMERIC = 'C';
         },
         "showWindowEarly": true,
         "splashScreenOptions": {},
+        "appUserModelId": "",
         "uriScheme": "theia"
     },
     "defaultLocale": "",
