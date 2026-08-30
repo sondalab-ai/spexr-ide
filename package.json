@@ -11,6 +11,7 @@
   },
   "scripts": {
     "setup": "bash scripts/bootstrap.sh",
+    "postinstall": "node scripts/ensure-electron-dist.js",
     "build": "turbo run build",
     "build:dev": "pnpm -r --filter './packages/*' run build && pnpm --filter @spexr/desktop run build:dev",
     "dev": "pnpm build:dev && pnpm start",
