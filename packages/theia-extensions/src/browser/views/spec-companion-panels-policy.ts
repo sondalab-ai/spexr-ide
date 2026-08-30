@@ -1,7 +1,7 @@
 /** A bottom-panel companion of the spec editor, as this policy needs to see it. */
 export interface SpecCompanionPanel {
-  isVisible(): boolean;
   reveal(): Promise<void>;
+  /** Closes the panel; a no-op when it is not open. */
   close(): void;
 }
 
@@ -16,7 +16,9 @@ export interface SpecCompanionPanel {
  * revealed it back over the tab the user had just picked.
  *
  * Panels are revealed in the given order, so the last one listed is the tab
- * left in front when a spec is opened.
+ * left in front when a spec is opened. Leaving the spec closes all of them,
+ * front tab or not: every panel but the last is hidden behind its sibling, so
+ * closing only what is on screen would strand the others as open tabs.
  */
 export class SpexrSpecCompanionPanelsPolicy {
   /** Spec the panels were last revealed for; `undefined` outside spec editors. */
@@ -39,7 +41,7 @@ export class SpexrSpecCompanionPanelsPolicy {
   private async reconcile(specKey: string | undefined): Promise<void> {
     if (specKey === undefined) {
       this.lastSpecKey = undefined;
-      for (const panel of this.panels) if (panel.isVisible()) panel.close();
+      for (const panel of this.panels) panel.close();
       return;
     }
     if (specKey === this.lastSpecKey) return;
