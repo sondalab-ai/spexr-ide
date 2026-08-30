@@ -88,15 +88,8 @@
     "@theia/cli": "^1.75.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "css-loader": "^6.11.0",
     "electron": "^42.8.1",
     "electron-builder": "^25.1.8",
-    "ignore-loader": "^0.1.2",
-    "node-loader": "^2.1.0",
-    "source-map-loader": "^2.0.2",
-    "string-replace-loader": "^3.1.0",
-    "style-loader": "^2.0.0",
-    "typescript": "^6.0.3",
-    "umd-compat-loader": "^2.1.2"
+    "typescript": "^6.0.3"
   }
 }
