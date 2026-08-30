@@ -43,10 +43,10 @@
   },
   "pnpm": {
     "overrides": {
-      "@vscode/ripgrep": "1.17.1"
+      "@vscode/ripgrep": "1.18.0"
     },
     "patchedDependencies": {
-      "@theia/core@1.71.0": "patches/@theia__core@1.71.0.patch"
+      "@theia/core@1.75.0": "patches/@theia__core@1.75.0.patch"
     }
   }
 }

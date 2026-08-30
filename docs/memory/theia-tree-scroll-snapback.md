@@ -11,9 +11,9 @@ Effect: *any* re-render of a tree yanked the viewport back to the focused/select
 
 The re-renders come from the listeners registered in `TreeWidget.init` — decoration changes, `labelProvider.onDidChange`, `model.onDidUpdate`, and `onResize`. In SPEXR the frequent ones are our own `GitIgnoredDecorationProvider` and `GitStateDecorationProvider`: both are driven by `FileService.onDidFilesChange` and fire their change emitter **without diffing**, so any file churn reached `FileTreeDecoratorAdapter` → `TreeWidget.updateDecorations` → `update()`. Symptom as reported: scrolling the explorer away from the selected file snapped straight back to it.
 
-**Fix:** `patches/@theia__core@1.71.0.patch` removes the `scrollIntoViewIfNeeded()` call from the ref callback only. Mount is still covered by `componentDidMount` (the ref attaches first, so `this.list` is set), later moves by `componentDidUpdate`. Wired through `pnpm.patchedDependencies` in the root `package.json` — pnpm 9 keeps that field in `package.json`, not in `pnpm-workspace.yaml`. Packaged builds must install with patches applied.
+**Fix:** `patches/@theia__core@1.75.0.patch` removes the `scrollIntoViewIfNeeded()` call from the ref callback only. Mount is still covered by `componentDidMount` (the ref attaches first, so `this.list` is set), later moves by `componentDidUpdate`. Wired through `pnpm.patchedDependencies` in the root `package.json` — pnpm 9 keeps that field in `package.json`, not in `pnpm-workspace.yaml`. Packaged builds must install with patches applied.
 
-Watch on a Theia upgrade: the patch is against compiled `lib/` and will fail to apply if upstream touches that block. Upstream may also fix it — check before re-creating the patch.
+Watch on a Theia upgrade: the patch is against compiled `lib/` and will fail to apply if upstream touches that block — it already had to be regenerated once, going from 1.71.0 to 1.75.0, because 1.74.0 reworked the surrounding props and 1.75.0 switched the file to the JSX runtime. The offending line itself is unchanged in every release from 1.67.0 to 1.75.0, so upstream has not fixed it; check again before re-creating the patch.
 
 Not covered by a test: the change lives in a dependency, and nothing in this repo can exercise it. Verified by hand in the running app (scroll the explorer far from the selection; it stays put).
 

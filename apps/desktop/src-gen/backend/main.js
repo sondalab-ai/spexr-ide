@@ -9,77 +9,78 @@ BackendApplicationConfigProvider.set({
     "singleInstance": true,
     "frontendConnectionTimeout": 0,
     "configurationFolder": ".theia",
+    "configureProxyFromPreferences": false,
     "startupTimeout": -1
 });
 
 globalThis.extensionInfo = [
     {
         "name": "@theia/electron",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/core",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/variable-resolver",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/editor",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/filesystem",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/process",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/workspace",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/file-search",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/markers",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/outline-view",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/monaco",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/scm",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/messages",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/navigator",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/userstorage",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/preferences",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@theia/terminal",
-        "version": "1.71.0"
+        "version": "1.75.0"
     },
     {
         "name": "@spexr/theia-extensions",
