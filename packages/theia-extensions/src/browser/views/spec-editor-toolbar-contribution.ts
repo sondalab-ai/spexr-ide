@@ -7,11 +7,12 @@ import type {
 import { EditorWidget } from "@theia/editor/lib/browser";
 import { SpexrCommands, SpexrCommandsContribution } from "../commands/spexr-commands-contribution.js";
 import { SPEC_PREVIEW_TOGGLE_COMMAND } from "./spec-preview-contribution.js";
+import { isMarkdownUri } from "./markdown-uri.js";
 
 /**
- * Surfaces "Send to agent" and "Toggle markdown preview" actions in the editor
- * tab toolbar whenever the active editor is a spec file under
- * `<workspace>/docs/specs/`.
+ * Surfaces two editor tab toolbar actions, with different scopes: "Send to
+ * agent" only for a spec file under `<workspace>/docs/specs/`, and "Toggle
+ * markdown preview" for any markdown file.
  */
 @injectable()
 export class SpexrSpecEditorToolbarContribution implements TabBarToolbarContribution {
@@ -33,12 +34,17 @@ export class SpexrSpecEditorToolbarContribution implements TabBarToolbarContribu
       icon: "codicon codicon-open-preview",
       tooltip: "Toggle markdown preview",
       priority: 1,
-      isVisible: (widget?: Widget) => this.isSpecEditor(widget),
+      isVisible: (widget?: Widget) => this.isMarkdownEditor(widget),
     });
   }
 
   private isSpecEditor(widget?: Widget): boolean {
     if (!(widget instanceof EditorWidget)) return false;
     return this.spexrCommands.isSpecUri(widget.getResourceUri());
+  }
+
+  private isMarkdownEditor(widget?: Widget): boolean {
+    if (!(widget instanceof EditorWidget)) return false;
+    return isMarkdownUri(widget.getResourceUri());
   }
 }

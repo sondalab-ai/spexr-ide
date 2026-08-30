@@ -33,8 +33,9 @@ hljs.registerLanguage("py", python);
 hljs.registerLanguage("rust", rust);
 hljs.registerLanguage("go", go);
 
+import { isMarkdownUri } from "./markdown-uri.js";
+
 export const SPEC_PREVIEW_VIEW_ID = "spexr.view.spec-preview";
-const SPEC_FILE_RE = /^\d{4}-[a-z0-9][a-z0-9-]*\.md$/;
 const DEBOUNCE_MS = 200;
 
 interface PreviewState {
@@ -43,8 +44,8 @@ interface PreviewState {
 }
 
 /**
- * Singleton ReactWidget that renders the active spec editor's markdown content
- * as HTML, updating live on every keystroke (debounced).
+ * Singleton ReactWidget that renders the active markdown editor's content as
+ * HTML, updating live on every keystroke (debounced).
  *
  * Syntax highlighting: `onUpdateRequest` wraps the parent React render in
  * `flushSync` so the DOM is guaranteed to be committed before we call
@@ -110,14 +111,14 @@ export class SpexrSpecPreviewWidget extends ReactWidget {
   }
 
   /**
-   * Bind to the active editor when it is a spec. Non-spec editors do not clear
-   * the preview — the last spec stays until explicitly closed (AC-4).
+   * Bind to the active editor when it holds markdown. Other editors do not
+   * clear the preview — the last markdown file stays until explicitly
+   * closed (AC-4).
    */
   private retarget(): void {
     const widget = this.editorManager.currentEditor;
     const uri = widget?.getResourceUri();
-    const isSpec = !!uri && SPEC_FILE_RE.test(uri.path.base);
-    if (!widget || !uri || !isSpec) return; // keep last spec visible (AC-4)
+    if (!widget || !isMarkdownUri(uri)) return; // keep last markdown visible (AC-4)
     if (this.tracked === widget) return;
     this.trackedDisposables.dispose();
     this.tracked = widget;
@@ -152,8 +153,8 @@ export class SpexrSpecPreviewWidget extends ReactWidget {
   protected render(): React.ReactNode {
     if (!this.state) {
       return (
-        <div className="spexr-spec-preview" aria-label="Spec preview">
-          <p className="spexr-spec-preview__empty">Open a spec to preview it.</p>
+        <div className="spexr-spec-preview" aria-label="Markdown preview">
+          <p className="spexr-spec-preview__empty">Open a markdown file to preview it.</p>
         </div>
       );
     }
