@@ -5,6 +5,7 @@ import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-w
 import type { AgentSummary, AgentTile, FollowEvent } from "../../common/darkfactory-protocol.js";
 import { stateLabel, relativeTime } from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
+import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
 
 /**
  * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
@@ -305,12 +306,46 @@ export function AgentPinnedCard(props: {
     const el = scroller.current;
     if (el) followTail.current = el.scrollHeight - el.scrollTop - el.clientHeight <= TAIL_SLACK;
   };
+  // A user-set height overrides the CSS bounds, so it is applied to all three
+  // properties: min/max alone would keep fighting the value being dragged.
+  const card = React.useRef<HTMLElement | null>(null);
+  const [height, setHeight] = React.useState<number | undefined>(() =>
+    readPinnedHeight(window.localStorage, window.innerHeight),
+  );
+  const onResizeStart = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const el = card.current;
+    if (!el) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const startY = event.clientY;
+    const startHeight = el.getBoundingClientRect().height;
+    let latest = startHeight;
+    const onMove = (e: PointerEvent): void => {
+      latest = clampPinnedHeight(startHeight + e.clientY - startY, window.innerHeight);
+      setHeight(latest);
+    };
+    const onEnd = (e: PointerEvent): void => {
+      handle.releasePointerCapture(e.pointerId);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      writePinnedHeight(window.localStorage, latest);
+    };
+    handle.setPointerCapture(event.pointerId);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  };
   return (
     <section
+      ref={card}
       className="spexr-df-pinned"
       data-state={tile.state}
       data-status={status.kind}
-      style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
+      style={{
+        ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})`,
+        ...(height !== undefined ? { height, minHeight: height, maxHeight: height } : {}),
+      }}
     >
       <header className="spexr-df-pinned__bar">
         <div className="spexr-df-pinned__head">
@@ -372,6 +407,14 @@ export function AgentPinnedCard(props: {
           <FollowTranscript events={events} />
         </div>
       )}
+      <div
+        className="spexr-df-pinned__resize"
+        onPointerDown={onResizeStart}
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize card"
+        title="Drag to resize"
+      />
     </section>
   );
 }

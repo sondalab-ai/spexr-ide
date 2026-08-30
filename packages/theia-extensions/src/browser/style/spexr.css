@@ -2473,6 +2473,24 @@ code {
   color: var(--sl-text-muted); font-size: var(--sl-text-sm); line-height: 1.5;
 }
 
+/*
+ * Drag strip along the bottom edge. The card's height is bounded by CSS until
+ * the user sets one, at which point an inline height takes over; the strip
+ * bleeds over the card padding so it sits flush with the border.
+ */
+.spexr-df-pinned__resize {
+  flex: none; height: 10px; touch-action: none; cursor: ns-resize;
+  display: flex; align-items: center; justify-content: center;
+  margin: var(--sl-space-2) calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4));
+  border-radius: 0 0 var(--sl-radius-md) var(--sl-radius-md);
+}
+.spexr-df-pinned__resize::after {
+  content: ""; width: 36px; height: 3px; border-radius: 2px;
+  background: color-mix(in srgb, var(--sl-text-primary) 18%, transparent);
+  transition: background 120ms ease;
+}
+.spexr-df-pinned__resize:hover::after { background: var(--tile-accent); }
+
 /* Interactive embedded terminal host: fills the pinned card body. */
 .spexr-df-termhost {
   flex: 1 1 auto; min-height: 0; position: relative;
