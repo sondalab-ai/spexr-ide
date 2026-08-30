@@ -13,6 +13,7 @@ import {
 import { EditorManager, EditorWidget } from "@theia/editor/lib/browser";
 import { SpexrSpecPreviewWidget } from "./spec-preview-widget.js";
 import { decideSpecPreview } from "./spec-preview-policy.js";
+import { isMarkdownUri } from "./markdown-uri.js";
 
 const SPEC_FILE_RE = /^\d{4}-[a-z0-9][a-z0-9-]*\.md$/;
 
@@ -28,6 +29,11 @@ export const SPEC_PREVIEW_TOGGLE_COMMAND: Command = {
  * - When a new spec EditorWidget is added to the shell, open the preview
  *   split-right of it — unless the user closed it while viewing that same spec.
  * - Switching to a different spec URI after a manual close re-opens the preview.
+ *
+ * Auto-opening stays spec-only: every markdown file bringing up a panel by
+ * itself would be intrusive. The toggle command below works on any markdown
+ * editor, and a preview opened that way lives as long as any markdown editor
+ * is open.
  *
  * Also registers the `spexr.view.spec-preview.toggle` command used by the
  * toolbar item (AC-6).
@@ -72,7 +78,10 @@ export class SpexrSpecPreviewContribution
     });
   }
 
-  /** Called by the toolbar item to force-open or close the preview (AC-6). */
+  /**
+   * Called by the toolbar item to force-open or close the preview (AC-6).
+   * Accepts any markdown editor, not just a spec.
+   */
   async togglePreview(): Promise<void> {
     if (this.preview.isAttached) {
       await this.run(() => { this.preview.close(); });
@@ -83,7 +92,7 @@ export class SpexrSpecPreviewContribution
       return;
     }
     const current = this.editorManager.currentEditor;
-    if (current && this.isSpecEditor(current)) {
+    if (current && isMarkdownUri(current.getResourceUri())) {
       await this.openPreviewFor(current);
     }
   }
@@ -137,8 +146,8 @@ export class SpexrSpecPreviewContribution
    * Reconcile preview visibility against the main area (AC-4). The decision
    * lives in {@link decideSpecPreview}; this only reads the shell and applies it.
    *
-   * @param removed Widget being torn down, excluded from the "any spec still
-   *   open" count — during `onDidRemoveWidget` it is detached but not yet
+   * @param removed Widget being torn down, excluded from the "any markdown
+   *   still open" count — during `onDidRemoveWidget` it is detached but not yet
    *   marked disposed, so it would otherwise keep the preview alive.
    */
   private async enforce(removed?: Widget): Promise<void> {
@@ -151,7 +160,7 @@ export class SpexrSpecPreviewContribution
     const action = decideSpecPreview({
       ...(frontSpecUri !== undefined ? { frontSpecUri } : {}),
       attached: this.preview.isAttached,
-      anySpecOpen: this.anySpecOpen(removed),
+      anyMarkdownOpen: this.anyMarkdownOpen(removed),
       wantOpen: this.wantOpen,
       ...(this.closedForUri !== undefined ? { closedForUri: this.closedForUri } : {}),
     });
@@ -163,9 +172,9 @@ export class SpexrSpecPreviewContribution
     }
   }
 
-  private anySpecOpen(excluded?: Widget): boolean {
+  private anyMarkdownOpen(excluded?: Widget): boolean {
     return this.editorManager.all.some(
-      (w) => w !== excluded && !w.isDisposed && this.isSpecEditorWidget(w),
+      (w) => w !== excluded && !w.isDisposed && isMarkdownUri(w.getResourceUri()),
     );
   }
 
