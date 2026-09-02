@@ -500,7 +500,7 @@ export function NewSessionLauncher(props: {
           </select>
         </label>
         <button
-          className="spexr-button spexr-df-launcher__start"
+          className="spexr-button spexr-button--primary spexr-df-launcher__start"
           disabled={!path}
           onClick={() => path && onStart(path, harness)}
         >

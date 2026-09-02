@@ -2437,16 +2437,24 @@ code {
   font-size: var(--sl-text-sm); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
 }
 .spexr-df-launcher__controls {
+  /* One height for every control on the row: the button's own padding would
+     otherwise make it taller than the selects it sits next to. */
+  --df-control-height: 2rem;
   display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sl-space-3);
 }
 .spexr-df-launcher__field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .spexr-df-launcher__label { font-size: 11px; letter-spacing: 0.04em; color: var(--sl-text-muted); }
 .spexr-df-launcher__select {
-  max-width: 22rem; padding: 4px 8px;
+  height: var(--df-control-height); max-width: 22rem; padding: 0 8px;
   background: var(--sl-bg-surface); color: var(--sl-text-primary);
   border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
 }
-.spexr-df-launcher__start { flex: none; }
+.spexr-df-launcher__start {
+  flex: none; height: var(--df-control-height); padding: 0 var(--sl-space-4);
+  display: inline-flex; align-items: center; gap: var(--sl-space-2);
+}
+/* Optical centring: the glyph's own line box sits low against the label. */
+.spexr-df-launcher__start .codicon { line-height: 1; }
 .spexr-df-launcher__empty { margin: 0; color: var(--sl-text-muted); font-size: var(--sl-text-sm); }
 
 /* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
