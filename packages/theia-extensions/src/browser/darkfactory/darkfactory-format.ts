@@ -143,3 +143,37 @@ export function summaryTargets(
   }
   return ids;
 }
+
+/** A project the new-session launcher can start in. */
+export interface LaunchTarget {
+  readonly path: string;
+  readonly name: string;
+}
+
+/** Last path segment, for a project the wall has never scanned. */
+function pathName(path: string): string {
+  const parts = path.replace(/\/+$/, "").split("/");
+  return parts[parts.length - 1] || path;
+}
+
+/**
+ * Projects the launcher offers: every project on the wall, plus the window's own
+ * even when it has no session yet. The current project leads, so the common case
+ * needs no choice; the rest are alphabetical.
+ */
+export function launchTargets(tiles: AgentTile[], currentProjectPath?: string): LaunchTarget[] {
+  const byPath = new Map<string, LaunchTarget>();
+  for (const tile of tiles) {
+    if (!byPath.has(tile.projectPath)) {
+      byPath.set(tile.projectPath, { path: tile.projectPath, name: tile.projectName });
+    }
+  }
+  if (currentProjectPath && !byPath.has(currentProjectPath)) {
+    byPath.set(currentProjectPath, { path: currentProjectPath, name: pathName(currentProjectPath) });
+  }
+  const rest = [...byPath.values()]
+    .filter((t) => t.path !== currentProjectPath)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const current = currentProjectPath ? byPath.get(currentProjectPath) : undefined;
+  return current ? [current, ...rest] : rest;
+}

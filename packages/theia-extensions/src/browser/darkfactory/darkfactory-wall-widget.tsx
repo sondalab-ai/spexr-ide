@@ -6,9 +6,18 @@ import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
-import { sortTiles, groupTiles, summaryTargets } from "./darkfactory-format.js";
+import { sortTiles, groupTiles, summaryTargets, launchTargets } from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
-import { AgentTileCard, AgentCondensedRow, AgentPinnedCard, AgentGroupHeader } from "./agent-tile.js";
+import {
+  AgentTileCard,
+  AgentCondensedRow,
+  AgentPinnedCard,
+  AgentGroupHeader,
+  NewSessionLauncher,
+  LaunchedSessionCard,
+} from "./agent-tile.js";
+import { matchLaunchedSession } from "./new-session-match.js";
+import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
@@ -101,6 +110,21 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   /** Per-pinned-session read-only follow buffer, for the cards with no terminal. */
   private readonly pinnedEvents = new Map<string, FollowEvent[]>();
 
+  /**
+   * Sessions started from the launcher, still keyed by a placeholder: a new
+   * session has no id until its harness writes a transcript. `knownBefore` is
+   * what the wall knew at launch, which is how {@link matchLaunchedSession}
+   * recognises the session once it appears.
+   */
+  private launched: {
+    key: string;
+    projectPath: string;
+    projectName: string;
+    harness: HarnessId;
+    knownBefore: ReadonlySet<string>;
+  }[] = [];
+  private launchCounter = 0;
+
   @postConstruct()
   protected init(): void {
     this.id = SpexrDarkfactoryWidget.ID;
@@ -181,6 +205,59 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     });
   }
 
+  /** Start a fresh session and lift it into a card of its own, at the head of the stack. */
+  private startNewSession(projectPath: string, harness: HarnessId): void {
+    const key = `spexr-new-${(this.launchCounter += 1)}`;
+    const known = new Set(this.tiles.map((t) => t.sessionId));
+    const named = this.tiles.find((t) => t.projectPath === projectPath);
+    this.launched = [
+      ...this.launched,
+      {
+        key,
+        projectPath,
+        projectName: named?.projectName ?? projectPath.split("/").filter(Boolean).pop() ?? projectPath,
+        harness,
+        knownBefore: known,
+      },
+    ];
+    this.update();
+    void this.terminals
+      .openNew(key, harness, projectPath, "")
+      .then(() => this.update())
+      .catch(() => {
+        /* ignore */
+      });
+  }
+
+  /**
+   * Close a card whose session the scan has not named yet. Its terminal IS
+   * disposed, unlike every other card: the placeholder key is the only handle to
+   * that process, so leaving it running would strand a session the wall could
+   * never re-attach — the very thing that made switching cards destructive.
+   */
+  private closeLaunched(key: string): void {
+    this.terminals.live(key)?.dispose();
+    this.launched = this.launched.filter((l) => l.key !== key);
+    this.update();
+  }
+
+  /**
+   * Adopt launched sessions the scan has now named: the terminal moves to the
+   * real session id and the card becomes an ordinary expanded one.
+   */
+  private adoptLaunched(tiles: AgentTile[]): void {
+    const adopted: string[] = [];
+    for (const launch of this.launched) {
+      const sessionId = matchLaunchedSession(launch.projectPath, launch.knownBefore, tiles);
+      if (!sessionId || this.pinned.includes(sessionId)) continue;
+      this.terminals.rekey(launch.key, sessionId);
+      this.pinned = [sessionId, ...this.pinned];
+      this.pinnedEvents.set(sessionId, []);
+      adopted.push(launch.key);
+    }
+    if (adopted.length) this.launched = this.launched.filter((l) => !adopted.includes(l.key));
+  }
+
   /**
    * Load a tile's project in this window. Kept separate from {@link pin}: pinning
    * drives the session in place, this repoints the whole workspace and costs a
@@ -237,6 +314,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const id of this.pinned) {
       if (!live.has(id)) this.unpin(id);
     }
+    this.adoptLaunched(tiles);
     // First compute for a newly-seen session; then keep a WORKING session's summary
     // fresh, but only when the agent has meaningfully moved (see shouldRefresh).
     // Idle/done sessions are computed once.
@@ -388,11 +466,6 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     }
     const now = Date.now();
     const tiles = sortTiles(this.tiles);
-    if (tiles.length === 0) {
-      return (
-        <div className="spexr-df-empty">No agent sessions found. Start a Claude or opencode session to see it here.</div>
-      );
-    }
     // Expanded sessions are lifted out of the grid, in the order they were
     // opened; the rest keep their own order below.
     const byId = new Map(tiles.map((t) => [t.sessionId, t]));
@@ -403,8 +476,23 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     const rest = tiles.filter((t) => !this.pinned.includes(t.sessionId));
     // Headers earn their space only once there is more than one project to tell apart.
     const groups = groupTiles(rest, this.projectSwitch.currentProjectPath());
+    const currentProject = this.projectSwitch.currentProjectPath();
     return (
       <div className="spexr-df-root">
+        <NewSessionLauncher
+          targets={launchTargets(this.tiles, currentProject)}
+          defaultPath={currentProject ?? ""}
+          onStart={(projectPath, harness) => this.startNewSession(projectPath, harness)}
+        />
+        {this.launched.map((launch) => (
+          <LaunchedSessionCard
+            key={launch.key}
+            projectName={launch.projectName}
+            harness={launch.harness}
+            terminal={this.terminals.live(launch.key)}
+            onClose={() => this.closeLaunched(launch.key)}
+          />
+        ))}
         {expanded.map((tile) => (
           <AgentPinnedCard
             key={tile.sessionId}
@@ -419,9 +507,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
           />
         ))}
-        {groups.length > 1
-          ? groups.map((g, i) => this.renderGroup(g, i, now))
-          : this.renderFlat(rest, now)}
+        {tiles.length === 0 ? (
+          <div className="spexr-df-empty">
+            No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here.
+          </div>
+        ) : groups.length > 1 ? (
+          groups.map((g, i) => this.renderGroup(g, i, now))
+        ) : (
+          this.renderFlat(rest, now)
+        )}
       </div>
     );
   }

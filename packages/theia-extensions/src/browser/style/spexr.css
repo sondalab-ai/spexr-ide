@@ -2419,6 +2419,36 @@ code {
 }
 .spexr-df-root { display: flex; flex-direction: column; gap: var(--sl-space-5); }
 
+/*
+ * Head of the stack: a card that starts work rather than showing it. Dashed and
+ * unaccented on purpose — it must read as a slot, not as one more session.
+ */
+.spexr-df-launcher {
+  display: flex; flex-direction: column; gap: var(--sl-space-3);
+  padding: var(--sl-space-4);
+  border: 1px dashed var(--sl-border-subtle);
+  border-radius: var(--sl-radius-md);
+  background: color-mix(in srgb, var(--sl-text-primary) 2%, transparent);
+}
+.spexr-df-launcher__head {
+  display: flex; align-items: center; gap: var(--sl-space-2); color: var(--sl-text-muted);
+}
+.spexr-df-launcher__title {
+  font-size: var(--sl-text-sm); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.spexr-df-launcher__controls {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sl-space-3);
+}
+.spexr-df-launcher__field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.spexr-df-launcher__label { font-size: 11px; letter-spacing: 0.04em; color: var(--sl-text-muted); }
+.spexr-df-launcher__select {
+  max-width: 22rem; padding: 4px 8px;
+  background: var(--sl-bg-surface); color: var(--sl-text-primary);
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
+}
+.spexr-df-launcher__start { flex: none; }
+.spexr-df-launcher__empty { margin: 0; color: var(--sl-text-muted); font-size: var(--sl-text-sm); }
+
 /* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
 .spexr-df-pinned {
   display: flex; flex-direction: column; gap: var(--sl-space-3); min-width: 0;
