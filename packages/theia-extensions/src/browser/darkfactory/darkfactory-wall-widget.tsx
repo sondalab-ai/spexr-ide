@@ -1,7 +1,6 @@
 import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
-import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { AgentSummary, AgentTile, FollowEvent, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
@@ -92,12 +91,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   /** Project paths the user has shut; groups are open by default and this is not persisted. */
   private readonly collapsedGroups = new Set<string>();
 
-  /** The session lifted into the expanded pinned card. */
-  private pinnedSessionId: string | undefined;
-  /** Read-only follow buffer (used when the pinned session has no interactive terminal). */
-  private pinnedEvents: FollowEvent[] = [];
-  /** Interactive resume/fork terminal embedded in the pinned card, when applicable. */
-  private pinnedTerminal: TerminalWidget | undefined;
+  /**
+   * Sessions lifted into expanded cards, newest first — several can be open at
+   * once, each keeping its own terminal alive. The embedded terminal is not held
+   * here: the manager owns one per session and {@link SpexrDarkfactoryTerminalManager.live}
+   * is the single source of truth for whether a card has one.
+   */
+  private pinned: string[] = [];
+  /** Per-pinned-session read-only follow buffer, for the cards with no terminal. */
+  private readonly pinnedEvents = new Map<string, FollowEvent[]>();
 
   @postConstruct()
   protected init(): void {
@@ -110,12 +112,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.toDispose.push(this.client.onTilesChanged$((tiles) => this.setTiles(tiles)));
     this.toDispose.push(
       this.client.onFollowChunk$(({ sessionId, events }) => {
-        if (sessionId !== this.pinnedSessionId) return;
-        this.pinnedEvents = [...this.pinnedEvents, ...events].slice(-FOLLOW_BUFFER);
+        const buffered = this.pinnedEvents.get(sessionId);
+        if (!buffered) return;
+        this.pinnedEvents.set(sessionId, [...buffered, ...events].slice(-FOLLOW_BUFFER));
         this.update();
       }),
     );
-    this.toDispose.push({ dispose: () => this.detachPinned() });
+    this.toDispose.push({ dispose: () => this.stopAllFollows() });
     // ReactWidget renders only on update() — paint the loading state now, before
     // the first tiles land (without this the widget body stays blank until then).
     this.update();
@@ -127,19 +130,19 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   /**
-   * Lift a session into the pinned card (toggles off if already pinned). A
+   * Lift a session into an expanded card (toggles off if already expanded). A
    * resumable (idle, own config dir) session opens an interactive terminal in the
    * card; a live-elsewhere session opens a read-only follow with a Fork & continue
-   * action. planFocus decides.
+   * action. planFocus decides. Cards stack newest first, and opening one leaves
+   * every other card, and its session, exactly as it was.
    */
   private pin(tile: AgentTile): void {
-    if (this.pinnedSessionId === tile.sessionId) {
-      this.unpin();
+    if (this.pinned.includes(tile.sessionId)) {
+      this.unpin(tile.sessionId);
       return;
     }
-    this.detachPinned();
-    this.pinnedSessionId = tile.sessionId;
-    this.pinnedEvents = [];
+    this.pinned = [tile.sessionId, ...this.pinned];
+    this.pinnedEvents.set(tile.sessionId, []);
     this.update();
     void this.openPinned(tile).catch(() => {
       /* ignore */
@@ -150,18 +153,14 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // A terminal we already opened for this session is the session: re-attach it
     // rather than planning again. planFocus would answer "readonly-follow",
     // because that very terminal is what makes the session look live.
-    const running = this.terminals.live(tile.sessionId);
-    if (running) {
-      this.pinnedTerminal = running;
+    if (this.terminals.live(tile.sessionId)) {
       this.update();
       return;
     }
     const plan = await this.service.planFocus(tile.sessionId);
-    if (this.pinnedSessionId !== tile.sessionId) return; // pin changed while awaiting
+    if (!this.pinned.includes(tile.sessionId)) return; // card closed while awaiting
     if (plan.kind === "resume-terminal") {
-      const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, false);
-      if (this.pinnedSessionId !== tile.sessionId) return; // kept alive for the next pin
-      this.pinnedTerminal = term;
+      await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, false);
       this.update();
     } else {
       await this.service.startFollow(tile.sessionId).catch(() => {
@@ -174,10 +173,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private forkTakeover(tile: AgentTile): void {
     void (async () => {
       const plan = await this.service.planFocus(tile.sessionId);
-      const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, true);
-      if (this.pinnedSessionId !== tile.sessionId) return; // kept alive for the next pin
-      this.stopFollow();
-      this.pinnedTerminal = term;
+      await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, true);
+      this.stopFollow(tile.sessionId);
       this.update();
     })().catch(() => {
       /* ignore */
@@ -193,34 +190,30 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.projectSwitch.switchTo(tile.projectPath);
   }
 
-  private unpin(): void {
+  /**
+   * Close one expanded card. The embedded terminal is deliberately NOT disposed:
+   * disposing closes the backend terminal, which kills the agent process and
+   * loses the session's work. It stays with the manager, detached, ready to be
+   * shown again.
+   */
+  private unpin(sessionId: string): void {
     // The session drops back into its group — open it, or the tile just vanishes.
-    const tile = this.tiles.find((t) => t.sessionId === this.pinnedSessionId);
+    const tile = this.tiles.find((t) => t.sessionId === sessionId);
     if (tile) this.collapsedGroups.delete(tile.projectPath);
-    this.detachPinned();
-    this.pinnedSessionId = undefined;
-    this.pinnedEvents = [];
+    this.stopFollow(sessionId);
+    this.pinned = this.pinned.filter((id) => id !== sessionId);
+    this.pinnedEvents.delete(sessionId);
     this.update();
   }
 
-  /**
-   * Stop showing the pinned session (keeps pinnedSessionId untouched). The
-   * embedded terminal is deliberately NOT disposed: disposing closes the backend
-   * terminal, which kills the agent process and loses the session's work. The
-   * terminal stays with the manager, detached, ready to be shown again.
-   */
-  private detachPinned(): void {
-    this.stopFollow();
-    this.pinnedTerminal = undefined;
+  private stopFollow(sessionId: string): void {
+    void this.service.stopFollow(sessionId).catch(() => {
+      /* ignore */
+    });
   }
 
-  private stopFollow(): void {
-    const id = this.pinnedSessionId;
-    if (id) {
-      void this.service.stopFollow(id).catch(() => {
-        /* ignore */
-      });
-    }
+  private stopAllFollows(): void {
+    for (const id of this.pinned) this.stopFollow(id);
   }
 
   private async refresh(): Promise<void> {
@@ -240,8 +233,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const path of this.collapsedGroups) {
       if (!liveProjects.has(path)) this.collapsedGroups.delete(path);
     }
-    // Drop the pinned card if its session is gone (stops the orphaned follow).
-    if (this.pinnedSessionId && !live.has(this.pinnedSessionId)) this.unpin();
+    // Drop expanded cards whose session is gone (stops the orphaned follow).
+    for (const id of this.pinned) {
+      if (!live.has(id)) this.unpin(id);
+    }
     // First compute for a newly-seen session; then keep a WORKING session's summary
     // fresh, but only when the agent has meaningfully moved (see shouldRefresh).
     // Idle/done sessions are computed once.
@@ -398,28 +393,32 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         <div className="spexr-df-empty">No agent sessions found. Start a Claude or opencode session to see it here.</div>
       );
     }
-    // The pinned session is lifted out of the grid; the rest keep their order below.
-    const pinned = this.pinnedSessionId
-      ? tiles.find((t) => t.sessionId === this.pinnedSessionId)
-      : undefined;
-    const rest = pinned ? tiles.filter((t) => t.sessionId !== pinned.sessionId) : tiles;
+    // Expanded sessions are lifted out of the grid, in the order they were
+    // opened; the rest keep their own order below.
+    const byId = new Map(tiles.map((t) => [t.sessionId, t]));
+    const expanded = this.pinned.flatMap((id) => {
+      const tile = byId.get(id);
+      return tile ? [tile] : [];
+    });
+    const rest = tiles.filter((t) => !this.pinned.includes(t.sessionId));
     // Headers earn their space only once there is more than one project to tell apart.
     const groups = groupTiles(rest, this.projectSwitch.currentProjectPath());
     return (
       <div className="spexr-df-root">
-        {pinned && (
+        {expanded.map((tile) => (
           <AgentPinnedCard
-            tile={pinned}
+            key={tile.sessionId}
+            tile={tile}
             now={now}
-            summary={this.summaries.get(pinned.sessionId)}
-            events={this.pinnedEvents}
-            terminal={this.pinnedTerminal}
-            onClose={() => this.unpin()}
+            summary={this.summaries.get(tile.sessionId)}
+            events={this.pinnedEvents.get(tile.sessionId) ?? []}
+            terminal={this.terminals.live(tile.sessionId)}
+            onClose={() => this.unpin(tile.sessionId)}
             onFork={(t) => this.forkTakeover(t)}
             onOpenProject={(t) => this.openProject(t)}
-            isCurrent={this.projectSwitch.isCurrentProject(pinned.projectPath)}
+            isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
           />
-        )}
+        ))}
         {groups.length > 1
           ? groups.map((g, i) => this.renderGroup(g, i, now))
           : this.renderFlat(rest, now)}
