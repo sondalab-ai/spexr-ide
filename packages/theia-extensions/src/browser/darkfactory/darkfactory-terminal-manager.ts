@@ -42,6 +42,17 @@ export class SpexrDarkfactoryTerminalManager {
   private readonly widgets = new Map<string, TerminalWidget>();
 
   /**
+   * The terminal already running for a session, if any. Callers use this to
+   * re-attach a session they are showing again: asking the backend to plan the
+   * focus instead would route them to a read-only follow, because our own
+   * terminal is the running process that makes the session look live.
+   */
+  live(sessionId: string): TerminalWidget | undefined {
+    const term = this.widgets.get(sessionId);
+    return term && !term.isDisposed ? term : undefined;
+  }
+
+  /**
    * Create (or reuse) a resume terminal WITHOUT docking it in the shell — the
    * caller attaches its node into its own container (the pinned card). `fork`
    * branches from the history when the original is live elsewhere. Returns

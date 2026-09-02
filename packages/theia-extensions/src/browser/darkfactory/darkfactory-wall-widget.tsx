@@ -115,7 +115,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         this.update();
       }),
     );
-    this.toDispose.push({ dispose: () => this.clearPinned() });
+    this.toDispose.push({ dispose: () => this.detachPinned() });
     // ReactWidget renders only on update() — paint the loading state now, before
     // the first tiles land (without this the widget body stays blank until then).
     this.update();
@@ -137,7 +137,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       this.unpin();
       return;
     }
-    this.clearPinned();
+    this.detachPinned();
     this.pinnedSessionId = tile.sessionId;
     this.pinnedEvents = [];
     this.update();
@@ -147,14 +147,20 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   private async openPinned(tile: AgentTile): Promise<void> {
+    // A terminal we already opened for this session is the session: re-attach it
+    // rather than planning again. planFocus would answer "readonly-follow",
+    // because that very terminal is what makes the session look live.
+    const running = this.terminals.live(tile.sessionId);
+    if (running) {
+      this.pinnedTerminal = running;
+      this.update();
+      return;
+    }
     const plan = await this.service.planFocus(tile.sessionId);
     if (this.pinnedSessionId !== tile.sessionId) return; // pin changed while awaiting
     if (plan.kind === "resume-terminal") {
       const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, false);
-      if (this.pinnedSessionId !== tile.sessionId) {
-        term?.dispose();
-        return;
-      }
+      if (this.pinnedSessionId !== tile.sessionId) return; // kept alive for the next pin
       this.pinnedTerminal = term;
       this.update();
     } else {
@@ -169,10 +175,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     void (async () => {
       const plan = await this.service.planFocus(tile.sessionId);
       const term = await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, true);
-      if (this.pinnedSessionId !== tile.sessionId) {
-        term?.dispose();
-        return;
-      }
+      if (this.pinnedSessionId !== tile.sessionId) return; // kept alive for the next pin
       this.stopFollow();
       this.pinnedTerminal = term;
       this.update();
@@ -194,16 +197,20 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // The session drops back into its group — open it, or the tile just vanishes.
     const tile = this.tiles.find((t) => t.sessionId === this.pinnedSessionId);
     if (tile) this.collapsedGroups.delete(tile.projectPath);
-    this.clearPinned();
+    this.detachPinned();
     this.pinnedSessionId = undefined;
     this.pinnedEvents = [];
     this.update();
   }
 
-  /** Tear down the pinned session's follow and embedded terminal (keeps pinnedSessionId untouched). */
-  private clearPinned(): void {
+  /**
+   * Stop showing the pinned session (keeps pinnedSessionId untouched). The
+   * embedded terminal is deliberately NOT disposed: disposing closes the backend
+   * terminal, which kills the agent process and loses the session's work. The
+   * terminal stays with the manager, detached, ready to be shown again.
+   */
+  private detachPinned(): void {
     this.stopFollow();
-    this.pinnedTerminal?.dispose();
     this.pinnedTerminal = undefined;
   }
 

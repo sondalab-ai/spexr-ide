@@ -61,6 +61,14 @@ describe("SpexrDarkfactoryTerminalManager harness selection", () => {
     expect(shellLine(calls)).toBe(`cd '/Users/x/proj'; opencode '--session' '${SES}' '--fork'; exec "$SHELL" -i`);
   });
 
+  it("reuses the running terminal instead of starting a second one", async () => {
+    const { manager, calls } = makeManager();
+    const first = await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+
+    expect(await manager.openEmbedded(UUID, "/Users/x/proj", "", false)).toBe(first);
+    expect(calls).toHaveLength(1);
+  });
+
   it("returns undefined for an id no harness recognizes", async () => {
     const { manager, calls } = makeManager();
     await expect(manager.openEmbedded("not-an-id", "/Users/x/proj", "", false)).resolves.toBeUndefined();
@@ -71,5 +79,25 @@ describe("SpexrDarkfactoryTerminalManager harness selection", () => {
     const { manager, calls } = makeManager();
     await expect(manager.openEmbedded(SES, "", "", false)).resolves.toBeUndefined();
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("SpexrDarkfactoryTerminalManager.live", () => {
+  it("knows nothing about a session that was never opened", () => {
+    const { manager } = makeManager();
+    expect(manager.live(UUID)).toBeUndefined();
+  });
+
+  it("hands back the terminal opened for a session", async () => {
+    const { manager } = makeManager();
+    const term = await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    expect(manager.live(UUID)).toBe(term);
+  });
+
+  it("ignores a terminal that has been disposed", async () => {
+    const { manager } = makeManager();
+    const term = await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    (term as unknown as { isDisposed: boolean }).isDisposed = true;
+    expect(manager.live(UUID)).toBeUndefined();
   });
 });
