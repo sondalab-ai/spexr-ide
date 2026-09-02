@@ -3,8 +3,10 @@ import { Widget, UnsafeWidgetUtilities } from "@theia/core/lib/browser/widgets/w
 import { MessageLoop } from "@theia/core/shared/@lumino/messaging";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { AgentSummary, AgentTile, FollowEvent } from "../../common/darkfactory-protocol.js";
+import type { HarnessId } from "../../common/harness/harness-types.js";
 import { stateLabel, relativeTime } from "./darkfactory-format.js";
-import type { TileGroup } from "./darkfactory-format.js";
+import type { TileGroup, LaunchTarget } from "./darkfactory-format.js";
+import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
 
 /**
  * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
@@ -277,6 +279,69 @@ export function AgentTileCard(props: {
  * Expanded, pinned card lifted above the grid: a large read-only live view of one
  * session's transcript, with an action to continue it in an interactive terminal.
  */
+/**
+ * Drag-to-resize height for an expanded card, remembered across sessions. The
+ * height is returned rather than applied, because a user-set one has to
+ * override `min-height` and `max-height` too: the CSS bounds would otherwise
+ * keep fighting the value being dragged.
+ */
+function usePinnedHeight(): {
+  ref: React.MutableRefObject<HTMLElement | null>;
+  height: number | undefined;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+} {
+  const ref = React.useRef<HTMLElement | null>(null);
+  const [height, setHeight] = React.useState<number | undefined>(() =>
+    readPinnedHeight(window.localStorage, window.innerHeight),
+  );
+  const onResizeStart = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const el = ref.current;
+    if (!el) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const startY = event.clientY;
+    const startHeight = el.getBoundingClientRect().height;
+    let latest = startHeight;
+    const onMove = (e: PointerEvent): void => {
+      latest = clampPinnedHeight(startHeight + e.clientY - startY, window.innerHeight);
+      setHeight(latest);
+    };
+    const onEnd = (e: PointerEvent): void => {
+      handle.releasePointerCapture(e.pointerId);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      writePinnedHeight(window.localStorage, latest);
+    };
+    handle.setPointerCapture(event.pointerId);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  };
+  return { ref, height, onResizeStart };
+}
+
+/** The strip along a card's bottom edge that {@link usePinnedHeight} listens on. */
+function CardResizeHandle(props: {
+  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
+}): React.ReactElement {
+  return (
+    <div
+      className="spexr-df-pinned__resize"
+      onPointerDown={props.onPointerDown}
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Resize card"
+      title="Drag to resize"
+    />
+  );
+}
+
+/** A user-set card height, as the style that overrides the CSS bounds. */
+function heightStyle(height: number | undefined): React.CSSProperties {
+  return height !== undefined ? { height, minHeight: height, maxHeight: height } : {};
+}
+
 export function AgentPinnedCard(props: {
   tile: AgentTile;
   now: number;
@@ -305,12 +370,17 @@ export function AgentPinnedCard(props: {
     const el = scroller.current;
     if (el) followTail.current = el.scrollHeight - el.scrollTop - el.clientHeight <= TAIL_SLACK;
   };
+  const { ref: card, height, onResizeStart } = usePinnedHeight();
   return (
     <section
+      ref={card}
       className="spexr-df-pinned"
       data-state={tile.state}
       data-status={status.kind}
-      style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
+      style={{
+        ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})`,
+        ...heightStyle(height),
+      }}
     >
       <header className="spexr-df-pinned__bar">
         <div className="spexr-df-pinned__head">
@@ -372,6 +442,115 @@ export function AgentPinnedCard(props: {
           <FollowTranscript events={events} />
         </div>
       )}
+      <CardResizeHandle onPointerDown={onResizeStart} />
+    </section>
+  );
+}
+
+/**
+ * The card at the head of the stack that starts a session instead of showing
+ * one. The project list is the wall's own projects, so starting work on another
+ * checkout costs no window switch; the harness is picked here because both are
+ * first-class on the wall.
+ */
+export function NewSessionLauncher(props: {
+  targets: readonly LaunchTarget[];
+  /** Pre-selected project — the window's own, when it has one. */
+  defaultPath: string;
+  onStart: (projectPath: string, harness: HarnessId) => void;
+}): React.ReactElement {
+  const { targets, defaultPath, onStart } = props;
+  const first = targets[0]?.path ?? "";
+  const [path, setPath] = React.useState(defaultPath || first);
+  const [harness, setHarness] = React.useState<HarnessId>("claude");
+  // The wall's projects arrive asynchronously: adopt a real one as soon as there is one.
+  React.useEffect(() => {
+    if (!path && (defaultPath || first)) setPath(defaultPath || first);
+  }, [defaultPath, first, path]);
+  return (
+    <section className="spexr-df-launcher">
+      <div className="spexr-df-launcher__head">
+        <i className="codicon codicon-add" />
+        <span className="spexr-df-launcher__title">Start a new session</span>
+      </div>
+      <div className="spexr-df-launcher__controls">
+        <label className="spexr-df-launcher__field">
+          <span className="spexr-df-launcher__label">Project</span>
+          <select
+            className="spexr-df-launcher__select"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+          >
+            {targets.map((t) => (
+              <option key={t.path} value={t.path}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="spexr-df-launcher__field">
+          <span className="spexr-df-launcher__label">Harness</span>
+          <select
+            className="spexr-df-launcher__select"
+            value={harness}
+            onChange={(e) => setHarness(e.target.value as HarnessId)}
+          >
+            <option value="claude">claude</option>
+            <option value="opencode">opencode</option>
+          </select>
+        </label>
+        <button
+          className="spexr-button spexr-df-launcher__start"
+          disabled={!path}
+          onClick={() => path && onStart(path, harness)}
+        >
+          <i className="codicon codicon-play" /> Start
+        </button>
+      </div>
+      {targets.length === 0 && (
+        <p className="spexr-df-launcher__empty">
+          No project to start in yet — open a workspace, or wait for the scan to find one.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A session this window has just started. It is deliberately not an
+ * {@link AgentPinnedCard}: there is no tile to describe it until the scan finds
+ * its transcript, and inventing a status for it would be a lie. Once the scan
+ * does find it, the wall swaps this card for the real one.
+ */
+export function LaunchedSessionCard(props: {
+  projectName: string;
+  harness: HarnessId;
+  terminal?: TerminalWidget | undefined;
+  onClose: () => void;
+}): React.ReactElement {
+  const { projectName, harness, terminal, onClose } = props;
+  const { ref: card, height, onResizeStart } = usePinnedHeight();
+  return (
+    <section className="spexr-df-pinned" ref={card} data-state="working" style={heightStyle(height)}>
+      <header className="spexr-df-pinned__bar">
+        <div className="spexr-df-pinned__head">
+          <span className="spexr-df-card__led" />
+          <span className="spexr-df-pinned__project">{projectName}</span>
+          <span className="spexr-df-card__harness">{harness}</span>
+          <span className="spexr-df-card__status" data-kind="working">
+            new session
+          </span>
+          <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
+            <i className="codicon codicon-close" />
+          </button>
+        </div>
+      </header>
+      {terminal ? (
+        <TerminalMount term={terminal} />
+      ) : (
+        <div className="spexr-df-pinned__nofollow">Starting the session…</div>
+      )}
+      <CardResizeHandle onPointerDown={onResizeStart} />
     </section>
   );
 }

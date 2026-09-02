@@ -7,6 +7,7 @@ import {
   modeLabel,
   groupTiles,
   summaryTargets,
+  launchTargets,
 } from "./darkfactory-format.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
 
@@ -176,5 +177,42 @@ describe("darkfactory-format", () => {
       2,
     );
     expect(out).toEqual(["a", "b"]);
+  });
+});
+
+describe("launchTargets", () => {
+  test("offers every project on the wall, alphabetically", () => {
+    const targets = launchTargets([
+      tile("a", "idle", false, 0, { projectPath: "/w/beta", projectName: "beta" }),
+      tile("b", "idle", false, 0, { projectPath: "/w/alpha", projectName: "alpha" }),
+    ]);
+    expect(targets.map((t) => t.name)).toEqual(["alpha", "beta"]);
+  });
+
+  test("puts the window's own project first", () => {
+    const targets = launchTargets(
+      [
+        tile("a", "idle", false, 0, { projectPath: "/w/alpha", projectName: "alpha" }),
+        tile("b", "idle", false, 0, { projectPath: "/w/beta", projectName: "beta" }),
+      ],
+      "/w/beta",
+    );
+    expect(targets.map((t) => t.name)).toEqual(["beta", "alpha"]);
+  });
+
+  test("includes the current project even with no session on the wall", () => {
+    expect(launchTargets([], "/w/fresh/proj")).toEqual([{ path: "/w/fresh/proj", name: "proj" }]);
+  });
+
+  test("lists a project once however many sessions it has", () => {
+    const targets = launchTargets([
+      tile("a", "idle", false, 0, { projectPath: "/w/one", projectName: "one" }),
+      tile("b", "idle", false, 0, { projectPath: "/w/one", projectName: "one" }),
+    ]);
+    expect(targets).toHaveLength(1);
+  });
+
+  test("is empty when there is nothing to start in", () => {
+    expect(launchTargets([])).toEqual([]);
   });
 });

@@ -8,7 +8,7 @@ import {
 } from "../preferences/spexr-preferences.js";
 import { claudeCore } from "../../common/harness/claude-harness-core.js";
 import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
-import type { HarnessCore } from "../../common/harness/harness-types.js";
+import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -42,6 +42,17 @@ export class SpexrDarkfactoryTerminalManager {
   private readonly widgets = new Map<string, TerminalWidget>();
 
   /**
+   * The terminal already running for a session, if any. Callers use this to
+   * re-attach a session they are showing again: asking the backend to plan the
+   * focus instead would route them to a read-only follow, because our own
+   * terminal is the running process that makes the session look live.
+   */
+  live(sessionId: string): TerminalWidget | undefined {
+    const term = this.widgets.get(sessionId);
+    return term && !term.isDisposed ? term : undefined;
+  }
+
+  /**
    * Create (or reuse) a resume terminal WITHOUT docking it in the shell — the
    * caller attaches its node into its own container (the pinned card). `fork`
    * branches from the history when the original is live elsewhere. Returns
@@ -58,6 +69,36 @@ export class SpexrDarkfactoryTerminalManager {
     return this.createResumeTerminal(sessionId, projectPath, configDir, fork);
   }
 
+  /**
+   * Start a fresh session — the harness binary with no resume argument — under a
+   * caller-chosen key, since no session id exists until the harness writes its
+   * transcript. {@link rekey} adopts the real id once the scan reports it.
+   */
+  async openNew(
+    key: string,
+    harnessId: HarnessId,
+    projectPath: string,
+    configDir: string,
+  ): Promise<TerminalWidget | undefined> {
+    const existing = this.widgets.get(key);
+    if (existing && !existing.isDisposed) return existing;
+    const harness = harnessId === "claude" ? claudeCore : opencodeCore;
+    return this.create(key, harness, [], projectPath, configDir);
+  }
+
+  /**
+   * Move a terminal to another key, so a session launched under a placeholder is
+   * found again under the id the scan gives it. No-op when the key is unknown or
+   * the destination is taken.
+   */
+  rekey(from: string, to: string): void {
+    const term = this.widgets.get(from);
+    if (!term || term.isDisposed || this.widgets.has(to)) return;
+    this.widgets.delete(from);
+    this.widgets.set(to, term);
+    term.onDidDispose(() => this.widgets.delete(to));
+  }
+
   private async createResumeTerminal(
     sessionId: string,
     projectPath: string,
@@ -65,21 +106,32 @@ export class SpexrDarkfactoryTerminalManager {
     fork: boolean,
   ): Promise<TerminalWidget | undefined> {
     const harness = harnessForSessionId(sessionId);
-    if (!harness || !projectPath) return undefined;
+    if (!harness) return undefined;
+    return this.create(sessionId, harness, harness.buildResumeArgs(sessionId, fork), projectPath, configDir);
+  }
+
+  private async create(
+    key: string,
+    harness: HarnessCore,
+    args: string[],
+    projectPath: string,
+    configDir: string,
+  ): Promise<TerminalWidget | undefined> {
+    if (!projectPath) return undefined;
     const dir = harness.id === "claude" ? this.resolveConfigDir(configDir) : "";
     const term = await this.terminalService.newTerminal({
-      id: `spexr-df-${sessionId}`,
+      id: `spexr-df-${key}`,
       title: baseName(projectPath),
       useServerTitle: false,
       iconClass: "codicon codicon-sparkle",
-      ...this.resolveShell(harness, harness.buildResumeArgs(sessionId, fork), dir, projectPath),
+      ...this.resolveShell(harness, args, dir, projectPath),
       cwd: projectPath,
       env: dir ? { CLAUDE_CONFIG_DIR: dir } : {},
       destroyTermOnClose: false,
     });
     await term.start();
-    this.widgets.set(sessionId, term);
-    term.onDidDispose(() => this.widgets.delete(sessionId));
+    this.widgets.set(key, term);
+    term.onDidDispose(() => this.widgets.delete(key));
     return term;
   }
 
