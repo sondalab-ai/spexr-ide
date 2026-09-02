@@ -9,6 +9,7 @@ import {
 import { claudeCore } from "../../common/harness/claude-harness-core.js";
 import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
 import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.js";
+import { SESSION_TERMINAL_KIND } from "../terminal/terminal-style.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -128,6 +129,7 @@ export class SpexrDarkfactoryTerminalManager {
       cwd: projectPath,
       env: dir ? { CLAUDE_CONFIG_DIR: dir } : {},
       destroyTermOnClose: false,
+      kind: SESSION_TERMINAL_KIND,
     });
     await term.start();
     this.widgets.set(key, term);

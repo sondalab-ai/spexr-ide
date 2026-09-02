@@ -56,6 +56,7 @@ import {
   AGENT_SESSION_SERVICE_PATH,
 } from "./agent/agent-service-proxy.js";
 import { SpexrPreferenceContribution } from "./preferences/spexr-preferences.js";
+import { SpexrTerminalStyleContribution } from "./terminal/spexr-terminal-style-contribution.js";
 import { PreferenceConfigurations } from "@theia/core/lib/common/preferences/preference-configurations";
 import { SpexrPreferenceConfigurations } from "./preferences/spexr-preference-configurations.js";
 import { SpexrLanguageGrammarContribution } from "./language/spexr-language-grammar-contribution.js";
@@ -179,6 +180,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(SpexrRevealOnRestore).toService(ScmContribution);
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
+  bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
 
   bind(ClaudeTerminalManager).toSelf().inSingletonScope();

@@ -4,6 +4,12 @@ import {
   DEFAULT_GENERATION_MODEL,
   GENERATION_DTYPES,
 } from "../../common/generation-model.js";
+import {
+  SPEXR_TERMINAL_KINDS,
+  CURSOR_STYLES,
+  terminalStyleKey,
+  type SpexrTerminalKind,
+} from "../terminal/terminal-style.js";
 
 /**
  * Key for the Claude Code executable path preference.
@@ -59,6 +65,68 @@ export const SPEXR_SEARCH_GEN_MODEL_PREFERENCE = "spexr.search.generationModel";
 
 /** Quantisation the generation model is loaded at. See the model's `onnx/` files. */
 export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDtype";
+
+/** What each terminal family is, in the words a preference description needs. */
+const TERMINAL_KIND_LABELS: Record<SpexrTerminalKind, string> = {
+  session: "the Darkfactory session cards",
+  agent: "the side agent panel",
+  editor: "ordinary Theia terminals",
+};
+
+/**
+ * Style preferences for the three terminal families. Every field is opt-in:
+ * empty (or 0) means the terminal keeps whatever `terminal.integrated.*` and the
+ * colour theme already give it, so an untouched install looks exactly as before.
+ */
+function terminalStyleProperties(): PreferenceSchema["properties"] {
+  const properties: PreferenceSchema["properties"] = {};
+  for (const kind of SPEXR_TERMINAL_KINDS) {
+    const where = TERMINAL_KIND_LABELS[kind];
+    properties[terminalStyleKey(kind, "fontFamily")] = {
+      type: "string",
+      default: "",
+      description: `Font family for ${where}. Empty inherits terminal.integrated.fontFamily.`,
+    };
+    properties[terminalStyleKey(kind, "fontSize")] = {
+      type: "number",
+      default: 0,
+      description: `Font size, in pixels, for ${where}. 0 inherits terminal.integrated.fontSize.`,
+    };
+    properties[terminalStyleKey(kind, "lineHeight")] = {
+      type: "number",
+      default: 0,
+      description: `Line height, as a multiple of the font size, for ${where}. 0 inherits.`,
+    };
+    properties[terminalStyleKey(kind, "letterSpacing")] = {
+      type: "number",
+      default: 0,
+      description: `Extra letter spacing, in pixels, for ${where}. 0 inherits, which is also xterm's own default.`,
+    };
+    properties[terminalStyleKey(kind, "cursorStyle")] = {
+      type: "string",
+      enum: ["", ...CURSOR_STYLES],
+      default: "",
+      description: `Cursor shape for ${where}. Empty inherits terminal.integrated.cursorStyle.`,
+    };
+    properties[terminalStyleKey(kind, "cursorBlink")] = {
+      type: "string",
+      enum: ["", "on", "off"],
+      default: "",
+      description: `Whether the cursor blinks in ${where}. Empty inherits terminal.integrated.cursorBlinking.`,
+    };
+    properties[terminalStyleKey(kind, "background")] = {
+      type: "string",
+      default: "",
+      description: `Background colour for ${where}, as CSS hex. Empty inherits the colour theme's terminal.background.`,
+    };
+    properties[terminalStyleKey(kind, "foreground")] = {
+      type: "string",
+      default: "",
+      description: `Text colour for ${where}, as CSS hex. Empty inherits the colour theme's terminal.foreground. The 16 ANSI colours always come from the theme.`,
+    };
+  }
+  return properties;
+}
 
 const SpexrPreferencesSchema: PreferenceSchema = {
   properties: {
@@ -122,6 +190,7 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "Quantisation the generation model is loaded at. Must match a file the model " +
         "publishes under `onnx/` (e.g. `model_q4.onnx` for q4). User-scoped.",
     },
+    ...terminalStyleProperties(),
   },
 };
 

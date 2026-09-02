@@ -8,6 +8,7 @@ import { PreferenceScope } from "@theia/core/lib/common/preferences/preference-s
 import { nls } from "@theia/core/lib/common/nls";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
+import { AGENT_TERMINAL_KIND } from "../terminal/terminal-style.js";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { ClaudeProfileDto, MemoryLinkStatus } from "../../common/agent-protocol.js";
 import { SpexrAgentServiceProxy } from "./agent-service-proxy.js";
@@ -334,6 +335,7 @@ export class ClaudeTerminalManager {
       cwd: workspaceRoot,
       env,
       destroyTermOnClose: false,
+      kind: AGENT_TERMINAL_KIND,
     });
     this.armReadiness(term);
     await term.start();
