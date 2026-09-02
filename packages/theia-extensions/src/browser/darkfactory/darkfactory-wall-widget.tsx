@@ -17,6 +17,7 @@ import {
   LaunchedSessionCard,
 } from "./agent-tile.js";
 import { matchLaunchedSession } from "./new-session-match.js";
+import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 
@@ -125,6 +126,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }[] = [];
   private launchCounter = 0;
 
+  /** When the wheel last scrolled the wall, anchoring {@link routeWheel}'s gesture window. */
+  private lastWallWheelAt = 0;
+
   @postConstruct()
   protected init(): void {
     this.id = SpexrDarkfactoryWidget.ID;
@@ -133,6 +137,12 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.title.closable = true;
     this.title.iconClass = "codicon codicon-server-process";
     this.addClass("spexr-darkfactory");
+    // Capture phase: an embedded terminal's own wheel listener would otherwise
+    // consume the event before the wall ever sees it.
+    this.node.addEventListener("wheel", this.onWheel, { capture: true, passive: false });
+    this.toDispose.push({
+      dispose: () => this.node.removeEventListener("wheel", this.onWheel, { capture: true }),
+    });
     this.toDispose.push(this.client.onTilesChanged$((tiles) => this.setTiles(tiles)));
     this.toDispose.push(
       this.client.onFollowChunk$(({ sessionId, events }) => {
@@ -204,6 +214,25 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       /* ignore */
     });
   }
+
+  /**
+   * Keep a wheel gesture on the wall once it has started there, even after a
+   * terminal has slid under the pointer. The wall's own node is the scroller, so
+   * taking the event over means scrolling it by hand — the browser would
+   * otherwise scroll the terminal's viewport, the nearest scrollable ancestor of
+   * the event's target.
+   */
+  private readonly onWheel = (event: WheelEvent): void => {
+    const target = event.target;
+    const overTerminal = target instanceof Element && target.closest(".spexr-df-termhost") !== null;
+    const now = Date.now();
+    if (routeWheel({ overTerminal, msSinceWallWheel: now - this.lastWallWheelAt }) === "terminal") return;
+    this.lastWallWheelAt = now;
+    if (!overTerminal) return; // the browser already scrolls the wall itself
+    event.preventDefault();
+    event.stopPropagation();
+    this.node.scrollTop += wheelDeltaPx(event.deltaY, event.deltaMode, this.node.clientHeight);
+  };
 
   /** Start a fresh session and lift it into a card of its own, at the head of the stack. */
   private startNewSession(projectPath: string, harness: HarnessId): void {
