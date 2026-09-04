@@ -2,11 +2,18 @@ import * as React from "@theia/core/shared/react";
 import { Widget, UnsafeWidgetUtilities } from "@theia/core/lib/browser/widgets/widget";
 import { MessageLoop } from "@theia/core/shared/@lumino/messaging";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
-import type { AgentSummary, AgentTile, FollowEvent } from "../../common/darkfactory-protocol.js";
+import type {
+  AgentSummary,
+  AgentTile,
+  ClaudeConfigDir,
+  FollowEvent,
+} from "../../common/darkfactory-protocol.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
-import { stateLabel, relativeTime } from "./darkfactory-format.js";
-import type { TileGroup, LaunchTarget } from "./darkfactory-format.js";
+import { stateLabel, relativeTime, projectDisplayName } from "./darkfactory-format.js";
+import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
 import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
+import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.js";
+import type { WallLayout } from "./wall-layout.js";
 
 /**
  * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
@@ -285,15 +292,20 @@ export function AgentTileCard(props: {
  * override `min-height` and `max-height` too: the CSS bounds would otherwise
  * keep fighting the value being dragged.
  */
-function usePinnedHeight(): {
+function usePinnedHeight(layout: WallLayout): {
   ref: React.MutableRefObject<HTMLElement | null>;
   height: number | undefined;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
 } {
   const ref = React.useRef<HTMLElement | null>(null);
   const [height, setHeight] = React.useState<number | undefined>(() =>
-    readPinnedHeight(window.localStorage, window.innerHeight),
+    readPinnedHeight(window.localStorage, window.innerHeight, layout),
   );
+  // Each arrangement keeps its own height, so switching adopts the other one's
+  // — a stack height carried into the mosaic would make every cell a full row tall.
+  React.useEffect(() => {
+    setHeight(readPinnedHeight(window.localStorage, window.innerHeight, layout));
+  }, [layout]);
   const onResizeStart = (event: React.PointerEvent<HTMLDivElement>): void => {
     const el = ref.current;
     if (!el) return;
@@ -311,7 +323,7 @@ function usePinnedHeight(): {
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onEnd);
       handle.removeEventListener("pointercancel", onEnd);
-      writePinnedHeight(window.localStorage, latest);
+      writePinnedHeight(window.localStorage, latest, layout);
     };
     handle.setPointerCapture(event.pointerId);
     handle.addEventListener("pointermove", onMove);
@@ -354,8 +366,10 @@ export function AgentPinnedCard(props: {
   onOpenProject: (t: AgentTile) => void;
   /** True when this tile's project is the one loaded in the window. */
   isCurrent: boolean;
+  /** How the wall arranges active cards; the card's height is remembered per arrangement. */
+  layout: WallLayout;
 }): React.ReactElement {
-  const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, isCurrent } = props;
+  const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, isCurrent, layout } = props;
   const status = statusOf(tile);
   // The card is height-bounded so its CTAs stay in view, which makes the
   // transcript the scrolling region — keep it on the newest line, unless the
@@ -370,7 +384,7 @@ export function AgentPinnedCard(props: {
     const el = scroller.current;
     if (el) followTail.current = el.scrollHeight - el.scrollTop - el.clientHeight <= TAIL_SLACK;
   };
-  const { ref: card, height, onResizeStart } = usePinnedHeight();
+  const { ref: card, height, onResizeStart } = usePinnedHeight(layout);
   return (
     <section
       ref={card}
@@ -447,46 +461,150 @@ export function AgentPinnedCard(props: {
   );
 }
 
+/** How each arrangement is named and explained in the launcher's toggle. */
+const LAYOUTS: readonly { id: WallLayout; label: string; title: string }[] = [
+  { id: "stack", label: "Stack", title: "One full-width card per running terminal" },
+  { id: "mosaic", label: "Mosaic", title: "Running terminals side by side, as a grid" },
+];
+
+/** Segmented control that switches how the active terminal cards are arranged. */
+function WallLayoutToggle(props: {
+  layout: WallLayout;
+  onChange: (layout: WallLayout) => void;
+}): React.ReactElement {
+  const { layout, onChange } = props;
+  return (
+    <div className="spexr-df-layout" role="group" aria-label="Arrangement of running terminals">
+      {LAYOUTS.map((l) => (
+        <button
+          key={l.id}
+          className="spexr-df-layout__option"
+          data-active={l.id === layout}
+          aria-pressed={l.id === layout}
+          title={l.title}
+          onClick={() => onChange(l.id)}
+        >
+          {l.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Heading each group of projects gets in the launcher's Project dropdown. */
+const TARGET_GROUPS: readonly { kind: LaunchTargetKind; label: string }[] = [
+  { kind: "current", label: "This window" },
+  { kind: "session", label: "With sessions" },
+  { kind: "recent", label: "Recent" },
+  { kind: "picked", label: "Browsed" },
+];
+
 /**
  * The card at the head of the stack that starts a session instead of showing
- * one. The project list is the wall's own projects, so starting work on another
- * checkout costs no window switch; the harness is picked here because both are
- * first-class on the wall.
+ * one. The project list is the wall's own projects plus the recent workspaces,
+ * so starting work on another checkout costs no window switch, and Browse
+ * reaches a project this window has never opened at all. The harness is picked
+ * here because both are first-class on the wall.
  */
 export function NewSessionLauncher(props: {
   targets: readonly LaunchTarget[];
   /** Pre-selected project — the window's own, when it has one. */
   defaultPath: string;
-  onStart: (projectPath: string, harness: HarnessId) => void;
+  /** Claude accounts to choose between; a single one needs no control. */
+  configs: readonly ClaudeConfigDir[];
+  /** Current arrangement of the active cards, and the way to change it. */
+  layout: WallLayout;
+  onLayoutChange: (layout: WallLayout) => void;
+  /** Ask for a folder; resolves to its normalized path, or undefined if cancelled. */
+  onBrowse: () => Promise<string | undefined>;
+  onStart: (projectPath: string, harness: HarnessId, configDir: string) => void;
 }): React.ReactElement {
-  const { targets, defaultPath, onStart } = props;
+  const { targets, defaultPath, configs, layout, onLayoutChange, onBrowse, onStart } = props;
   const first = targets[0]?.path ?? "";
   const [path, setPath] = React.useState(defaultPath || first);
   const [harness, setHarness] = React.useState<HarnessId>("claude");
+  const [configDir, setConfigDir] = React.useState("");
+  // Folders browsed to during this session. They are kept here rather than
+  // pushed back to the wall because a browsed folder is a choice, not a
+  // discovery: it must stay in the dropdown so the controlled select keeps an
+  // option matching `path`, but it has no business outliving the widget.
+  const [picked, setPicked] = React.useState<readonly LaunchTarget[]>([]);
   // The wall's projects arrive asynchronously: adopt a real one as soon as there is one.
   React.useEffect(() => {
     if (!path && (defaultPath || first)) setPath(defaultPath || first);
   }, [defaultPath, first, path]);
+  // Accounts arrive asynchronously too; re-pick whenever the current choice is
+  // not among them, which also covers the first render (nothing chosen yet).
+  React.useEffect(() => {
+    setConfigDir((cur) =>
+      cur && configs.some((c) => c.path === cur)
+        ? cur
+        : readConfigDirChoice(window.localStorage, configs),
+    );
+  }, [configs]);
+  // Opencode has no config-dir override, so the account is Claude's alone.
+  const pickableConfigs = harness === "claude" && configs.length > 1;
+  // With nothing to pick between, the account is left unset on purpose: the
+  // terminal manager then falls back to the SPEXR preference, which is what a
+  // single-account machine has always done.
+  const start = (): void => {
+    if (!path) return;
+    const dir = pickableConfigs ? configDir : "";
+    if (dir) writeConfigDirChoice(window.localStorage, dir);
+    onStart(path, harness, dir);
+  };
+  const browse = (): void => {
+    void onBrowse().then((chosen) => {
+      if (!chosen) return; // cancelled: leave the current choice alone
+      setPicked((cur) =>
+        cur.some((t) => t.path === chosen)
+          ? cur
+          : [...cur, { path: chosen, name: projectDisplayName(chosen), kind: "picked" }],
+      );
+      setPath(chosen);
+    });
+  };
+  // A browsed folder the wall has meanwhile discovered is dropped: it is the
+  // same project, and two options with one value confuse a controlled select.
+  const all = [...targets, ...picked.filter((t) => !targets.some((o) => o.path === t.path))];
   return (
     <section className="spexr-df-launcher">
       <div className="spexr-df-launcher__head">
         <i className="codicon codicon-add" />
         <span className="spexr-df-launcher__title">Start a new session</span>
+        <WallLayoutToggle layout={layout} onChange={onLayoutChange} />
       </div>
       <div className="spexr-df-launcher__controls">
         <label className="spexr-df-launcher__field">
           <span className="spexr-df-launcher__label">Project</span>
-          <select
-            className="spexr-df-launcher__select"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-          >
-            {targets.map((t) => (
-              <option key={t.path} value={t.path}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          <div className="spexr-df-launcher__project">
+            <select
+              className="spexr-df-launcher__select"
+              value={path}
+              title={path}
+              onChange={(e) => setPath(e.target.value)}
+            >
+              {TARGET_GROUPS.map(({ kind, label }) => {
+                const group = all.filter((t) => t.kind === kind);
+                return group.length === 0 ? null : (
+                  <optgroup key={kind} label={label}>
+                    {group.map((t) => (
+                      <option key={t.path} value={t.path} title={t.path}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+            </select>
+            <button
+              className="spexr-df-launcher__browse"
+              title="Start in a folder that is not listed"
+              onClick={browse}
+            >
+              <i className="codicon codicon-folder-opened" />
+            </button>
+          </div>
         </label>
         <label className="spexr-df-launcher__field">
           <span className="spexr-df-launcher__label">Harness</span>
@@ -499,17 +617,35 @@ export function NewSessionLauncher(props: {
             <option value="opencode">opencode</option>
           </select>
         </label>
+        {pickableConfigs && (
+          <label className="spexr-df-launcher__field">
+            <span className="spexr-df-launcher__label">Config</span>
+            <select
+              className="spexr-df-launcher__select"
+              value={configDir}
+              title={configDir}
+              onChange={(e) => setConfigDir(e.target.value)}
+            >
+              {configs.map((c) => (
+                <option key={c.path} value={c.path}>
+                  {c.isDefault ? `${c.label} (default)` : c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           className="spexr-button spexr-button--primary spexr-df-launcher__start"
           disabled={!path}
-          onClick={() => path && onStart(path, harness)}
+          onClick={start}
         >
           <i className="codicon codicon-play" /> Start
         </button>
       </div>
-      {targets.length === 0 && (
+      {all.length === 0 && (
         <p className="spexr-df-launcher__empty">
-          No project to start in yet — open a workspace, or wait for the scan to find one.
+          No project to start in yet — browse to a folder, open a workspace, or wait for the
+          scan to find one.
         </p>
       )}
     </section>
@@ -527,9 +663,11 @@ export function LaunchedSessionCard(props: {
   harness: HarnessId;
   terminal?: TerminalWidget | undefined;
   onClose: () => void;
+  /** How the wall arranges active cards; the card's height is remembered per arrangement. */
+  layout: WallLayout;
 }): React.ReactElement {
-  const { projectName, harness, terminal, onClose } = props;
-  const { ref: card, height, onResizeStart } = usePinnedHeight();
+  const { projectName, harness, terminal, onClose, layout } = props;
+  const { ref: card, height, onResizeStart } = usePinnedHeight(layout);
   return (
     <section className="spexr-df-pinned" ref={card} data-state="working" style={heightStyle(height)}>
       <header className="spexr-df-pinned__bar">

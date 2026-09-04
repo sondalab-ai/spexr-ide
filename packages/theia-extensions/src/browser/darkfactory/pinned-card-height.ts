@@ -1,5 +1,16 @@
-/** Storage key for the height the user dragged the pinned card to. */
+import type { WallLayout } from "./wall-layout.js";
+
+/** Storage key for the height the user dragged a stacked card to. */
 export const PINNED_HEIGHT_KEY = "spexr.darkfactory.pinnedHeight";
+
+/**
+ * The height is remembered per arrangement, not globally: a full-width stacked
+ * card is naturally tall, and reusing that height for every mosaic cell would
+ * make each row as tall as the stack was — columns with no gain in density.
+ */
+export function pinnedHeightKey(layout: WallLayout): string {
+  return layout === "mosaic" ? `${PINNED_HEIGHT_KEY}.mosaic` : PINNED_HEIGHT_KEY;
+}
 
 /** Bounds, as a share of the viewport: below the first the card is useless, above the second it hides the grid. */
 export const MIN_HEIGHT_VH = 20;
@@ -29,10 +40,11 @@ export function clampPinnedHeight(px: number, viewportHeight: number): number {
 export function readPinnedHeight(
   storage: HeightStorage,
   viewportHeight: number,
+  layout: WallLayout,
 ): number | undefined {
   let raw: string | null;
   try {
-    raw = storage.getItem(PINNED_HEIGHT_KEY);
+    raw = storage.getItem(pinnedHeightKey(layout));
   } catch {
     return undefined; // private windows and blocked site data throw on access
   }
@@ -43,9 +55,9 @@ export function readPinnedHeight(
 }
 
 /** Persist a height. Storage failures are ignored: the card still resizes. */
-export function writePinnedHeight(storage: HeightStorage, px: number): void {
+export function writePinnedHeight(storage: HeightStorage, px: number, layout: WallLayout): void {
   try {
-    storage.setItem(PINNED_HEIGHT_KEY, String(Math.round(px)));
+    storage.setItem(pinnedHeightKey(layout), String(Math.round(px)));
   } catch {
     // ignore
   }

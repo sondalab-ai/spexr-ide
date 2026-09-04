@@ -8,6 +8,7 @@ import {
   groupTiles,
   summaryTargets,
   launchTargets,
+  projectDisplayName,
 } from "./darkfactory-format.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
 
@@ -198,10 +199,21 @@ describe("launchTargets", () => {
       "/w/beta",
     );
     expect(targets.map((t) => t.name)).toEqual(["beta", "alpha"]);
+    expect(targets.map((t) => t.kind)).toEqual(["current", "session"]);
+  });
+
+  test("names the current project after its tile when it has one", () => {
+    const targets = launchTargets(
+      [tile("a", "idle", false, 0, { projectPath: "/w/repo", projectName: "Pretty Name" })],
+      "/w/repo",
+    );
+    expect(targets).toEqual([{ path: "/w/repo", name: "Pretty Name", kind: "current" }]);
   });
 
   test("includes the current project even with no session on the wall", () => {
-    expect(launchTargets([], "/w/fresh/proj")).toEqual([{ path: "/w/fresh/proj", name: "proj" }]);
+    expect(launchTargets([], "/w/fresh/proj")).toEqual([
+      { path: "/w/fresh/proj", name: "proj", kind: "current" },
+    ]);
   });
 
   test("lists a project once however many sessions it has", () => {
@@ -214,5 +226,52 @@ describe("launchTargets", () => {
 
   test("is empty when there is nothing to start in", () => {
     expect(launchTargets([])).toEqual([]);
+  });
+
+  test("appends recent workspaces after the projects with sessions", () => {
+    const targets = launchTargets(
+      [tile("a", "idle", false, 0, { projectPath: "/w/zeta", projectName: "zeta" })],
+      "/w/here",
+      ["/w/recent-one", "/w/recent-two"],
+    );
+    expect(targets.map((t) => t.name)).toEqual(["here", "zeta", "recent-one", "recent-two"]);
+    expect(targets.map((t) => t.kind)).toEqual(["current", "session", "recent", "recent"]);
+  });
+
+  test("keeps the recents in the order given, most recent first", () => {
+    const targets = launchTargets([], undefined, ["/w/zeta", "/w/alpha"]);
+    expect(targets.map((t) => t.name)).toEqual(["zeta", "alpha"]);
+  });
+
+  test("drops a recent that already has a session or is the current project", () => {
+    const targets = launchTargets(
+      [tile("a", "idle", false, 0, { projectPath: "/w/live", projectName: "live" })],
+      "/w/here",
+      ["/w/live", "/w/here", "/w/fresh"],
+    );
+    expect(targets.map((t) => t.path)).toEqual(["/w/here", "/w/live", "/w/fresh"]);
+  });
+
+  test("matches a recent to a session project across trailing slashes", () => {
+    const targets = launchTargets(
+      [tile("a", "idle", false, 0, { projectPath: "/w/live", projectName: "live" })],
+      undefined,
+      ["/w/live/"],
+    );
+    expect(targets).toHaveLength(1);
+  });
+
+  test("ignores an empty recent path", () => {
+    expect(launchTargets([], undefined, ["", "   "])).toEqual([]);
+  });
+});
+
+describe("projectDisplayName", () => {
+  test("is the last path segment", () => {
+    expect(projectDisplayName("/Users/me/src/spexr")).toBe("spexr");
+  });
+
+  test("ignores a trailing slash", () => {
+    expect(projectDisplayName("/Users/me/src/spexr/")).toBe("spexr");
   });
 });

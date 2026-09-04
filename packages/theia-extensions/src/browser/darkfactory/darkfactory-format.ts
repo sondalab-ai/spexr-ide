@@ -1,4 +1,5 @@
 import type { AgentTile, AgentState } from "../../common/darkfactory-protocol.js";
+import { normalizeProjectPath } from "../project/project-switch-targets.js";
 
 /** Coarse "time ago" bucket for a past epoch-ms timestamp. */
 export function relativeTime(ms: number, now: number): string {
@@ -144,36 +145,69 @@ export function summaryTargets(
   return ids;
 }
 
+/**
+ * Where a launch target came from, so the launcher can group the list: the
+ * window's own project, a project with a session on the wall, one of Theia's
+ * recent workspaces, or a folder the user has just browsed to.
+ */
+export type LaunchTargetKind = "current" | "session" | "recent" | "picked";
+
 /** A project the new-session launcher can start in. */
 export interface LaunchTarget {
   readonly path: string;
   readonly name: string;
+  readonly kind: LaunchTargetKind;
 }
 
 /** Last path segment, for a project the wall has never scanned. */
-function pathName(path: string): string {
-  const parts = path.replace(/\/+$/, "").split("/");
+export function projectDisplayName(path: string): string {
+  const parts = normalizeProjectPath(path).split("/");
   return parts[parts.length - 1] || path;
 }
 
 /**
- * Projects the launcher offers: every project on the wall, plus the window's own
- * even when it has no session yet. The current project leads, so the common case
- * needs no choice; the rest are alphabetical.
+ * Projects the launcher offers, in the order they are shown: the window's own
+ * first, then every project with a session on the wall (alphabetical), then
+ * Theia's recent workspaces in the order given, which is already most-recent
+ * first. A project appears once whichever sources name it.
+ *
+ * Recents are the reason this takes a third argument: without them the launcher
+ * could only start a session where one is already running, which is no help when
+ * the point is to pick up work on a checkout that has none.
+ *
+ * @param recentPaths Recent workspace roots as filesystem paths, most recent first.
  */
-export function launchTargets(tiles: AgentTile[], currentProjectPath?: string): LaunchTarget[] {
-  const byPath = new Map<string, LaunchTarget>();
+export function launchTargets(
+  tiles: AgentTile[],
+  currentProjectPath?: string,
+  recentPaths: readonly string[] = [],
+): LaunchTarget[] {
+  const current = currentProjectPath ? normalizeProjectPath(currentProjectPath) : undefined;
+  const seen = new Set<string>(current ? [current] : []);
+
+  const sessions: LaunchTarget[] = [];
+  let currentName = current ? projectDisplayName(current) : "";
   for (const tile of tiles) {
-    if (!byPath.has(tile.projectPath)) {
-      byPath.set(tile.projectPath, { path: tile.projectPath, name: tile.projectName });
+    const path = normalizeProjectPath(tile.projectPath);
+    if (!path) continue;
+    if (path === current) {
+      currentName = tile.projectName || currentName;
+      continue;
     }
+    if (seen.has(path)) continue;
+    seen.add(path);
+    sessions.push({ path, name: tile.projectName || projectDisplayName(path), kind: "session" });
   }
-  if (currentProjectPath && !byPath.has(currentProjectPath)) {
-    byPath.set(currentProjectPath, { path: currentProjectPath, name: pathName(currentProjectPath) });
+  sessions.sort((a, b) => a.name.localeCompare(b.name));
+
+  const recents: LaunchTarget[] = [];
+  for (const raw of recentPaths) {
+    const path = normalizeProjectPath(raw);
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    recents.push({ path, name: projectDisplayName(path), kind: "recent" });
   }
-  const rest = [...byPath.values()]
-    .filter((t) => t.path !== currentProjectPath)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const current = currentProjectPath ? byPath.get(currentProjectPath) : undefined;
-  return current ? [current, ...rest] : rest;
+
+  const head: LaunchTarget[] = current ? [{ path: current, name: currentName, kind: "current" }] : [];
+  return [...head, ...sessions, ...recents];
 }

@@ -1,11 +1,22 @@
 import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
-import type { AgentSummary, AgentTile, FollowEvent, SpexrDarkfactoryService } from "../../common/darkfactory-protocol.js";
+import URI from "@theia/core/lib/common/uri";
+import { WorkspaceService } from "@theia/workspace/lib/browser";
+import { FileService } from "@theia/filesystem/lib/browser/file-service";
+import { FileDialogService } from "@theia/filesystem/lib/browser/file-dialog";
+import type {
+  AgentSummary,
+  AgentTile,
+  ClaudeConfigDir,
+  FollowEvent,
+  SpexrDarkfactoryService,
+} from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
+import { normalizeProjectPath } from "../project/project-switch-targets.js";
 import { sortTiles, groupTiles, summaryTargets, launchTargets } from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
 import {
@@ -18,6 +29,7 @@ import {
 } from "./agent-tile.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
+import { mosaicColumns, readWallLayout, writeWallLayout, type WallLayout } from "./wall-layout.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 
@@ -88,6 +100,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
   @inject(SpexrProjectSwitchService) private readonly projectSwitch!: SpexrProjectSwitchService;
+  @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
+  @inject(FileService) private readonly files!: FileService;
+  @inject(FileDialogService) private readonly fileDialog!: FileDialogService;
 
   private tiles: AgentTile[] = [];
   /** False until the first tile snapshot lands — the wall shows a loading state until then. */
@@ -129,6 +144,37 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   /** When the wheel last scrolled the wall, anchoring {@link routeWheel}'s gesture window. */
   private lastWallWheelAt = 0;
 
+  /**
+   * Claude accounts a new session can start under. Discovered once by the
+   * backend — the set only changes when the user adds a config dir, which costs
+   * a restart anyway.
+   */
+  private configs: ClaudeConfigDir[] = [];
+
+  /**
+   * Recent workspace roots, as filesystem paths. They are what lets the launcher
+   * start a session in a project that has none running — the wall alone can only
+   * offer projects an agent is already working in.
+   */
+  private recentProjects: string[] = [];
+
+  /**
+   * How the cards holding a live terminal are arranged; remembered across
+   * windows. Named `wallLayout` because Lumino's `Widget.layout` is taken.
+   */
+  private wallLayout: WallLayout = readWallLayout(window.localStorage);
+
+  /**
+   * The mosaic container, measured to decide how many columns fit. Its own width
+   * is the honest one — the widget's node carries the wall's padding, and the
+   * scrollbar takes a few more pixels.
+   */
+  private activeHost: HTMLDivElement | null = null;
+  /** Watches {@link activeHost}; created on first attach, moved with the element. */
+  private activeObserver?: ResizeObserver;
+  /** Last measured width of {@link activeHost}; 0 until the wall is laid out. */
+  private activeWidth = 0;
+
   @postConstruct()
   protected init(): void {
     this.id = SpexrDarkfactoryWidget.ID;
@@ -143,6 +189,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.toDispose.push({
       dispose: () => this.node.removeEventListener("wheel", this.onWheel, { capture: true }),
     });
+    // The column count follows the wall's width: a narrowed window drops a column
+    // rather than squeezing the terminals below what they need to be readable.
+    this.activeObserver = new ResizeObserver(() => this.onActiveResize());
+    this.toDispose.push({ dispose: () => this.activeObserver?.disconnect() });
     this.toDispose.push(this.client.onTilesChanged$((tiles) => this.setTiles(tiles)));
     this.toDispose.push(
       this.client.onFollowChunk$(({ sessionId, events }) => {
@@ -156,6 +206,16 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // ReactWidget renders only on update() — paint the loading state now, before
     // the first tiles land (without this the widget body stays blank until then).
     this.update();
+    void this.loadRecentProjects();
+    void this.service
+      .listConfigDirs()
+      .then((configs) => {
+        this.configs = configs;
+        this.update();
+      })
+      .catch(() => {
+        // No account list — the launcher falls back to the harness default.
+      });
     this.refresh().catch(() => {
       // Scan failed — stop the spinner and fall through to the empty state.
       this.loaded = true;
@@ -234,11 +294,103 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.node.scrollTop += wheelDeltaPx(event.deltaY, event.deltaMode, this.node.clientHeight);
   };
 
-  /** Start a fresh session and lift it into a card of its own, at the head of the stack. */
-  private startNewSession(projectPath: string, harness: HarnessId): void {
+  /** Cards that own a terminal — the ones the mosaic has to fit side by side. */
+  private activeTerminalCount(): number {
+    return this.launched.length + this.pinned.length;
+  }
+
+  /** Columns for the current width and number of running terminals. */
+  private mosaicColumnCount(): number {
+    return mosaicColumns(this.activeWidth, this.activeTerminalCount());
+  }
+
+  /**
+   * Follow the container React just mounted (or dropped). Observing the element
+   * itself, rather than the widget's node, also delivers the first measurement:
+   * a ResizeObserver reports the size as soon as it starts observing.
+   */
+  private readonly setActiveHost = (element: HTMLDivElement | null): void => {
+    if (this.activeHost === element) return;
+    if (this.activeHost) this.activeObserver?.unobserve(this.activeHost);
+    this.activeHost = element;
+    if (element) this.activeObserver?.observe(element);
+  };
+
+  /**
+   * Re-measure on resize, and re-render only when the column count actually
+   * changes — a drag of the window edge fires this continuously, and every
+   * render is a React reconciliation over cards hosting live terminals.
+   */
+  private readonly onActiveResize = (): void => {
+    const width = this.activeHost?.clientWidth ?? 0;
+    if (width === this.activeWidth) return;
+    const before = this.mosaicColumnCount();
+    this.activeWidth = width;
+    if (this.mosaicColumnCount() !== before) this.update();
+  };
+
+  /** Switch how the active terminal cards are arranged, and remember the choice. */
+  private setLayout(layout: WallLayout): void {
+    if (layout === this.wallLayout) return;
+    this.wallLayout = layout;
+    writeWallLayout(window.localStorage, layout);
+    this.update();
+  }
+
+  /**
+   * Fill {@link recentProjects} from Theia's recent workspaces. Multi-root
+   * `.theia-workspace` files are dropped — they are not a directory an agent can
+   * run in — and so is any root that has since been moved or deleted, because
+   * offering it would start a session in a cwd that no longer exists.
+   */
+  private async loadRecentProjects(): Promise<void> {
+    const uris = await this.workspace.recentWorkspaces().catch((): string[] => []);
+    const folders = uris
+      .map((uri) => new URI(uri))
+      .filter((uri) => !uri.path.base.endsWith(".theia-workspace"));
+    const checked = await Promise.all(
+      folders.map(async (uri) =>
+        (await this.files.exists(uri).catch(() => false)) ? uri.path.toString() : undefined,
+      ),
+    );
+    this.recentProjects = checked.filter((path): path is string => path !== undefined);
+    this.update();
+  }
+
+  /**
+   * Ask for a folder to start in, for a project neither on the wall nor in the
+   * recents. No `folder` argument: the dialog then opens on the user's working
+   * directory, which is the right root for a window with no workspace loaded —
+   * exactly the case this exists for.
+   */
+  private async browseForProject(): Promise<string | undefined> {
+    const chosen = await this.fileDialog
+      .showOpenDialog({
+        title: "Start a session in…",
+        openLabel: "Select project",
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+      })
+      .catch(() => undefined);
+    return chosen ? normalizeProjectPath(chosen.path.toString()) : undefined;
+  }
+
+  /**
+   * Start a fresh session and lift it into a card of its own, at the head of the
+   * stack. `configDir` is the Claude account it runs under — empty for opencode,
+   * which has none, and for a single-account machine.
+   */
+  private startNewSession(raw: string, harness: HarnessId, configDir: string): void {
+    // Normalized before it reaches the harness: Claude derives the name of its
+    // own `projects/` directory from the cwd, so a trailing slash would give the
+    // session a transcript path the scan never matches, and the placeholder card
+    // would never be swapped for the real one.
+    const projectPath = normalizeProjectPath(raw);
+    if (!projectPath) return;
     const key = `spexr-new-${(this.launchCounter += 1)}`;
     const known = new Set(this.tiles.map((t) => t.sessionId));
-    const named = this.tiles.find((t) => t.projectPath === projectPath);
+    const named = this.tiles.find((t) => normalizeProjectPath(t.projectPath) === projectPath);
     this.launched = [
       ...this.launched,
       {
@@ -251,7 +403,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     ];
     this.update();
     void this.terminals
-      .openNew(key, harness, projectPath, "")
+      .openNew(key, harness, projectPath, configDir)
       .then(() => this.update())
       .catch(() => {
         /* ignore */
@@ -509,33 +661,52 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     return (
       <div className="spexr-df-root">
         <NewSessionLauncher
-          targets={launchTargets(this.tiles, currentProject)}
+          targets={launchTargets(this.tiles, currentProject, this.recentProjects)}
           defaultPath={currentProject ?? ""}
-          onStart={(projectPath, harness) => this.startNewSession(projectPath, harness)}
+          configs={this.configs}
+          layout={this.wallLayout}
+          onLayoutChange={(layout) => this.setLayout(layout)}
+          onBrowse={() => this.browseForProject()}
+          onStart={(projectPath, harness, configDir) =>
+            this.startNewSession(projectPath, harness, configDir)
+          }
         />
-        {this.launched.map((launch) => (
-          <LaunchedSessionCard
-            key={launch.key}
-            projectName={launch.projectName}
-            harness={launch.harness}
-            terminal={this.terminals.live(launch.key)}
-            onClose={() => this.closeLaunched(launch.key)}
-          />
-        ))}
-        {expanded.map((tile) => (
-          <AgentPinnedCard
-            key={tile.sessionId}
-            tile={tile}
-            now={now}
-            summary={this.summaries.get(tile.sessionId)}
-            events={this.pinnedEvents.get(tile.sessionId) ?? []}
-            terminal={this.terminals.live(tile.sessionId)}
-            onClose={() => this.unpin(tile.sessionId)}
-            onFork={(t) => this.forkTakeover(t)}
-            onOpenProject={(t) => this.openProject(t)}
-            isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
-          />
-        ))}
+        {/*
+          One wrapper for every card that owns a terminal, in both arrangements:
+          only its class changes, so React keeps the same DOM node and no
+          TerminalMount unmounts — a remount would detach and re-attach every xterm.
+        */}
+        <div
+          ref={this.setActiveHost}
+          className={`spexr-df-active spexr-df-active--${this.wallLayout}`}
+          style={{ ["--df-mosaic-columns" as string]: String(this.mosaicColumnCount()) }}
+        >
+          {this.launched.map((launch) => (
+            <LaunchedSessionCard
+              key={launch.key}
+              projectName={launch.projectName}
+              harness={launch.harness}
+              terminal={this.terminals.live(launch.key)}
+              onClose={() => this.closeLaunched(launch.key)}
+              layout={this.wallLayout}
+            />
+          ))}
+          {expanded.map((tile) => (
+            <AgentPinnedCard
+              key={tile.sessionId}
+              tile={tile}
+              now={now}
+              summary={this.summaries.get(tile.sessionId)}
+              events={this.pinnedEvents.get(tile.sessionId) ?? []}
+              terminal={this.terminals.live(tile.sessionId)}
+              onClose={() => this.unpin(tile.sessionId)}
+              onFork={(t) => this.forkTakeover(t)}
+              onOpenProject={(t) => this.openProject(t)}
+              isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
+              layout={this.wallLayout}
+            />
+          ))}
+        </div>
         {tiles.length === 0 ? (
           <div className="spexr-df-empty">
             No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here.

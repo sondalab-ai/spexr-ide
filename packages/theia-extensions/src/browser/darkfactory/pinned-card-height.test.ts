@@ -3,22 +3,31 @@ import {
   clampPinnedHeight,
   readPinnedHeight,
   writePinnedHeight,
+  pinnedHeightKey,
   PINNED_HEIGHT_KEY,
   type HeightStorage,
 } from "./pinned-card-height.js";
 
 const VIEWPORT = 1000; // 20vh = 200px, 90vh = 900px
 
-function fakeStorage(initial?: string): HeightStorage & { value: string | null } {
+/** Key-aware fake: the two arrangements must not share a stored height. */
+function fakeStorage(initial?: Record<string, string>): HeightStorage & {
+  values: Record<string, string>;
+} {
   return {
-    value: initial ?? null,
-    getItem() {
-      return this.value;
+    values: { ...initial },
+    getItem(key: string) {
+      return this.values[key] ?? null;
     },
-    setItem(_key: string, v: string) {
-      this.value = v;
+    setItem(key: string, v: string) {
+      this.values[key] = v;
     },
   };
+}
+
+/** A store holding `value` for the stacked card only. */
+function stacked(value: string): Record<string, string> {
+  return { [PINNED_HEIGHT_KEY]: value };
 }
 
 describe("clampPinnedHeight", () => {
@@ -46,23 +55,23 @@ describe("clampPinnedHeight", () => {
 
 describe("readPinnedHeight", () => {
   it("returns nothing when no height was stored", () => {
-    expect(readPinnedHeight(fakeStorage(), VIEWPORT)).toBeUndefined();
+    expect(readPinnedHeight(fakeStorage(), VIEWPORT, "stack")).toBeUndefined();
   });
 
   it("returns the stored height", () => {
-    expect(readPinnedHeight(fakeStorage("420"), VIEWPORT)).toBe(420);
+    expect(readPinnedHeight(fakeStorage(stacked("420")), VIEWPORT, "stack")).toBe(420);
   });
 
   it("clamps a stored height that no longer fits the viewport", () => {
-    expect(readPinnedHeight(fakeStorage("700"), 500)).toBe(450);
+    expect(readPinnedHeight(fakeStorage(stacked("700")), 500, "stack")).toBe(450);
   });
 
   it("ignores a non-numeric value", () => {
-    expect(readPinnedHeight(fakeStorage("tall"), VIEWPORT)).toBeUndefined();
+    expect(readPinnedHeight(fakeStorage(stacked("tall")), VIEWPORT, "stack")).toBeUndefined();
   });
 
   it("ignores a non-positive value", () => {
-    expect(readPinnedHeight(fakeStorage("0"), VIEWPORT)).toBeUndefined();
+    expect(readPinnedHeight(fakeStorage(stacked("0")), VIEWPORT, "stack")).toBeUndefined();
   });
 
   it("survives storage that throws", () => {
@@ -74,16 +83,24 @@ describe("readPinnedHeight", () => {
         throw new Error("blocked");
       },
     };
-    expect(readPinnedHeight(throwing, VIEWPORT)).toBeUndefined();
+    expect(readPinnedHeight(throwing, VIEWPORT, "stack")).toBeUndefined();
   });
 });
 
 describe("writePinnedHeight", () => {
-  it("stores a rounded height under the shared key", () => {
+  it("stores a rounded height under the stacked key", () => {
     const storage = fakeStorage();
-    writePinnedHeight(storage, 512.7);
-    expect(storage.value).toBe("513");
+    writePinnedHeight(storage, 512.7, "stack");
+    expect(storage.values[PINNED_HEIGHT_KEY]).toBe("513");
     expect(PINNED_HEIGHT_KEY).toBe("spexr.darkfactory.pinnedHeight");
+  });
+
+  it("keeps the mosaic height apart from the stacked one", () => {
+    const storage = fakeStorage(stacked("800"));
+    writePinnedHeight(storage, 300, "mosaic");
+    expect(readPinnedHeight(storage, VIEWPORT, "stack")).toBe(800);
+    expect(readPinnedHeight(storage, VIEWPORT, "mosaic")).toBe(300);
+    expect(pinnedHeightKey("mosaic")).toBe("spexr.darkfactory.pinnedHeight.mosaic");
   });
 
   it("swallows a storage failure", () => {
@@ -93,6 +110,6 @@ describe("writePinnedHeight", () => {
         throw new Error("blocked");
       },
     };
-    expect(() => writePinnedHeight(throwing, 400)).not.toThrow();
+    expect(() => writePinnedHeight(throwing, 400, "stack")).not.toThrow();
   });
 });

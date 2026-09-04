@@ -2449,6 +2449,19 @@ code {
   background: var(--sl-bg-surface); color: var(--sl-text-primary);
   border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
 }
+/* Select and Browse read as one control: the button is the select's overflow,
+   for a project neither the wall nor the recents know about. */
+.spexr-df-launcher__project { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
+.spexr-df-launcher__browse {
+  flex: none; width: var(--df-control-height); height: var(--df-control-height);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sl-bg-surface); color: var(--sl-text-muted);
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
+  cursor: pointer;
+}
+.spexr-df-launcher__browse:hover {
+  color: var(--sl-text-primary); border-color: var(--sl-border-strong, var(--sl-text-muted));
+}
 .spexr-df-launcher__start {
   flex: none; height: var(--df-control-height); padding: 0 var(--sl-space-4);
   display: inline-flex; align-items: center; gap: var(--sl-space-2);
@@ -2456,6 +2469,45 @@ code {
 /* Optical centring: the glyph's own line box sits low against the label. */
 .spexr-df-launcher__start .codicon { line-height: 1; }
 .spexr-df-launcher__empty { margin: 0; color: var(--sl-text-muted); font-size: var(--sl-text-sm); }
+
+/* Segmented control: how the running terminals are arranged. Sits opposite the
+   launcher title, where it reads as a wall-level setting rather than a launch option. */
+.spexr-df-layout {
+  display: flex; margin-left: auto; padding: 2px; gap: 2px;
+  border: 1px solid var(--sl-border-subtle); border-radius: 999px;
+  background: var(--sl-bg-surface);
+}
+.spexr-df-layout__option {
+  padding: 2px 10px; border: none; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--sl-text-muted);
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  transition: background 120ms ease, color 120ms ease;
+}
+.spexr-df-layout__option:hover { color: var(--sl-text-primary); }
+.spexr-df-layout__option[data-active="true"] {
+  background: color-mix(in srgb, var(--sl-text-primary) 10%, transparent);
+  color: var(--sl-text-primary);
+}
+
+/*
+ * The cards that own a running terminal. One container in both arrangements —
+ * only the class changes, so the terminals are never re-attached — and no box of
+ * its own when nothing is running.
+ */
+.spexr-df-active { display: flex; flex-direction: column; gap: var(--sl-space-5); }
+.spexr-df-active:empty { display: none; }
+/* The column count is computed in the widget (see `mosaicColumns`): the wall's
+   width divided by the running terminals, floored at 640px of cell. The `1`
+   fallback is what renders before the first measurement. */
+.spexr-df-active--mosaic {
+  display: grid;
+  grid-template-columns: repeat(var(--df-mosaic-columns, 1), minmax(0, 1fr));
+  gap: var(--sl-space-4);
+  align-items: start;
+}
+/* Tiled cells are shorter by default than a full-width card; a height the user
+   drags is stored per arrangement and overrides these. */
+.spexr-df-active--mosaic .spexr-df-pinned { min-height: 26vh; max-height: 52vh; }
 
 /* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
 .spexr-df-pinned {
