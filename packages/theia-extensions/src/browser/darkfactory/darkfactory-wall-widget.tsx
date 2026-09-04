@@ -501,11 +501,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // Idle/done sessions are computed once.
     const now = Date.now();
     const byId = new Map(tiles.map((t) => [t.sessionId, t]));
+    // `this.pinned` is already pruned of departed sessions above, and is
+    // newest-first — which, since the queue drains in target order, is also the
+    // order the user most wants the inferences in.
     const targets = summaryTargets(
       tiles,
       this.projectSwitch.currentProjectPath(),
       SUMMARY_EAGER,
       GROUP_CARD_LIMIT,
+      this.pinned,
     );
     for (const id of targets) {
       const t = byId.get(id);

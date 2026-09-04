@@ -120,21 +120,33 @@ export function groupTiles(tiles: AgentTile[], currentProjectPath?: string): Til
 }
 
 /**
- * Which sessions are worth an AI summary. The flat attention order comes first, so
- * one churning project cannot starve the rest; the lead session of each visible
- * group is then added, because a group's first card is a headline position and an
- * empty summary there reads as broken rather than as a budget.
+ * Which sessions are worth an AI summary. Expanded cards come first and
+ * unconditionally: that card is the surface the user is actively watching, so an
+ * empty summary there is the most visible gap the budget could leave — and being
+ * expanded is no guarantee of ranking high enough to earn one. The flat attention
+ * order follows, so one churning project cannot starve the rest; the lead session
+ * of each visible group is then added, because a group's first card is a headline
+ * position and an empty summary there reads as broken rather than as a budget.
+ *
+ * @param pinned Sessions lifted into expanded cards, in the order they are shown.
  */
 export function summaryTargets(
   tiles: AgentTile[],
   currentProjectPath: string | undefined,
   flatCount: number,
   groupCount: number,
+  pinned: readonly string[] = [],
 ): string[] {
-  const ids = sortTiles(tiles)
-    .slice(0, flatCount)
-    .map((t) => t.sessionId);
+  // A card whose session has left the wall is about to be closed; summarizing an
+  // id with no tile behind it would only queue an inference the backend drops.
+  const onWall = new Set(tiles.map((t) => t.sessionId));
+  const ids = pinned.filter((id) => onWall.has(id));
   const seen = new Set(ids);
+  for (const tile of sortTiles(tiles).slice(0, flatCount)) {
+    if (seen.has(tile.sessionId)) continue;
+    seen.add(tile.sessionId);
+    ids.push(tile.sessionId);
+  }
   for (const group of groupTiles(tiles, currentProjectPath).slice(0, groupCount)) {
     const head = group.tiles[0]!;
     if (!seen.has(head.sessionId)) {

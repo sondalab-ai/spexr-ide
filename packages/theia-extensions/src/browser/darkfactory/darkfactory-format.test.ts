@@ -166,6 +166,46 @@ describe("darkfactory-format", () => {
     expect(out).toEqual(["a", "b", "c", "d"]);
   });
 
+  test("summaryTargets always covers an expanded card, past every budget", () => {
+    const out = summaryTargets(
+      [
+        tile("a", "working", false, 90, { projectPath: "/x", projectName: "x" }),
+        tile("b", "idle", false, 80, { projectPath: "/x", projectName: "x" }),
+        tile("pin", "done", false, 10, { projectPath: "/x", projectName: "x" }),
+      ],
+      undefined,
+      1,
+      1,
+      ["pin"],
+    );
+    expect(out).toEqual(["pin", "a"]);
+  });
+
+  test("summaryTargets puts expanded cards first, without repeating them", () => {
+    const out = summaryTargets(
+      [
+        tile("a", "working", false, 90, { projectPath: "/x", projectName: "x" }),
+        tile("b", "idle", false, 80, { projectPath: "/x", projectName: "x" }),
+      ],
+      undefined,
+      2,
+      1,
+      ["b"],
+    );
+    expect(out).toEqual(["b", "a"]);
+  });
+
+  test("summaryTargets drops an expanded card whose session has left the wall", () => {
+    const out = summaryTargets(
+      [tile("a", "working", false, 90, { projectPath: "/x", projectName: "x" })],
+      undefined,
+      1,
+      0,
+      ["gone"],
+    );
+    expect(out).toEqual(["a"]);
+  });
+
   test("summaryTargets ignores groups past the visible limit", () => {
     const out = summaryTargets(
       [
