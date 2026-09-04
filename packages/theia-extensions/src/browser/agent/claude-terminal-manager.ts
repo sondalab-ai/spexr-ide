@@ -9,6 +9,7 @@ import { nls } from "@theia/core/lib/common/nls";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
 import { AGENT_TERMINAL_KIND } from "../terminal/terminal-style.js";
+import { isTerminalLive } from "./terminal-liveness.js";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { ClaudeProfileDto, MemoryLinkStatus } from "../../common/agent-protocol.js";
 import { SpexrAgentServiceProxy } from "./agent-service-proxy.js";
@@ -78,9 +79,11 @@ export class ClaudeTerminalManager {
   /**
    * Ensure a Claude session is running and visible.
    *
-   * Reveals the existing terminal when present; otherwise resolves the account
-   * profile and launches a new one. Surfaces missing-workspace / missing-CLI
-   * conditions as notifications instead of throwing.
+   * Reveals the existing terminal when it still has a live process; otherwise
+   * resolves the account profile and launches a new one. A terminal restored
+   * from a saved layout is only adopted once its re-attach is known to have
+   * succeeded — see {@link isTerminalLive}. Surfaces missing-workspace /
+   * missing-CLI conditions as notifications instead of throwing.
    */
   async ensureStarted(): Promise<void> {
     if (this.widget && !this.widget.isDisposed) {
@@ -90,10 +93,19 @@ export class ClaudeTerminalManager {
 
     const existing = this.terminalService.getById(CLAUDE_TERMINAL_ID);
     if (existing) {
-      this.widget = existing;
-      existing.setTitle(nls.localize("spexr/agent/title", "Agent"));
-      await this.reveal();
-      return;
+      if (await isTerminalLive(existing)) {
+        this.widget = existing;
+        existing.setTitle(nls.localize("spexr/agent/title", "Agent"));
+        await this.reveal();
+        return;
+      }
+      // A terminal restored from the saved layout whose process died with the
+      // backend. Theia does not replace it: `attachTerminal` only falls back to
+      // creating one for `kind: "user"` terminals, and this one is
+      // AGENT_TERMINAL_KIND, so it comes back as a bare cursor with id -1.
+      // Adopting it used to end the launch here, and the empty widget was then
+      // saved again on close — a state that never healed by itself.
+      this.disposeCurrent();
     }
 
     const activeId = this.activeExpertId();
