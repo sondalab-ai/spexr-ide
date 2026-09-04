@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readdirSync, statSync } from "node:fs";
+import type { ClaudeConfigDir } from "../../common/darkfactory-protocol.js";
 
 /** Injectable filesystem seams so discovery is unit-testable without a real home. */
 export interface ConfigDirDeps {
@@ -45,6 +46,23 @@ export function configDirs(env: NodeJS.ProcessEnv = process.env, deps: ConfigDir
   const envDir = env.CLAUDE_CONFIG_DIR?.trim();
   if (envDir) dirs.add(envDir);
   return [...dirs];
+}
+
+/**
+ * Describe discovered config dirs for the UI: each is named by its directory
+ * (`.claude-perso`), and the one a bare `claude` would use leads the list so the
+ * launcher's pre-selection needs no re-derivation in the frontend. The rest are
+ * alphabetical, which keeps the order stable across scans.
+ */
+export function describeConfigDirs(dirs: readonly string[], defaultDir: string): ClaudeConfigDir[] {
+  const described = dirs.map((path) => ({
+    path,
+    label: path.replace(/\/+$/, "").split("/").pop() || path,
+    isDefault: path === defaultDir,
+  }));
+  return described.sort(
+    (a, b) => Number(b.isDefault) - Number(a.isDefault) || a.label.localeCompare(b.label),
+  );
 }
 
 /** The `projects` subdirectory that holds transcripts for a config dir. */

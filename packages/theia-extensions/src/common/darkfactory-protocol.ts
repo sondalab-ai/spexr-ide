@@ -58,6 +58,16 @@ export interface FollowEvent {
   text: string;
 }
 
+/** One Claude config directory a new session can be started under. */
+export interface ClaudeConfigDir {
+  /** Absolute path, exported as CLAUDE_CONFIG_DIR when the session starts. */
+  path: string;
+  /** Directory name, e.g. `.claude-perso` — how the account is named in the UI. */
+  label: string;
+  /** True for the dir a bare `claude` would use here; the launcher pre-selects it. */
+  isDefault: boolean;
+}
+
 /** How the frontend should open a session in the focus pane. */
 export interface FocusPlan {
   sessionId: string;
@@ -70,6 +80,8 @@ export interface FocusPlan {
 /** Backend service consumed by the Darkfactory wall. */
 export interface SpexrDarkfactoryService {
   listTiles(): Promise<AgentTile[]>;
+  /** Claude config dirs a new session can be started under; one entry per discovered account. */
+  listConfigDirs(): Promise<ClaudeConfigDir[]>;
   /** Two-level AI description (now + overview) from the local model; cached, empty fields if unavailable. */
   summarize(sessionId: string): Promise<AgentSummary>;
   /** Decide whether a session opens as an interactive resume terminal or a read-only follow. */

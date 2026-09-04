@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { basename, join } from "node:path";
-import { configDirs, projectsDirOf } from "./config-dirs.js";
+import { configDirs, describeConfigDirs, projectsDirOf } from "./config-dirs.js";
 
 const HOME = "/home/u";
 const DEFAULT = join(HOME, ".claude");
@@ -39,6 +39,34 @@ describe("config-dirs", () => {
 
   test("dedupes when the override equals the default", () => {
     expect(cfg({ CLAUDE_CONFIG_DIR: DEFAULT }, {})).toEqual([DEFAULT]);
+  });
+
+  test("describes dirs by name, default first, rest alphabetical", () => {
+    const perso = join(HOME, ".claude-perso");
+    const work = join(HOME, ".claude-work");
+    expect(describeConfigDirs([work, perso, DEFAULT], DEFAULT)).toEqual([
+      { path: DEFAULT, label: ".claude", isDefault: true },
+      { path: perso, label: ".claude-perso", isDefault: false },
+      { path: work, label: ".claude-work", isDefault: false },
+    ]);
+  });
+
+  test("leads with whichever dir is the default, not with `.claude`", () => {
+    const perso = join(HOME, ".claude-perso");
+    expect(describeConfigDirs([DEFAULT, perso], perso).map((c) => c.label)).toEqual([
+      ".claude-perso",
+      ".claude",
+    ]);
+  });
+
+  test("marks no default when the default dir is not among the discovered ones", () => {
+    expect(describeConfigDirs([DEFAULT], "")).toEqual([
+      { path: DEFAULT, label: ".claude", isDefault: false },
+    ]);
+  });
+
+  test("names a dir given with a trailing slash by its last segment", () => {
+    expect(describeConfigDirs([`${DEFAULT}/`], "").at(0)?.label).toBe(".claude");
   });
 
   test("projectsDirOf appends /projects", () => {

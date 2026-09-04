@@ -6,7 +6,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { execFile } from "node:child_process";
 import { Session as InspectorSession } from "node:inspector";
-import { configDirs as defaultConfigDirs, projectsDirOf } from "./config-dirs.js";
+import {
+  configDirs as defaultConfigDirs,
+  describeConfigDirs,
+  projectsDirOf,
+} from "./config-dirs.js";
 import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
@@ -36,6 +40,7 @@ import {
 import type {
   AgentSummary,
   AgentTile,
+  ClaudeConfigDir,
   FocusPlan,
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
@@ -362,6 +367,15 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       if (!this.index.has(id)) this.summaryCache.delete(id);
     }
     return tiles;
+  }
+
+  /**
+   * The Claude accounts a new session can be started under. Discovery runs once,
+   * in the constructor, so this is a static description of it — no scan, no push
+   * channel.
+   */
+  async listConfigDirs(): Promise<ClaudeConfigDir[]> {
+    return describeConfigDirs(this.configDirs, this.resumableConfigDir);
   }
 
   async planFocus(sessionId: string): Promise<FocusPlan> {

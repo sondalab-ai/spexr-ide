@@ -244,6 +244,17 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect((await s.planFocus("ses_live")).kind).toBe("readonly-follow");
   });
 
+  it("listConfigDirs names every discovered account, the resumable one first", async () => {
+    const s = svc({
+      configDirs: ["/Users/x/.claude", "/Users/x/.claude-perso"],
+      resumableConfigDir: "/Users/x/.claude-perso",
+    });
+    expect(await s.listConfigDirs()).toEqual([
+      { path: "/Users/x/.claude-perso", label: ".claude-perso", isDefault: true },
+      { path: "/Users/x/.claude", label: ".claude", isDefault: false },
+    ]);
+  });
+
   it("planFocus falls back to readonly-follow when the session's config dir isn't resumable", async () => {
     const s = svc({
       liveProjectDirs: () => Promise.resolve(new Set()),
