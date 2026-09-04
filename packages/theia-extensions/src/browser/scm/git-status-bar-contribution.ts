@@ -1,28 +1,39 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
 import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-bar/status-bar";
-import { SpexrGitScmProvider } from "./git-scm-provider.js";
+import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { GitCommands } from "./git-commands-contribution.js";
 import { formatBranchEntry } from "./git-status-bar-format.js";
 import type { GitStatusDto } from "../../common/git-protocol.js";
 
 const ENTRY_ID = "spexr-git-branch";
 
-/** Current branch and divergence from upstream; click opens the checkout picker. */
+/**
+ * Current branch and divergence from upstream; click opens the checkout picker.
+ *
+ * Shows the repository the SCM panel is showing, not a fixed one: in a
+ * multi-root workspace the entry follows the repository picker, so the branch
+ * on display always belongs to the repository the panel's actions act on.
+ * Theia's own `scm.change-repository` entry sits beside it (priority 100 to
+ * this one's 200) once there is more than one repository, naming which.
+ */
 @injectable()
 export class GitStatusBarContribution implements FrontendApplicationContribution {
   @inject(StatusBar) private readonly statusBar!: StatusBar;
-  @inject(SpexrGitScmProvider) private readonly provider!: SpexrGitScmProvider;
+  @inject(SpexrGitScmRegistry) private readonly registry!: SpexrGitScmRegistry;
 
   onStart(): void {
-    this.provider.onDidChangeStatus((s) => this.render(s));
+    this.registry.onDidChangeStatus(() => this.renderActive());
+    this.registry.onDidChangeActive(() => this.renderActive());
     // Subscribing above misses a refresh that already happened before this
     // contribution started (order among FrontendApplicationContributions
-    // isn't a contract worth depending on) — render the provider's last
-    // known status directly, if it has one.
-    if (this.provider.lastStatus) {
-      this.render(this.provider.lastStatus);
-    }
+    // isn't a contract worth depending on) — render the active repository's
+    // last known status directly, if there is one.
+    this.renderActive();
+  }
+
+  private renderActive(): void {
+    this.render(this.registry.active?.lastStatus);
   }
 
   private render(s: GitStatusDto | undefined): void {

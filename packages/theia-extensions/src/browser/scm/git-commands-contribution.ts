@@ -10,7 +10,8 @@ import {
 import { ConfirmDialog, QuickInputService } from "@theia/core/lib/browser";
 import { ProgressService } from "@theia/core/lib/common/progress-service";
 import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
-import { SpexrGitScmProvider } from "./git-scm-provider.js";
+import type { SpexrGitScmProvider } from "./git-scm-provider.js";
+import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { toRepoRelative } from "./relative-path.js";
 import {
   allDeleteModifyConflicts,
@@ -57,8 +58,8 @@ export const GitCommands = {
 
 @injectable()
 export class SpexrGitCommandsContribution implements CommandContribution, MenuContribution {
-  @inject(SpexrGitScmProvider)
-  private readonly provider!: SpexrGitScmProvider;
+  @inject(SpexrGitScmRegistry)
+  private readonly registry!: SpexrGitScmRegistry;
 
   @inject(QuickInputService)
   private readonly quickInput!: QuickInputService;
@@ -68,6 +69,23 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
 
   @inject(ProgressService)
   private readonly progressService!: ProgressService;
+
+  /**
+   * The repository these commands act on: the one the SCM panel is showing.
+   * Theia's ScmWidget renders a single repository at a time behind its own
+   * picker, so every row a command can be invoked on belongs to this provider.
+   * Undefined outside a repository, where the commands become no-ops.
+   */
+  private get provider(): SpexrGitScmProvider | undefined {
+    return this.registry.active;
+  }
+
+  /** Run `op` against the shown repository, or do nothing when there is none. */
+  private async onProvider(op: (p: SpexrGitScmProvider) => Promise<void>): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    await op(provider);
+  }
 
   registerCommands(commands: CommandRegistry): void {
     commands.registerCommand(GitCommands.STAGE_ALL, {
@@ -91,13 +109,16 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       execute: () => this.generateCommitMessage(),
     });
     commands.registerCommand(GitCommands.PUSH, {
-      execute: () => this.runGitOp("Push", () => this.provider.push(), "Pushed to remote."),
+      execute: () =>
+        this.runGitOp("Push", () => this.onProvider((p) => p.push()), "Pushed to remote."),
     });
     commands.registerCommand(GitCommands.PULL, {
-      execute: () => this.runGitOp("Pull", () => this.provider.pull(), "Pulled from remote."),
+      execute: () =>
+        this.runGitOp("Pull", () => this.onProvider((p) => p.pull()), "Pulled from remote."),
     });
     commands.registerCommand(GitCommands.FETCH, {
-      execute: () => this.runGitOp("Fetch", () => this.provider.fetch(), "Fetched from remote."),
+      execute: () =>
+        this.runGitOp("Fetch", () => this.onProvider((p) => p.fetch()), "Fetched from remote."),
     });
     commands.registerCommand(GitCommands.CHECKOUT, {
       execute: () => this.checkoutWithPrompt(),
@@ -106,16 +127,16 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       execute: () => this.createBranchWithPrompt(),
     });
     commands.registerCommand(GitCommands.REFRESH, {
-      execute: () => this.runGitOp("Refresh", () => this.provider.refresh()),
+      execute: () => this.runGitOp("Refresh", () => this.onProvider((p) => p.refresh())),
     });
     commands.registerCommand(GitCommands.STAGE_FILE, {
       execute: (...args: unknown[]) =>
-        this.runGitOp("Stage file", () => this.provider.stage(this.pathsOf(args))),
+        this.runGitOp("Stage file", () => this.onProvider((p) => p.stage(this.pathsOf(args)))),
       isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
     });
     commands.registerCommand(GitCommands.UNSTAGE_FILE, {
       execute: (...args: unknown[]) =>
-        this.runGitOp("Unstage file", () => this.provider.unstage(this.pathsOf(args))),
+        this.runGitOp("Unstage file", () => this.onProvider((p) => p.unstage(this.pathsOf(args)))),
       isVisible: (...args: unknown[]) => allInGroup(args, "index"),
     });
     commands.registerCommand(GitCommands.DISCARD_FILE, {
@@ -131,7 +152,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
         // Staging IS resolution, in git's own terms.
         this.runGitOp(
           "Mark resolved",
-          () => this.provider.stage(this.pathsOf(args)),
+          () => this.onProvider((p) => p.stage(this.pathsOf(args))),
           "Marked resolved.",
         ),
       // Not on a delete/modify row: there, staging is one of two legitimate
@@ -141,7 +162,11 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     });
     commands.registerCommand(GitCommands.KEEP_FILE, {
       execute: (...args: unknown[]) =>
-        this.runGitOp("Keep file", () => this.provider.stage(this.pathsOf(args)), "File kept."),
+        this.runGitOp(
+          "Keep file",
+          () => this.onProvider((p) => p.stage(this.pathsOf(args))),
+          "File kept.",
+        ),
       isVisible: (...args: unknown[]) => allDeleteModifyConflicts(args),
     });
     commands.registerCommand(GitCommands.ACCEPT_DELETION, {
@@ -224,25 +249,30 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   }
 
   private async stageAll(): Promise<void> {
-    const root = this.provider.root;
-    if (!root) return;
-    const paths =
-      this.provider.groups
-        .find((g) => g.id === "workingTree")
-        ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
-    if (paths.length === 0) return;
-    await this.provider.stage(paths);
+    await this.onProvider(async (provider) => {
+      const paths = this.groupPaths(provider, "workingTree");
+      if (paths.length === 0) return;
+      await provider.stage(paths);
+    });
   }
 
   private async unstageAll(): Promise<void> {
-    const root = this.provider.root;
-    if (!root) return;
-    const paths =
-      this.provider.groups
-        .find((g) => g.id === "index")
-        ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? [];
-    if (paths.length === 0) return;
-    await this.provider.unstage(paths);
+    await this.onProvider(async (provider) => {
+      const paths = this.groupPaths(provider, "index");
+      if (paths.length === 0) return;
+      await provider.unstage(paths);
+    });
+  }
+
+  /** Repository-relative paths of every row in one of the provider's groups. */
+  private groupPaths(provider: SpexrGitScmProvider, groupId: string): string[] {
+    const root = provider.root;
+    if (!root) return [];
+    return (
+      provider.groups
+        .find((g) => g.id === groupId)
+        ?.resources.map((r) => toRepoRelative(root, r.sourceUri.path.toString())) ?? []
+    );
   }
 
   /**
@@ -251,7 +281,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * message the user had to type again into a second prompt.
    */
   private async commitWithPrompt(): Promise<void> {
-    const typed = this.provider.inputValue.trim();
+    const typed = this.provider?.inputValue.trim() ?? "";
     if (typed) {
       await this.commit(typed);
       return;
@@ -272,16 +302,17 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   private async commit(message: string): Promise<void> {
     await this.runGitOp(
       "Commit",
-      async () => {
-        await this.provider.commit(message);
-        this.provider.setInputValue("");
-      },
+      () =>
+        this.onProvider(async (provider) => {
+          await provider.commit(message);
+          provider.setInputValue("");
+        }),
       "Changes committed.",
     );
   }
 
   private async checkoutWithPrompt(): Promise<void> {
-    const branches = await this.provider.getBranches();
+    const branches = (await this.provider?.getBranches()) ?? [];
     const items = branches
       .filter((b) => !b.isRemote)
       .map((b) => ({ label: b.name, description: b.isCurrent ? "(current)" : "" }));
@@ -289,7 +320,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     if (!picked) return;
     await this.runGitOp(
       `Checkout ${picked.label}`,
-      () => this.provider.checkout(picked.label),
+      () => this.onProvider((p) => p.checkout(picked.label)),
       `Checked out branch: ${picked.label}`,
     );
   }
@@ -307,7 +338,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     const branchName = name.trim();
     await this.runGitOp(
       `Create branch ${branchName}`,
-      () => this.provider.createBranch(branchName, true),
+      () => this.onProvider((p) => p.createBranch(branchName, true)),
       `Created and checked out branch: ${branchName}`,
     );
   }
@@ -319,7 +350,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * this must accept the already-spread rest args, not `arg: unknown`.
    */
   private pathsOf(items: unknown[]): string[] {
-    const root = this.provider.root;
+    const root = this.provider?.root;
     if (!root) return [];
     return resourcePaths(root, items);
   }
@@ -339,7 +370,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     if (!ok) return;
     await this.runGitOp(
       "Discard changes",
-      () => this.provider.discard(paths),
+      () => this.onProvider((p) => p.discard(paths)),
       "Changes discarded.",
     );
   }
@@ -365,7 +396,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     if (!ok) return;
     await this.runGitOp(
       "Accept deletion",
-      () => this.provider.removePath(paths),
+      () => this.onProvider((p) => p.removePath(paths)),
       "Deletion accepted.",
     );
   }
@@ -385,24 +416,26 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * queue behind one and take a while.
    */
   private async generateCommitMessage(): Promise<void> {
-    const staged = this.provider.lastStatus?.files.filter((f) => f.stagedState !== undefined) ?? [];
+    const provider = this.provider;
+    if (!provider) return;
+    const staged = provider.lastStatus?.files.filter((f) => f.stagedState !== undefined) ?? [];
     if (staged.length === 0) {
       this.messages.info("Nothing staged — stage the changes you want described first.");
       return;
     }
-    if (this.provider.inputValue.trim().length > 0) {
+    if (provider.inputValue.trim().length > 0) {
       this.messages.info("The commit message box already has text — clear it to generate a new message.");
       return;
     }
     await this.runGitOp("Generate commit message", async () => {
-      const message = await this.provider.generateCommitMessage();
+      const message = await provider.generateCommitMessage();
       if (!message) {
         this.messages.info("The local model could not write a commit message.");
         return;
       }
       // Never drop a message the model spent real time on: if the box is gone,
       // say so and hand the text over rather than discarding it silently.
-      if (!this.provider.setInputValue(message)) this.messages.info(`Suggested message: ${message}`);
+      if (!provider.setInputValue(message)) this.messages.info(`Suggested message: ${message}`);
     });
   }
 
@@ -419,9 +452,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       await op();
       if (successMessage) this.messages.info(successMessage);
     } catch (err) {
-      await this.provider.showError(
-        `${label} failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.messages.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       progress.cancel();
     }

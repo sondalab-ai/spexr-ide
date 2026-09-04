@@ -8,9 +8,9 @@ import {
   type DecorationsProvider,
   type Decoration,
 } from "@theia/core/lib/browser/decorations-service";
-import { SpexrGitScmProvider, buildFileUri } from "./git-scm-provider.js";
+import { buildFileUri } from "./git-scm-provider.js";
+import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { decorationForFile } from "./git-state-decoration-format.js";
-import type { GitStatusDto } from "../../common/git-protocol.js";
 
 /**
  * Supplies the `M`/`A`/`D`/`R`/`U`/`!` state letter and colour for each
@@ -23,12 +23,18 @@ import type { GitStatusDto } from "../../common/git-protocol.js";
  * which only ever supplies `icon`/`iconDark`/`strikeThrough`). This mirrors
  * {@link GitIgnoredDecorationProvider}, registered for the same reason.
  *
- * Fed entirely by {@link SpexrGitScmProvider.onDidChangeStatus} — no git call
- * of its own.
+ * Unions every repository in the workspace rather than following the SCM
+ * panel's selection: the file navigator shows all workspace folders at once, so
+ * a selection-scoped map would silently strip the state letters off every file
+ * outside the repository currently picked.
+ *
+ * Fed entirely by the registry's status events — no git call of its own.
  */
 @injectable()
-export class GitStateDecorationProvider implements DecorationsProvider, FrontendApplicationContribution {
-  @inject(SpexrGitScmProvider) private readonly provider!: SpexrGitScmProvider;
+export class GitStateDecorationProvider
+  implements DecorationsProvider, FrontendApplicationContribution
+{
+  @inject(SpexrGitScmRegistry) private readonly registry!: SpexrGitScmRegistry;
   @inject(DecorationsService) private readonly decorations!: DecorationsService;
 
   private readonly onDidChangeEmitter = new Emitter<URI[]>();
@@ -38,19 +44,22 @@ export class GitStateDecorationProvider implements DecorationsProvider, Frontend
 
   onStart(): void {
     this.decorations.registerDecorationsProvider(this);
-    this.provider.onDidChangeStatus((status) => this.apply(status));
-    if (this.provider.lastStatus) this.apply(this.provider.lastStatus);
+    this.registry.onDidChangeStatus(() => this.apply());
+    this.registry.onDidChangeProviders(() => this.apply());
+    this.apply();
   }
 
   provideDecorations(uri: URI): Decoration | undefined {
     return this.byUri.get(uri.toString());
   }
 
-  private apply(status: GitStatusDto | undefined): void {
-    const root = this.provider.root;
+  private apply(): void {
     const previousUris = [...this.byUri.keys()];
     const nextUris = new Map<string, Decoration>();
-    if (status && root) {
+    for (const provider of this.registry.all) {
+      const root = provider.root;
+      const status = provider.lastStatus;
+      if (!root || !status) continue;
       for (const file of status.files) {
         const decoration = decorationForFile(file);
         if (!decoration) continue;

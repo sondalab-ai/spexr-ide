@@ -283,6 +283,33 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   /**
+   * Absolute path of the repository's top-level working directory, or undefined
+   * outside a repository.
+   *
+   * Derived from `--show-cdup` (how far UP from `root` the top level is) rather
+   * than `--show-toplevel`, which answers with the path symlinks resolved. The
+   * frontend matches this string against workspace-folder paths and builds file
+   * URIs from it, so it must stay on the same logical path the caller passed —
+   * a `/var/…` answer for a `/private/var/…` root, or vice versa, would silently
+   * decorate nothing.
+   *
+   * Deliberately uncached, unlike {@link gitDirs}: a root's top level changes
+   * the moment `git init` runs inside it, and this is called once per workspace
+   * change rather than once per refresh, so a stale answer would cost far more
+   * than the one process it saves.
+   */
+  async resolveToplevel(root: string): Promise<string | undefined> {
+    try {
+      // Empty output means the root already IS the top level; otherwise it is a
+      // relative path of "../" segments, resolved without touching the disk.
+      const cdup = (await this.git(root).raw(["rev-parse", "--show-cdup"])).trim();
+      return cdup.length === 0 ? root : resolvePath(root, cdup);
+    } catch {
+      return undefined; // not a repository
+    }
+  }
+
+  /**
    * Absolute path of the repository's git directory.
    *
    * Must not be derived as `root + "/.git"`: in a linked worktree `.git` is a

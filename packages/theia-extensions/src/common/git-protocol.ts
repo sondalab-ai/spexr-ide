@@ -96,6 +96,19 @@ export interface SpexrGitService {
    * root to arm yet.
    */
   setClient(client: SpexrGitClient): void;
+  /**
+   * Absolute path of the repository's top-level working directory, or undefined
+   * when `root` is not inside a repository. Stays on the same logical path
+   * `root` was given on (symlinks are not resolved away), because callers match
+   * it against workspace-folder paths.
+   *
+   * Every other method reports paths relative to this, not to `root` — a
+   * workspace folder nested inside a repository must therefore be mapped here
+   * before its status can be turned into file URIs. It also collapses two
+   * workspace folders of the same repository onto one answer, which is what
+   * lets a repository be listed once rather than once per folder.
+   */
+  resolveToplevel(root: string): Promise<string | undefined>;
   getStatus(root: string): Promise<GitStatusDto>;
   stage(root: string, paths: string[]): Promise<void>;
   unstage(root: string, paths: string[]): Promise<void>;

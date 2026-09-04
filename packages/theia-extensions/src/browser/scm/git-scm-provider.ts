@@ -1,13 +1,10 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { Emitter, DisposableCollection } from "@theia/core";
 import type { Event } from "@theia/core";
-import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { OpenerService, open } from "@theia/core/lib/browser";
 import { DiffUris } from "@theia/core/lib/browser/diff-uris";
 import URI from "@theia/core/lib/common/uri";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
-import { WorkspaceService } from "@theia/workspace/lib/browser";
-import { MessageService } from "@theia/core/lib/common/message-service";
 import { ScmService } from "@theia/scm/lib/browser/scm-service";
 import type { ScmRepository } from "@theia/scm/lib/browser/scm-repository";
 import type {
@@ -95,8 +92,16 @@ class GitScmResourceGroup implements ScmResourceGroup {
   }
 }
 
+/**
+ * One instance per repository. {@link SpexrGitScmRegistry} owns the lifecycle:
+ * it resolves the workspace folders to repository top levels, calls
+ * {@link init} once per distinct one, and disposes the provider when that
+ * repository leaves the workspace. Bound transiently for that reason — a
+ * singleton could only ever describe one repository, which is exactly the
+ * multi-root bug this replaced.
+ */
 @injectable()
-export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationContribution {
+export class SpexrGitScmProvider implements ScmProvider {
   readonly id = "spexr-git";
   readonly label = "Git";
 
@@ -108,12 +113,6 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
 
   @inject(FileService)
   private readonly fileService!: FileService;
-
-  @inject(WorkspaceService)
-  private readonly workspaceService!: WorkspaceService;
-
-  @inject(MessageService)
-  private readonly messages!: MessageService;
 
   @inject(OpenerService)
   private readonly openerService!: OpenerService;
@@ -174,6 +173,8 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
 
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
+  private disposed = false;
+
   /** The registered repository, kept for its commit-message input box. */
   private repository: ScmRepository | undefined;
 
@@ -192,8 +193,8 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
 
   /**
    * Write a message into the commit-message input box. False when there is no box
-   * to write to — the provider registers one in `onStart`, which returns early
-   * outside a workspace.
+   * to write to — the box is created in `init`, so this is false on a provider
+   * the registry has not bound to a repository yet.
    */
   setInputValue(message: string): boolean {
     if (!this.repository) return false;
@@ -209,16 +210,20 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     return this.rootUriStr;
   }
 
-  /** Filesystem path of the repository root, or undefined outside a workspace. */
+  /** Filesystem path of the repository root, or undefined before {@link init}. */
   get root(): string | undefined {
     return this.rootFsPath;
   }
 
-  async onStart(): Promise<void> {
-    const [first] = this.workspaceService.tryGetRoots();
-    if (!first) return;
-    this.rootFsPath = first.resource.path.toString();
-    this.rootUriStr = first.resource.toString();
+  /**
+   * Bind this provider to one repository and register it with the SCM service.
+   * `repoRoot` is a repository top level, not a workspace folder: statuses come
+   * back relative to it, so a folder nested in a repository must be resolved
+   * first (see `SpexrGitService.resolveToplevel`).
+   */
+  async init(repoRoot: string, repoRootUri: URI): Promise<void> {
+    this.rootFsPath = repoRoot;
+    this.rootUriStr = repoRootUri.toString();
 
     const repository = this.scmService.registerScmProvider(this as unknown as ScmProvider);
     this.repository = repository;
@@ -406,11 +411,15 @@ export class SpexrGitScmProvider implements ScmProvider, FrontendApplicationCont
     return this.gitService.getBranches(this.rootFsPath);
   }
 
-  async showError(message: string): Promise<void> {
-    await this.messages.error(message);
-  }
-
+  /**
+   * Idempotent and re-entrant by design: `toDispose` holds the ScmRepository,
+   * whose own disposal chain disposes its provider — us — right back. The guard
+   * makes that cycle terminate whichever end starts it, so the registry can
+   * simply call `dispose()` when a repository leaves the workspace.
+   */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     if (this.refreshTimer !== undefined) clearTimeout(this.refreshTimer);
     this.toDispose.dispose();
     this._onDidChangeEmitter.dispose();

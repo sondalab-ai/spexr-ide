@@ -64,6 +64,8 @@ import { LanguageGrammarDefinitionContribution } from "@theia/monaco/lib/browser
 import { AboutDialog } from "@theia/core/lib/browser/about-dialog.js";
 import { SpexrAboutDialog } from "./about/spexr-about-dialog.js";
 import { SpexrGitScmProvider } from "./scm/git-scm-provider.js";
+import { SpexrGitScmRegistry, SpexrGitScmProviderFactory } from "./scm/git-scm-registry.js";
+import { ScmRepositoriesRevealView } from "./scm/scm-repositories-reveal.js";
 import { ScmCommitWidget } from "@theia/scm/lib/browser/scm-commit-widget";
 import { SpexrScmCommitWidget } from "./scm/spexr-scm-commit-widget.js";
 import { GitIgnoredDecorationProvider } from "./scm/git-ignored-decoration-provider.js";
@@ -242,8 +244,19 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(SpexrScmCommitWidget).toSelf();
   rebind(ScmCommitWidget).toService(SpexrScmCommitWidget);
 
-  bind(SpexrGitScmProvider).toSelf().inSingletonScope();
-  bind(FrontendApplicationContribution).toService(SpexrGitScmProvider);
+  // Transient, not a singleton: there is one provider per repository in the
+  // workspace, and the registry — which IS the contribution — creates them
+  // through the factory as workspace folders come and go.
+  bind(SpexrGitScmProvider).toSelf();
+  bind(SpexrGitScmProviderFactory).toFactory((ctx) => () => ctx.container.get(SpexrGitScmProvider));
+  bind(SpexrGitScmRegistry).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrGitScmRegistry);
+
+  // Bound after `SpexrRevealOnRestore -> ScmContribution` above: the reveal
+  // registry runs its views in binding order, and this one needs the SCM view
+  // container already attached to reach the part inside it.
+  bind(ScmRepositoriesRevealView).toSelf().inSingletonScope();
+  bind(SpexrRevealOnRestore).toService(ScmRepositoriesRevealView);
 
   bind(GitStatusBarContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitStatusBarContribution);

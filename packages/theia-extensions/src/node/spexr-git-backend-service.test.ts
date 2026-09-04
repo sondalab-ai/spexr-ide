@@ -397,6 +397,36 @@ describe("SpexrGitBackendService", () => {
     expect(await service.resolveGitDir(plain)).toBeUndefined();
     fs.rmSync(plain, { recursive: true, force: true });
   });
+
+  it("resolveToplevel: returns the root itself when it is the top level", async () => {
+    expect(await service.resolveToplevel(tmpDir)).toBe(tmpDir);
+  });
+
+  it("resolveToplevel: maps a nested folder onto the repository top level", async () => {
+    // The multi-root regression: a workspace folder opened INSIDE a repository
+    // must resolve to the top level, because `git status` reports its paths
+    // relative to that and not to the folder.
+    const nested = path.join(tmpDir, "packages", "child");
+    fs.mkdirSync(nested, { recursive: true });
+    expect(await service.resolveToplevel(nested)).toBe(tmpDir);
+  });
+
+  it("resolveToplevel: answers on the logical path, not the symlink-resolved one", async () => {
+    // macOS hands out /var/folders/... temp dirs that are really
+    // /private/var/folders/...; `rev-parse --show-toplevel` would return the
+    // latter, and a top level the frontend cannot match against its own
+    // workspace-folder paths decorates nothing.
+    const real = fs.realpathSync(tmpDir);
+    if (real === tmpDir) return; // no symlink on this platform — nothing to assert
+    expect(await service.resolveToplevel(tmpDir)).toBe(tmpDir);
+    expect(await service.resolveToplevel(real)).toBe(real);
+  });
+
+  it("resolveToplevel: returns undefined outside a repository", async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-toplevel-"));
+    expect(await service.resolveToplevel(plain)).toBeUndefined();
+    fs.rmSync(plain, { recursive: true, force: true });
+  });
 });
 
 describe("normalizeRemoteUrl", () => {

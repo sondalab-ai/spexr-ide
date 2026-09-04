@@ -13,6 +13,13 @@ import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { SpexrGitServiceProxySymbol } from "./git-service-proxy.js";
 import type { SpexrGitService } from "../../common/git-protocol.js";
 import { buildIgnoreMatcher } from "./git-ignore-matcher.js";
+import { containingRoot } from "./git-repo-roots.js";
+
+/** One workspace folder's ignore set, resolved relative to that folder. */
+interface RootIgnores {
+  readonly uri: URI;
+  readonly isIgnored: (rel: string) => boolean;
+}
 
 /**
  * Dims git-ignored files/folders in the file navigator. SPEXR ships a custom SCM
@@ -20,9 +27,15 @@ import { buildIgnoreMatcher } from "./git-ignore-matcher.js";
  * restores them by registering a {@link DecorationsProvider} with the
  * {@link DecorationsService}, which the filesystem tree already consumes.
  *
- * The ignored set (from `git ls-files … --exclude-standard`, honoring nested + global
- * gitignore) is refreshed on file changes. The tree adapter builds its decoration cache
- * from the URIs we emit via {@link onDidChange}, so each refresh emits the ignored URIs.
+ * Keeps one ignore set per workspace folder, since the navigator shows them all:
+ * `git ls-files` reports paths relative to the directory it runs in, so each
+ * folder gets its own matcher and a decoration lookup picks the folder that
+ * contains the URI (the deepest one, when folders nest). Folders outside a
+ * repository simply contribute an empty set.
+ *
+ * The sets are refreshed on file changes and whenever the workspace folders change.
+ * The tree adapter builds its decoration cache from the URIs we emit via
+ * {@link onDidChange}, so each refresh emits the ignored URIs.
  */
 @injectable()
 export class GitIgnoredDecorationProvider
@@ -36,28 +49,27 @@ export class GitIgnoredDecorationProvider
   private readonly onDidChangeEmitter = new Emitter<URI[]>();
   readonly onDidChange: Event<URI[]> = this.onDidChangeEmitter.event;
 
-  private isIgnored: (rel: string) => boolean = () => false;
-  private rootUri: URI | undefined;
-  private rootFsPath: string | undefined;
+  /** Keyed by the folder's filesystem path — what {@link containingRoot} matches on. */
+  private roots = new Map<string, RootIgnores>();
   private ignoredUris: URI[] = [];
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   async onStart(): Promise<void> {
-    const first = this.workspace.tryGetRoots()[0];
-    if (!first) return;
-    this.rootUri = first.resource;
-    this.rootFsPath = first.resource.path.toString();
     this.decorations.registerDecorationsProvider(this);
     this.fileService.onDidFilesChange(() => this.scheduleRefresh());
+    this.workspace.onWorkspaceChanged(() => this.scheduleRefresh());
     await this.refresh();
   }
 
   provideDecorations(uri: URI): Decoration | undefined {
-    if (!this.rootUri) return undefined;
-    const rel = this.rootUri.relative(uri);
+    const rootPath = containingRoot([...this.roots.keys()], uri.path.toString());
+    if (rootPath === undefined) return undefined;
+    const entry = this.roots.get(rootPath);
+    if (!entry) return undefined;
+    const rel = entry.uri.relative(uri);
     if (!rel) return undefined;
     const relStr = rel.toString();
-    if (relStr.length === 0 || !this.isIgnored(relStr)) return undefined;
+    if (relStr.length === 0 || !entry.isIgnored(relStr)) return undefined;
     return { colorId: "disabledForeground", tooltip: "Ignored by git", weight: 10 };
   }
 
@@ -67,18 +79,34 @@ export class GitIgnoredDecorationProvider
   }
 
   private async refresh(): Promise<void> {
-    if (!this.rootFsPath || !this.rootUri) return;
-    let paths: string[] = [];
-    try {
-      paths = await this.gitService.getIgnoredPaths(this.rootFsPath);
-    } catch {
-      paths = [];
+    const roots = this.workspace.tryGetRoots();
+    const next = new Map<string, RootIgnores>();
+    const nextUris: URI[] = [];
+    // One `ls-files` per folder, in parallel: they run against different
+    // directories, so serializing them would only add latency.
+    const perRoot = await Promise.all(
+      roots.map(async (root) => {
+        let paths: string[] = [];
+        try {
+          paths = await this.gitService.getIgnoredPaths(root.resource.path.toString());
+        } catch {
+          paths = [];
+        }
+        return { root, paths };
+      }),
+    );
+    for (const { root, paths } of perRoot) {
+      next.set(root.resource.path.toString(), {
+        uri: root.resource,
+        isIgnored: buildIgnoreMatcher(paths),
+      });
+      for (const p of paths) nextUris.push(root.resource.resolve(p.replace(/\/$/, "")));
     }
-    this.isIgnored = buildIgnoreMatcher(paths);
+    this.roots = next;
     // Emit the previous + current ignored URIs so the tree adapter re-queries both the
     // ones to newly dim and the ones to clear.
     const previous = this.ignoredUris;
-    this.ignoredUris = paths.map((p) => this.rootUri!.resolve(p.replace(/\/$/, "")));
+    this.ignoredUris = nextUris;
     this.onDidChangeEmitter.fire([...previous, ...this.ignoredUris]);
   }
 

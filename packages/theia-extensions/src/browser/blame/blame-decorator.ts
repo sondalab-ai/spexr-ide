@@ -3,11 +3,12 @@ import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { DisposableCollection } from "@theia/core";
 import { EditorManager, type EditorWidget } from "@theia/editor/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
-import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { MonacoEditor } from "@theia/monaco/lib/browser/monaco-editor";
 import * as monaco from "@theia/monaco-editor-core";
 import type URI from "@theia/core/lib/common/uri";
 import { SpexrGitServiceProxySymbol } from "../scm/git-service-proxy.js";
+import { SpexrGitScmRegistry } from "../scm/git-scm-registry.js";
+import { locateInRepo } from "../scm/git-repo-roots.js";
 import type { SpexrGitService, BlameResultDto, BlameCommitDto } from "../../common/git-protocol.js";
 
 const ZERO_HASH = "0000000000000000000000000000000000000000";
@@ -31,17 +32,21 @@ export class SpexrGitBlameDecorator implements FrontendApplicationContribution {
   @inject(FileService)
   private readonly fileService!: FileService;
 
-  @inject(WorkspaceService)
-  private readonly workspace!: WorkspaceService;
+  @inject(SpexrGitScmRegistry)
+  private readonly registry!: SpexrGitScmRegistry;
 
   @inject(SpexrGitServiceProxySymbol)
   private readonly gitService!: SpexrGitService;
 
   private enabled = false;
 
-  /** Normalized https base of the `origin` remote (for commit links). */
-  private remoteBase: string | undefined;
-  private remoteFetched = false;
+  /**
+   * Normalized https base of each repository's `origin` remote (for commit
+   * links), keyed by repository root and resolved once per repository. One
+   * shared value would put the first repository's host on every other
+   * repository's commit links in a multi-root workspace.
+   */
+  private readonly remoteBases = new Map<string, string | undefined>();
 
   /** Live decoration collections, keyed by editor URI string. */
   private readonly collections = new Map<string, monaco.editor.IEditorDecorationsCollection>();
@@ -108,12 +113,11 @@ export class SpexrGitBlameDecorator implements FrontendApplicationContribution {
     if (!monacoEditor) return;
 
     const uri = widget.editor.uri;
-    const relPath = this.relativePath(uri);
-    if (!relPath) return;
-    const root = this.rootFsPath();
-    if (!root) return;
+    const located = this.locate(uri);
+    if (!located) return;
+    const { root, relPath } = located;
 
-    await this.ensureRemoteBase(root);
+    const remoteBase = await this.remoteBaseFor(root);
 
     const key = uri.toString();
     let blame = this.cache.get(key);
@@ -128,21 +132,29 @@ export class SpexrGitBlameDecorator implements FrontendApplicationContribution {
     // The buffer may have gone dirty or closed while awaiting.
     if (!this.enabled || widget.isDisposed || widget.saveable.dirty) return;
 
-    this.render(monacoEditor, blame);
+    this.render(monacoEditor, blame, remoteBase);
   }
 
-  /** Fetch and cache the origin remote URL once per session. */
-  private async ensureRemoteBase(root: string): Promise<void> {
-    if (this.remoteFetched) return;
-    this.remoteFetched = true;
+  /** Fetch and cache one repository's origin remote URL, once per session. */
+  private async remoteBaseFor(root: string): Promise<string | undefined> {
+    // `has`, not a truthy check: a repository with no remote caches `undefined`
+    // and must not be re-probed on every redraw.
+    if (this.remoteBases.has(root)) return this.remoteBases.get(root);
+    let base: string | undefined;
     try {
-      this.remoteBase = await this.gitService.getRemoteUrl(root);
+      base = await this.gitService.getRemoteUrl(root);
     } catch {
-      this.remoteBase = undefined;
+      base = undefined;
     }
+    this.remoteBases.set(root, base);
+    return base;
   }
 
-  private render(monacoEditor: MonacoEditor, blame: BlameResultDto): void {
+  private render(
+    monacoEditor: MonacoEditor,
+    blame: BlameResultDto,
+    remoteBase: string | undefined,
+  ): void {
     const authorWidth = Math.min(
       MAX_AUTHOR_WIDTH,
       Math.max(...Object.values(blame.commits).map((c) => displayAuthor(c).length), 1),
@@ -154,7 +166,7 @@ export class SpexrGitBlameDecorator implements FrontendApplicationContribution {
     const decorations: monaco.editor.IModelDeltaDecoration[] = [];
     for (const l of blame.lines) {
       const commit = blame.commits[l.hash];
-      const hover = commit ? hoverMarkdown(commit, this.remoteBase) : null;
+      const hover = commit ? hoverMarkdown(commit, remoteBase) : null;
       const seg = annotationSegments(commit, authorWidth);
       // Hover lives on a single segment only; attaching it to all three would
       // stack three identical tooltips at the same position.
@@ -206,14 +218,16 @@ export class SpexrGitBlameDecorator implements FrontendApplicationContribution {
     this.cache.delete(key);
   }
 
-  private relativePath(uri: URI): string | undefined {
-    const root = this.workspace.tryGetRoots()[0]?.resource;
-    if (!root || uri.scheme !== root.scheme) return undefined;
-    return root.relative(uri)?.toString();
-  }
-
-  private rootFsPath(): string | undefined {
-    return this.workspace.tryGetRoots()[0]?.resource.path.toString();
+  /**
+   * The repository a file belongs to, and its path within it. Resolved against
+   * every repository in the workspace rather than the first one: blame is asked
+   * for by absolute path, and in a multi-root workspace the first folder's
+   * repository is simply the wrong one for a file in any other folder.
+   */
+  private locate(uri: URI): { root: string; relPath: string } | undefined {
+    if (uri.scheme !== "file") return undefined;
+    const roots = this.registry.all.map((p) => p.root).filter((r): r is string => r !== undefined);
+    return locateInRepo(roots, uri.path.toString());
   }
 }
 
