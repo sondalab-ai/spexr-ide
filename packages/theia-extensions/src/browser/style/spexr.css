@@ -2778,6 +2778,9 @@ code {
   font-size: var(--sl-text-xs); line-height: 1.35; font-style: italic;
   color: var(--sl-text-muted); overflow-wrap: anywhere;
 }
+/* Inside an expanded card the sub-line belongs to the headline above it, not to
+   the card's own column rhythm — cancel the flex gap so the pair reads as one block. */
+.spexr-df-pinned > .spexr-df-card__overview { margin-top: calc(-1 * var(--sl-space-3) - 2px); }
 .spexr-df-card__trail {
   display: flex; align-items: center; gap: var(--sl-space-1); min-width: 0;
   font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs);

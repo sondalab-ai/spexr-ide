@@ -371,6 +371,10 @@ export function AgentPinnedCard(props: {
 }): React.ReactElement {
   const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, isCurrent, layout } = props;
   const status = statusOf(tile);
+  // Both clauses, like a grid tile: the overview alone is the session goal, which
+  // barely moves between inferences, so a card showing only it reads as frozen
+  // while the work below it changes. `now` is the clause that tracks the session.
+  const ai = summary && !summary.loading ? summaryLines(summary.summary) : undefined;
   // The card is height-bounded so its CTAs stay in view, which makes the
   // transcript the scrolling region — keep it on the newest line, unless the
   // user has scrolled up to read back.
@@ -438,10 +442,15 @@ export function AgentPinnedCard(props: {
           )}
         </div>
       </header>
-      {summary && !summary.loading && summaryLines(summary.summary).headline && (
-        <span className="spexr-df-card__ai">
+      {ai?.headline && (
+        <span className="spexr-df-card__ai" title={ai.headline}>
           <i className="codicon codicon-sparkle" />
-          <span className="spexr-df-card__ai-text">{summaryLines(summary.summary).headline}</span>
+          <span className="spexr-df-card__ai-text">{ai.headline}</span>
+        </span>
+      )}
+      {ai?.sub && (
+        <span className="spexr-df-card__overview" title={ai.sub}>
+          {ai.sub}
         </span>
       )}
       {terminal ? (
