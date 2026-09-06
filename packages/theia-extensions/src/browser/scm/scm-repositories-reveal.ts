@@ -1,11 +1,12 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { WidgetManager } from "@theia/core/lib/browser/widget-manager";
-import { ViewContainer, type ViewContainerPart } from "@theia/core/lib/browser/view-container";
+import { ViewContainer } from "@theia/core/lib/browser/view-container";
 import { ScmService } from "@theia/scm/lib/browser/scm-service";
 import { SCM_VIEW_CONTAINER_ID } from "@theia/scm/lib/browser/scm-contribution";
 import { ScmRepositoriesWidget } from "@theia/scm/lib/browser/scm-repositories-widget";
 import type { RevealOnRestoreView } from "../shell/reveal-on-restore.js";
-import { repositoriesWeights, shouldReveal } from "./scm-reveal-policy.js";
+import { REPOSITORIES_SHARE, shouldReveal } from "./scm-reveal-policy.js";
+import { applyPartShare } from "../shell/apply-part-share.js";
 
 /**
  * Shows the SCM panel's "Repositories" section on launch once the workspace
@@ -54,44 +55,13 @@ export class ScmRepositoriesRevealView implements RevealOnRestoreView {
     const widget = this.widgetManager.tryGetWidget(ScmRepositoriesWidget.ID);
     const part = widget && container.getPartFor(widget);
     if (!part) return undefined;
-    // Only size a section this reveal is the one to show: a user who has already
-    // dragged it taller has a size saved in the layout, and it is theirs to keep.
-    const wasOff = part.isHidden || part.collapsed;
     part.setHidden(false);
     // Both flags matter: a part that is shown but collapsed is a bare
     // "REPOSITORIES" header with no repositories under it.
     part.collapsed = false;
-    if (wasOff) this.applyDefaultSize(container, part);
+    // Capped rather than assigned, so a size the user has chosen is left alone;
+    // see applyPartShare for why a freshly revealed section always needs one.
+    applyPartShare(container, part, REPOSITORIES_SHARE);
     return widget;
-  }
-
-  /**
-   * Give the section a quarter of the container instead of the half a freshly
-   * revealed part inherits. A part that comes back from the saved layout with no
-   * size of its own is weighted with the average of the others, which against a
-   * lone "Changes" section is an even split.
-   *
-   * Deferred when the container has not been laid out yet — the SCM view is
-   * typically a hidden side-panel widget at reveal time, and `setPartSizes` on a
-   * zero-height container silently does nothing. The listener is one-shot, so it
-   * cannot fight a size the user sets later.
-   */
-  private applyDefaultSize(container: ViewContainer, part: ViewContainerPart): void {
-    const layout = container.containerLayout;
-    const parts = container.getParts();
-    const weights = repositoriesWeights(
-      parts.map((p) => !p.isHidden && !p.collapsed),
-      parts.indexOf(part),
-    );
-    if (!weights.some((w) => w !== undefined)) return;
-    if (layout.getAvailableSize() > 0) {
-      layout.setPartSizes(weights);
-      return;
-    }
-    const pending = container.onDidChangeVisibility((visible) => {
-      if (!visible || layout.getAvailableSize() <= 0) return;
-      pending.dispose();
-      layout.setPartSizes(weights);
-    });
   }
 }
