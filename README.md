@@ -263,13 +263,7 @@ What it does:
 6. Creates an annotated tag `v<new-version>`.
 7. Pushes commit + tag → triggers CI.
 
-After cutting a release, sync the in-app "What's new" splash to the new changelog entry:
-
-```bash
-pnpm sync:release-notes
-```
-
-This regenerates `packages/theia-extensions/src/browser/release-notes.ts` from `CHANGELOG.md` — edit the changelog, not the generated file.
+The in-app "What's new" splash needs no extra step: it fetches `CHANGELOG.md` from GitHub at the tag matching the running version (falling back to `main` when that tag does not exist yet), parses it, and shows the newest entry. When the fetch fails the panel is simply not rendered. Keep the `## <version> — <date>` heading and the `> tagline` line right below it — the parser relies on both.
 
 #### What CI does on a `v*` tag
 

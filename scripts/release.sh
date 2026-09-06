@@ -81,7 +81,8 @@ COMMITS="$(git log "$RANGE" --pretty=format:"%s" \
 [[ -z "$COMMITS" ]] && COMMITS="Minor improvements and bug fixes."
 
 # ── AI-generated ironic changelog via claude CLI ──────────────────────────────
-# One call → JSON { tagline, entries } → writes both CHANGELOG.md and release-notes.ts.
+# One call → JSON { tagline, entries } → CHANGELOG.md, the only source the
+# in-app "What's new" panel reads (fetched from GitHub at the release tag).
 # Falls back to raw commits if claude is unavailable or returns unparseable output.
 
 TMPJSON="$(mktemp)"
@@ -152,13 +153,18 @@ fi
 
 if [[ -z "$CHANGELOG_BODY" ]]; then
   CHANGELOG_BODY="$(printf '%s\n' "$COMMITS" | sed 's/^/- /')"
-  ENTRIES_JSON="$(node -e "process.stdout.write(JSON.stringify(process.argv[1].split('\n').filter(Boolean)))" \
-    "$COMMITS" 2>/dev/null || echo "[]")"
 fi
 
+# The tagline must stay on a single line: the in-app panel reads it as one
+# blockquote, and a stray newline would leave the release with no title.
+TAGLINE="$(printf '%s' "$TAGLINE" | tr '\n' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 [[ -z "$TAGLINE" ]] && TAGLINE="A new version is available."
 
+# The `> tagline` line is part of the contract: the in-app "What's new" panel
+# parses it straight out of CHANGELOG.md.
 CHANGELOG_SECTION="## ${NEW_VERSION} — ${DATE}
+
+> ${TAGLINE}
 
 ${CHANGELOG_BODY}
 "
@@ -176,44 +182,9 @@ fi
 
 echo "Changelog updated."
 
-# ── Update release-notes.ts (powers the in-app "What's new" splash panel) ─────
-
-node -e "
-  const fs = require('fs');
-  const tsFile = process.argv[1];
-  const version = process.argv[2];
-  const date = process.argv[3];
-  const tagline = process.argv[4];
-  const allEntries = JSON.parse(process.argv[5]);
-  const entries = allEntries.filter(function(s){ return !/^###/.test(s); });
-
-  const ind = '    ';
-  const changesArr = '[\n' +
-    entries.map(function(c){ return ind + '  ' + JSON.stringify(c) + ','; }).join('\n') +
-    '\n' + ind + ']';
-
-  const newEntry =
-    '  {\n' +
-    '    version: ' + JSON.stringify(version) + ',\n' +
-    '    date: ' + JSON.stringify(date) + ',\n' +
-    '    tagline: ' + JSON.stringify(tagline) + ',\n' +
-    '    changes: ' + changesArr + ',\n' +
-    '  },';
-
-  const marker = 'export const RELEASE_NOTES: readonly ReleaseNote[] = [';
-  let src = fs.readFileSync(tsFile, 'utf8');
-  if (!src.includes(marker)) { console.error('marker not found in release-notes.ts'); process.exit(1); }
-  src = src.replace(marker, marker + '\n' + newEntry);
-  fs.writeFileSync(tsFile, src);
-  console.log('release-notes.ts updated.');
-" \
-  "${REPO_ROOT}/packages/theia-extensions/src/browser/release-notes.ts" \
-  "$NEW_VERSION" "$DATE" "$TAGLINE" "$ENTRIES_JSON"
-
 # ── Commit, tag, push ─────────────────────────────────────────────────────────
 
-git add package.json apps/desktop/package.json CHANGELOG.md \
-  packages/theia-extensions/src/browser/release-notes.ts
+git add package.json apps/desktop/package.json CHANGELOG.md
 git commit -m "chore: release ${TAG}"
 
 git tag -a "$TAG" -m "Release ${TAG}"
