@@ -30,6 +30,7 @@ import {
 import { matchLaunchedSession } from "./new-session-match.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
 import { mosaicColumns, readWallLayout, writeWallLayout, type WallLayout } from "./wall-layout.js";
+import { shouldRefresh, type SummaryState } from "./summary-refresh.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 
@@ -51,45 +52,10 @@ const GROUP_CARD_LIMIT = 4;
  */
 const SUMMARY_EAGER = 5;
 
-/**
- * Floor between two refreshes of the same working session. Not a fixed cadence —
- * refreshes are driven by *what changed* (see {@link shouldRefresh}); this only
- * stops one churning session from monopolizing the single model and starving the
- * others. Small, so supervision stays near real-time.
- */
-const MIN_REFRESH_GAP_MS = 10_000;
-
 /** Cap the pinned follow buffer so a long-running session cannot grow it without bound. */
 const FOLLOW_BUFFER = 400;
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
-
-/** Cached summary plus the snapshot that decides when it is worth re-inferring. */
-interface SummaryState {
-  summary: AgentSummary;
-  /** Show the "Summarizing…" placeholder — only on the first compute, so a refresh keeps the old text. */
-  loading: boolean;
-  /** Session mtime this summary reflects. */
-  mtime: number;
-  /** User-turn count when summarized — a new turn is a new instruction, worth a refresh. */
-  turnCount: number;
-  /** Distilled action when summarized — a changed action means the agent moved on. */
-  action: string;
-  /** Timestamp of the last request/completion; anchors the {@link MIN_REFRESH_GAP_MS} floor. */
-  at: number;
-}
-
-/**
- * A working session is worth re-summarizing when the agent has meaningfully moved
- * — a new user turn, or a different distilled action — not merely because the
- * transcript grew (streamed text, repeated same-tool calls). The floor keeps the
- * single model fair across sessions.
- */
-function shouldRefresh(tile: AgentTile, cur: SummaryState, now: number): boolean {
-  if (tile.state !== "working") return false;
-  if (now - cur.at < MIN_REFRESH_GAP_MS) return false;
-  return tile.turnCount > cur.turnCount || tile.actionLine !== cur.action;
-}
 
 /** Machine-wide monitoring wall of every agent session (Claude Code, opencode). */
 @injectable()
@@ -496,9 +462,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       if (!live.has(id)) this.unpin(id);
     }
     this.adoptLaunched(tiles);
-    // First compute for a newly-seen session; then keep a WORKING session's summary
-    // fresh, but only when the agent has meaningfully moved (see shouldRefresh).
-    // Idle/done sessions are computed once.
+    // First compute for a newly-seen session; then keep it fresh, but only when
+    // the transcript grew and the agent meaningfully moved (see shouldRefresh).
     const now = Date.now();
     const byId = new Map(tiles.map((t) => [t.sessionId, t]));
     // `this.pinned` is already pruned of departed sessions above, and is
