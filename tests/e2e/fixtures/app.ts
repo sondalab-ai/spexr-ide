@@ -115,22 +115,22 @@ export const sel = {
 } as const;
 
 /**
- * Activate the Spec tab once, by hand.
+ * Activate a shell tab once, by hand.
  *
  * Lumino's TabBar._evtPointerDown hit-tests with clientX/clientY, and synthetic
  * PointerEvents default to 0/0, so the test embeds the tab's real bounding rect
  * in the event. Playwright's own click is not used here: it can miss the hit
  * test or land on a neighbouring widget while the layout is still settling.
  */
-async function activateSpecTab(page: Page): Promise<void> {
-  await page.evaluate(() => {
+async function activateTab(page: Page, label: string): Promise<void> {
+  await page.evaluate((wanted) => {
     const labels = [
       ...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel, .p-TabBar-tabLabel"),
     ];
-    const specLabel = labels.find((el) => el.textContent?.trim() === "Spec");
-    if (!specLabel) throw new Error("Spec tab label not found in DOM");
+    const specLabel = labels.find((el) => el.textContent?.trim() === wanted);
+    if (!specLabel) throw new Error(`Tab "${wanted}" not found in DOM`);
     const tab = specLabel.closest<HTMLElement>("li") ?? specLabel.parentElement;
-    if (!tab) throw new Error("Spec tab <li> not found");
+    if (!tab) throw new Error(`Tab "${wanted}" <li> not found`);
     const rect = tab.getBoundingClientRect();
     tab.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -144,7 +144,7 @@ async function activateSpecTab(page: Page): Promise<void> {
         isPrimary: true,
       }),
     );
-  });
+  }, label);
 }
 
 /** Labels of the tabs currently in front, for diagnostics when activation fails. */
@@ -180,17 +180,38 @@ export async function openSpecView(page: Page): Promise<void> {
     { timeout: 15_000 },
   );
 
-  const panel = page.locator(sel.specPanel);
+  await openPanelTab(page, "Spec", sel.specPanel);
+}
+
+/**
+ * Bring the "Spec validation" panel to the front of the bottom dock.
+ *
+ * Opening a spec reveals both companion panels, and the product deliberately
+ * leaves Linked resources in front (see spec-companion-panels-contribution.ts),
+ * so the lint widget is attached but hidden until its tab is selected.
+ */
+export async function openLintPanel(page: Page): Promise<void> {
+  await openPanelTab(page, "Spec validation", sel.lintWidget);
+}
+
+/**
+ * Activate a tab until the widget it fronts is actually visible.
+ *
+ * Activation is retried rather than done once: a test that switches tabs, or a
+ * panel revealed later by the app, can put another widget back in front.
+ */
+async function openPanelTab(page: Page, label: string, selector: string): Promise<void> {
+  const panel = page.locator(selector);
   const deadline = Date.now() + 20_000;
   for (;;) {
-    await activateSpecTab(page);
+    await activateTab(page, label);
     try {
       await panel.waitFor({ state: "visible", timeout: 1_000 });
       return;
     } catch (err) {
       if (Date.now() >= deadline) {
         throw new Error(
-          `Spec panel stayed hidden after repeated tab activation; tabs in front: ${await frontTabLabels(page)}`,
+          `"${label}" stayed hidden after repeated tab activation; tabs in front: ${await frontTabLabels(page)}`,
           { cause: err },
         );
       }
