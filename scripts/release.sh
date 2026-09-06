@@ -195,4 +195,4 @@ git push origin "$TAG"
 
 echo ""
 echo "Done. GitHub Actions release.yml will build installers and publish the release."
-echo "Track progress: https://github.com/marcellobarile/spexr-ide/actions"
+echo "Track progress: https://github.com/sondalab-ai/spexr-ide/actions"

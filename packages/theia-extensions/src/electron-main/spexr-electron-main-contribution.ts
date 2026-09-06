@@ -58,7 +58,7 @@ export class SpexrElectronMainContribution implements ElectronMainApplicationCon
     const req = https.get(
       {
         hostname: "api.github.com",
-        path: "/repos/marcellobarile/spexr-ide/releases/latest",
+        path: "/repos/sondalab-ai/spexr-ide/releases/latest",
         headers: { "User-Agent": "SPEXR-Desktop" },
       },
       (res) => {
@@ -73,7 +73,7 @@ export class SpexrElectronMainContribution implements ElectronMainApplicationCon
             const latest = tag_name.replace(/^v/, "");
             if (this.isNewerVersion(latest, currentVersion)) {
               // Construct URL locally — never pass html_url from API to shell.openExternal.
-              const releaseUrl = `https://github.com/marcellobarile/spexr-ide/releases/tag/v${latest}`;
+              const releaseUrl = `https://github.com/sondalab-ai/spexr-ide/releases/tag/v${latest}`;
               this.showUpdateDialog(latest, releaseUrl);
             }
           } catch {

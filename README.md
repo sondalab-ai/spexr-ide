@@ -6,12 +6,12 @@
 <p align="center"><strong>Agent-centric, spec-based IDE.</strong><br>Built on Eclipse Theia + Theia AI, fully TypeScript.</p>
 
 <p align="center">
-  <a href="https://github.com/marcellobarile/spexr-ide/releases"><img src="https://img.shields.io/github/v/release/marcellobarile/spexr-ide?label=release" alt="Latest release"></a>
+  <a href="https://github.com/sondalab-ai/spexr-ide/releases"><img src="https://img.shields.io/github/v/release/sondalab-ai/spexr-ide?label=release" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platforms">
 </p>
 
-> **Status: v0.1.3 — public beta.** Packaged installers available on the [Releases page](https://github.com/marcellobarile/spexr-ide/releases). Core spec workflow complete. On-disk formats stable; minor API changes possible before 1.0.
+> **Status: v0.1.3 — public beta.** Packaged installers available on the [Releases page](https://github.com/sondalab-ai/spexr-ide/releases). Core spec workflow complete. On-disk formats stable; minor API changes possible before 1.0.
 
 ## Contents
 
@@ -87,7 +87,7 @@ If you launch `claude` through a shell alias that sets `CLAUDE_CONFIG_DIR` (e.g.
 
 ### Install from a release (recommended)
 
-Download the latest installer from the [Releases page](https://github.com/marcellobarile/spexr-ide/releases).
+Download the latest installer from the [Releases page](https://github.com/sondalab-ai/spexr-ide/releases).
 
 #### macOS
 

@@ -75,5 +75,5 @@ nsis:
   perMachine: false
 publish:
   provider: github
-  owner: marcellobarile
+  owner: sondalab-ai
   repo: spexr-ide
