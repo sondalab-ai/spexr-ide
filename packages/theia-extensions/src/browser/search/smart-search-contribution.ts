@@ -20,6 +20,7 @@ import type { SpexrSearchService } from "../../common/search-protocol.js";
 import { SpexrSearchServiceProxy } from "./smart-search-service.js";
 import { SmartSearchWidget } from "./smart-search-widget.js";
 import { debounce, isSpexrCacheLoss } from "./smart-search-format.js";
+import { applyPartShare } from "../shell/apply-part-share.js";
 
 export const SmartSearchCommands = {
   REINDEX: { id: "spexr.search.reindex", label: "Smart Search: Reindex Workspace" } satisfies Command,
@@ -28,6 +29,13 @@ export const SmartSearchCommands = {
   MAP_RESUME: { id: "spexr.search.mapResume", label: "Spexr: Resume understanding" } satisfies Command,
   REGENERATE: { id: "spexr.search.regenerateDescriptions", label: "Spexr: Regenerate all descriptions" } satisfies Command,
 } as const;
+
+/**
+ * Most of the Explorer view container Smart Search may take. It sits above the
+ * file tree, and past a quarter of the panel it leaves the tree — the view the
+ * container is named for — with too little room to navigate in.
+ */
+const SEARCH_SHARE = 0.25;
 
 /**
  * Places {@link SmartSearchWidget} at the top of the Explorer view container,
@@ -70,6 +78,11 @@ export class SpexrSmartSearchContribution
       initiallyCollapsed: false,
       weight: 25,
     });
+    // `weight` above is part of Theia's widget options but nothing in
+    // `ViewContainer` reads it, so the section is sized here instead: a cap, so
+    // that a size the user has chosen for it survives.
+    const part = container.getPartFor(widget);
+    if (part) applyPartShare(container, part, SEARCH_SHARE);
   }
 
   async onStart(): Promise<void> {
