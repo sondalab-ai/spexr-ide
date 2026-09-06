@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platforms">
 </p>
 
-> **Status: v0.1.3 — public beta.** Packaged installers available on the [Releases page](https://github.com/sondalab-ai/spexr-ide/releases). Core spec workflow complete. On-disk formats stable; minor API changes possible before 1.0.
+> **Status: public beta.** Packaged installers available on the [Releases page](https://github.com/sondalab-ai/spexr-ide/releases); the badge above tracks the current version. Core spec workflow complete. On-disk formats stable; minor API changes possible before 1.0.
 
 ## Contents
 
