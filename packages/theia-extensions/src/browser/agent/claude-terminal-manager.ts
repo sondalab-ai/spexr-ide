@@ -9,7 +9,7 @@ import { nls } from "@theia/core/lib/common/nls";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
 import { AGENT_TERMINAL_KIND } from "../terminal/terminal-style.js";
-import { isTerminalLive } from "./terminal-liveness.js";
+import { evictOnAttachFailure, isReusableTerminal, isTerminalLive } from "../terminal/terminal-liveness.js";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import type { ClaudeProfileDto, MemoryLinkStatus } from "../../common/agent-protocol.js";
 import { SpexrAgentServiceProxy } from "./agent-service-proxy.js";
@@ -86,7 +86,7 @@ export class ClaudeTerminalManager {
    * missing-CLI conditions as notifications instead of throwing.
    */
   async ensureStarted(): Promise<void> {
-    if (this.widget && !this.widget.isDisposed) {
+    if (this.widget && isReusableTerminal(this.widget)) {
       await this.reveal();
       return;
     }
@@ -129,7 +129,7 @@ export class ClaudeTerminalManager {
         firstRoot.resource.toString(),
       );
     }
-    if (this.widget && !this.widget.isDisposed && this.currentExpertId === expert.id) {
+    if (this.widget && isReusableTerminal(this.widget) && this.currentExpertId === expert.id) {
       await this.reveal();
       return;
     }
@@ -353,6 +353,10 @@ export class ClaudeTerminalManager {
     await term.start();
 
     this.widget = term;
+    // Subscribed after the first start so this only ever reports a *later*
+    // death: a re-attach that found no process, typically after the frontend
+    // reconnected to the backend on wake from standby.
+    evictOnAttachFailure(term, () => this.disposeCurrent());
     this.placement = "left";
     await this.shell.addWidget(term, { area: "left", rank: 1 });
     await this.reveal();

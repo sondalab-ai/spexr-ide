@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   INVALID_TERMINAL_ID,
+  evictOnAttachFailure,
   isLiveTerminalId,
+  isReusableTerminal,
   isTerminalLive,
   type TerminalLivenessSource,
 } from "./terminal-liveness.js";
@@ -105,5 +107,42 @@ describe("isTerminalLive", () => {
     expect(term.listeners.failure).toBe(0);
     term.fireOpen(); // no listeners left: must not throw or change the answer
     await expect(pending).resolves.toBe(false);
+  });
+});
+
+describe("isReusableTerminal", () => {
+  it("rejects a disposed terminal and one whose process is gone", () => {
+    expect(isReusableTerminal({ terminalId: 7, isDisposed: false })).toBe(true);
+    expect(isReusableTerminal({ terminalId: 7, isDisposed: true })).toBe(false);
+    // The regression: a widget that survived a reconnect with no process behind
+    // it. It is not disposed, so a `!isDisposed` check would reuse it forever.
+    expect(isReusableTerminal({ terminalId: INVALID_TERMINAL_ID, isDisposed: false })).toBe(false);
+  });
+});
+
+describe("evictOnAttachFailure", () => {
+  it("evicts on the first failed attach and never again", () => {
+    const term = fakeTerminal(INVALID_TERMINAL_ID);
+    const evict = vi.fn();
+    evictOnAttachFailure(term, evict);
+    term.fireFailure();
+    term.fireFailure();
+    expect(evict).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not evict a terminal that attaches successfully", () => {
+    const term = fakeTerminal(INVALID_TERMINAL_ID);
+    const evict = vi.fn();
+    evictOnAttachFailure(term, evict);
+    term.fireOpen();
+    expect(evict).not.toHaveBeenCalled();
+  });
+
+  it("stops reporting once unsubscribed", () => {
+    const term = fakeTerminal(INVALID_TERMINAL_ID);
+    const evict = vi.fn();
+    evictOnAttachFailure(term, evict).dispose();
+    term.fireFailure();
+    expect(evict).not.toHaveBeenCalled();
   });
 });

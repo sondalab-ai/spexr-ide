@@ -59,3 +59,46 @@ export function isTerminalLive(
     timer = setTimeout(() => finish(isLiveTerminalId(term.terminalId)), timeoutMs);
   });
 }
+
+/** The part of `TerminalWidget` needed to decide whether a cached widget is still usable. */
+export interface ReusableTerminal {
+  readonly terminalId: number;
+  readonly isDisposed: boolean;
+}
+
+/**
+ * Whether a cached terminal widget can still carry input.
+ *
+ * `isDisposed` alone is not enough. When the frontend re-attaches after a
+ * dropped connection and the backend process is gone, Theia only re-creates it
+ * for `kind: "user"` terminals; ours carry their own kind for styling, so the
+ * widget survives with `terminalId` -1 and opens a channel nothing serves. It
+ * keeps showing its scrollback and silently swallows every keystroke, so a
+ * manager that reuses it on `!isDisposed` alone caches a corpse forever.
+ */
+export function isReusableTerminal(term: ReusableTerminal): boolean {
+  return !term.isDisposed && isLiveTerminalId(term.terminalId);
+}
+
+/** The part of `TerminalWidget` needed to learn that an attach attempt failed. */
+export interface AttachFailureSource {
+  onDidOpenFailure(listener: () => void): Unsubscribe;
+}
+
+/**
+ * Run `evict` the first time a terminal reports a failed attach, so a manager
+ * can drop it as soon as it dies rather than on the next lookup.
+ *
+ * This is the reconnect counterpart of {@link isTerminalLive}: `start()` fires
+ * `onDidOpenFailure` before throwing, and on the reconnect path that throw is an
+ * unhandled rejection nobody sees. Only the first failure is reported — a
+ * terminal is evicted once.
+ */
+export function evictOnAttachFailure(term: AttachFailureSource, evict: () => void): Unsubscribe {
+  let evicted = false;
+  return term.onDidOpenFailure(() => {
+    if (evicted) return;
+    evicted = true;
+    evict();
+  });
+}
