@@ -111,32 +111,14 @@ export const sel = {
 } as const;
 
 /**
- * Open the SPEXR spec view by clicking its tab in the main area.
- * The spec view is pre-opened at startup with activate:false so the tab always
- * exists in the main tab bar — no keyboard shortcut needed.
- * Theia (lumino) uses .lm-TabBar-tabLabel; .p-TabBar-tabLabel is the legacy alias.
+ * Activate the Spec tab once, by hand.
+ *
+ * Lumino's TabBar._evtPointerDown hit-tests with clientX/clientY, and synthetic
+ * PointerEvents default to 0/0, so the test embeds the tab's real bounding rect
+ * in the event. Playwright's own click is not used here: it can miss the hit
+ * test or land on a neighbouring widget while the layout is still settling.
  */
-export async function openSpecView(page: Page): Promise<void> {
-  // Widget sets this.title.label = "Spec" (not widgetName "Active Spec").
-  // Lumino tab switching is triggered by pointerdown on the <li> tab element.
-  // Playwright's locator.click() can fail hit-test or dispatch to the wrong
-  // element during layout init, so we dispatch the full pointer-event sequence
-  // ourselves via evaluate.
-  // Lumino's TabBar._evtPointerDown uses clientX/clientY to hit-test which tab
-  // the user clicked. Synthetic PointerEvents default to clientX=0,clientY=0 so
-  // the hit test always misses. We read the tab's real bounding rect and embed
-  // those coordinates in the event so Lumino finds the correct tab.
-  // SpexrShellLayoutContribution builds the default layout in
-  // onDidInitializeLayout (opens Welcome, Spec, Memory, Experts, Navigator,
-  // Terminal in sequence) — this can take a couple of seconds, so wait for
-  // the tab to actually exist rather than assuming it's already there.
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel, .p-TabBar-tabLabel")].some(
-        (el) => el.textContent?.trim() === "Spec",
-      ),
-    { timeout: 15_000 },
-  );
+async function activateSpecTab(page: Page): Promise<void> {
   await page.evaluate(() => {
     const labels = [
       ...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel, .p-TabBar-tabLabel"),
@@ -146,22 +128,71 @@ export async function openSpecView(page: Page): Promise<void> {
     const tab = specLabel.closest<HTMLElement>("li") ?? specLabel.parentElement;
     if (!tab) throw new Error("Spec tab <li> not found");
     const rect = tab.getBoundingClientRect();
-    const cx = rect.x + rect.width / 2;
-    const cy = rect.y + rect.height / 2;
     tab.dispatchEvent(
       new PointerEvent("pointerdown", {
         bubbles: true,
         cancelable: true,
         button: 0,
         buttons: 1,
-        clientX: cx,
-        clientY: cy,
+        clientX: rect.x + rect.width / 2,
+        clientY: rect.y + rect.height / 2,
         pointerId: 1,
         isPrimary: true,
       }),
     );
   });
-  await page.waitForSelector(sel.specPanel, { state: "visible", timeout: 15_000 });
+}
+
+/** Labels of the tabs currently in front, for diagnostics when activation fails. */
+async function frontTabLabels(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".lm-mod-current, .p-mod-current")]
+      .map((tab) => tab.textContent?.trim())
+      .filter((label): label is string => !!label)
+      .join(", "),
+  );
+}
+
+/**
+ * Open the SPEXR spec view by activating its tab in the main area.
+ * The spec view is pre-opened at startup with activate:false so the tab always
+ * exists in the main tab bar — no keyboard shortcut needed.
+ * Theia (lumino) uses .lm-TabBar-tabLabel; .p-TabBar-tabLabel is the legacy alias.
+ *
+ * Activation is retried rather than done once: SpexrShellLayoutContribution
+ * finishes the default layout in stages, and a later stage (revealRegisteredDefaults,
+ * which reveals Darkfactory into the same tab bar) puts another widget back in
+ * front of a Spec tab activated in between. Retrying until the panel is actually
+ * visible is what makes this independent of where startup happens to be.
+ */
+export async function openSpecView(page: Page): Promise<void> {
+  // Widget sets this.title.label = "Spec" (not widgetName "Active Spec").
+  // The tab only exists once openSideViews() has run, which takes a couple of
+  // seconds, so wait for it rather than assuming it is already there.
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel, .p-TabBar-tabLabel")].some(
+        (el) => el.textContent?.trim() === "Spec",
+      ),
+    { timeout: 15_000 },
+  );
+
+  const panel = page.locator(sel.specPanel);
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    await activateSpecTab(page);
+    try {
+      await panel.waitFor({ state: "visible", timeout: 1_000 });
+      return;
+    } catch (err) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Spec panel stayed hidden after repeated tab activation; tabs in front: ${await frontTabLabels(page)}`,
+          { cause: err },
+        );
+      }
+    }
+  }
 }
 
 /**
