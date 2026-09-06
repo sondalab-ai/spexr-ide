@@ -61,6 +61,10 @@ export const test = base.extend<AppFixtures>({
       await page.locator('button:has-text("Yes, I trust the authors")').click();
       await trustDialog.waitFor({ state: "hidden", timeout: 5_000 });
     }
+    // SpexrShellLayoutContribution reveals widgets into the tab bars over
+    // several stages; activating a view before it is done gets undone by a
+    // later stage. The contribution marks the body when it finishes.
+    await page.waitForSelector("body[data-spexr-layout-ready]", { timeout: 30_000 });
     // Let Theia panel-layout animations finish before tests start interacting.
     await page.waitForTimeout(1000);
     await use(page);
@@ -159,11 +163,10 @@ async function frontTabLabels(page: Page): Promise<string> {
  * exists in the main tab bar — no keyboard shortcut needed.
  * Theia (lumino) uses .lm-TabBar-tabLabel; .p-TabBar-tabLabel is the legacy alias.
  *
- * Activation is retried rather than done once: SpexrShellLayoutContribution
- * finishes the default layout in stages, and a later stage (revealRegisteredDefaults,
- * which reveals Darkfactory into the same tab bar) puts another widget back in
- * front of a Spec tab activated in between. Retrying until the panel is actually
- * visible is what makes this independent of where startup happens to be.
+ * The page fixture already waits for the layout to settle, so activation
+ * normally succeeds on the first attempt; the retry stays as a safety net for
+ * tests that switch tabs themselves and for anything that re-reveals a widget
+ * later in a test.
  */
 export async function openSpecView(page: Page): Promise<void> {
   // Widget sets this.title.label = "Spec" (not widgetName "Active Spec").

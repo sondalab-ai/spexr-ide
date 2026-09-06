@@ -111,7 +111,22 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       await this.darkfactorySidebar.syncRightPanel(true);
     } catch (err) {
       console.error("[spexr] onDidInitializeLayout error", err);
+    } finally {
+      this.markLayoutReady();
     }
+  }
+
+  /**
+   * Announce that the default layout is settled.
+   *
+   * The stages above reveal widgets into the same tab bars over several ticks,
+   * so anything that activates a view before this point can be put back behind
+   * by a later stage. The e2e suite waits on this marker before touching the
+   * shell; it is set in a `finally` because a partial layout is still the final
+   * one for that launch.
+   */
+  private markLayoutReady(): void {
+    document.body.dataset.spexrLayoutReady = "1";
   }
 
   /**
