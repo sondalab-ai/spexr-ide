@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.0 — 2026-09-06
+
+> Five Dependabot alerts survived. Everything else changed.
+
+### Features
+- Watch every running [Claude Code](https://github.com/anthropics/claude-code) session on a mosaic wall, grouped by project, with expandable cards and embedded [terminal emulators](https://en.wikipedia.org/wiki/Terminal_emulator).
+- Start sessions per account from the launcher, choosing which [CLAUDE_CONFIG_DIR](https://docs.claude.com/en/docs/claude-code/settings) a session runs under, with recents remembered.
+- Harden the [Git](https://git-scm.com/) panel: per-file stage, unstage, discard with confirmation, [merge-conflict](https://git-scm.com/docs/git-merge) groups, and a branch indicator with ahead/behind.
+- Support multiple [workspace folders](https://code.visualstudio.com/docs/editor/multi-root-workspaces) in the git view, because one repository per window was always a polite fiction.
+- Write commit messages with the local model, fed the actual [diff](https://en.wikipedia.org/wiki/Diff) instead of a list of filenames.
+- Make the search summary model configurable and run it on [WebGPU](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API), about four times faster, with a CPU fallback.
+- Run [opencode](https://github.com/sst/opencode) beside Claude through a multi-harness adapter where each harness answers for itself whether it is installed.
+- Force-complete a workflow step, persist it in the [front matter](https://jekyllrb.com/docs/front-matter/), and hand [lint](https://en.wikipedia.org/wiki/Lint_(software)) findings straight to the agent.
+- Preview any [Markdown](https://daringfireball.net/projects/markdown/) file, not only the ones the editor previously felt like previewing.
+- Read the Welcome page changelog from [GitHub](https://github.com) rather than the bundle, so releases stop shipping yesterday's news.
+- Adopt the Sondalab [design tokens](https://en.wikipedia.org/wiki/Design_system) across [Theia](https://github.com/eclipse-theia/theia) chrome while keeping SPEXR's own product identity.
+
+### Fixes
+- Cap the Smart Search and Repositories sections at a quarter of the Explorer panel instead of letting them annex it.
+- Relaunch the agent terminal when its process is gone, rather than presenting a dead [shell](https://en.wikipedia.org/wiki/Shell_(computing)) as a feature.
+- Resolve the startup theme from what the last run actually painted, ending the recurring white flash.
+- Keep the [file tree](https://en.wikipedia.org/wiki/Tree_view) from snapping back to the selected row every time you scroll away from it.
+- Fork the search model into a real [Node](https://nodejs.org/api/child_process.html) child process and cap [ONNX Runtime](https://onnxruntime.ai/) threads so inference stops starving the backend.
+- Shut the backend down when its parent dies, closing a long and productive career of orphaned processes.
+- Send repository-relative paths to git, not absolute ones, and normalise the root once so trailing slashes stop mattering.
+
+### Internals
+- Upgrade [Theia](https://github.com/eclipse-theia/theia) to 1.75, [React](https://react.dev/) to 19 and [Electron](https://www.electronjs.org/) to 42, all in one sitting.
+- Close 101 of 106 open [Dependabot](https://docs.github.com/en/code-security/dependabot) alerts; the remaining five are now considered personality.
+- Drop the [webpack](https://webpack.js.org/) loaders left behind by the [esbuild](https://esbuild.github.io/) switch and stop tracking generated sources.
+
+
 ## 0.1.5 — 2026-07-02
 
 > Smarter search, tighter security, lazier release notes
