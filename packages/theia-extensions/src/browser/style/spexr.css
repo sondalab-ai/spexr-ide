@@ -2548,6 +2548,11 @@ code {
   background: transparent; color: var(--sl-text-muted); cursor: pointer;
 }
 .spexr-df-pinned__close:hover { background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary); }
+/* Same shape as close, but it takes the session off the wall — settle on danger. */
+.spexr-df-pinned__trash:hover {
+  background: color-mix(in srgb, var(--sl-status-danger, #e5484d) 14%, transparent);
+  color: var(--sl-status-danger, #e5484d);
+}
 .spexr-df-pinned__scroll {
   flex: 1 1 auto; min-height: 0; margin: 0; overflow: auto;
   padding: var(--sl-space-3);
@@ -2668,6 +2673,30 @@ code {
 .spexr-df-group__bar .spexr-df-card__open { opacity: 0; }
 .spexr-df-group__bar:hover .spexr-df-card__open { opacity: 1; }
 
+/*
+ * Sessions the user has set aside. It sits below every project group and is muted
+ * on purpose: it is a shelf, not a queue, and it should not compete with the wall.
+ */
+.spexr-df-trash {
+  margin-top: var(--sl-space-4);
+  padding: var(--sl-space-3);
+  /* Lifted off the wall's background rather than tinted a fixed colour, so the
+     panel reads as raised in a dark theme and as recessed in a light one. */
+  background: color-mix(in srgb, var(--sl-text-primary) 5%, transparent);
+  border: 1px solid var(--sl-border-subtle);
+  border-radius: var(--sl-radius-md);
+}
+.spexr-df-trash__bar { border-bottom-style: dashed; }
+/* Shut, the panel is a single bar: the header's own rule has nothing under it. */
+.spexr-df-trash[data-collapsed="true"] { padding-bottom: var(--sl-space-2); }
+.spexr-df-trash[data-collapsed="true"] .spexr-df-trash__bar { border-bottom: none; padding-bottom: 0; }
+.spexr-df-trash__icon { flex: none; font-size: 0.95em; color: var(--sl-text-muted); }
+.spexr-df-trash .spexr-df-group__name { color: var(--sl-text-muted); font-weight: 500; }
+.spexr-df-trash .spexr-df-row { opacity: 0.65; }
+.spexr-df-trash .spexr-df-row:hover { opacity: 1; }
+/* Restore is the only way back out, so it does not hide until hover. */
+.spexr-df-trash .spexr-df-card__trash--restore { opacity: 1; }
+
 /* Top-priority sessions: 3 wide cards per row. */
 .spexr-df-grid {
   display: grid;
@@ -2732,6 +2761,33 @@ code {
 .spexr-df-card__open .codicon { font-size: 0.95em; }
 .spexr-df-card:hover .spexr-df-card__open { opacity: 1; }
 .spexr-df-card__open:hover {
+  color: var(--tile-accent);
+  background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
+}
+
+/*
+ * Set a session aside. Same reveal-on-hover as the jump action, but it settles on
+ * the danger colour: this one takes the session off the wall, and the accent is
+ * the wall's "go here" colour.
+ */
+.spexr-df-card__trash {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  align-self: center;
+  width: 20px; height: 20px; border-radius: var(--sl-radius-sm);
+  color: var(--sl-text-muted); opacity: 0; cursor: pointer;
+  transition: opacity var(--sl-motion-fast) var(--sl-motion-ease),
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-df-card__trash .codicon { font-size: 0.95em; }
+.spexr-df-card:hover .spexr-df-card__trash,
+.spexr-df-row:hover .spexr-df-card__trash { opacity: 1; }
+.spexr-df-card__trash:hover {
+  color: var(--sl-status-danger, #e5484d);
+  background: color-mix(in srgb, var(--sl-status-danger, #e5484d) 14%, transparent);
+}
+/* Coming back out of the trash is not destructive — keep it on the accent. */
+.spexr-df-card__trash--restore:hover {
   color: var(--tile-accent);
   background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
 }

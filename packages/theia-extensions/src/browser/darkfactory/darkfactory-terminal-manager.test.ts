@@ -8,21 +8,66 @@ interface NewTerminalCall {
   options: Record<string, unknown>;
 }
 
-function makeManager(): { manager: SpexrDarkfactoryTerminalManager; calls: NewTerminalCall[] } {
+/** A terminal widget whose id, disposal and failed-attach event can be driven by hand. */
+interface FakeTerminal {
+  terminalId: number;
+  isDisposed: boolean;
+  start(): Promise<void>;
+  dispose(): void;
+  onDidDispose(listener: () => void): void;
+  onDidOpenFailure(listener: () => void): { dispose(): void };
+  /** Report the failure Theia fires when a re-attach finds no backend process. */
+  failAttach(): void;
+}
+
+function fakeTerminal(): FakeTerminal {
+  const disposeListeners: (() => void)[] = [];
+  const failureListeners: (() => void)[] = [];
+  const term: FakeTerminal = {
+    terminalId: 1,
+    isDisposed: false,
+    start: async () => {},
+    dispose: () => {
+      term.isDisposed = true;
+      disposeListeners.forEach((l) => l());
+    },
+    onDidDispose: (l) => {
+      disposeListeners.push(l);
+    },
+    onDidOpenFailure: (l) => {
+      failureListeners.push(l);
+      return {
+        dispose: () => {
+          failureListeners.splice(failureListeners.indexOf(l), 1);
+        },
+      };
+    },
+    failAttach: () => {
+      term.terminalId = -1;
+      failureListeners.slice().forEach((l) => l());
+    },
+  };
+  return term;
+}
+
+function makeManager(): {
+  manager: SpexrDarkfactoryTerminalManager;
+  calls: NewTerminalCall[];
+  terms: FakeTerminal[];
+} {
   const calls: NewTerminalCall[] = [];
+  const terms: FakeTerminal[] = [];
   const manager = new SpexrDarkfactoryTerminalManager();
   (manager as unknown as { terminalService: unknown }).terminalService = {
     newTerminal: (options: Record<string, unknown>) => {
       calls.push({ options });
-      return {
-        start: async () => {},
-        isDisposed: false,
-        onDidDispose: () => {},
-      };
+      const term = fakeTerminal();
+      terms.push(term);
+      return term;
     },
   };
   (manager as unknown as { preferences: unknown }).preferences = { get: () => "" };
-  return { manager, calls };
+  return { manager, calls, terms };
 }
 
 function shellLine(calls: NewTerminalCall[]): string {
@@ -95,9 +140,53 @@ describe("SpexrDarkfactoryTerminalManager.live", () => {
   });
 
   it("ignores a terminal that has been disposed", async () => {
-    const { manager } = makeManager();
-    const term = await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
-    (term as unknown as { isDisposed: boolean }).isDisposed = true;
+    const { manager, terms } = makeManager();
+    await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    terms[0]!.dispose();
     expect(manager.live(UUID)).toBeUndefined();
+  });
+
+  it("ignores a terminal left behind with no backend process", async () => {
+    // The regression: after the frontend reconnects (standby, backend restart)
+    // Theia re-attaches, finds no process and — because our terminals do not use
+    // `kind: "user"` — leaves the widget alive with id -1. It kept rendering as
+    // an interactive card that swallowed every keystroke.
+    const { manager, terms } = makeManager();
+    await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    terms[0]!.terminalId = -1;
+    expect(manager.live(UUID)).toBeUndefined();
+  });
+});
+
+describe("SpexrDarkfactoryTerminalManager eviction", () => {
+  it("disposes the terminal as soon as a re-attach fails", async () => {
+    const { manager, terms } = makeManager();
+    await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    terms[0]!.failAttach();
+    expect(terms[0]!.isDisposed).toBe(true);
+    expect(manager.live(UUID)).toBeUndefined();
+  });
+
+  it("starts a fresh terminal for a session whose process is gone", async () => {
+    const { manager, calls, terms } = makeManager();
+    const first = await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    terms[0]!.failAttach();
+
+    const second = await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    expect(calls).toHaveLength(2);
+    expect(second).not.toBe(first);
+    expect(manager.live(UUID)).toBe(second);
+  });
+
+  it("starts a fresh terminal under a launch key whose process is gone", async () => {
+    const { manager, calls, terms } = makeManager();
+    const first = await manager.openNew("launch-1", "claude", "/Users/x/proj", "");
+    terms[0]!.terminalId = -1;
+
+    const second = await manager.openNew("launch-1", "claude", "/Users/x/proj", "");
+    expect(calls).toHaveLength(2);
+    expect(second).not.toBe(first);
+    expect(first).toBeDefined();
+    expect(terms[0]!.isDisposed).toBe(true);
   });
 });

@@ -24,12 +24,15 @@ import {
   AgentCondensedRow,
   AgentPinnedCard,
   AgentGroupHeader,
+  TrashSectionHeader,
   NewSessionLauncher,
   LaunchedSessionCard,
 } from "./agent-tile.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
 import { mosaicColumns, readWallLayout, writeWallLayout, type WallLayout } from "./wall-layout.js";
+import { shouldRefresh, type SummaryState } from "./summary-refresh.js";
+import { addTrashed, partitionTrashed, readTrashed, removeTrashed, writeTrashed } from "./trash.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 
@@ -51,45 +54,10 @@ const GROUP_CARD_LIMIT = 4;
  */
 const SUMMARY_EAGER = 5;
 
-/**
- * Floor between two refreshes of the same working session. Not a fixed cadence —
- * refreshes are driven by *what changed* (see {@link shouldRefresh}); this only
- * stops one churning session from monopolizing the single model and starving the
- * others. Small, so supervision stays near real-time.
- */
-const MIN_REFRESH_GAP_MS = 10_000;
-
 /** Cap the pinned follow buffer so a long-running session cannot grow it without bound. */
 const FOLLOW_BUFFER = 400;
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
-
-/** Cached summary plus the snapshot that decides when it is worth re-inferring. */
-interface SummaryState {
-  summary: AgentSummary;
-  /** Show the "Summarizing…" placeholder — only on the first compute, so a refresh keeps the old text. */
-  loading: boolean;
-  /** Session mtime this summary reflects. */
-  mtime: number;
-  /** User-turn count when summarized — a new turn is a new instruction, worth a refresh. */
-  turnCount: number;
-  /** Distilled action when summarized — a changed action means the agent moved on. */
-  action: string;
-  /** Timestamp of the last request/completion; anchors the {@link MIN_REFRESH_GAP_MS} floor. */
-  at: number;
-}
-
-/**
- * A working session is worth re-summarizing when the agent has meaningfully moved
- * — a new user turn, or a different distilled action — not merely because the
- * transcript grew (streamed text, repeated same-tool calls). The floor keeps the
- * single model fair across sessions.
- */
-function shouldRefresh(tile: AgentTile, cur: SummaryState, now: number): boolean {
-  if (tile.state !== "working") return false;
-  if (now - cur.at < MIN_REFRESH_GAP_MS) return false;
-  return tile.turnCount > cur.turnCount || tile.actionLine !== cur.action;
-}
 
 /** Machine-wide monitoring wall of every agent session (Claude Code, opencode). */
 @injectable()
@@ -115,6 +83,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   /** Project paths the user has shut; groups are open by default and this is not persisted. */
   private readonly collapsedGroups = new Set<string>();
+
+  /**
+   * Sessions the user has set aside, oldest first — remembered across windows.
+   * Kept as a list because that order is what the cap evicts by; {@link trashedIds}
+   * is the membership test the render path uses.
+   */
+  private trash: string[] = readTrashed(window.localStorage);
+  /** The trash starts shut: it exists to stop showing these sessions. */
+  private trashCollapsed = true;
 
   /**
    * Sessions lifted into expanded cards, newest first — several can be open at
@@ -454,9 +431,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * loses the session's work. It stays with the manager, detached, ready to be
    * shown again.
    */
-  private unpin(sessionId: string): void {
+  private unpin(sessionId: string, reveal = true): void {
     // The session drops back into its group — open it, or the tile just vanishes.
-    const tile = this.tiles.find((t) => t.sessionId === sessionId);
+    // Not when it is on its way to the trash: there it has no group to drop into,
+    // and popping one open would be a side effect with nothing behind it.
+    const tile = reveal ? this.tiles.find((t) => t.sessionId === sessionId) : undefined;
     if (tile) this.collapsedGroups.delete(tile.projectPath);
     this.stopFollow(sessionId);
     this.pinned = this.pinned.filter((id) => id !== sessionId);
@@ -491,21 +470,28 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const path of this.collapsedGroups) {
       if (!liveProjects.has(path)) this.collapsedGroups.delete(path);
     }
+    // `trash` is deliberately NOT pruned against `live` like the two sets above:
+    // RECENT_LIMIT means a trashed session slides off the wall, and dropping its
+    // id here would bring it back untrashed the next time it does surface.
+    // TRASH_CAP is what bounds the list instead.
     // Drop expanded cards whose session is gone (stops the orphaned follow).
     for (const id of this.pinned) {
       if (!live.has(id)) this.unpin(id);
     }
     this.adoptLaunched(tiles);
-    // First compute for a newly-seen session; then keep a WORKING session's summary
-    // fresh, but only when the agent has meaningfully moved (see shouldRefresh).
-    // Idle/done sessions are computed once.
+    // First compute for a newly-seen session; then keep it fresh, but only when
+    // the transcript grew and the agent meaningfully moved (see shouldRefresh).
     const now = Date.now();
-    const byId = new Map(tiles.map((t) => [t.sessionId, t]));
+    // Trashed sessions are off the wall, so they get no inference: a summary is
+    // ~13s of the local model, and the trash is where a session goes to be
+    // ignored. Trashing a session also unpins it, so `pinned` holds none.
+    const { kept } = partitionTrashed(tiles, this.trashedIds());
+    const byId = new Map(kept.map((t) => [t.sessionId, t]));
     // `this.pinned` is already pruned of departed sessions above, and is
     // newest-first — which, since the queue drains in target order, is also the
     // order the user most wants the inferences in.
     const targets = summaryTargets(
-      tiles,
+      kept,
       this.projectSwitch.currentProjectPath(),
       SUMMARY_EAGER,
       GROUP_CARD_LIMIT,
@@ -568,6 +554,40 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.update();
   }
 
+  /** Membership test for {@link trash}, rebuilt per render — the list stays small (see TRASH_CAP). */
+  private trashedIds(): ReadonlySet<string> {
+    return new Set(this.trash);
+  }
+
+  /**
+   * Set a session aside. Nothing on disk is touched and the agent keeps running:
+   * the wall simply stops listing it among the projects, and an expanded card is
+   * closed through {@link unpin}, which leaves its terminal with the manager.
+   *
+   * The id is remembered even once the session drops out of the scan window, so
+   * it does not come back untrashed the next time it does surface.
+   */
+  private moveToTrash(sessionId: string): void {
+    if (this.trash.includes(sessionId)) return;
+    if (this.pinned.includes(sessionId)) this.unpin(sessionId, false);
+    this.trash = addTrashed(this.trash, sessionId);
+    writeTrashed(window.localStorage, this.trash);
+    this.update();
+  }
+
+  /** Take a session back out of the trash; it returns to its project group. */
+  private restoreFromTrash(sessionId: string): void {
+    this.trash = removeTrashed(this.trash, sessionId);
+    writeTrashed(window.localStorage, this.trash);
+    this.update();
+  }
+
+  /** Open or shut the trash section. */
+  private toggleTrash(): void {
+    this.trashCollapsed = !this.trashCollapsed;
+    this.update();
+  }
+
   private renderCard(tile: AgentTile, now: number, showProject: boolean): React.ReactNode {
     return (
       <AgentTileCard
@@ -579,6 +599,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         onOpenProject={(t) => this.openProject(t)}
         isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
         showProject={showProject}
+        onTrash={(t) => this.moveToTrash(t.sessionId)}
       />
     );
   }
@@ -592,7 +613,43 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         onOpen={(t) => this.pin(t)}
         isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
         showProject={showProject}
+        onTrash={(t) => this.moveToTrash(t.sessionId)}
       />
+    );
+  }
+
+  /**
+   * The sessions set aside, as condensed rows under their own header. Opening one
+   * takes it back out of the trash first: a session worth looking at again is no
+   * longer one the wall should be hiding.
+   */
+  private renderTrash(tiles: AgentTile[], now: number): React.ReactNode {
+    return (
+      <section className="spexr-df-group spexr-df-trash" data-collapsed={this.trashCollapsed}>
+        <TrashSectionHeader
+          count={tiles.length}
+          collapsed={this.trashCollapsed}
+          onToggle={() => this.toggleTrash()}
+        />
+        {!this.trashCollapsed && (
+          <div className="spexr-df-condensed">
+            {tiles.map((tile) => (
+              <AgentCondensedRow
+                key={tile.sessionId}
+                tile={tile}
+                now={now}
+                onOpen={(t) => {
+                  this.restoreFromTrash(t.sessionId);
+                  this.pin(t);
+                }}
+                isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
+                showProject={true}
+                onRestore={(t) => this.restoreFromTrash(t.sessionId)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     );
   }
 
@@ -650,7 +707,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       );
     }
     const now = Date.now();
-    const tiles = sortTiles(this.tiles);
+    // Trashed sessions leave the wall before it is grouped: a single trashed
+    // session from another project would otherwise be enough to turn a
+    // one-project wall into a headed, grouped one.
+    const { kept: tiles, discarded } = partitionTrashed(sortTiles(this.tiles), this.trashedIds());
     // Expanded sessions are lifted out of the grid, in the order they were
     // opened; the rest keep their own order below.
     const byId = new Map(tiles.map((t) => [t.sessionId, t]));
@@ -706,6 +766,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               onClose={() => this.unpin(tile.sessionId)}
               onFork={(t) => this.forkTakeover(t)}
               onOpenProject={(t) => this.openProject(t)}
+              onTrash={(t) => this.moveToTrash(t.sessionId)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
               layout={this.wallLayout}
             />
@@ -713,13 +774,16 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         </div>
         {tiles.length === 0 ? (
           <div className="spexr-df-empty">
-            No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here.
+            {discarded.length > 0
+              ? "Every session on the wall is in the trash."
+              : "No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here."}
           </div>
         ) : groups.length > 1 ? (
           groups.map((g, i) => this.renderGroup(g, i, now))
         ) : (
           this.renderFlat(rest, now)
         )}
+        {discarded.length > 0 && this.renderTrash(discarded, now)}
       </div>
     );
   }

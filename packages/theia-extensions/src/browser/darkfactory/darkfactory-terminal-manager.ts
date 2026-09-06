@@ -10,6 +10,7 @@ import { claudeCore } from "../../common/harness/claude-harness-core.js";
 import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
 import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.js";
 import { SESSION_TERMINAL_KIND } from "../terminal/terminal-style.js";
+import { evictOnAttachFailure, isReusableTerminal } from "../terminal/terminal-liveness.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -47,10 +48,14 @@ export class SpexrDarkfactoryTerminalManager {
    * re-attach a session they are showing again: asking the backend to plan the
    * focus instead would route them to a read-only follow, because our own
    * terminal is the running process that makes the session look live.
+   *
+   * A terminal whose backend process is gone is not reported as live, so the
+   * card falls back to the read-only follow instead of embedding a widget that
+   * looks interactive and accepts nothing.
    */
   live(sessionId: string): TerminalWidget | undefined {
     const term = this.widgets.get(sessionId);
-    return term && !term.isDisposed ? term : undefined;
+    return term && isReusableTerminal(term) ? term : undefined;
   }
 
   /**
@@ -66,7 +71,8 @@ export class SpexrDarkfactoryTerminalManager {
     fork: boolean,
   ): Promise<TerminalWidget | undefined> {
     const existing = this.widgets.get(sessionId);
-    if (existing && !existing.isDisposed) return existing;
+    if (existing && isReusableTerminal(existing)) return existing;
+    this.evict(sessionId);
     return this.createResumeTerminal(sessionId, projectPath, configDir, fork);
   }
 
@@ -82,7 +88,8 @@ export class SpexrDarkfactoryTerminalManager {
     configDir: string,
   ): Promise<TerminalWidget | undefined> {
     const existing = this.widgets.get(key);
-    if (existing && !existing.isDisposed) return existing;
+    if (existing && isReusableTerminal(existing)) return existing;
+    this.evict(key);
     const harness = harnessId === "claude" ? claudeCore : opencodeCore;
     return this.create(key, harness, [], projectPath, configDir);
   }
@@ -134,7 +141,23 @@ export class SpexrDarkfactoryTerminalManager {
     await term.start();
     this.widgets.set(key, term);
     term.onDidDispose(() => this.widgets.delete(key));
+    // Subscribed after the first start so this only ever reports a *later*
+    // death: a re-attach that found no process, typically after the frontend
+    // reconnected to the backend on wake from standby.
+    evictOnAttachFailure(term, () => this.evict(key));
     return term;
+  }
+
+  /**
+   * Drop a terminal that can no longer carry input, so the next open recreates
+   * it. The widget is disposed rather than just forgotten: its id is derived
+   * from the key, so a stale one still registered with the terminal service
+   * would collide with its replacement.
+   */
+  private evict(key: string): void {
+    const term = this.widgets.get(key);
+    this.widgets.delete(key);
+    if (term && !term.isDisposed) term.dispose();
   }
 
   /**

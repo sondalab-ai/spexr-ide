@@ -140,6 +140,38 @@ function OpenProjectAction(props: {
 }
 
 /**
+ * Move a session to the trash, or take it back out. A `span` for the same reason
+ * as {@link OpenProjectAction}: the card and the condensed row are both buttons.
+ * Nothing on disk is touched — the trash is only the wall's way of forgetting a
+ * session it no longer needs to show.
+ */
+function TrashAction(props: {
+  tile: AgentTile;
+  mode: "trash" | "restore";
+  onAct: (t: AgentTile) => void;
+}): React.ReactElement {
+  const { tile, mode, onAct } = props;
+  const trashing = mode === "trash";
+  return (
+    <span
+      className={`spexr-df-card__trash${trashing ? "" : " spexr-df-card__trash--restore"}`}
+      role="button"
+      title={
+        trashing
+          ? "Move to the trash — the session keeps running, the wall stops showing it"
+          : "Take this session back out of the trash"
+      }
+      onClick={(e) => {
+        e.stopPropagation();
+        onAct(tile);
+      }}
+    >
+      <i className={`codicon codicon-${trashing ? "trash" : "history"}`} />
+    </span>
+  );
+}
+
+/**
  * Header for one project's sessions. Carries the identity the member tiles no
  * longer need to repeat, plus the group's aggregate state, and toggles the group
  * open or shut.
@@ -204,8 +236,10 @@ export function AgentTileCard(props: {
   isCurrent: boolean;
   /** False inside a project group, whose header already names the project. */
   showProject: boolean;
+  /** Move this session to the trash, out of the wall's project groups. */
+  onTrash: (t: AgentTile) => void;
 }): React.ReactElement {
-  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject } = props;
+  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject, onTrash } = props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
   const primary = capitalize(tile.goal || tile.actionLine);
@@ -234,6 +268,7 @@ export function AgentTileCard(props: {
           {status.label}
         </span>
         <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
+        <TrashAction tile={tile} mode="trash" onAct={onTrash} />
       </span>
 
       {primary && (
@@ -364,12 +399,15 @@ export function AgentPinnedCard(props: {
   onClose: () => void;
   onFork: (t: AgentTile) => void;
   onOpenProject: (t: AgentTile) => void;
+  /** Close this card and move its session to the trash. */
+  onTrash: (t: AgentTile) => void;
   /** True when this tile's project is the one loaded in the window. */
   isCurrent: boolean;
   /** How the wall arranges active cards; the card's height is remembered per arrangement. */
   layout: WallLayout;
 }): React.ReactElement {
-  const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, isCurrent, layout } = props;
+  const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, onTrash, isCurrent, layout } =
+    props;
   const status = statusOf(tile);
   // Both clauses, like a grid tile: the overview alone is the session goal, which
   // barely moves between inferences, so a card showing only it reads as frozen
@@ -410,6 +448,13 @@ export function AgentPinnedCard(props: {
             {status.label}
           </span>
           <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
+          <button
+            className="spexr-df-pinned__close spexr-df-pinned__trash"
+            title="Move to the trash — closes this card and hides the session"
+            onClick={() => onTrash(tile)}
+          >
+            <i className="codicon codicon-trash" />
+          </button>
           <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
             <i className="codicon codicon-close" />
           </button>
@@ -711,8 +756,12 @@ export function AgentCondensedRow(props: {
   isCurrent: boolean;
   /** False inside a project group, whose header already names the project. */
   showProject: boolean;
+  /** Move this session to the trash; absent for a row already in the trash. */
+  onTrash?: ((t: AgentTile) => void) | undefined;
+  /** Take this session back out of the trash; only passed inside the trash section. */
+  onRestore?: ((t: AgentTile) => void) | undefined;
 }): React.ReactElement {
-  const { tile, now, onOpen, isCurrent, showProject } = props;
+  const { tile, now, onOpen, isCurrent, showProject, onTrash, onRestore } = props;
   const status = statusOf(tile);
   return (
     <button
@@ -738,6 +787,38 @@ export function AgentCondensedRow(props: {
         </span>
       )}
       <time className="spexr-df-row__time">{relativeTime(tile.lastActivityMs, now)}</time>
+      {onTrash && <TrashAction tile={tile} mode="trash" onAct={onTrash} />}
+      {onRestore && <TrashAction tile={tile} mode="restore" onAct={onRestore} />}
     </button>
+  );
+}
+
+/**
+ * Header for the sessions the user has set aside. Modelled on
+ * {@link AgentGroupHeader}, but it names no project and starts shut: the trash is
+ * a place to stop looking at, not a group to scan.
+ */
+export function TrashSectionHeader(props: {
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}): React.ReactElement {
+  const { count, collapsed, onToggle } = props;
+  return (
+    <header className="spexr-df-group__bar spexr-df-trash__bar">
+      <button
+        className="spexr-df-group__toggle"
+        aria-expanded={!collapsed}
+        title={collapsed ? "Show the trashed sessions" : "Hide the trashed sessions"}
+        onClick={onToggle}
+      >
+        <i className={`codicon codicon-chevron-${collapsed ? "right" : "down"}`} />
+      </button>
+      <i className="codicon codicon-trash spexr-df-trash__icon" />
+      <span className="spexr-df-group__name">Trash</span>
+      <span className="spexr-df-group__count">
+        {count} {count === 1 ? "session" : "sessions"}
+      </span>
+    </header>
   );
 }
