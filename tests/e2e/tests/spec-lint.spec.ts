@@ -5,7 +5,15 @@
  */
 import path from "path";
 import fs from "fs";
-import { test, expect, sel, openSpecView, openFileInEditor, waitForSpecList } from "../fixtures/app.js";
+import {
+  test,
+  expect,
+  sel,
+  openSpecView,
+  openFileInEditor,
+  openLintPanel,
+  waitForSpecList,
+} from "../fixtures/app.js";
 
 const CLEAN_SPEC = `---
 slug: 0001-clean-spec
@@ -70,8 +78,9 @@ test.describe("Spec lint panel", () => {
 
     await openFileInEditor(page, "0001-clean-spec.md");
 
-    // Wait for lint panel to populate
-    await page.waitForSelector(sel.lintWidget, { timeout: 10_000 });
+    // The lint panel shares the bottom dock with Linked resources, which the
+    // app leaves in front, so select its tab before reading findings.
+    await openLintPanel(page);
 
     // Clean spec: widget shows .spexr-spec-lint__ok (no findings), not .spexr-spec-lint__summary.
     const ok = page.locator(sel.lintOk);
@@ -83,7 +92,7 @@ test.describe("Spec lint panel", () => {
 
     await openFileInEditor(page, "0001-clean-spec.md");
 
-    await page.waitForSelector(sel.lintWidget, { timeout: 10_000 });
+    await openLintPanel(page);
 
     const findings = page.locator(sel.lintFinding);
     await expect(findings).not.toHaveCount(0, { timeout: 8_000 });
