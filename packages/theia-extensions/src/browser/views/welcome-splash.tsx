@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Tip } from "@spexr/ui-kit";
-import type { ReleaseNote } from "../release-notes.js";
+import type { ReleaseNote } from "../../common/changelog.js";
+import { httpsHref } from "./external-link.js";
 
 export interface WelcomeSplashProps {
   readonly onNewProject: () => void;
@@ -82,10 +83,15 @@ function renderInline(text: string): React.ReactNode {
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) result.push(text.slice(last, m.index));
+    const href = httpsHref(m[2]!);
     result.push(
-      <a key={m.index} href={m[2]} target="_blank" rel="noopener noreferrer">
-        {m[1]}
-      </a>,
+      href ? (
+        <a key={m.index} href={href} target="_blank" rel="noopener noreferrer">
+          {m[1]}
+        </a>
+      ) : (
+        m[1]
+      ),
     );
     last = m.index + m[0].length;
   }

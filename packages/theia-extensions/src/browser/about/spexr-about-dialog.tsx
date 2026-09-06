@@ -2,8 +2,8 @@ import * as React from "react";
 import { injectable } from "@theia/core/shared/inversify";
 import { AboutDialog } from "@theia/core/lib/browser/about-dialog.js";
 
-const GITHUB_URL = "https://github.com/marcellobarile/spexr-ide";
-const ISSUES_URL = "https://github.com/marcellobarile/spexr-ide/issues/new";
+const GITHUB_URL = "https://github.com/sondalab-ai/spexr-ide";
+const ISSUES_URL = "https://github.com/sondalab-ai/spexr-ide/issues/new";
 
 @injectable()
 export class SpexrAboutDialog extends AboutDialog {
