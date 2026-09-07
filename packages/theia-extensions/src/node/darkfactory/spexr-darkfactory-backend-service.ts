@@ -97,6 +97,15 @@ const LIVE_DIRS_TTL_MS = 15_000;
  */
 const POLL_INTERVAL_MS = 20_000;
 
+/**
+ * Config-dir discovery freshness floor. Discovery is a `readdirSync` of $HOME
+ * plus a `statSync` per `.claude*` entry, and it now sits on the `listTiles`
+ * path — which the 400ms-debounced watcher drives, not just the poll. Kept
+ * shorter than {@link POLL_INTERVAL_MS} so every poll sees fresh discovery
+ * while a burst of watcher events reuses one readdir.
+ */
+const CONFIG_DIRS_TTL_MS = 10_000;
+
 /** All harnesses the wall can scan; detection decides which are installed. */
 const ALL_HARNESSES: HarnessAdapter[] = [claudeHarness, opencodeHarness];
 
@@ -172,6 +181,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private scanDirty = false;
   /** TTL cache of the live-process dirs (one `ps` spawn per TTL, not per scan). */
   private liveCache?: { at: number; value: Set<string> | null };
+  /** TTL cache of discovered config dirs (one $HOME readdir per TTL, not per scan). */
+  private configDirsCache?: { at: number; value: string[] };
   private readonly index = new Map<string, SessionMeta>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
@@ -182,13 +193,13 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   constructor(@unmanaged() deps?: DarkfactoryDeps) {
     const d = deps ?? {};
     this.configDirsSource = d.configDirs ?? defaultConfigDirs;
+    this.now = d.now ?? Date.now; // before currentConfigDirs(), which keys its TTL on it
     this.resumableConfigDir =
       d.resumableConfigDir ??
       process.env.CLAUDE_CONFIG_DIR?.trim() ??
       this.currentConfigDirs()[0] ??
       "";
     this.defaultAccountDir = d.defaultAccountDir ?? defaultAccountDir();
-    this.now = d.now ?? Date.now;
     this.detectSync = d.detect;
     this.opencodeDataDirOf = d.opencodeDataDir ?? defaultOpencodeDataDir;
     this.watchDir =
@@ -211,12 +222,22 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * The Claude config dirs to scan, re-resolved on every call. Discovery used to
    * run once in the constructor, so an account dir created — or given its first
    * `projects/` — after startup stayed invisible for the life of the process.
-   * Tests inject a fixed list (or a provider) through {@link DarkfactoryDeps}.
+   * Production discovery is memoized for {@link CONFIG_DIRS_TTL_MS} so a burst of
+   * watcher events costs one $HOME readdir, not one per scan. Tests inject a
+   * fixed list (or a provider) through {@link DarkfactoryDeps}.
    */
   private currentConfigDirs(): string[] {
-    return typeof this.configDirsSource === "function"
-      ? this.configDirsSource()
-      : this.configDirsSource;
+    if (typeof this.configDirsSource !== "function") return this.configDirsSource;
+    // An injected provider stays uncached: it is the seam that proves rediscovery
+    // happens at all, and a TTL in front of it would hide exactly that.
+    if (this.configDirsSource !== defaultConfigDirs) return this.configDirsSource();
+    const now = this.now();
+    if (this.configDirsCache && now - this.configDirsCache.at < CONFIG_DIRS_TTL_MS) {
+      return this.configDirsCache.value;
+    }
+    const value = this.configDirsSource();
+    this.configDirsCache = { at: now, value };
+    return value;
   }
 
   /**
