@@ -47,6 +47,15 @@ export const SPEXR_CLAUDE_PROFILE_ID_PREFERENCE = "spexr.claude.profileId";
 export const SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE = "spexr.claude.launchProfiles";
 
 /**
+ * Key recording that launch profiles were detected once at startup.
+ *
+ * Detection runs a single time so profiles the user deleted do not reappear on
+ * the next launch; `Spexr: Detect Claude launch profiles` re-runs it on demand.
+ */
+export const SPEXR_CLAUDE_LAUNCH_PROFILES_DETECTED_PREFERENCE =
+  "spexr.claude.launchProfilesDetected";
+
+/**
  * Key for the active expert persona id for this workspace.
  *
  * Folder-scoped. Empty string means no expert is active (base prompt).
@@ -225,6 +234,15 @@ const SpexrPreferencesSchema: PreferenceSchema = {
           },
         },
       },
+    },
+    [SPEXR_CLAUDE_LAUNCH_PROFILES_DETECTED_PREFERENCE]: {
+      type: "boolean",
+      default: false,
+      // Bookkeeping, not a setting: shown in settings.json but not in the UI.
+      hidden: true,
+      description:
+        "Whether SPEXR has already looked for Claude launch aliases in your shell " +
+        "configuration. Set false to have it look again on the next start.",
     },
     [SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE]: {
       type: "string",

@@ -4,6 +4,7 @@ import {
   launchOptionLabel,
   loginShellArgs,
   mergeLaunchProfiles,
+  describeAddedProfiles,
   parseLaunchProfiles,
   profileForConfigDir,
   resolveAgentLaunch,
@@ -282,5 +283,24 @@ describe("mergeLaunchProfiles", () => {
 
   it("returns the configured list unchanged when nothing was detected", () => {
     expect(mergeLaunchProfiles([PERSO], [])).toEqual([PERSO]);
+  });
+});
+
+describe("describeAddedProfiles", () => {
+  it("names the commands and where to change them", () => {
+    const message = describeAddedProfiles([PERSO]);
+
+    expect(message).toContain("cld-perso");
+    expect(message).toContain("spexr.claude.launchProfiles");
+  });
+
+  it("agrees in number with a single profile", () => {
+    expect(describeAddedProfiles([PERSO])).toContain("1 Claude launch profile from");
+  });
+
+  it("agrees in number with several", () => {
+    expect(describeAddedProfiles([PERSO, { ...PERSO, command: "cld" }])).toContain(
+      "2 Claude launch profiles from",
+    );
   });
 });

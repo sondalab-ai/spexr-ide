@@ -44,10 +44,13 @@ import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import {
   parseLaunchProfiles,
   profileForConfigDir,
-  mergeLaunchProfiles,
+  describeAddedProfiles,
   DEFAULT_CONFIG_DIR,
-  type ClaudeLaunchProfile,
 } from "../../common/claude-launch-profiles.js";
+import {
+  SpexrLaunchProfilesService,
+  type LaunchProfileDetection,
+} from "../agent/launch-profiles-service.js";
 import { SpexrShellLayoutContribution } from "../shell/spexr-shell-layout-contribution.js";
 import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view-contribution.js";
 import { memoryDir, specsDir, specContextDir, agentsDir, allSpecsDirs, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
@@ -327,6 +330,9 @@ export class SpexrCommandsContribution
   @inject(ClaudeTerminalManager)
   private readonly claudeTerminal!: ClaudeTerminalManager;
 
+  @inject(SpexrLaunchProfilesService)
+  private readonly launchProfiles!: SpexrLaunchProfilesService;
+
   @inject(EditorManager)
   private readonly editorManager!: EditorManager;
 
@@ -584,24 +590,14 @@ export class SpexrCommandsContribution
   }
 
   /**
-   * Fill the launch-profiles preference in from the user's shell aliases.
-   *
-   * Explicit rather than automatic: this writes to the user's settings, and the
-   * detection is an inference from their shell config — worth offering, not
-   * worth doing behind their back. Profiles already configured for an account
-   * are left untouched.
+   * Fill the launch-profiles preference in from the user's shell aliases, on
+   * demand. The same detection runs once at startup; this is how a user re-runs
+   * it after changing their shell configuration.
    */
   private async detectLaunchProfiles(): Promise<void> {
-    if (!this.agentService) {
-      this.messages.error("Cannot detect launch profiles: agent backend service unavailable.");
-      return;
-    }
-    const configured = parseLaunchProfiles(
-      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
-    );
-    let detected: readonly ClaudeLaunchProfile[];
+    let result: LaunchProfileDetection;
     try {
-      detected = await this.agentService.detectLaunchProfiles();
+      result = await this.launchProfiles.detect();
     } catch (err) {
       this.messages.error(
         `Could not read shell profiles: ${err instanceof Error ? err.message : String(err)}`,
@@ -609,27 +605,15 @@ export class SpexrCommandsContribution
       return;
     }
 
-    const merged = mergeLaunchProfiles(configured, detected);
-    const added = merged.slice(configured.length);
-    if (added.length === 0) {
+    if (result.added.length === 0) {
       this.messages.info(
-        detected.length === 0
+        result.detected.length === 0
           ? "No Claude launch aliases found in your shell configuration."
           : "Every account found in your shell configuration already has a launch profile.",
       );
       return;
     }
-
-    await this.preferences.set(
-      SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
-      merged,
-      PreferenceScope.User,
-    );
-    this.messages.info(
-      `Added ${added.length} launch profile${added.length === 1 ? "" : "s"}: ${added
-        .map((p) => p.command)
-        .join(", ")}.`,
-    );
+    this.messages.info(describeAddedProfiles(result.added));
   }
 
   /**

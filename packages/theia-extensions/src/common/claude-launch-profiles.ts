@@ -212,3 +212,15 @@ export function mergeLaunchProfiles(
   }
   return merged;
 }
+
+/**
+ * What to tell the user after profiles were added on their behalf.
+ *
+ * Names every command and where the profiles live, because this writes to their
+ * settings: a change made for them has to be a change they can find and undo.
+ */
+export function describeAddedProfiles(added: readonly ClaudeLaunchProfile[]): string {
+  const commands = added.map((p) => p.command).join(", ");
+  const count = `${added.length} Claude launch profile${added.length === 1 ? "" : "s"}`;
+  return `SPEXR added ${count} from your shell aliases: ${commands}. Sessions for those accounts now start with them — edit or remove under "spexr.claude.launchProfiles" in Settings.`;
+}
