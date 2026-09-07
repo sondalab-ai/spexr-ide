@@ -28,6 +28,10 @@ export const GitCommands = {
   UNSTAGE_ALL: { id: "spexr.git.unstageAll", label: "Git: Unstage All Changes" } satisfies Command,
   COMMIT: { id: "spexr.git.commit", label: "Git: Commit Staged Changes" } satisfies Command,
   COMMIT_FROM_PANEL: { id: "spexr.git.commitFromPanel", label: "Commit" } satisfies Command,
+  COMMIT_AND_PUSH: {
+    id: "spexr.git.commitAndPush",
+    label: "Git: Commit Staged Changes and Push",
+  } satisfies Command,
   GENERATE_MESSAGE: {
     id: "spexr.git.generateCommitMessage",
     label: "Git: Generate Commit Message",
@@ -106,6 +110,9 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     });
     commands.registerCommand(GitCommands.COMMIT_FROM_PANEL, {
       execute: (message: unknown) => this.commit(typeof message === "string" ? message : ""),
+    });
+    commands.registerCommand(GitCommands.COMMIT_AND_PUSH, {
+      execute: () => this.commitAndPush(),
     });
     commands.registerCommand(GitCommands.GENERATE_MESSAGE, {
       execute: () => this.generateCommitMessage(),
@@ -310,6 +317,29 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   }
 
   /**
+   * The whole gesture behind "I am done with this change": commit, then push.
+   * Splitting it in two is what lets a commit be forgotten and a push be
+   * pressed on an unchanged branch, which is the mistake this pair of
+   * preflights otherwise only reports after the fact.
+   *
+   * The push runs its own preflight, so a commit that leaves nothing to send
+   * (an amend already pushed, say) still reports honestly rather than pushing.
+   */
+  private async commitAndPush(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const blocked = await this.commitBlocked(provider);
+    if (blocked) {
+      this.messages.warn(blocked);
+      return;
+    }
+    const message = provider.inputValue.trim() || (await this.promptForMessage());
+    if (!message) return;
+    if (!(await this.runCommit(provider, message))) return;
+    await this.pushWithPreflight();
+  }
+
+  /**
    * Refresh, then why a commit would fail — undefined when it would work. An
    * absent status means the refresh failed, and a push or commit the user is
    * entitled to must not be blocked on a guess, so that fails open too.
@@ -332,8 +362,8 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   }
 
   /** Commit, then empty the box — on success only, so a failed commit keeps the text. */
-  private async runCommit(provider: SpexrGitScmProvider, message: string): Promise<void> {
-    await this.runGitOp(
+  private async runCommit(provider: SpexrGitScmProvider, message: string): Promise<boolean> {
+    return this.runGitOp(
       "Commit",
       async () => {
         await provider.commit(message);
@@ -494,11 +524,17 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     });
   }
 
+  /**
+   * True when `op` completed. Returned rather than thrown because the errors are
+   * already reported here — a caller that chains two operations needs to know
+   * not to start the second one, and Commit & Push must not push after a commit
+   * that failed.
+   */
   private async runGitOp(
     label: string,
     op: () => Promise<void>,
     successMessage?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const progress = await this.progressService.showProgress({
       text: `${label}…`,
       options: { location: "scm" },
@@ -506,8 +542,10 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     try {
       await op();
       if (successMessage) this.messages.info(successMessage);
+      return true;
     } catch (err) {
       this.messages.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
     } finally {
       progress.cancel();
     }
