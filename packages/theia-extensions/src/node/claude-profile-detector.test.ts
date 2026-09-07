@@ -53,6 +53,14 @@ describe("parseClaudeProfiles — posix", () => {
     expect(result).toHaveLength(0);
   });
 
+  it("extracts an alias that launches claude through a wrapper", () => {
+    const text = `alias cld-perso='CLAUDE_CONFIG_DIR=~/.claude-perso cld'`;
+    const result = parseClaudeProfiles(text, "posix");
+    expect(result).toHaveLength(1);
+    expect(result[0]?.label).toBe("cld-perso");
+    expect(result[0]?.configDir).toBe(path.join(home, ".claude-perso"));
+  });
+
   it("ignores aliases without CLAUDE_CONFIG_DIR even if they call claude", () => {
     const text = `alias claude-plain='claude --dangerously-skip-permissions'`;
     const result = parseClaudeProfiles(text, "posix");

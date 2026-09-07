@@ -5,6 +5,7 @@ import URI from "@theia/core/lib/common/uri";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { FileDialogService } from "@theia/filesystem/lib/browser/file-dialog";
+import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import type {
   AgentSummary,
   AgentTile,
@@ -16,6 +17,8 @@ import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
+import { parseLaunchProfiles } from "../../common/claude-launch-profiles.js";
+import { SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE } from "../preferences/spexr-preferences.js";
 import { normalizeProjectPath } from "../project/project-switch-targets.js";
 import { sortTiles, groupTiles, summaryTargets, launchTargets } from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
@@ -71,6 +74,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
   @inject(FileService) private readonly files!: FileService;
   @inject(FileDialogService) private readonly fileDialog!: FileDialogService;
+  @inject(PreferenceService) private readonly preferences!: PreferenceService;
 
   private tiles: AgentTile[] = [];
   /** False until the first tile snapshot lands — the wall shows a loading state until then. */
@@ -728,6 +732,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           targets={launchTargets(this.tiles, currentProject, this.recentProjects)}
           defaultPath={currentProject ?? ""}
           configs={this.configs}
+          profiles={parseLaunchProfiles(
+            this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+          )}
           layout={this.wallLayout}
           onLayoutChange={(layout) => this.setLayout(layout)}
           onBrowse={() => this.browseForProject()}

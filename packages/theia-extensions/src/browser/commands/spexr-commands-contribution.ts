@@ -41,6 +41,16 @@ import {
   type WorkflowStep,
 } from "@spexr/spec";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
+import {
+  parseLaunchProfiles,
+  profileForConfigDir,
+  describeAddedProfiles,
+  DEFAULT_CONFIG_DIR,
+} from "../../common/claude-launch-profiles.js";
+import {
+  SpexrLaunchProfilesService,
+  type LaunchProfileDetection,
+} from "../agent/launch-profiles-service.js";
 import { SpexrShellLayoutContribution } from "../shell/spexr-shell-layout-contribution.js";
 import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view-contribution.js";
 import { memoryDir, specsDir, specContextDir, agentsDir, allSpecsDirs, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
@@ -57,7 +67,10 @@ import { SpexrAgentServiceProxy } from "../agent/agent-service-proxy.js";
 import type { SpexrAgentService, ExpertAgentDto, DriftReportDto } from "../../common/agent-protocol.js";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { PreferenceScope } from "@theia/core/lib/common/preferences/preference-scope";
-import { SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE } from "../preferences/spexr-preferences.js";
+import {
+  SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
+  SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
+} from "../preferences/spexr-preferences.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 
 export const SpexrCommands = {
@@ -167,6 +180,10 @@ export const SpexrCommands = {
   SPEC_CHECK_DRIFT: {
     id: "spexr.spec.checkDrift",
     label: "Spexr: Check drift (validate spec vs code)",
+  } satisfies Command,
+  CLAUDE_DETECT_LAUNCH_PROFILES: {
+    id: "spexr.claude.detectLaunchProfiles",
+    label: "Spexr: Detect Claude launch profiles",
   } satisfies Command,
   SPEC_TOGGLE_TASK: {
     id: "spexr.spec.toggleTask",
@@ -313,6 +330,9 @@ export class SpexrCommandsContribution
   @inject(ClaudeTerminalManager)
   private readonly claudeTerminal!: ClaudeTerminalManager;
 
+  @inject(SpexrLaunchProfilesService)
+  private readonly launchProfiles!: SpexrLaunchProfilesService;
+
   @inject(EditorManager)
   private readonly editorManager!: EditorManager;
 
@@ -423,6 +443,9 @@ export class SpexrCommandsContribution
     commands.registerCommand(SpexrCommands.SPEC_CHECK_DRIFT, {
       execute: (raw: unknown) =>
         this.runWorkflowStep(this.resolveSpecUri(raw), "validate"),
+    });
+    commands.registerCommand(SpexrCommands.CLAUDE_DETECT_LAUNCH_PROFILES, {
+      execute: () => this.detectLaunchProfiles(),
     });
     commands.registerCommand(SpexrCommands.SPEC_TOGGLE_TASK, {
       execute: (rawUri: unknown, rawTaskId: unknown) =>
@@ -566,6 +589,46 @@ export class SpexrCommandsContribution
     }
   }
 
+  /**
+   * Fill the launch-profiles preference in from the user's shell aliases, on
+   * demand. The same detection runs once at startup; this is how a user re-runs
+   * it after changing their shell configuration.
+   */
+  private async detectLaunchProfiles(): Promise<void> {
+    let result: LaunchProfileDetection;
+    try {
+      result = await this.launchProfiles.detect();
+    } catch (err) {
+      this.messages.error(
+        `Could not read shell profiles: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+
+    if (result.added.length === 0) {
+      this.messages.info(
+        result.detected.length === 0
+          ? "No Claude launch aliases found in your shell configuration."
+          : "Every account found in your shell configuration already has a launch profile.",
+      );
+      return;
+    }
+    this.messages.info(describeAddedProfiles(result.added));
+  }
+
+  /**
+   * The command a launch profile binds to the account the agent runs under, if
+   * any. Passed to the backend so a drift check starts Claude the same way the
+   * terminals do — a wrapper that a bare `claude` would bypass.
+   */
+  private launchCommand(): string | undefined {
+    const profiles = parseLaunchProfiles(
+      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+    );
+    const configDir = this.claudeTerminal.currentConfigDir() ?? DEFAULT_CONFIG_DIR;
+    return profileForConfigDir(profiles, configDir)?.command;
+  }
+
   private async persistStep(uri: URI, step: WorkflowStep): Promise<void> {
     try {
       const current = await this.fileService.read(uri);
@@ -642,7 +705,7 @@ export class SpexrCommandsContribution
 
     let dto: DriftReportDto;
     try {
-      dto = await this.agentService.checkDrift(root, slug, spec.raw);
+      dto = await this.agentService.checkDrift(root, slug, spec.raw, this.launchCommand());
     } catch (err) {
       this.messages.error(`Drift check failed: ${err instanceof Error ? err.message : String(err)}`);
       return;

@@ -5,6 +5,8 @@
  * without pulling in any node-only modules.
  */
 
+import type { ClaudeLaunchProfile } from "./claude-launch-profiles.js";
+
 export const AGENT_SESSION_SERVICE_PATH = "/services/spexr-agent";
 
 /**
@@ -120,6 +122,14 @@ export interface SpexrAgentService {
   detectClaudeProfiles(): Promise<ClaudeProfileDto[]>;
 
   /**
+   * Launch profiles read from the user's shell configuration: aliases that
+   * start Claude under a config dir, including through a wrapper. Offered so
+   * the launch-profiles preference can be filled in from what is already there
+   * rather than typed by hand; never written to on its own.
+   */
+  detectLaunchProfiles(): Promise<ClaudeLaunchProfile[]>;
+
+  /**
    * Return the built-in expert marketplace catalog.
    *
    * Always resolves; the list is static and shipped in `@spexr/agent`.
@@ -194,11 +204,17 @@ export interface SpexrAgentService {
    * @param workspaceRoot  Absolute path to the open workspace.
    * @param slug           Spec slug (e.g. `0005-drift-detector`).
    * @param specRaw        Full raw markdown of the spec file.
+   * @param launchCommand  Command that starts Claude for the active account,
+   *                       when a launch profile defines one. It may be a shell
+   *                       alias, so it runs through a login shell instead of
+   *                       being spawned; the backend re-validates its shape.
+   *                       Omitted, the CLI is resolved from PATH as before.
    */
   checkDrift(
     workspaceRoot: string,
     slug: string,
     specRaw: string,
+    launchCommand?: string,
   ): Promise<DriftReportDto>;
 
   /**

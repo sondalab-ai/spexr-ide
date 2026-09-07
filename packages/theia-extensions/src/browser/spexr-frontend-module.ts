@@ -51,6 +51,7 @@ import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribu
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
 import { ClaudeTerminalManager } from "./agent/claude-terminal-manager.js";
+import { SpexrLaunchProfilesService } from "./agent/launch-profiles-service.js";
 import {
   SpexrAgentServiceProxy,
   AGENT_SESSION_SERVICE_PATH,
@@ -186,6 +187,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
 
   bind(ClaudeTerminalManager).toSelf().inSingletonScope();
+  bind(SpexrLaunchProfilesService).toSelf().inSingletonScope();
 
   bind(SpexrAgentServiceProxy)
     .toDynamicValue((ctx) => {

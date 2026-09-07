@@ -2,6 +2,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { execFile } from "node:child_process";
+import {
+  isValidLaunchCommand,
+  type ClaudeLaunchProfile,
+} from "../common/claude-launch-profiles.js";
 
 /**
  * A detected Claude account profile derived from the user's shell configuration.
@@ -43,6 +47,29 @@ interface ParsedAlias {
   readonly configDir: string;
 }
 
+
+/**
+ * The single command an alias body runs, after its variable assignments.
+ *
+ * Used to recognise wrappers: a body like `CLAUDE_CONFIG_DIR=~/.claude-perso cld`
+ * launches Claude through `cld` and names no `claude` at all. Only a bare
+ * one-word command counts, which is what keeps an alias that merely happens to
+ * export CLAUDE_CONFIG_DIR before running something else (`… python main.py`)
+ * from being read as a Claude launcher.
+ */
+function wrapperCommand(body: string): string | undefined {
+  const rest = body
+    .trim()
+    .split(/\s+/)
+    .filter((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
+  return rest.length === 1 && rest[0] ? rest[0] : undefined;
+}
+
+/** Whether an alias body launches Claude: by name, or through a one-word wrapper. */
+function launchesClaude(body: string): boolean {
+  return /(^|[\s;])claude([\s;]|$)/.test(body) || wrapperCommand(body) !== undefined;
+}
+
 /**
  * Parse a posix shell profile file (zsh / bash) for `alias` definitions that
  * launch Claude with a `CLAUDE_CONFIG_DIR` override.
@@ -64,8 +91,7 @@ export function parsePosixProfiles(text: string): ParsedAlias[] {
     const [, name, singleBody, doubleBody] = match;
     const body = singleBody ?? doubleBody ?? "";
     const configDir = extractConfigDir(body);
-    const hasClaudeCommand = /(^|[\s;])claude([\s;]|$)/.test(body);
-    if (configDir && hasClaudeCommand && name) {
+    if (configDir && launchesClaude(body) && name) {
       results.push({ label: name, configDir: expandHome(configDir) });
     }
   }
@@ -98,8 +124,7 @@ function parseFishAliases(text: string): ParsedAlias[] {
     const [, name, singleBody, doubleBody] = match;
     const body = singleBody ?? doubleBody ?? "";
     const configDir = extractConfigDir(body);
-    const hasClaudeCommand = /(^|[\s;])claude([\s;]|$)/.test(body);
-    if (configDir && hasClaudeCommand && name) {
+    if (configDir && launchesClaude(body) && name) {
       results.push({ label: name, configDir: expandHome(configDir) });
     }
   }
@@ -263,6 +288,38 @@ export function isFileExecutable(filePath: string): boolean {
  * This function is fail-soft: unreadable or unparseable files are silently
  * skipped; it never throws.
  */
+/**
+ * Launch profiles discovered from the user's shell configuration.
+ *
+ * The command is the alias name itself, not what the alias runs: the alias is
+ * what carries the account, and running it is how a user starts that account by
+ * hand. Such an alias sets CLAUDE_CONFIG_DIR itself, hence `ownsConfigDir`.
+ *
+ * Only posix aliases are recognised as wrappers; fish and PowerShell *functions*
+ * still have to name `claude`, since a multi-statement body gives nothing as
+ * reliable as "the one word after the assignments" to key on.
+ */
+export function detectLaunchProfiles(): ClaudeLaunchProfile[] {
+  const profiles: ClaudeLaunchProfile[] = [];
+  const seen = new Set<string>();
+
+  for (const { filePath, kind } of collectProfileFiles()) {
+    const text = safeReadFile(filePath);
+    if (text === undefined) continue;
+    for (const entry of parseClaudeProfiles(text, kind)) {
+      if (seen.has(entry.configDir) || !isValidLaunchCommand(entry.label)) continue;
+      seen.add(entry.configDir);
+      profiles.push({
+        label: entry.label,
+        command: entry.label,
+        configDir: entry.configDir,
+        ownsConfigDir: true,
+      });
+    }
+  }
+  return profiles;
+}
+
 export async function detectClaudeProfiles(): Promise<ClaudeProfile[]> {
   const resolvedExec = await resolveClaudeExecutableRobust();
   const executablePath = typeof resolvedExec === "string" ? resolvedExec : "claude";

@@ -49,9 +49,21 @@ export function configDirs(env: NodeJS.ProcessEnv = process.env, deps: ConfigDir
 }
 
 /**
+ * The account a new session starts under when nothing overrides it.
+ *
+ * Deliberately not read from `CLAUDE_CONFIG_DIR`: the launcher exports the
+ * chosen account into the session's own shell line, so the backend's inherited
+ * environment says nothing about where a *new* session will land. It only
+ * decides what an inherited `--resume` would attach to.
+ */
+export function defaultAccountDir(home: string = homedir()): string {
+  return join(home, ".claude");
+}
+
+/**
  * Describe discovered config dirs for the UI: each is named by its directory
- * (`.claude-perso`), and the one a bare `claude` would use leads the list so the
- * launcher's pre-selection needs no re-derivation in the frontend. The rest are
+ * (`.claude-perso`), and the default account leads the list so the launcher's
+ * pre-selection needs no re-derivation in the frontend. The rest are
  * alphabetical, which keeps the order stable across scans.
  */
 export function describeConfigDirs(dirs: readonly string[], defaultDir: string): ClaudeConfigDir[] {

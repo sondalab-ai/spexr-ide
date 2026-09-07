@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { basename, join } from "node:path";
-import { configDirs, describeConfigDirs, projectsDirOf } from "./config-dirs.js";
+import {
+  configDirs,
+  defaultAccountDir,
+  describeConfigDirs,
+  projectsDirOf,
+} from "./config-dirs.js";
 
 const HOME = "/home/u";
 const DEFAULT = join(HOME, ".claude");
@@ -71,5 +76,11 @@ describe("config-dirs", () => {
 
   test("projectsDirOf appends /projects", () => {
     expect(projectsDirOf("/Users/x/.claude")).toBe("/Users/x/.claude/projects");
+  });
+});
+
+describe("defaultAccountDir", () => {
+  test("is ~/.claude, whatever CLAUDE_CONFIG_DIR says", () => {
+    expect(defaultAccountDir("/Users/x")).toBe("/Users/x/.claude");
   });
 });
