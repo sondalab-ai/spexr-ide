@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isValidLaunchCommand,
+  launchOptionLabel,
   parseLaunchProfiles,
   profileForConfigDir,
   resolveLaunchPlan,
@@ -155,5 +156,25 @@ describe("resolveLaunchPlan", () => {
       exportConfigDir: "",
       unquoted: true,
     });
+  });
+});
+
+describe("launchOptionLabel", () => {
+  it("marks the default account", () => {
+    expect(launchOptionLabel(".claude", true)).toBe(".claude (default)");
+  });
+
+  it("names the command a profile will start", () => {
+    expect(launchOptionLabel(".claude-perso", false, PERSO)).toBe(".claude-perso — cld-perso");
+  });
+
+  it("keeps both the default marker and the command", () => {
+    expect(launchOptionLabel(".claude", true, { ...PERSO, command: "cld" })).toBe(
+      ".claude (default) — cld",
+    );
+  });
+
+  it("shows the bare account when no profile is configured", () => {
+    expect(launchOptionLabel(".claude-perso", false)).toBe(".claude-perso");
   });
 });

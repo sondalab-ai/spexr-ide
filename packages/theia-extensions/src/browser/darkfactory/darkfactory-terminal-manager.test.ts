@@ -50,7 +50,7 @@ function fakeTerminal(): FakeTerminal {
   return term;
 }
 
-function makeManager(): {
+function makeManager(prefs: Record<string, unknown> = {}): {
   manager: SpexrDarkfactoryTerminalManager;
   calls: NewTerminalCall[];
   terms: FakeTerminal[];
@@ -66,7 +66,9 @@ function makeManager(): {
       return term;
     },
   };
-  (manager as unknown as { preferences: unknown }).preferences = { get: () => "" };
+  (manager as unknown as { preferences: unknown }).preferences = {
+    get: (key: string) => prefs[key] ?? "",
+  };
   return { manager, calls, terms };
 }
 
@@ -104,6 +106,85 @@ describe("SpexrDarkfactoryTerminalManager harness selection", () => {
     const { manager, calls } = makeManager();
     await manager.openEmbedded(SES, "/Users/x/proj", "", true);
     expect(shellLine(calls)).toBe(`cd '/Users/x/proj'; opencode '--session' '${SES}' '--fork'; exec "$SHELL" -i`);
+  });
+
+  it("launches the profile command that owns the session's config dir", async () => {
+    const { manager, calls } = makeManager({
+      "spexr.claude.launchProfiles": [
+        { label: "Perso", command: "cld-perso", configDir: "~/.claude-perso", ownsConfigDir: true },
+      ],
+    });
+
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude-perso", false);
+
+    // Unquoted, or zsh would not expand the alias; no export, because the alias
+    // sets CLAUDE_CONFIG_DIR itself.
+    expect(shellLine(calls)).toBe(
+      `cd '/Users/x/proj'; cld-perso '--resume' '${UUID}'; exec "$SHELL" -i`,
+    );
+    expect(calls[0]!.options.env).toEqual({});
+  });
+
+  it("still exports the config dir for a profile that does not set it", async () => {
+    const { manager, calls } = makeManager({
+      "spexr.claude.launchProfiles": [{ command: "cld", configDir: "~/.claude" }],
+    });
+
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+
+    expect(shellLine(calls)).toBe(
+      `export CLAUDE_CONFIG_DIR='/Users/x/.claude'; cd '/Users/x/proj'; cld '--resume' '${UUID}'; exec "$SHELL" -i`,
+    );
+    expect(calls[0]!.options.env).toEqual({ CLAUDE_CONFIG_DIR: "/Users/x/.claude" });
+  });
+
+  it("uses the profile for a new session too, not only for resumes", async () => {
+    const { manager, calls } = makeManager({
+      "spexr.claude.launchProfiles": [
+        { command: "cld-perso", configDir: "~/.claude-perso", ownsConfigDir: true },
+      ],
+    });
+
+    await manager.openNew("new-key", "claude", "/Users/x/proj", "/Users/x/.claude-perso");
+
+    expect(shellLine(calls)).toBe(`cd '/Users/x/proj'; cld-perso; exec "$SHELL" -i`);
+  });
+
+  it("falls back to claude when no profile owns the config dir", async () => {
+    const { manager, calls } = makeManager({
+      "spexr.claude.launchProfiles": [
+        { command: "cld-perso", configDir: "~/.claude-perso", ownsConfigDir: true },
+      ],
+    });
+
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+
+    expect(shellLine(calls)).toContain(`claude '--resume'`);
+    expect(shellLine(calls)).not.toContain("cld-perso");
+  });
+
+  it("ignores a profile whose command carries shell syntax", async () => {
+    const { manager, calls } = makeManager({
+      "spexr.claude.launchProfiles": [
+        { command: "cld; rm -rf /", configDir: "~/.claude", ownsConfigDir: true },
+      ],
+    });
+
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+
+    expect(shellLine(calls)).toBe(
+      `export CLAUDE_CONFIG_DIR='/Users/x/.claude'; cd '/Users/x/proj'; claude '--resume' '${UUID}'; exec "$SHELL" -i`,
+    );
+  });
+
+  it("keeps quoting a configured executable path, which may contain spaces", async () => {
+    const { manager, calls } = makeManager({
+      "spexr.claude.executablePath": "/opt/my claude/claude",
+    });
+
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+
+    expect(shellLine(calls)).toContain(`'/opt/my claude/claude' '--resume'`);
   });
 
   it("reuses the running terminal instead of starting a second one", async () => {

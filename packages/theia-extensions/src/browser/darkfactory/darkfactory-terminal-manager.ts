@@ -5,7 +5,13 @@ import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-w
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
   SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
+  SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
+import {
+  parseLaunchProfiles,
+  resolveLaunchPlan,
+  type LaunchPlan,
+} from "../../common/claude-launch-profiles.js";
 import { claudeCore } from "../../common/harness/claude-harness-core.js";
 import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
 import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.js";
@@ -127,14 +133,15 @@ export class SpexrDarkfactoryTerminalManager {
   ): Promise<TerminalWidget | undefined> {
     if (!projectPath) return undefined;
     const dir = harness.id === "claude" ? this.resolveConfigDir(configDir) : "";
+    const plan = this.launchPlan(harness, dir);
     const term = await this.terminalService.newTerminal({
       id: `spexr-df-${key}`,
       title: baseName(projectPath),
       useServerTitle: false,
       iconClass: "codicon codicon-sparkle",
-      ...this.resolveShell(harness, args, dir, projectPath),
+      ...this.resolveShell(plan, args, projectPath),
       cwd: projectPath,
-      env: dir ? { CLAUDE_CONFIG_DIR: dir } : {},
+      env: plan.exportConfigDir ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir } : {},
       destroyTermOnClose: false,
       kind: SESSION_TERMINAL_KIND,
     });
@@ -161,46 +168,48 @@ export class SpexrDarkfactoryTerminalManager {
   }
 
   /**
-   * Run the resume through an interactive login shell (so the user's real PATH —
-   * `~/.local/bin`, nvm shims — resolves the harness binary), invoking the plain
-   * binary directly rather than any account alias.
+   * Run the harness through an interactive login shell, so the user's real PATH
+   * (`~/.local/bin`, nvm shims) resolves it and — for a launch profile — so the
+   * shell expands an alias such as `cld-perso`.
    *
-   * For Claude, SPEXR owns the account per session: `claude --resume` resolves a
-   * conversation by CLAUDE_CONFIG_DIR *and* the cwd's project slug, so both must
-   * be authoritative. The login shell re-sources the profile (which may re-export
-   * CLAUDE_CONFIG_DIR or `cd` away), so we re-export the session's dir and `cd`
-   * into its project inside the `-c` line, after the profile has run. Opencode has
-   * no config-dir override — only the `cd` is needed (the session's directory is
-   * authoritative).
+   * The command is only quoted when it is a path: quoting is exactly what stops
+   * zsh from expanding an alias, and `resolveLaunchPlan` says which case this is
+   * (the preference that can hold a command is restricted to a single bare word
+   * for that reason). CLAUDE_CONFIG_DIR is re-exported inside the `-c` line,
+   * after the profile has run and possibly re-exported its own, unless the
+   * command owns the account itself — then the export is left out rather than
+   * left to race. Opencode has no config-dir override; only the `cd` is needed.
    */
   private resolveShell(
-    harness: HarnessCore,
+    plan: LaunchPlan,
     resumeArgs: string[],
-    dir: string,
     projectPath: string,
   ): { shellArgs: string[] } {
-    const bin = this.resolveBinary(harness);
     const prefix = [
-      // Set the account authoritatively so a stray CLAUDE_CONFIG_DIR in the host
-      // env can't send the resume to the wrong config dir (Claude only).
-      harness.id === "claude" ? `export CLAUDE_CONFIG_DIR=${shellQuote(dir)}` : "",
+      plan.exportConfigDir ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}` : "",
       projectPath ? `cd ${shellQuote(projectPath)}` : "",
     ]
       .filter(Boolean)
       .join("; ");
+    const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
     // `; exec $SHELL` keeps the terminal alive after the harness exits (e.g. a
     // resume that can't find the conversation) so the tab shows the error instead of vanishing.
     const line = `${prefix ? `${prefix}; ` : ""}${[bin, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
     return { shellArgs: ["-i", "-l", "-c", line] };
   }
 
-  /** The harness binary to launch: the user's explicit Claude path when set, else the bare name. */
-  private resolveBinary(harness: HarnessCore): string {
-    if (harness.id === "claude") {
-      const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
-      return exe ? shellQuote(exe) : "claude";
-    }
-    return "opencode";
+  /**
+   * How to start this harness: the launch profile bound to the session's config
+   * dir when there is one, else the configured executable path, else the bare
+   * binary. Opencode takes no account and no profile.
+   */
+  private launchPlan(harness: HarnessCore, dir: string): LaunchPlan {
+    if (harness.id !== "claude") return { command: "opencode", exportConfigDir: "", unquoted: true };
+    const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
+    const profiles = parseLaunchProfiles(
+      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+    );
+    return resolveLaunchPlan(profiles, dir, exe);
   }
 
   /**

@@ -123,3 +123,19 @@ export function resolveLaunchPlan(
   const exe = executablePath.trim();
   return { command: exe || "claude", exportConfigDir: configDir, unquoted: !exe };
 }
+
+/**
+ * Text for one account in the session launcher.
+ *
+ * The account is still what the user picks — the command follows from it — so
+ * the command is shown as a suffix rather than replacing the directory name:
+ * it is the only place that says which wrapper a session will actually start.
+ */
+export function launchOptionLabel(
+  label: string,
+  isDefault: boolean,
+  profile?: ClaudeLaunchProfile,
+): string {
+  const account = isDefault ? `${label} (default)` : label;
+  return profile ? `${account} — ${profile.command}` : account;
+}

@@ -14,6 +14,11 @@ import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-fo
 import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
 import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.js";
 import type { WallLayout } from "./wall-layout.js";
+import {
+  launchOptionLabel,
+  profileForConfigDir,
+  type ClaudeLaunchProfile,
+} from "../../common/claude-launch-profiles.js";
 
 /**
  * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
@@ -566,6 +571,8 @@ export function NewSessionLauncher(props: {
   defaultPath: string;
   /** Claude accounts to choose between; a single one needs no control. */
   configs: readonly ClaudeConfigDir[];
+  /** Launch profiles, so an account can show the command it will start. */
+  profiles: readonly ClaudeLaunchProfile[];
   /** Current arrangement of the active cards, and the way to change it. */
   layout: WallLayout;
   onLayoutChange: (layout: WallLayout) => void;
@@ -573,7 +580,8 @@ export function NewSessionLauncher(props: {
   onBrowse: () => Promise<string | undefined>;
   onStart: (projectPath: string, harness: HarnessId, configDir: string) => void;
 }): React.ReactElement {
-  const { targets, defaultPath, configs, layout, onLayoutChange, onBrowse, onStart } = props;
+  const { targets, defaultPath, configs, profiles, layout, onLayoutChange, onBrowse, onStart } =
+    props;
   const first = targets[0]?.path ?? "";
   const [path, setPath] = React.useState(defaultPath || first);
   const [harness, setHarness] = React.useState<HarnessId>("claude");
@@ -682,7 +690,7 @@ export function NewSessionLauncher(props: {
             >
               {configs.map((c) => (
                 <option key={c.path} value={c.path}>
-                  {c.isDefault ? `${c.label} (default)` : c.label}
+                  {launchOptionLabel(c.label, c.isDefault, profileForConfigDir(profiles, c.path))}
                 </option>
               ))}
             </select>
