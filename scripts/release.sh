@@ -72,9 +72,20 @@ else
   RANGE="HEAD"
 fi
 
-# Collect commits: skip chore/release/merge commits for readability
-COMMITS="$(git log "$RANGE" --pretty=format:"%s" \
+# Collect commits: skip chore/release/merge commits for readability.
+#
+# A squash merge collapses a whole PR into one commit whose subject is just the
+# PR title, while the subjects it squashed survive as "* " bullets in the body.
+# Reading subjects alone therefore gives the generator one line per PR, however
+# much shipped in it — which is how v0.3.0 came to describe an entire PR in a
+# single changelog entry. Subjects and bullets are both fed in, the bullets
+# stripped of their marker so every line reads the same way.
+#
+# The "S:" marker tells a subject apart from the body prose under it. The two
+# sed substitutions are mutually exclusive, so no line is emitted twice.
+COMMITS="$(git log "$RANGE" --pretty=format:"S:%s%n%b" \
   --no-merges \
+  | sed -n 's/^S://p; s/^\* //p' \
   | grep -v "^chore: release\|^Merge " \
   || true)"
 
