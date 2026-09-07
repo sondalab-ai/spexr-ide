@@ -13,6 +13,7 @@ import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import type { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { toRepoRelative } from "./relative-path.js";
+import { commitBlockReason } from "./commit-preflight.js";
 import { pushBlockReason } from "./push-preflight.js";
 import {
   allDeleteModifyConflicts,
@@ -279,14 +280,48 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * Commit what the message box already holds, and ask for a message only when it
    * is empty. Asking either way made the box — which the model now fills — a
    * message the user had to type again into a second prompt.
+   *
+   * The preflight runs before the prompt, not after: being asked for a message
+   * and only then told there is nothing to commit wastes the typing.
    */
   private async commitWithPrompt(): Promise<void> {
-    const typed = this.provider?.inputValue.trim() ?? "";
-    if (typed) {
-      await this.commit(typed);
+    const provider = this.provider;
+    if (!provider) return;
+    const blocked = await this.commitBlocked(provider);
+    if (blocked) {
+      this.messages.warn(blocked);
       return;
     }
-    const message = await this.quickInput.input({
+    const message = provider.inputValue.trim() || (await this.promptForMessage());
+    if (!message) return;
+    await this.runCommit(provider, message);
+  }
+
+  /** The panel's own accept action (Ctrl/Cmd+Enter in the message box). */
+  private async commit(message: string): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const blocked = await this.commitBlocked(provider);
+    if (blocked) {
+      this.messages.warn(blocked);
+      return;
+    }
+    await this.runCommit(provider, message);
+  }
+
+  /**
+   * Refresh, then why a commit would fail — undefined when it would work. An
+   * absent status means the refresh failed, and a push or commit the user is
+   * entitled to must not be blocked on a guess, so that fails open too.
+   */
+  private async commitBlocked(provider: SpexrGitScmProvider): Promise<string | undefined> {
+    await provider.refresh();
+    const status = provider.lastStatus;
+    return status ? commitBlockReason(status) : undefined;
+  }
+
+  private async promptForMessage(): Promise<string | undefined> {
+    return this.quickInput.input({
       prompt: "Commit message",
       placeHolder: "feat: describe your change",
       validateInput: (v) =>
@@ -294,19 +329,16 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
           ? Promise.resolve(undefined)
           : Promise.resolve("Commit message cannot be empty."),
     });
-    if (!message) return;
-    await this.commit(message);
   }
 
   /** Commit, then empty the box — on success only, so a failed commit keeps the text. */
-  private async commit(message: string): Promise<void> {
+  private async runCommit(provider: SpexrGitScmProvider, message: string): Promise<void> {
     await this.runGitOp(
       "Commit",
-      () =>
-        this.onProvider(async (provider) => {
-          await provider.commit(message);
-          provider.setInputValue("");
-        }),
+      async () => {
+        await provider.commit(message);
+        provider.setInputValue("");
+      },
       "Changes committed.",
     );
   }
