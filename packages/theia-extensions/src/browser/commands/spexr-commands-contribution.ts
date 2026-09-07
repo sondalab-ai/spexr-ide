@@ -44,7 +44,9 @@ import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import {
   parseLaunchProfiles,
   profileForConfigDir,
+  mergeLaunchProfiles,
   DEFAULT_CONFIG_DIR,
+  type ClaudeLaunchProfile,
 } from "../../common/claude-launch-profiles.js";
 import { SpexrShellLayoutContribution } from "../shell/spexr-shell-layout-contribution.js";
 import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view-contribution.js";
@@ -175,6 +177,10 @@ export const SpexrCommands = {
   SPEC_CHECK_DRIFT: {
     id: "spexr.spec.checkDrift",
     label: "Spexr: Check drift (validate spec vs code)",
+  } satisfies Command,
+  CLAUDE_DETECT_LAUNCH_PROFILES: {
+    id: "spexr.claude.detectLaunchProfiles",
+    label: "Spexr: Detect Claude launch profiles",
   } satisfies Command,
   SPEC_TOGGLE_TASK: {
     id: "spexr.spec.toggleTask",
@@ -432,6 +438,9 @@ export class SpexrCommandsContribution
       execute: (raw: unknown) =>
         this.runWorkflowStep(this.resolveSpecUri(raw), "validate"),
     });
+    commands.registerCommand(SpexrCommands.CLAUDE_DETECT_LAUNCH_PROFILES, {
+      execute: () => this.detectLaunchProfiles(),
+    });
     commands.registerCommand(SpexrCommands.SPEC_TOGGLE_TASK, {
       execute: (rawUri: unknown, rawTaskId: unknown) =>
         this.togglePlanTask(this.resolveSpecUri(rawUri), typeof rawTaskId === "string" ? rawTaskId : undefined),
@@ -572,6 +581,55 @@ export class SpexrCommandsContribution
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Fill the launch-profiles preference in from the user's shell aliases.
+   *
+   * Explicit rather than automatic: this writes to the user's settings, and the
+   * detection is an inference from their shell config — worth offering, not
+   * worth doing behind their back. Profiles already configured for an account
+   * are left untouched.
+   */
+  private async detectLaunchProfiles(): Promise<void> {
+    if (!this.agentService) {
+      this.messages.error("Cannot detect launch profiles: agent backend service unavailable.");
+      return;
+    }
+    const configured = parseLaunchProfiles(
+      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+    );
+    let detected: readonly ClaudeLaunchProfile[];
+    try {
+      detected = await this.agentService.detectLaunchProfiles();
+    } catch (err) {
+      this.messages.error(
+        `Could not read shell profiles: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+
+    const merged = mergeLaunchProfiles(configured, detected);
+    const added = merged.slice(configured.length);
+    if (added.length === 0) {
+      this.messages.info(
+        detected.length === 0
+          ? "No Claude launch aliases found in your shell configuration."
+          : "Every account found in your shell configuration already has a launch profile.",
+      );
+      return;
+    }
+
+    await this.preferences.set(
+      SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
+      merged,
+      PreferenceScope.User,
+    );
+    this.messages.info(
+      `Added ${added.length} launch profile${added.length === 1 ? "" : "s"}: ${added
+        .map((p) => p.command)
+        .join(", ")}.`,
+    );
   }
 
   /**

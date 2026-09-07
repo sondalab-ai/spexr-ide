@@ -33,9 +33,11 @@ import type {
 import {
   isValidLaunchCommand,
   loginShellArgs,
+  type ClaudeLaunchProfile,
 } from "../common/claude-launch-profiles.js";
 import {
   detectClaudeProfiles,
+  detectLaunchProfiles,
   isFileExecutable,
   resolveClaudeExecutableRobust,
 } from "./claude-profile-detector.js";
@@ -52,6 +54,10 @@ import {
 export class SpexrAgentBackendService implements SpexrAgentService {
   @inject(SpexrGitBackendService)
   private readonly gitService!: SpexrGitBackendService;
+
+  async detectLaunchProfiles(): Promise<ClaudeLaunchProfile[]> {
+    return detectLaunchProfiles();
+  }
 
   async detectClaudeProfiles(): Promise<ClaudeProfileDto[]> {
     return detectClaudeProfiles();

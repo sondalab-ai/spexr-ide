@@ -5,6 +5,8 @@
  * without pulling in any node-only modules.
  */
 
+import type { ClaudeLaunchProfile } from "./claude-launch-profiles.js";
+
 export const AGENT_SESSION_SERVICE_PATH = "/services/spexr-agent";
 
 /**
@@ -118,6 +120,14 @@ export interface SpexrAgentService {
    * Always resolves (never rejects); always includes at least the `default` profile.
    */
   detectClaudeProfiles(): Promise<ClaudeProfileDto[]>;
+
+  /**
+   * Launch profiles read from the user's shell configuration: aliases that
+   * start Claude under a config dir, including through a wrapper. Offered so
+   * the launch-profiles preference can be filled in from what is already there
+   * rather than typed by hand; never written to on its own.
+   */
+  detectLaunchProfiles(): Promise<ClaudeLaunchProfile[]>;
 
   /**
    * Return the built-in expert marketplace catalog.

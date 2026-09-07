@@ -3,6 +3,7 @@ import {
   isValidLaunchCommand,
   launchOptionLabel,
   loginShellArgs,
+  mergeLaunchProfiles,
   parseLaunchProfiles,
   profileForConfigDir,
   resolveAgentLaunch,
@@ -250,5 +251,36 @@ describe("loginShellArgs", () => {
 
   it("escapes a single quote inside an argument", () => {
     expect(loginShellArgs("cld", ["it's"])[3]).toBe(`cld 'it'\\''s'`);
+  });
+});
+
+describe("mergeLaunchProfiles", () => {
+  const detected: ClaudeLaunchProfile = {
+    label: "cld-perso",
+    command: "cld-perso",
+    configDir: "/Users/x/.claude-perso",
+    ownsConfigDir: true,
+  };
+
+  it("adds an account that has no profile yet", () => {
+    expect(mergeLaunchProfiles([], [detected])).toEqual([detected]);
+  });
+
+  it("keeps what the user configured for an account already covered", () => {
+    // PERSO names the same account with `~`, and its command is the user's.
+    expect(mergeLaunchProfiles([PERSO], [detected])).toEqual([PERSO]);
+  });
+
+  it("appends only the accounts that are missing", () => {
+    const work: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude" };
+
+    expect(mergeLaunchProfiles([PERSO], [detected, work]).map((p) => p.configDir)).toEqual([
+      "~/.claude-perso",
+      "~/.claude",
+    ]);
+  });
+
+  it("returns the configured list unchanged when nothing was detected", () => {
+    expect(mergeLaunchProfiles([PERSO], [])).toEqual([PERSO]);
   });
 });

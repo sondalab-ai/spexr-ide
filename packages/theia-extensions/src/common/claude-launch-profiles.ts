@@ -194,3 +194,21 @@ export function loginShellArgs(command: string, args: readonly string[]): string
   const line = [command, ...args.map(shellQuote)].join(" ");
   return ["-i", "-l", "-c", line];
 }
+
+/**
+ * Add discovered profiles to the configured ones, keeping what the user wrote.
+ *
+ * Detection is a convenience, not an authority: an account the user has already
+ * configured by hand is left exactly as it is, and only accounts with no profile
+ * yet gain one.
+ */
+export function mergeLaunchProfiles(
+  configured: readonly ClaudeLaunchProfile[],
+  detected: readonly ClaudeLaunchProfile[],
+): ClaudeLaunchProfile[] {
+  const merged = [...configured];
+  for (const candidate of detected) {
+    if (!profileForConfigDir(merged, candidate.configDir)) merged.push(candidate);
+  }
+  return merged;
+}
