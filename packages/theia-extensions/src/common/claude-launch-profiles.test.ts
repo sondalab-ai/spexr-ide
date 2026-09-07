@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isValidLaunchCommand,
   launchOptionLabel,
+  loginShellArgs,
   parseLaunchProfiles,
   profileForConfigDir,
   resolveAgentLaunch,
@@ -231,5 +232,23 @@ describe("resolveAgentLaunch", () => {
     expect(resolveAgentLaunch([PERSO], { configDir: "/Users/x/.claude-work" }).command).toBe(
       "claude",
     );
+  });
+});
+
+describe("loginShellArgs", () => {
+  it("runs the command through an interactive login shell", () => {
+    expect(loginShellArgs("cld-perso", [])).toEqual(["-i", "-l", "-c", "cld-perso"]);
+  });
+
+  it("leaves the command unquoted so an alias still expands", () => {
+    expect(loginShellArgs("cld-perso", ["--print"])[3]).toBe("cld-perso '--print'");
+  });
+
+  it("quotes every argument, including one that looks like shell syntax", () => {
+    expect(loginShellArgs("cld", ["--print", "; rm -rf /"])[3]).toBe("cld '--print' '; rm -rf /'");
+  });
+
+  it("escapes a single quote inside an argument", () => {
+    expect(loginShellArgs("cld", ["it's"])[3]).toBe(`cld 'it'\\''s'`);
   });
 });

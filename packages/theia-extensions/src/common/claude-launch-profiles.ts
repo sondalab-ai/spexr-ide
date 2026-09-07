@@ -174,3 +174,23 @@ export function resolveAgentLaunch(
   const exe = (account.executablePath ?? "").trim();
   return { command: exe || "claude", exportConfigDir: configDir, unquoted: !exe };
 }
+
+/** Wrap an argument in single quotes for safe inclusion in a shell command. */
+function shellQuote(arg: string): string {
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Argv for running a launch command through an interactive login shell.
+ *
+ * Needed wherever a command may be a shell alias: an alias exists only inside a
+ * shell that sourced the user's rc files, so it cannot be spawned directly. The
+ * command is spliced unquoted (quoting suppresses the expansion) and every
+ * argument is quoted, so only `command` is ever interpreted as shell syntax —
+ * which is why callers must reject anything `isValidLaunchCommand` refuses,
+ * including values that arrived over RPC.
+ */
+export function loginShellArgs(command: string, args: readonly string[]): string[] {
+  const line = [command, ...args.map(shellQuote)].join(" ");
+  return ["-i", "-l", "-c", line];
+}

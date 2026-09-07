@@ -194,11 +194,17 @@ export interface SpexrAgentService {
    * @param workspaceRoot  Absolute path to the open workspace.
    * @param slug           Spec slug (e.g. `0005-drift-detector`).
    * @param specRaw        Full raw markdown of the spec file.
+   * @param launchCommand  Command that starts Claude for the active account,
+   *                       when a launch profile defines one. It may be a shell
+   *                       alias, so it runs through a login shell instead of
+   *                       being spawned; the backend re-validates its shape.
+   *                       Omitted, the CLI is resolved from PATH as before.
    */
   checkDrift(
     workspaceRoot: string,
     slug: string,
     specRaw: string,
+    launchCommand?: string,
   ): Promise<DriftReportDto>;
 
   /**

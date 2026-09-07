@@ -31,6 +31,10 @@ import type {
   ShipOutcome,
 } from "../common/agent-protocol.js";
 import {
+  isValidLaunchCommand,
+  loginShellArgs,
+} from "../common/claude-launch-profiles.js";
+import {
   detectClaudeProfiles,
   isFileExecutable,
   resolveClaudeExecutableRobust,
@@ -140,8 +144,13 @@ export class SpexrAgentBackendService implements SpexrAgentService {
     return Promise.resolve(resolveMemoryConflictSync(workspaceRoot, configDir));
   }
 
-  async checkDrift(workspaceRoot: string, slug: string, specRaw: string): Promise<DriftReportDto> {
-    return checkDriftImpl(workspaceRoot, slug, specRaw);
+  async checkDrift(
+    workspaceRoot: string,
+    slug: string,
+    specRaw: string,
+    launchCommand?: string,
+  ): Promise<DriftReportDto> {
+    return checkDriftImpl(workspaceRoot, slug, specRaw, launchCommand);
   }
 
   shipSpec(
@@ -414,6 +423,7 @@ async function checkDriftImpl(
   workspaceRoot: string,
   slug: string,
   specRaw: string,
+  launchCommand?: string,
 ): Promise<DriftReportDto> {
   const checkedAt = new Date().toISOString();
 
@@ -511,9 +521,17 @@ async function checkDriftImpl(
     `## Acceptance Criteria\n${acBlock}\n\n` +
     `## Code Files\n${fileBlocks.join("\n\n")}`;
 
-  // Spawn claude --print
-  const claudeExec = await resolveClaudeExecutableRobust();
-  if (!claudeExec || claudeExec === "ambiguous") {
+  const printArgs = ["--print", "--output-format", "json", "--input-format", "text"];
+
+  // A launch command names how the user starts Claude for the active account —
+  // possibly a shell alias, which has no binary to spawn and only exists inside
+  // a shell that sourced their rc files. Re-validated here rather than trusted
+  // from the caller: this value ends up in a shell line.
+  const launch = launchCommand?.trim();
+  const viaShell = !!launch && isValidLaunchCommand(launch);
+
+  const claudeExec = viaShell ? undefined : await resolveClaudeExecutableRobust();
+  if (!viaShell && (!claudeExec || claudeExec === "ambiguous")) {
     findings.push({
       criterionId: "agent",
       severity: "warn",
@@ -524,11 +542,19 @@ async function checkDriftImpl(
     return dto;
   }
 
-  const claudeResult = child_process.spawnSync(
-    claudeExec,
-    ["--print", "--output-format", "json", "--input-format", "text"],
-    { cwd: workspaceRoot, encoding: "utf8", input: prompt, timeout: 120_000 },
-  );
+  const claudeResult = viaShell
+    ? child_process.spawnSync(process.env["SHELL"] || "/bin/zsh", loginShellArgs(launch!, printArgs), {
+        cwd: workspaceRoot,
+        encoding: "utf8",
+        input: prompt,
+        timeout: 120_000,
+      })
+    : child_process.spawnSync(claudeExec as string, printArgs, {
+        cwd: workspaceRoot,
+        encoding: "utf8",
+        input: prompt,
+        timeout: 120_000,
+      });
 
   let agentFindings: DriftFindingDto[] = [];
   if (claudeResult.status === 0 && claudeResult.stdout) {
