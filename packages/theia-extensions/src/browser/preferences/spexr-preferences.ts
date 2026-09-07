@@ -84,6 +84,15 @@ export const SPEXR_SEARCH_GEN_MODEL_PREFERENCE = "spexr.search.generationModel";
 /** Quantisation the generation model is loaded at. See the model's `onnx/` files. */
 export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDtype";
 
+/**
+ * Whether the IDE fetches from the remote on its own.
+ *
+ * On by default, because `behind` is only truthful if something keeps it that
+ * way. Off is for a metered connection, or a network where an unattended
+ * authentication attempt is unwelcome.
+ */
+export const SPEXR_GIT_AUTOFETCH_PREFERENCE = "spexr.git.autofetch";
+
 /** What each terminal family is, in the words a preference description needs. */
 const TERMINAL_KIND_LABELS: Record<SpexrTerminalKind, string> = {
   session: "the Darkfactory session cards",
@@ -250,6 +259,15 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "ID of the active expert persona for this workspace. Empty means no expert " +
         "(base prompt). Set when launching an expert session. Folder-scoped.",
+    },
+    [SPEXR_GIT_AUTOFETCH_PREFERENCE]: {
+      type: "boolean",
+      default: true,
+      description:
+        "Fetch from the remote every few minutes, and when the window regains focus, " +
+        "so the branch's ahead/behind counts stay truthful. Never touches the working " +
+        "tree and never prompts for credentials. Turn off on a metered connection, or " +
+        "where an unattended authentication attempt is unwelcome.",
     },
     [SPEXR_SEARCH_GLOBAL_IGNORE_PROMPTED]: {
       type: "boolean",

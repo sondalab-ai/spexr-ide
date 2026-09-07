@@ -514,7 +514,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     const provider = this.provider;
     if (!provider) return;
     const message = await this.quickInput.input({
-      prompt: "Stash message (optional)",
+      prompt: "Stash message (optional) — untracked files are included",
       placeHolder: "What you are setting aside",
     });
     // Undefined is Escape — a cancelled prompt, not an unnamed stash.
