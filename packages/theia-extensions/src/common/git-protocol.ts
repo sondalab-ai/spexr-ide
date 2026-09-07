@@ -147,6 +147,20 @@ export interface SpexrGitService {
    * distinguish "nothing staged" themselves, from the status they already hold.
    */
   generateCommitMessage(root: string): Promise<string | null>;
+  /**
+   * `git reset --soft HEAD~1`: drop the last commit and put its changes back in
+   * the index. Throws on the repository's first commit, which has no parent to
+   * fall back onto.
+   */
+  undoLastCommit(root: string): Promise<void>;
+  /**
+   * Replace the last commit with one that also carries whatever is staged.
+   *
+   * Without `message` the original message is kept whole (`--no-edit`), which is
+   * the only safe default: a commit body cannot be reconstructed from the
+   * subject, so re-supplying a subject would silently drop it.
+   */
+  amendCommit(root: string, message?: string): Promise<void>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;

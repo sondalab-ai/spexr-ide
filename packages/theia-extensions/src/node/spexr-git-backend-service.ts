@@ -532,6 +532,32 @@ export class SpexrGitBackendService implements SpexrGitService {
     return subject.length > 0 ? `${commitPrefix(staged)}: ${subject}` : null;
   }
 
+  async undoLastCommit(root: string): Promise<void> {
+    const git = this.git(root);
+    if (!(await this.hasRev(git, "HEAD~1"))) {
+      throw new Error("There is no earlier commit to fall back to — this is the repository's first.");
+    }
+    await git.reset(["--soft", "HEAD~1"]);
+  }
+
+  async amendCommit(root: string, message?: string): Promise<void> {
+    const git = this.git(root);
+    if (!(await this.hasRev(git, "HEAD"))) throw new Error("There is no commit to amend yet.");
+    await git.raw(
+      message === undefined
+        ? ["commit", "--amend", "--no-edit"]
+        : ["commit", "--amend", "-m", message],
+    );
+  }
+
+  /** Whether a revision resolves, for guards that must not surface git's plumbing errors. */
+  private async hasRev(git: SimpleGit, rev: string): Promise<boolean> {
+    return git
+      .raw(["rev-parse", "--verify", rev])
+      .then(() => true)
+      .catch(() => false);
+  }
+
   async getBranches(root: string): Promise<GitBranchDto[]> {
     const git = this.git(root);
     const result = await git.branch(["-a", "-vv"]);

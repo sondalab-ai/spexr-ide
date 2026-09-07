@@ -38,6 +38,11 @@ export const GitCommands = {
     id: "spexr.git.generateCommitMessage",
     label: "Git: Generate Commit Message",
   } satisfies Command,
+  UNDO_LAST_COMMIT: {
+    id: "spexr.git.undoLastCommit",
+    label: "Git: Undo Last Commit",
+  } satisfies Command,
+  AMEND_COMMIT: { id: "spexr.git.amendCommit", label: "Git: Amend Last Commit" } satisfies Command,
   PUSH: { id: "spexr.git.push", label: "Git: Push" } satisfies Command,
   PULL: { id: "spexr.git.pull", label: "Git: Pull" } satisfies Command,
   FETCH: { id: "spexr.git.fetch", label: "Git: Fetch" } satisfies Command,
@@ -118,6 +123,12 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     });
     commands.registerCommand(GitCommands.GENERATE_MESSAGE, {
       execute: () => this.generateCommitMessage(),
+    });
+    commands.registerCommand(GitCommands.UNDO_LAST_COMMIT, {
+      execute: () => this.undoLastCommit(),
+    });
+    commands.registerCommand(GitCommands.AMEND_COMMIT, {
+      execute: () => this.amendLastCommit(),
     });
     commands.registerCommand(GitCommands.PUSH, {
       execute: () => this.pushWithPreflight(),
@@ -395,6 +406,82 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       return;
     }
     await this.runGitOp("Push", () => provider.push(), "Pushed to remote.");
+  }
+
+  /**
+   * Drop the last commit and put its changes back in the index — the recovery
+   * for a commit made too early, which otherwise needs a terminal.
+   */
+  private async undoLastCommit(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    await provider.refresh();
+    const ok = await this.confirmHistoryRewrite(
+      provider,
+      "Undo last commit",
+      "The commit is dropped and its changes go back to the staged area.",
+    );
+    if (!ok) return;
+    await this.runGitOp(
+      "Undo last commit",
+      () => provider.undoLastCommit(),
+      "Last commit undone — its changes are staged again.",
+    );
+  }
+
+  /**
+   * Fold what is staged into the last commit, replacing its message only when
+   * the box holds one. An empty box keeps the original message whole rather
+   * than rebuilding it from a subject, which would drop the body.
+   */
+  private async amendLastCommit(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    await provider.refresh();
+    const typed = provider.inputValue.trim();
+    const staged = provider.lastStatus?.files.some((f) => f.stagedState !== undefined) ?? false;
+    if (!typed && !staged) {
+      this.messages.warn(
+        "Nothing to amend — stage a change, or write a message to replace the last one.",
+      );
+      return;
+    }
+    const ok = await this.confirmHistoryRewrite(
+      provider,
+      "Amend last commit",
+      typed
+        ? "The last commit's message is replaced, and anything staged is folded into it."
+        : "The staged changes are folded into the last commit, keeping its message.",
+    );
+    if (!ok) return;
+    const amended = await this.runGitOp(
+      "Amend",
+      () => provider.amendCommit(typed || undefined),
+      "Last commit amended.",
+    );
+    if (amended && typed) provider.setInputValue("");
+  }
+
+  /**
+   * Confirm rewriting a commit the remote already has. With an upstream and
+   * nothing ahead, the commit about to be rewritten is the one the remote points
+   * at: the branch will only push again by force, and anyone who pulled it
+   * diverges. Ahead of the upstream, the commit is local and needs no ceremony.
+   */
+  private async confirmHistoryRewrite(
+    provider: SpexrGitScmProvider,
+    title: string,
+    what: string,
+  ): Promise<boolean> {
+    const status = provider.lastStatus;
+    if (!status?.upstream || status.ahead > 0) return true;
+    const confirmed = await new ConfirmDialog({
+      title,
+      msg: `${what}\n\nThat commit is already on ${status.upstream}. Rewriting it means the branch can only be pushed by force, and anyone who has pulled it will diverge.`,
+      ok: "Rewrite",
+      cancel: "Cancel",
+    }).open();
+    return confirmed === true;
   }
 
   /**

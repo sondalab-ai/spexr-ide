@@ -426,6 +426,18 @@ export class SpexrGitScmProvider implements ScmProvider {
     await this.refresh();
   }
 
+  async undoLastCommit(): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.undoLastCommit(this.rootFsPath);
+    await this.refresh();
+  }
+
+  async amendCommit(message?: string): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.amendCommit(this.rootFsPath, message);
+    await this.refresh();
+  }
+
   async getBranches(): Promise<GitBranchDto[]> {
     if (!this.rootFsPath) return [];
     return this.gitService.getBranches(this.rootFsPath);

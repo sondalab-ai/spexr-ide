@@ -193,6 +193,45 @@ describe("SpexrGitBackendService", () => {
     expect(current!.isRemote).toBe(false);
   });
 
+  describe("undoLastCommit and amendCommit", () => {
+    /** A second commit, so there is history to undo onto. */
+    function commitSecond(): void {
+      fs.writeFileSync(path.join(tmpDir, "second.txt"), "two");
+      execSync("git add second.txt", { cwd: tmpDir });
+      execSync('git commit -m "second"', { cwd: tmpDir });
+    }
+
+    it("undoLastCommit: drops the commit and leaves its changes staged", async () => {
+      commitSecond();
+      await service.undoLastCommit(tmpDir);
+      expect(execSync("git log --oneline", { cwd: tmpDir }).toString()).not.toContain("second");
+      const status = await service.getStatus(tmpDir);
+      expect(status.files.find((f) => f.path === "second.txt")?.stagedState).toBe("A");
+    });
+
+    it("undoLastCommit: refuses the repository's first commit, which has no parent", async () => {
+      await expect(service.undoLastCommit(tmpDir)).rejects.toThrow(/first/i);
+    });
+
+    it("amendCommit: replaces the message when given one", async () => {
+      await service.amendCommit(tmpDir, "init, restated");
+      expect(execSync("git log -1 --pretty=%s", { cwd: tmpDir }).toString().trim()).toBe(
+        "init, restated",
+      );
+    });
+
+    it("amendCommit: folds staged changes in and keeps the message when given none", async () => {
+      fs.writeFileSync(path.join(tmpDir, "extra.txt"), "more");
+      await service.stage(tmpDir, ["extra.txt"]);
+      await service.amendCommit(tmpDir);
+      expect(execSync("git log -1 --pretty=%s", { cwd: tmpDir }).toString().trim()).toBe("init");
+      expect(execSync("git show --name-only --pretty=", { cwd: tmpDir }).toString()).toContain(
+        "extra.txt",
+      );
+      expect((await service.getStatus(tmpDir)).isClean).toBe(true);
+    });
+  });
+
   describe("generateCommitMessage", () => {
     const generator = (reply: string | null, available = true) => {
       const prompts: string[] = [];
@@ -511,6 +550,10 @@ describe("SpexrGitBackendService — virgin repo (no commits)", () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("amendCommit: refuses when there is no commit to amend", async () => {
+    await expect(service.amendCommit(tmpDir, "nope")).rejects.toThrow(/no commit to amend/i);
   });
 
   it("unstage: works on repo without HEAD (no commits yet)", async () => {
