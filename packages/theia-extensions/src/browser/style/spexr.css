@@ -2489,6 +2489,22 @@ code {
   color: var(--sl-text-primary);
 }
 
+/* Rescan, sitting after the arrangement toggle: same wall-level register, and
+   the only control that answers "a session started elsewhere is missing". */
+.spexr-df-refresh {
+  flex: none; width: 1.75rem; height: 1.75rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--sl-border-subtle); border-radius: 999px;
+  background: var(--sl-bg-surface); color: var(--sl-text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.spexr-df-refresh:hover:not(:disabled) {
+  color: var(--sl-text-primary); border-color: var(--sl-border-strong, var(--sl-text-muted));
+}
+.spexr-df-refresh:disabled { cursor: default; opacity: 0.7; }
+.spexr-df-refresh .codicon { line-height: 1; }
+
 /*
  * The cards that own a running terminal. One container in both arrangements —
  * only the class changes, so the terminals are never re-attached — and no box of

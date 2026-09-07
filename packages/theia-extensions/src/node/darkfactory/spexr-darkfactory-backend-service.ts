@@ -86,6 +86,26 @@ const PARSE_CONCURRENCY = 8;
  */
 const LIVE_DIRS_TTL_MS = 15_000;
 
+/**
+ * Wall poll cadence. The fs watchers are the fast path, not a complete one: a
+ * config dir that gains its first session after startup is watched by nobody, a
+ * watcher that errors is dropped and never re-armed (see armWallWatcher), and a
+ * transcript scanned mid-write is discarded by listTiles with no later event to
+ * bring it back. Sessions started outside SPEXR fell into those gaps and stayed
+ * invisible for the life of the process. This tick is the floor under all of
+ * them; it shares pushTiles' single-flight, so landing on a running scan is free.
+ */
+const POLL_INTERVAL_MS = 20_000;
+
+/**
+ * Config-dir discovery freshness floor. Discovery is a `readdirSync` of $HOME
+ * plus a `statSync` per `.claude*` entry, and it now sits on the `listTiles`
+ * path — which the 400ms-debounced watcher drives, not just the poll. Kept
+ * shorter than {@link POLL_INTERVAL_MS} so every poll sees fresh discovery
+ * while a burst of watcher events reuses one readdir.
+ */
+const CONFIG_DIRS_TTL_MS = 10_000;
+
 /** All harnesses the wall can scan; detection decides which are installed. */
 const ALL_HARNESSES: HarnessAdapter[] = [claudeHarness, opencodeHarness];
 
@@ -99,7 +119,8 @@ interface UnifiedRef {
 
 /** Constructor seams so the service is unit-testable without a real home dir. */
 export interface DarkfactoryDeps {
-  configDirs?: string[];
+  /** Fixed list, or a provider re-read on every scan (production discovers per scan). */
+  configDirs?: string[] | (() => string[]);
   /** Config dir the launch command actually resumes against (env CLAUDE_CONFIG_DIR). */
   resumableConfigDir?: string;
   /** Account a new session starts under; defaults to `~/.claude`. */
@@ -132,7 +153,7 @@ interface SessionMeta {
 
 @injectable()
 export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
-  private readonly configDirs: string[];
+  private readonly configDirsSource: string[] | (() => string[]);
   private readonly resumableConfigDir: string;
   private readonly defaultAccountDir: string;
   private readonly now: () => number;
@@ -152,12 +173,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly generator: DescriptionGenerator | undefined;
   private client?: SpexrDarkfactoryClient;
   private loopMonitor?: ReturnType<typeof setInterval>;
+  /** Periodic rescan timer; the watchers are the fast path, this is the floor. */
+  private poll: ReturnType<typeof setInterval> | undefined;
   private readonly wallWatchers: FSWatcher[] = [];
   /** Single-flight push state: while a scan runs, events mark it dirty for one follow-up scan. */
   private scanInFlight = false;
   private scanDirty = false;
   /** TTL cache of the live-process dirs (one `ps` spawn per TTL, not per scan). */
   private liveCache?: { at: number; value: Set<string> | null };
+  /** TTL cache of discovered config dirs (one $HOME readdir per TTL, not per scan). */
+  private configDirsCache?: { at: number; value: string[] };
   private readonly index = new Map<string, SessionMeta>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
@@ -167,11 +192,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   // @unmanaged(): inversify must not manage this optional test seam.
   constructor(@unmanaged() deps?: DarkfactoryDeps) {
     const d = deps ?? {};
-    this.configDirs = d.configDirs ?? defaultConfigDirs();
+    this.configDirsSource = d.configDirs ?? defaultConfigDirs;
+    this.now = d.now ?? Date.now; // before currentConfigDirs(), which keys its TTL on it
     this.resumableConfigDir =
-      d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
+      d.resumableConfigDir ??
+      process.env.CLAUDE_CONFIG_DIR?.trim() ??
+      this.currentConfigDirs()[0] ??
+      "";
     this.defaultAccountDir = d.defaultAccountDir ?? defaultAccountDir();
-    this.now = d.now ?? Date.now;
     this.detectSync = d.detect;
     this.opencodeDataDirOf = d.opencodeDataDir ?? defaultOpencodeDataDir;
     this.watchDir =
@@ -188,6 +216,28 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         );
       });
     this.generator = d.generator;
+  }
+
+  /**
+   * The Claude config dirs to scan, re-resolved on every call. Discovery used to
+   * run once in the constructor, so an account dir created — or given its first
+   * `projects/` — after startup stayed invisible for the life of the process.
+   * Production discovery is memoized for {@link CONFIG_DIRS_TTL_MS} so a burst of
+   * watcher events costs one $HOME readdir, not one per scan. Tests inject a
+   * fixed list (or a provider) through {@link DarkfactoryDeps}.
+   */
+  private currentConfigDirs(): string[] {
+    if (typeof this.configDirsSource !== "function") return this.configDirsSource;
+    // An injected provider stays uncached: it is the seam that proves rediscovery
+    // happens at all, and a TTL in front of it would hide exactly that.
+    if (this.configDirsSource !== defaultConfigDirs) return this.configDirsSource();
+    const now = this.now();
+    if (this.configDirsCache && now - this.configDirsCache.at < CONFIG_DIRS_TTL_MS) {
+      return this.configDirsCache.value;
+    }
+    const value = this.configDirsSource();
+    this.configDirsCache = { at: now, value };
+    return value;
   }
 
   /**
@@ -375,9 +425,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   /**
-   * The Claude accounts a new session can be started under. Discovery runs once,
-   * in the constructor, so this is a static description of it — no scan, no push
-   * channel.
+   * The Claude accounts a new session can be started under. Discovery re-runs
+   * here (see currentConfigDirs), so an account added after startup shows up as
+   * soon as the wall asks again — there is no push channel for this list.
    *
    * Marked against the default account rather than `resumableConfigDir`: SPEXR
    * is often launched from a shell that exports CLAUDE_CONFIG_DIR, and that
@@ -385,7 +435,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * with an account no new session would have used.
    */
   async listConfigDirs(): Promise<ClaudeConfigDir[]> {
-    return describeConfigDirs(this.configDirs, this.defaultAccountDir);
+    return describeConfigDirs(this.currentConfigDirs(), this.defaultAccountDir);
   }
 
   async planFocus(sessionId: string): Promise<FocusPlan> {
@@ -454,7 +504,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const onChange = debounce(() => {
       void this.pushTiles();
     }, 400);
-    for (const dir of this.configDirs) {
+    for (const dir of this.currentConfigDirs()) {
       try {
         // NOTE: `recursive` is implemented only on macOS and Windows; on Linux it
         // throws and is swallowed here, so live push-refresh is inert there (the
@@ -465,6 +515,20 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       }
     }
     void this.armOpencodeWatch(onChange);
+    this.startPolling();
+  }
+
+  /**
+   * Periodic full rescan, the safety net under the watchers (see
+   * {@link POLL_INTERVAL_MS}). It goes through pushTiles, so a tick landing on
+   * an in-flight scan coalesces instead of stacking another one.
+   */
+  private startPolling(): void {
+    if (this.poll) return;
+    this.poll = setInterval(() => {
+      void this.pushTiles();
+    }, POLL_INTERVAL_MS);
+    this.poll.unref?.();
   }
 
   /**
@@ -555,7 +619,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const out: UnifiedRef[] = [];
     const installed = await this.installed();
     if (installed.includes(claudeHarness)) {
-      const claudeRefs = await scanClaudeTranscripts(this.configDirs);
+      const claudeRefs = await scanClaudeTranscripts(this.currentConfigDirs());
       for (const r of claudeRefs) {
         out.push({
           harness: claudeHarness,
@@ -583,6 +647,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   dispose(): void {
     this.watching = false;
     if (this.loopMonitor) clearInterval(this.loopMonitor);
+    if (this.poll) {
+      clearInterval(this.poll);
+      this.poll = undefined;
+    }
     for (const w of this.wallWatchers) w.close();
     this.wallWatchers.length = 0;
     for (const { watcher } of this.follows.values()) watcher.close();

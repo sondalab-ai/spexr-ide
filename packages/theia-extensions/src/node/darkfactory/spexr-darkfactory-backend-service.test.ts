@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FSWatcher } from "node:fs";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +9,7 @@ import {
   forEachConcurrent,
 } from "./spexr-darkfactory-backend-service.js";
 import { stitchBoundedLines } from "./bounded-read.js";
+import { configDirs as discoverConfigDirs } from "./config-dirs.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
 import type { SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
 
@@ -642,5 +643,81 @@ describe("pushTiles coalescing + live-dir cache", () => {
     t += 15_000; // LIVE_DIRS_TTL_MS
     await s.listTiles();
     expect(psCalls).toBe(2); // TTL expired → re-checked
+  });
+});
+
+/** A minimal but real Claude transcript: has a cwd, a mode line (→ interactive) and a prompt. */
+async function writeSession(home: string, configDir: string, sessionId: string): Promise<void> {
+  const projectDir = join(home, configDir, "projects", "-tmp-proj");
+  await mkdir(projectDir, { recursive: true });
+  await writeFile(
+    join(projectDir, `${sessionId}.jsonl`),
+    [
+      `{"type":"mode","mode":"normal"}`,
+      `{"cwd":"${join(home, "proj")}","type":"user","message":{"role":"user","content":[{"type":"text","text":"fix the auth check"}]}}`,
+      `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"on it"}]}}`,
+    ].join("\n"),
+  );
+}
+
+describe("config-dir rediscovery", () => {
+  // The regression this guards: config dirs used to be discovered once, in the
+  // constructor. A session started outside SPEXR under an account dir that did
+  // not exist (or had no `projects/`) at startup was then invisible for the life
+  // of the process — no watcher covered it, and no rescan would ever look there.
+  it("picks up a session under a config dir that appeared after construction", async () => {
+    const home = await mkdtemp(join(tmpdir(), "spexr-df-home-"));
+    try {
+      await writeSession(home, ".claude", "s-known");
+      const s = new SpexrDarkfactoryBackendService({
+        // Stands in for production's per-scan discovery, running the real one.
+        configDirs: () => discoverConfigDirs({}, { home }),
+        detect: (h) => h.id === "claude",
+        liveProjectDirs: () => Promise.resolve(null),
+      });
+      expect((await s.listTiles()).map((t) => t.sessionId)).toEqual(["s-known"]);
+
+      await writeSession(home, ".claude-later", "s-outside");
+      const after = (await s.listTiles()).map((t) => t.sessionId);
+      expect(after).toContain("s-outside");
+      expect(after).toContain("s-known");
+      expect(await s.listConfigDirs()).toContainEqual({
+        path: join(home, ".claude-later"),
+        label: ".claude-later",
+        isDefault: false,
+      });
+      s.dispose();
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("wall polling", () => {
+  it("rescans on the poll interval without any watcher event", async () => {
+    vi.useFakeTimers();
+    try {
+      let scans = 0;
+      const s = svc({
+        configDirs: [],
+        detect: () => false,
+        watchDir: fakeWatch([]),
+        listTranscripts: async () => {
+          scans++;
+          return [];
+        },
+      });
+      s.setClient(fakeClient);
+      expect(scans).toBe(0); // arming the watchers alone does not scan
+      await vi.advanceTimersByTimeAsync(20_000); // POLL_INTERVAL_MS
+      expect(scans).toBe(1);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(scans).toBe(2);
+      s.dispose();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(scans).toBe(2); // disposed → the timer is gone
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
