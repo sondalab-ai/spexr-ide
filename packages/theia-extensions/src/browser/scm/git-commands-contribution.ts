@@ -13,6 +13,7 @@ import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import type { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { toRepoRelative } from "./relative-path.js";
+import { pushBlockReason } from "./push-preflight.js";
 import {
   allDeleteModifyConflicts,
   allInGroup,
@@ -109,8 +110,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       execute: () => this.generateCommitMessage(),
     });
     commands.registerCommand(GitCommands.PUSH, {
-      execute: () =>
-        this.runGitOp("Push", () => this.onProvider((p) => p.push()), "Pushed to remote."),
+      execute: () => this.pushWithPreflight(),
     });
     commands.registerCommand(GitCommands.PULL, {
       execute: () =>
@@ -309,6 +309,29 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
         }),
       "Changes committed.",
     );
+  }
+
+  /**
+   * Push, unless the push would send nothing. A no-op push still succeeds, and
+   * "Pushed to remote." on staged-but-uncommitted work reads as a lie — so the
+   * refusal happens before runGitOp, where that toast cannot fire.
+   *
+   * Refreshes first: the decision is made on the status the panel holds, which
+   * a background change may have left behind. A refresh that fails leaves the
+   * status undefined and the push goes ahead — guessing wrong must not block a
+   * push the user is entitled to.
+   */
+  private async pushWithPreflight(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    await provider.refresh();
+    const status = provider.lastStatus;
+    const reason = status && pushBlockReason(status);
+    if (reason) {
+      this.messages.warn(reason);
+      return;
+    }
+    await this.runGitOp("Push", () => provider.push(), "Pushed to remote.");
   }
 
   private async checkoutWithPrompt(): Promise<void> {
