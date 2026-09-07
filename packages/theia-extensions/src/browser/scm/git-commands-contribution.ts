@@ -13,6 +13,7 @@ import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import type { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { toRepoRelative } from "./relative-path.js";
+import { explainCheckoutFailure } from "./checkout-failure.js";
 import { commitBlockReason } from "./commit-preflight.js";
 import { formatPullOutcome } from "./pull-outcome-format.js";
 import { pushBlockReason } from "./push-preflight.js";
@@ -420,6 +421,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       `Checkout ${picked.label}`,
       () => this.onProvider((p) => p.checkout(picked.label)),
       `Checked out branch: ${picked.label}`,
+      explainCheckoutFailure,
     );
   }
 
@@ -542,11 +544,15 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * already reported here — a caller that chains two operations needs to know
    * not to start the second one, and Commit & Push must not push after a commit
    * that failed.
+   *
+   * `explainError` gets first refusal on the failure text, for operations whose
+   * git message states the problem in terms the user cannot act on.
    */
   private async runGitOp(
     label: string,
     op: () => Promise<void>,
     successMessage?: string,
+    explainError?: (message: string) => string | undefined,
   ): Promise<boolean> {
     const progress = await this.progressService.showProgress({
       text: `${label}…`,
@@ -557,7 +563,8 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       if (successMessage) this.messages.info(successMessage);
       return true;
     } catch (err) {
-      this.messages.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
+      const raw = err instanceof Error ? err.message : String(err);
+      this.messages.error(explainError?.(raw) ?? `${label} failed: ${raw}`);
       return false;
     } finally {
       progress.cancel();
