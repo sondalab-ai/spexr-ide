@@ -166,7 +166,8 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "How to start Claude per account. Each profile names a command — a shell " +
         "alias, a binary name, or a path — and the CLAUDE_CONFIG_DIR it belongs to, " +
-        "so resuming a session uses the command that owns it. Folder-scoped.",
+        "so resuming a session uses the command that owns it. Written at user level " +
+        "by `Spexr: Detect Claude launch profiles`; can be overridden per folder.",
       items: {
         type: "object",
         required: ["command", "configDir"],
