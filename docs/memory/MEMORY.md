@@ -25,3 +25,4 @@ One line per memory. Linked file holds the body.
 - [One spec, one commit](one-spec-one-commit.md) — ship each spec as its own small reviewable commit; avoid mega-commits.
 - [Config dir inherited from the launching shell](config-dir-inherited-from-the-launching-shell.md) — SPEXR inherits CLAUDE_CONFIG_DIR from the shell that started it; every launch path must set the account itself.
 - [Which Claude account a config dir uses](which-claude-account-a-config-dir-uses.md) — read it with `claude auth status`; the keychain entry differs by whether the variable is set at all.
+- [Memory notes are public](memory-notes-are-public.md) — docs/memory/ ships in a public repo; keep personal and account details out.
