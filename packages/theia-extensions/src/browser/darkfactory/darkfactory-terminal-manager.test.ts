@@ -80,12 +80,23 @@ function shellLine(calls: NewTerminalCall[]): string {
 describe("SpexrDarkfactoryTerminalManager harness selection", () => {
   it("launches claude --resume with the config dir export for a UUID session", async () => {
     const { manager, calls } = makeManager();
-    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude-work", false);
     expect(calls).toHaveLength(1);
     expect(shellLine(calls)).toBe(
-      `export CLAUDE_CONFIG_DIR='/Users/x/.claude'; cd '/Users/x/proj'; claude '--resume' '${UUID}'; exec "$SHELL" -i`,
+      `export CLAUDE_CONFIG_DIR='/Users/x/.claude-work'; cd '/Users/x/proj'; claude '--resume' '${UUID}'; exec "$SHELL" -i`,
     );
-    expect(calls[0]!.options.env).toEqual({ CLAUDE_CONFIG_DIR: "/Users/x/.claude" });
+    expect(calls[0]!.options.env).toEqual({ CLAUDE_CONFIG_DIR: "/Users/x/.claude-work" });
+  });
+
+  // The default account is the one an unset CLAUDE_CONFIG_DIR selects; exporting
+  // its path would reach a different keychain entry, and so a different login.
+  it("unsets the variable for the default account instead of exporting its path", async () => {
+    const { manager, calls } = makeManager();
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+    expect(shellLine(calls)).toBe(
+      `unset CLAUDE_CONFIG_DIR; cd '/Users/x/proj'; claude '--resume' '${UUID}'; exec "$SHELL" -i`,
+    );
+    expect(calls[0]!.options.env).toEqual({});
   });
 
   it("adds --fork-session for a forked claude resume", async () => {
@@ -134,15 +145,15 @@ describe("SpexrDarkfactoryTerminalManager harness selection", () => {
 
   it("still exports the config dir for a profile that does not set it", async () => {
     const { manager, calls } = makeManager({
-      "spexr.claude.launchProfiles": [{ command: "cld", configDir: "~/.claude" }],
+      "spexr.claude.launchProfiles": [{ command: "cld", configDir: "~/.claude-work" }],
     });
 
-    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude-work", false);
 
     expect(shellLine(calls)).toBe(
-      `export CLAUDE_CONFIG_DIR='/Users/x/.claude'; cd '/Users/x/proj'; cld '--resume' '${UUID}'; exec "$SHELL" -i`,
+      `export CLAUDE_CONFIG_DIR='/Users/x/.claude-work'; cd '/Users/x/proj'; cld '--resume' '${UUID}'; exec "$SHELL" -i`,
     );
-    expect(calls[0]!.options.env).toEqual({ CLAUDE_CONFIG_DIR: "/Users/x/.claude" });
+    expect(calls[0]!.options.env).toEqual({ CLAUDE_CONFIG_DIR: "/Users/x/.claude-work" });
   });
 
   it("uses the profile for a new session too, not only for resumes", async () => {
@@ -175,14 +186,14 @@ describe("SpexrDarkfactoryTerminalManager harness selection", () => {
   it("ignores a profile whose command carries shell syntax", async () => {
     const { manager, calls } = makeManager({
       "spexr.claude.launchProfiles": [
-        { command: "cld; rm -rf /", configDir: "~/.claude", ownsConfigDir: true },
+        { command: "cld; rm -rf /", configDir: "~/.claude-work", ownsConfigDir: true },
       ],
     });
 
-    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude", false);
+    await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude-work", false);
 
     expect(shellLine(calls)).toBe(
-      `export CLAUDE_CONFIG_DIR='/Users/x/.claude'; cd '/Users/x/proj'; claude '--resume' '${UUID}'; exec "$SHELL" -i`,
+      `export CLAUDE_CONFIG_DIR='/Users/x/.claude-work'; cd '/Users/x/proj'; claude '--resume' '${UUID}'; exec "$SHELL" -i`,
     );
   });
 

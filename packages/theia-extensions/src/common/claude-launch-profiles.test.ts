@@ -132,10 +132,26 @@ describe("resolveLaunchPlan", () => {
   });
 
   it("still exports the config dir for a profile that does not set it", () => {
+    const wrapper: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude-work" };
+    expect(resolveLaunchPlan([wrapper], "/Users/x/.claude-work", "")).toEqual({
+      command: "cld",
+      exportConfigDir: "/Users/x/.claude-work",
+      unquoted: true,
+    });
+  });
+
+  // Claude Code stores its token in a different keychain entry depending on
+  // whether CLAUDE_CONFIG_DIR is set at all, so exporting the default path
+  // reaches a different account than running `claude` by hand does.
+  it("never exports the default account, which is named by leaving it unset", () => {
+    expect(resolveLaunchPlan([], "/Users/x/.claude", "").exportConfigDir).toBe("");
+  });
+
+  it("leaves the default account unset for a profile that does not own it", () => {
     const wrapper: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude" };
     expect(resolveLaunchPlan([wrapper], "/Users/x/.claude", "")).toEqual({
       command: "cld",
-      exportConfigDir: "/Users/x/.claude",
+      exportConfigDir: "",
       unquoted: true,
     });
   });
@@ -147,9 +163,9 @@ describe("resolveLaunchPlan", () => {
   });
 
   it("falls back to the executable path, which stays quotable", () => {
-    expect(resolveLaunchPlan([], "/Users/x/.claude", "/opt/my claude/claude")).toEqual({
+    expect(resolveLaunchPlan([], "/Users/x/.claude-work", "/opt/my claude/claude")).toEqual({
       command: "/opt/my claude/claude",
-      exportConfigDir: "/Users/x/.claude",
+      exportConfigDir: "/Users/x/.claude-work",
       unquoted: false,
     });
   });

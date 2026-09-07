@@ -90,6 +90,9 @@ export function profileForConfigDir(
   return profiles.find((p) => sameConfigDir(p.configDir, configDir));
 }
 
+/** Where a Claude account profile with no explicit config dir points. */
+export const DEFAULT_CONFIG_DIR = "~/.claude";
+
 /** What a launch needs: the command word, and whether to export the config dir. */
 export interface LaunchPlan {
   readonly command: string;
@@ -100,12 +103,26 @@ export interface LaunchPlan {
 }
 
 /**
+ * The config dir to export for an account, empty when it must not be exported.
+ *
+ * The default account is named by *not* setting CLAUDE_CONFIG_DIR, not by
+ * setting it to `~/.claude`: Claude Code keeps its OAuth token in a different
+ * keychain entry depending on whether the variable is set at all, so exporting
+ * the default path lands on a different identity than running `claude` by hand.
+ * The account the user re-authenticates in a terminal is the unset one.
+ */
+function exportFor(configDir: string): string {
+  return sameConfigDir(configDir, DEFAULT_CONFIG_DIR) ? "" : configDir;
+}
+
+/**
  * Decide how to launch Claude for a config dir.
  *
  * A profile wins over the executable-path preference, and a profile that sets
  * the account itself suppresses the export so the two cannot disagree. With no
  * profile the behaviour is what it was before profiles existed: the configured
- * path, or a bare `claude`, with the config dir exported.
+ * path, or a bare `claude`. The config dir is exported unless it is the default
+ * account, which is expressed by leaving the variable unset.
  */
 export function resolveLaunchPlan(
   profiles: readonly ClaudeLaunchProfile[],
@@ -116,12 +133,12 @@ export function resolveLaunchPlan(
   if (profile) {
     return {
       command: profile.command,
-      exportConfigDir: profile.ownsConfigDir ? "" : configDir,
+      exportConfigDir: profile.ownsConfigDir ? "" : exportFor(configDir),
       unquoted: true,
     };
   }
   const exe = executablePath.trim();
-  return { command: exe || "claude", exportConfigDir: configDir, unquoted: !exe };
+  return { command: exe || "claude", exportConfigDir: exportFor(configDir), unquoted: !exe };
 }
 
 /**
@@ -140,9 +157,6 @@ export function launchOptionLabel(
   return profile ? `${account} — ${profile.command}` : account;
 }
 
-/** Where a Claude account profile with no explicit config dir points. */
-export const DEFAULT_CONFIG_DIR = "~/.claude";
-
 /** The parts of an account profile a launch decision depends on. */
 export interface AccountProfile {
   readonly executablePath?: string;
@@ -152,11 +166,11 @@ export interface AccountProfile {
 /**
  * Decide how the agent terminal starts Claude for an account profile.
  *
- * Differs from `resolveLaunchPlan` in what an empty `exportConfigDir` means:
- * the agent terminal *unsets* CLAUDE_CONFIG_DIR rather than leaving it, so a
- * stray value in the host environment cannot redirect the default account. A
- * launch profile that owns the account gets the same treatment — clearing the
- * variable is what leaves the command in sole charge of it.
+ * Both callers now treat an empty `exportConfigDir` the same way — unset the
+ * variable rather than leave it — so a stray value in the host environment
+ * cannot redirect the default account, and a launch profile that owns the
+ * account is left in sole charge of it. An account that names the default
+ * config dir explicitly is also expressed by unsetting: see `exportFor`.
  */
 export function resolveAgentLaunch(
   profiles: readonly ClaudeLaunchProfile[],
@@ -167,12 +181,12 @@ export function resolveAgentLaunch(
   if (match) {
     return {
       command: match.command,
-      exportConfigDir: match.ownsConfigDir ? "" : configDir,
+      exportConfigDir: match.ownsConfigDir ? "" : exportFor(configDir),
       unquoted: true,
     };
   }
   const exe = (account.executablePath ?? "").trim();
-  return { command: exe || "claude", exportConfigDir: configDir, unquoted: !exe };
+  return { command: exe || "claude", exportConfigDir: exportFor(configDir), unquoted: !exe };
 }
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
