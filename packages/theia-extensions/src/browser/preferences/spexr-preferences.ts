@@ -143,15 +143,17 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       type: "string",
       default: "",
       description:
-        "Path override for the Claude Code CLI binary used by the SPEXR agent. " +
-        "Leave empty to auto-detect from PATH. Folder-scoped.",
+        "Path override for the Claude Code CLI binary used by the SPEXR agent, " +
+        "e.g. /usr/local/bin/claude or ~/.local/bin/claude. Leave empty to " +
+        "auto-detect from PATH. For a shell alias use spexr.claude.launchProfiles " +
+        "instead: an alias names no file. Folder-scoped.",
     },
     [SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE]: {
       type: "string",
       default: "",
       description:
-        "CLAUDE_CONFIG_DIR override passed to the spawned CLI. Set automatically " +
-        "when a Claude account profile is chosen. Folder-scoped.",
+        "CLAUDE_CONFIG_DIR override passed to the spawned CLI, e.g. ~/.claude-perso. " +
+        "Set automatically when a Claude account profile is chosen. Folder-scoped.",
     },
     [SPEXR_CLAUDE_PROFILE_ID_PREFERENCE]: {
       type: "string",
@@ -168,9 +170,36 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "alias, a binary name, or a path — and the CLAUDE_CONFIG_DIR it belongs to, " +
         "so resuming a session uses the command that owns it. Written at user level " +
         "by `Spexr: Detect Claude launch profiles`; can be overridden per folder.",
+      // The settings UI sends an array of objects to settings.json rather than
+      // rendering inputs, so a worked example has to travel with the schema:
+      // these are what the JSON editor offers on completion.
+      defaultSnippets: [
+        {
+          label: "Wrapper alias (sets its own account)",
+          description:
+            "A shell alias such as alias cld-perso='CLAUDE_CONFIG_DIR=~/.claude-perso cld'",
+          body: {
+            label: "Perso",
+            command: "cld-perso",
+            configDir: "~/.claude-perso",
+            ownsConfigDir: true,
+          },
+        },
+        {
+          label: "Wrapper command for an account",
+          description: "A binary or script that does not set CLAUDE_CONFIG_DIR itself",
+          body: { label: "Work", command: "cld", configDir: "~/.claude" },
+        },
+      ],
       items: {
         type: "object",
         required: ["command", "configDir"],
+        defaultSnippets: [
+          {
+            label: "Launch profile",
+            body: { label: "", command: "", configDir: "~/.claude", ownsConfigDir: false },
+          },
+        ],
         properties: {
           label: {
             type: "string",
@@ -179,7 +208,8 @@ const SpexrPreferencesSchema: PreferenceSchema = {
           command: {
             type: "string",
             description:
-              "Command to run: a single word (alias, binary name or path). " +
+              "Command to run: a single word (alias, binary name or path), " +
+              "e.g. cld-perso, claude or /usr/local/bin/claude. " +
               "Arguments, spaces and shell syntax are rejected.",
           },
           configDir: {
