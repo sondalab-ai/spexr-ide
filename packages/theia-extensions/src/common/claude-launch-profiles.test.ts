@@ -1,0 +1,159 @@
+import { describe, expect, it } from "vitest";
+import {
+  isValidLaunchCommand,
+  parseLaunchProfiles,
+  profileForConfigDir,
+  resolveLaunchPlan,
+  sameConfigDir,
+  type ClaudeLaunchProfile,
+} from "./claude-launch-profiles.js";
+
+const PERSO: ClaudeLaunchProfile = {
+  label: "Perso",
+  command: "cld-perso",
+  configDir: "~/.claude-perso",
+  ownsConfigDir: true,
+};
+
+describe("isValidLaunchCommand", () => {
+  it.each(["claude", "cld", "cld-perso", "/usr/local/bin/claude", "claude_2.0", "./cld"])(
+    "accepts %s",
+    (command) => {
+      expect(isValidLaunchCommand(command)).toBe(true);
+    },
+  );
+
+  it.each([
+    "cld --resume",
+    "cld; rm -rf /",
+    "cld && echo",
+    "$(whoami)",
+    "`id`",
+    "cld|tee",
+    "cld\nrm",
+    "",
+    "cl d",
+  ])("rejects %j", (command) => {
+    expect(isValidLaunchCommand(command)).toBe(false);
+  });
+});
+
+describe("sameConfigDir", () => {
+  it("matches identical paths", () => {
+    expect(sameConfigDir("/Users/x/.claude", "/Users/x/.claude")).toBe(true);
+  });
+
+  it("matches a tilde reference against the absolute path it names", () => {
+    expect(sameConfigDir("~/.claude-perso", "/Users/x/.claude-perso")).toBe(true);
+    expect(sameConfigDir("/Users/x/.claude-perso", "~/.claude-perso")).toBe(true);
+  });
+
+  it("ignores a trailing slash and surrounding blanks", () => {
+    expect(sameConfigDir(" ~/.claude-perso/ ", "/Users/x/.claude-perso")).toBe(true);
+  });
+
+  it("does not match a different directory with the same prefix", () => {
+    expect(sameConfigDir("~/.claude", "/Users/x/.claude-perso")).toBe(false);
+  });
+
+  it("does not match a suffix that is not a path segment", () => {
+    expect(sameConfigDir("~/.claude", "/Users/x/work.claude")).toBe(false);
+  });
+
+  it("treats an empty reference as no match", () => {
+    expect(sameConfigDir("", "/Users/x/.claude")).toBe(false);
+  });
+});
+
+describe("parseLaunchProfiles", () => {
+  it("reads a well-formed entry", () => {
+    expect(
+      parseLaunchProfiles([
+        { label: "Perso", command: "cld-perso", configDir: "~/.claude-perso", ownsConfigDir: true },
+      ]),
+    ).toEqual([PERSO]);
+  });
+
+  it("falls back to the command as label", () => {
+    expect(parseLaunchProfiles([{ command: "cld", configDir: "~/.claude" }])[0]).toMatchObject({
+      label: "cld",
+      ownsConfigDir: false,
+    });
+  });
+
+  it("drops entries whose command could carry shell syntax", () => {
+    expect(parseLaunchProfiles([{ command: "cld; rm -rf /", configDir: "~/.claude" }])).toEqual([]);
+  });
+
+  it("drops entries without a config dir", () => {
+    expect(parseLaunchProfiles([{ command: "cld", configDir: "  " }])).toEqual([]);
+  });
+
+  it("keeps the valid entries of a partly broken list", () => {
+    const parsed = parseLaunchProfiles([
+      { command: "no dir" },
+      { command: "cld", configDir: "~/.claude" },
+    ]);
+    expect(parsed.map((p) => p.command)).toEqual(["cld"]);
+  });
+
+  it("returns nothing for a value that is not a list", () => {
+    expect(parseLaunchProfiles({ command: "cld" })).toEqual([]);
+    expect(parseLaunchProfiles(undefined)).toEqual([]);
+  });
+});
+
+describe("profileForConfigDir", () => {
+  it("finds the profile that owns the directory", () => {
+    expect(profileForConfigDir([PERSO], "/Users/x/.claude-perso")).toBe(PERSO);
+  });
+
+  it("returns nothing when no profile matches", () => {
+    expect(profileForConfigDir([PERSO], "/Users/x/.claude")).toBeUndefined();
+  });
+
+  it("returns nothing for an empty config dir", () => {
+    expect(profileForConfigDir([PERSO], "")).toBeUndefined();
+  });
+});
+
+describe("resolveLaunchPlan", () => {
+  it("uses the profile command and suppresses the export when it owns the account", () => {
+    expect(resolveLaunchPlan([PERSO], "/Users/x/.claude-perso", "")).toEqual({
+      command: "cld-perso",
+      exportConfigDir: "",
+      unquoted: true,
+    });
+  });
+
+  it("still exports the config dir for a profile that does not set it", () => {
+    const wrapper: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude" };
+    expect(resolveLaunchPlan([wrapper], "/Users/x/.claude", "")).toEqual({
+      command: "cld",
+      exportConfigDir: "/Users/x/.claude",
+      unquoted: true,
+    });
+  });
+
+  it("prefers the profile over the configured executable path", () => {
+    expect(resolveLaunchPlan([PERSO], "/Users/x/.claude-perso", "/opt/claude").command).toBe(
+      "cld-perso",
+    );
+  });
+
+  it("falls back to the executable path, which stays quotable", () => {
+    expect(resolveLaunchPlan([], "/Users/x/.claude", "/opt/my claude/claude")).toEqual({
+      command: "/opt/my claude/claude",
+      exportConfigDir: "/Users/x/.claude",
+      unquoted: false,
+    });
+  });
+
+  it("falls back to a bare claude when nothing is configured", () => {
+    expect(resolveLaunchPlan([], "", "")).toEqual({
+      command: "claude",
+      exportConfigDir: "",
+      unquoted: true,
+    });
+  });
+});

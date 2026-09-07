@@ -38,6 +38,15 @@ export const SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE = "spexr.claude.configDir";
 export const SPEXR_CLAUDE_PROFILE_ID_PREFERENCE = "spexr.claude.profileId";
 
 /**
+ * Key for the Claude launch profiles preference.
+ *
+ * Each profile binds a command to the config dir it starts Claude under, so a
+ * shell alias (`cld-perso`) can be used where a path preference cannot reach.
+ * See `common/claude-launch-profiles.ts`.
+ */
+export const SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE = "spexr.claude.launchProfiles";
+
+/**
  * Key for the active expert persona id for this workspace.
  *
  * Folder-scoped. Empty string means no expert is active (base prompt).
@@ -150,6 +159,41 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "ID of the Claude account profile chosen for this workspace. " +
         "Empty means not yet selected (prompt will appear on next open). Folder-scoped.",
+    },
+    [SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE]: {
+      type: "array",
+      default: [],
+      description:
+        "How to start Claude per account. Each profile names a command — a shell " +
+        "alias, a binary name, or a path — and the CLAUDE_CONFIG_DIR it belongs to, " +
+        "so resuming a session uses the command that owns it. Folder-scoped.",
+      items: {
+        type: "object",
+        required: ["command", "configDir"],
+        properties: {
+          label: {
+            type: "string",
+            description: "Name shown in the session launcher. Defaults to the command.",
+          },
+          command: {
+            type: "string",
+            description:
+              "Command to run: a single word (alias, binary name or path). " +
+              "Arguments, spaces and shell syntax are rejected.",
+          },
+          configDir: {
+            type: "string",
+            description: "Config dir this command starts Claude under, e.g. ~/.claude-perso.",
+          },
+          ownsConfigDir: {
+            type: "boolean",
+            default: false,
+            description:
+              "True when the command sets CLAUDE_CONFIG_DIR itself (as an alias does). " +
+              "SPEXR then leaves the variable to the command instead of exporting it.",
+          },
+        },
+      },
     },
     [SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE]: {
       type: "string",
