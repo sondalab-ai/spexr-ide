@@ -18,10 +18,15 @@ import { isClaudeReady } from "./claude-readiness.js";
 import { expandLeftPanelWithMinWidth } from "../shell/side-panel.js";
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
+  SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
   SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
   SPEXR_CLAUDE_PROFILE_ID_PREFERENCE,
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
+import {
+  parseLaunchProfiles,
+  resolveAgentLaunch,
+} from "../../common/claude-launch-profiles.js";
 
 export const CLAUDE_TERMINAL_ID = "spexr-claude";
 
@@ -216,15 +221,23 @@ export class ClaudeTerminalManager {
    * loses the env the shell re-derives and made Claude re-onboard.
    *
    * The account is set authoritatively in the `-c` line: `export CLAUDE_CONFIG_DIR`
-   * for a profile that carries one, and `unset CLAUDE_CONFIG_DIR` for the default
-   * profile so it uses `~/.claude` even when the host env has a stray
-   * CLAUDE_CONFIG_DIR (e.g. a shell that exports one). The resolved executable is
-   * invoked directly — never an account alias.
+   * for a profile that carries one, and `unset CLAUDE_CONFIG_DIR` otherwise, so
+   * the default account is used even when the host env has a stray
+   * CLAUDE_CONFIG_DIR (e.g. a shell that exports one).
+   *
+   * A launch profile bound to the account replaces the executable, and its
+   * command is spliced unquoted — quoting is what stops the interactive shell
+   * expanding an alias such as `cld-perso`. Such a command sets the account
+   * itself, so the variable is unset and left to it.
    */
   private resolveShell(profile: ClaudeProfileDto, shellArgs: string[]): { shellArgs: string[] } {
-    const bin = profile.executablePath ? shellQuote(profile.executablePath) : "claude";
-    const account = profile.configDir
-      ? `export CLAUDE_CONFIG_DIR=${shellQuote(profile.configDir)}`
+    const plan = resolveAgentLaunch(
+      parseLaunchProfiles(this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE)),
+      profile,
+    );
+    const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
+    const account = plan.exportConfigDir
+      ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}`
       : "unset CLAUDE_CONFIG_DIR";
     const line = `${account}; ${[bin, ...shellArgs.map(shellQuote)].join(" ")}`;
     return { shellArgs: ["-i", "-l", "-c", line] };

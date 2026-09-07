@@ -139,3 +139,38 @@ export function launchOptionLabel(
   const account = isDefault ? `${label} (default)` : label;
   return profile ? `${account} — ${profile.command}` : account;
 }
+
+/** Where a Claude account profile with no explicit config dir points. */
+export const DEFAULT_CONFIG_DIR = "~/.claude";
+
+/** The parts of an account profile a launch decision depends on. */
+export interface AccountProfile {
+  readonly executablePath?: string;
+  readonly configDir?: string;
+}
+
+/**
+ * Decide how the agent terminal starts Claude for an account profile.
+ *
+ * Differs from `resolveLaunchPlan` in what an empty `exportConfigDir` means:
+ * the agent terminal *unsets* CLAUDE_CONFIG_DIR rather than leaving it, so a
+ * stray value in the host environment cannot redirect the default account. A
+ * launch profile that owns the account gets the same treatment — clearing the
+ * variable is what leaves the command in sole charge of it.
+ */
+export function resolveAgentLaunch(
+  profiles: readonly ClaudeLaunchProfile[],
+  account: AccountProfile,
+): LaunchPlan {
+  const configDir = account.configDir ?? "";
+  const match = profileForConfigDir(profiles, configDir || DEFAULT_CONFIG_DIR);
+  if (match) {
+    return {
+      command: match.command,
+      exportConfigDir: match.ownsConfigDir ? "" : configDir,
+      unquoted: true,
+    };
+  }
+  const exe = (account.executablePath ?? "").trim();
+  return { command: exe || "claude", exportConfigDir: configDir, unquoted: !exe };
+}

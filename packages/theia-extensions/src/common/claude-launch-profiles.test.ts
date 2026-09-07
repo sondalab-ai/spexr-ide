@@ -4,6 +4,7 @@ import {
   launchOptionLabel,
   parseLaunchProfiles,
   profileForConfigDir,
+  resolveAgentLaunch,
   resolveLaunchPlan,
   sameConfigDir,
   type ClaudeLaunchProfile,
@@ -176,5 +177,59 @@ describe("launchOptionLabel", () => {
 
   it("shows the bare account when no profile is configured", () => {
     expect(launchOptionLabel(".claude-perso", false)).toBe(".claude-perso");
+  });
+});
+
+describe("resolveAgentLaunch", () => {
+  it("uses the profile bound to the account's config dir", () => {
+    expect(resolveAgentLaunch([PERSO], { configDir: "/Users/x/.claude-perso" })).toEqual({
+      command: "cld-perso",
+      exportConfigDir: "",
+      unquoted: true,
+    });
+  });
+
+  it("matches a profile for ~/.claude when the account carries no config dir", () => {
+    const work: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude" };
+
+    expect(resolveAgentLaunch([work], {})).toEqual({
+      command: "cld",
+      // Empty: the account has no dir of its own, so the variable is unset —
+      // which is what the default account needs anyway.
+      exportConfigDir: "",
+      unquoted: true,
+    });
+  });
+
+  it("keeps exporting the account's dir for a profile that does not own it", () => {
+    const work: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude-work" };
+
+    expect(resolveAgentLaunch([work], { configDir: "/Users/x/.claude-work" })).toEqual({
+      command: "cld",
+      exportConfigDir: "/Users/x/.claude-work",
+      unquoted: true,
+    });
+  });
+
+  it("falls back to the profile's executable path, quoted", () => {
+    expect(resolveAgentLaunch([], { executablePath: "/opt/my claude/claude" })).toEqual({
+      command: "/opt/my claude/claude",
+      exportConfigDir: "",
+      unquoted: false,
+    });
+  });
+
+  it("falls back to a bare claude and clears the account", () => {
+    expect(resolveAgentLaunch([], {})).toEqual({
+      command: "claude",
+      exportConfigDir: "",
+      unquoted: true,
+    });
+  });
+
+  it("does not let a profile for another account take over", () => {
+    expect(resolveAgentLaunch([PERSO], { configDir: "/Users/x/.claude-work" }).command).toBe(
+      "claude",
+    );
   });
 });
