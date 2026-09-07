@@ -23,9 +23,19 @@ describe("pushBlockReason", () => {
     expect(pushBlockReason(status({ upstream: undefined, files: [staged] }))).toBeUndefined();
   });
 
-  it("allows a push that has commits to send", () => {
+  it("allows a push that has commits to send and nothing to catch up on", () => {
     expect(pushBlockReason(status({ ahead: 2 }))).toBeUndefined();
-    expect(pushBlockReason(status({ ahead: 1, behind: 3, files: [staged] }))).toBeUndefined();
+    expect(pushBlockReason(status({ ahead: 2, files: [staged] }))).toBeUndefined();
+  });
+
+  it("stops a non-fast-forward push before git rejects it in its own words", () => {
+    expect(pushBlockReason(status({ ahead: 1, behind: 3 }))).toBe(
+      "Push would be rejected — 1 commit to send, but the branch is 3 commits behind origin/main. Pull first.",
+    );
+  });
+
+  it("says nothing about divergence on a branch with no upstream to diverge from", () => {
+    expect(pushBlockReason(status({ upstream: undefined, ahead: 1, behind: 3 }))).toBeUndefined();
   });
 
   it("names the staged changes, which is what the success toast otherwise hides", () => {
