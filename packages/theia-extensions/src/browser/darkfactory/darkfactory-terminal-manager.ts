@@ -139,7 +139,7 @@ export class SpexrDarkfactoryTerminalManager {
       title: baseName(projectPath),
       useServerTitle: false,
       iconClass: "codicon codicon-sparkle",
-      ...this.resolveShell(plan, args, projectPath),
+      ...this.resolveShell(plan, args, projectPath, harness.id === "claude"),
       cwd: projectPath,
       env: plan.exportConfigDir ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir } : {},
       destroyTermOnClose: false,
@@ -175,18 +175,23 @@ export class SpexrDarkfactoryTerminalManager {
    * The command is only quoted when it is a path: quoting is exactly what stops
    * zsh from expanding an alias, and `resolveLaunchPlan` says which case this is
    * (the preference that can hold a command is restricted to a single bare word
-   * for that reason). CLAUDE_CONFIG_DIR is re-exported inside the `-c` line,
-   * after the profile has run and possibly re-exported its own, unless the
-   * command owns the account itself — then the export is left out rather than
-   * left to race. Opencode has no config-dir override; only the `cd` is needed.
+   * for that reason). CLAUDE_CONFIG_DIR is set authoritatively inside the `-c`
+   * line: exported when the plan carries an account, and unset when the command
+   * owns it, so a value inherited from the shell that started SPEXR cannot
+   * redirect the session behind the command's back. Opencode has no config-dir
+   * override; only the `cd` is needed.
    */
   private resolveShell(
     plan: LaunchPlan,
     resumeArgs: string[],
     projectPath: string,
+    ownsAccount: boolean,
   ): { shellArgs: string[] } {
+    const account = plan.exportConfigDir
+      ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}`
+      : "unset CLAUDE_CONFIG_DIR";
     const prefix = [
-      plan.exportConfigDir ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}` : "",
+      ownsAccount ? account : "",
       projectPath ? `cd ${shellQuote(projectPath)}` : "",
     ]
       .filter(Boolean)

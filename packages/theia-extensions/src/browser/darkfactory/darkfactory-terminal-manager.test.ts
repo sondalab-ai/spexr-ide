@@ -117,12 +117,19 @@ describe("SpexrDarkfactoryTerminalManager harness selection", () => {
 
     await manager.openEmbedded(UUID, "/Users/x/proj", "/Users/x/.claude-perso", false);
 
-    // Unquoted, or zsh would not expand the alias; no export, because the alias
-    // sets CLAUDE_CONFIG_DIR itself.
+    // Unquoted, or zsh would not expand the alias; unset rather than exported,
+    // because the alias sets CLAUDE_CONFIG_DIR itself and a value inherited from
+    // the shell that started SPEXR must not survive into the session.
     expect(shellLine(calls)).toBe(
-      `cd '/Users/x/proj'; cld-perso '--resume' '${UUID}'; exec "$SHELL" -i`,
+      `unset CLAUDE_CONFIG_DIR; cd '/Users/x/proj'; cld-perso '--resume' '${UUID}'; exec "$SHELL" -i`,
     );
     expect(calls[0]!.options.env).toEqual({});
+  });
+
+  it("leaves opencode alone: it has no Claude account to unset", async () => {
+    const { manager, calls } = makeManager();
+    await manager.openEmbedded(SES, "/Users/x/proj", "", false);
+    expect(shellLine(calls)).not.toContain("CLAUDE_CONFIG_DIR");
   });
 
   it("still exports the config dir for a profile that does not set it", async () => {
@@ -147,7 +154,9 @@ describe("SpexrDarkfactoryTerminalManager harness selection", () => {
 
     await manager.openNew("new-key", "claude", "/Users/x/proj", "/Users/x/.claude-perso");
 
-    expect(shellLine(calls)).toBe(`cd '/Users/x/proj'; cld-perso; exec "$SHELL" -i`);
+    expect(shellLine(calls)).toBe(
+      `unset CLAUDE_CONFIG_DIR; cd '/Users/x/proj'; cld-perso; exec "$SHELL" -i`,
+    );
   });
 
   it("falls back to claude when no profile owns the config dir", async () => {
