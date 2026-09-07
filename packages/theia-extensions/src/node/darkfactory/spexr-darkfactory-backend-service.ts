@@ -8,6 +8,7 @@ import { execFile } from "node:child_process";
 import { Session as InspectorSession } from "node:inspector";
 import {
   configDirs as defaultConfigDirs,
+  defaultAccountDir,
   describeConfigDirs,
   projectsDirOf,
 } from "./config-dirs.js";
@@ -101,6 +102,8 @@ export interface DarkfactoryDeps {
   configDirs?: string[];
   /** Config dir the launch command actually resumes against (env CLAUDE_CONFIG_DIR). */
   resumableConfigDir?: string;
+  /** Account a new session starts under; defaults to `~/.claude`. */
+  defaultAccountDir?: string;
   now?: () => number;
   listTranscripts?: () => Promise<UnifiedRef[]>;
   liveProjectDirs?: () => Promise<Set<string> | null>;
@@ -131,6 +134,7 @@ interface SessionMeta {
 export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly configDirs: string[];
   private readonly resumableConfigDir: string;
+  private readonly defaultAccountDir: string;
   private readonly now: () => number;
   private readonly listTranscripts: () => Promise<UnifiedRef[]>;
   private readonly liveDirs: () => Promise<Set<string> | null>;
@@ -166,6 +170,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.configDirs = d.configDirs ?? defaultConfigDirs();
     this.resumableConfigDir =
       d.resumableConfigDir ?? process.env.CLAUDE_CONFIG_DIR?.trim() ?? this.configDirs[0] ?? "";
+    this.defaultAccountDir = d.defaultAccountDir ?? defaultAccountDir();
     this.now = d.now ?? Date.now;
     this.detectSync = d.detect;
     this.opencodeDataDirOf = d.opencodeDataDir ?? defaultOpencodeDataDir;
@@ -373,9 +378,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * The Claude accounts a new session can be started under. Discovery runs once,
    * in the constructor, so this is a static description of it — no scan, no push
    * channel.
+   *
+   * Marked against the default account rather than `resumableConfigDir`: SPEXR
+   * is often launched from a shell that exports CLAUDE_CONFIG_DIR, and that
+   * value would otherwise label the launcher's "(default)" — and pre-select it —
+   * with an account no new session would have used.
    */
   async listConfigDirs(): Promise<ClaudeConfigDir[]> {
-    return describeConfigDirs(this.configDirs, this.resumableConfigDir);
+    return describeConfigDirs(this.configDirs, this.defaultAccountDir);
   }
 
   async planFocus(sessionId: string): Promise<FocusPlan> {

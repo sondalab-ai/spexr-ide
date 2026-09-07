@@ -244,14 +244,30 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect((await s.planFocus("ses_live")).kind).toBe("readonly-follow");
   });
 
-  it("listConfigDirs names every discovered account, the resumable one first", async () => {
+  it("listConfigDirs names every discovered account, the default one first", async () => {
+    const s = svc({
+      configDirs: ["/Users/x/.claude-perso", "/Users/x/.claude"],
+      defaultAccountDir: "/Users/x/.claude",
+    });
+    expect(await s.listConfigDirs()).toEqual([
+      { path: "/Users/x/.claude", label: ".claude", isDefault: true },
+      { path: "/Users/x/.claude-perso", label: ".claude-perso", isDefault: false },
+    ]);
+  });
+
+  // SPEXR is often started from a shell that exports CLAUDE_CONFIG_DIR. That
+  // value decides what an inherited --resume attaches to, and nothing else: a
+  // new session gets the account exported into its own shell line, so labelling
+  // the launcher with it pre-selected an account the user never picked.
+  it("listConfigDirs ignores the inherited config dir when marking the default", async () => {
     const s = svc({
       configDirs: ["/Users/x/.claude", "/Users/x/.claude-perso"],
       resumableConfigDir: "/Users/x/.claude-perso",
+      defaultAccountDir: "/Users/x/.claude",
     });
     expect(await s.listConfigDirs()).toEqual([
-      { path: "/Users/x/.claude-perso", label: ".claude-perso", isDefault: true },
-      { path: "/Users/x/.claude", label: ".claude", isDefault: false },
+      { path: "/Users/x/.claude", label: ".claude", isDefault: true },
+      { path: "/Users/x/.claude-perso", label: ".claude-perso", isDefault: false },
     ]);
   });
 
