@@ -13,6 +13,10 @@ import { ScmTreeWidget } from "@theia/scm/lib/browser/scm-tree-widget";
 import type { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { toRepoRelative } from "./relative-path.js";
+import { explainCheckoutFailure } from "./checkout-failure.js";
+import { commitBlockReason } from "./commit-preflight.js";
+import { formatPullOutcome } from "./pull-outcome-format.js";
+import { pushBlockReason } from "./push-preflight.js";
 import {
   allDeleteModifyConflicts,
   allInGroup,
@@ -26,13 +30,24 @@ export const GitCommands = {
   UNSTAGE_ALL: { id: "spexr.git.unstageAll", label: "Git: Unstage All Changes" } satisfies Command,
   COMMIT: { id: "spexr.git.commit", label: "Git: Commit Staged Changes" } satisfies Command,
   COMMIT_FROM_PANEL: { id: "spexr.git.commitFromPanel", label: "Commit" } satisfies Command,
+  COMMIT_AND_PUSH: {
+    id: "spexr.git.commitAndPush",
+    label: "Git: Commit Staged Changes and Push",
+  } satisfies Command,
   GENERATE_MESSAGE: {
     id: "spexr.git.generateCommitMessage",
     label: "Git: Generate Commit Message",
   } satisfies Command,
+  UNDO_LAST_COMMIT: {
+    id: "spexr.git.undoLastCommit",
+    label: "Git: Undo Last Commit",
+  } satisfies Command,
+  AMEND_COMMIT: { id: "spexr.git.amendCommit", label: "Git: Amend Last Commit" } satisfies Command,
   PUSH: { id: "spexr.git.push", label: "Git: Push" } satisfies Command,
   PULL: { id: "spexr.git.pull", label: "Git: Pull" } satisfies Command,
   FETCH: { id: "spexr.git.fetch", label: "Git: Fetch" } satisfies Command,
+  STASH: { id: "spexr.git.stash", label: "Git: Stash Changes" } satisfies Command,
+  STASH_POP: { id: "spexr.git.stashPop", label: "Git: Pop Stash" } satisfies Command,
   CHECKOUT: { id: "spexr.git.checkout", label: "Git: Checkout Branch" } satisfies Command,
   CREATE_BRANCH: { id: "spexr.git.createBranch", label: "Git: Create Branch" } satisfies Command,
   REFRESH: { id: "spexr.git.refresh", label: "Git: Refresh" } satisfies Command,
@@ -105,20 +120,33 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     commands.registerCommand(GitCommands.COMMIT_FROM_PANEL, {
       execute: (message: unknown) => this.commit(typeof message === "string" ? message : ""),
     });
+    commands.registerCommand(GitCommands.COMMIT_AND_PUSH, {
+      execute: () => this.commitAndPush(),
+    });
     commands.registerCommand(GitCommands.GENERATE_MESSAGE, {
       execute: () => this.generateCommitMessage(),
     });
+    commands.registerCommand(GitCommands.UNDO_LAST_COMMIT, {
+      execute: () => this.undoLastCommit(),
+    });
+    commands.registerCommand(GitCommands.AMEND_COMMIT, {
+      execute: () => this.amendLastCommit(),
+    });
     commands.registerCommand(GitCommands.PUSH, {
-      execute: () =>
-        this.runGitOp("Push", () => this.onProvider((p) => p.push()), "Pushed to remote."),
+      execute: () => this.pushWithPreflight(),
     });
     commands.registerCommand(GitCommands.PULL, {
-      execute: () =>
-        this.runGitOp("Pull", () => this.onProvider((p) => p.pull()), "Pulled from remote."),
+      execute: () => this.pull(),
     });
     commands.registerCommand(GitCommands.FETCH, {
       execute: () =>
         this.runGitOp("Fetch", () => this.onProvider((p) => p.fetch()), "Fetched from remote."),
+    });
+    commands.registerCommand(GitCommands.STASH, {
+      execute: () => this.stashWithPrompt(),
+    });
+    commands.registerCommand(GitCommands.STASH_POP, {
+      execute: () => this.stashPopWithPick(),
     });
     commands.registerCommand(GitCommands.CHECKOUT, {
       execute: () => this.checkoutWithPrompt(),
@@ -279,14 +307,71 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * Commit what the message box already holds, and ask for a message only when it
    * is empty. Asking either way made the box — which the model now fills — a
    * message the user had to type again into a second prompt.
+   *
+   * The preflight runs before the prompt, not after: being asked for a message
+   * and only then told there is nothing to commit wastes the typing.
    */
   private async commitWithPrompt(): Promise<void> {
-    const typed = this.provider?.inputValue.trim() ?? "";
-    if (typed) {
-      await this.commit(typed);
+    const provider = this.provider;
+    if (!provider) return;
+    const blocked = await this.commitBlocked(provider);
+    if (blocked) {
+      this.messages.warn(blocked);
       return;
     }
-    const message = await this.quickInput.input({
+    const message = provider.inputValue.trim() || (await this.promptForMessage());
+    if (!message) return;
+    await this.runCommit(provider, message);
+  }
+
+  /** The panel's own accept action (Ctrl/Cmd+Enter in the message box). */
+  private async commit(message: string): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const blocked = await this.commitBlocked(provider);
+    if (blocked) {
+      this.messages.warn(blocked);
+      return;
+    }
+    await this.runCommit(provider, message);
+  }
+
+  /**
+   * The whole gesture behind "I am done with this change": commit, then push.
+   * Splitting it in two is what lets a commit be forgotten and a push be
+   * pressed on an unchanged branch, which is the mistake this pair of
+   * preflights otherwise only reports after the fact.
+   *
+   * The push runs its own preflight, so a commit that leaves nothing to send
+   * (an amend already pushed, say) still reports honestly rather than pushing.
+   */
+  private async commitAndPush(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const blocked = await this.commitBlocked(provider);
+    if (blocked) {
+      this.messages.warn(blocked);
+      return;
+    }
+    const message = provider.inputValue.trim() || (await this.promptForMessage());
+    if (!message) return;
+    if (!(await this.runCommit(provider, message))) return;
+    await this.pushWithPreflight();
+  }
+
+  /**
+   * Refresh, then why a commit would fail — undefined when it would work. An
+   * absent status means the refresh failed, and a push or commit the user is
+   * entitled to must not be blocked on a guess, so that fails open too.
+   */
+  private async commitBlocked(provider: SpexrGitScmProvider): Promise<string | undefined> {
+    await provider.refresh();
+    const status = provider.lastStatus;
+    return status ? commitBlockReason(status) : undefined;
+  }
+
+  private async promptForMessage(): Promise<string | undefined> {
+    return this.quickInput.input({
       prompt: "Commit message",
       placeHolder: "feat: describe your change",
       validateInput: (v) =>
@@ -294,20 +379,177 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
           ? Promise.resolve(undefined)
           : Promise.resolve("Commit message cannot be empty."),
     });
-    if (!message) return;
-    await this.commit(message);
   }
 
   /** Commit, then empty the box — on success only, so a failed commit keeps the text. */
-  private async commit(message: string): Promise<void> {
-    await this.runGitOp(
+  private async runCommit(provider: SpexrGitScmProvider, message: string): Promise<boolean> {
+    return this.runGitOp(
       "Commit",
-      () =>
-        this.onProvider(async (provider) => {
-          await provider.commit(message);
-          provider.setInputValue("");
-        }),
+      async () => {
+        await provider.commit(message);
+        provider.setInputValue("");
+      },
       "Changes committed.",
+    );
+  }
+
+  /**
+   * Push, unless the push would send nothing. A no-op push still succeeds, and
+   * "Pushed to remote." on staged-but-uncommitted work reads as a lie — so the
+   * refusal happens before runGitOp, where that toast cannot fire.
+   *
+   * Refreshes first: the decision is made on the status the panel holds, which
+   * a background change may have left behind. A refresh that fails leaves the
+   * status undefined and the push goes ahead — guessing wrong must not block a
+   * push the user is entitled to.
+   */
+  private async pushWithPreflight(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    await provider.refresh();
+    const status = provider.lastStatus;
+    const reason = status && pushBlockReason(status);
+    if (reason) {
+      this.messages.warn(reason);
+      return;
+    }
+    await this.runGitOp("Push", () => provider.push(), "Pushed to remote.");
+  }
+
+  /**
+   * Drop the last commit and put its changes back in the index — the recovery
+   * for a commit made too early, which otherwise needs a terminal.
+   */
+  private async undoLastCommit(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    await provider.refresh();
+    const ok = await this.confirmHistoryRewrite(
+      provider,
+      "Undo last commit",
+      "The commit is dropped and its changes go back to the staged area.",
+    );
+    if (!ok) return;
+    await this.runGitOp(
+      "Undo last commit",
+      () => provider.undoLastCommit(),
+      "Last commit undone — its changes are staged again.",
+    );
+  }
+
+  /**
+   * Fold what is staged into the last commit, replacing its message only when
+   * the box holds one. An empty box keeps the original message whole rather
+   * than rebuilding it from a subject, which would drop the body.
+   */
+  private async amendLastCommit(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    await provider.refresh();
+    const typed = provider.inputValue.trim();
+    const staged = provider.lastStatus?.files.some((f) => f.stagedState !== undefined) ?? false;
+    if (!typed && !staged) {
+      this.messages.warn(
+        "Nothing to amend — stage a change, or write a message to replace the last one.",
+      );
+      return;
+    }
+    const ok = await this.confirmHistoryRewrite(
+      provider,
+      "Amend last commit",
+      typed
+        ? "The last commit's message is replaced, and anything staged is folded into it."
+        : "The staged changes are folded into the last commit, keeping its message.",
+    );
+    if (!ok) return;
+    const amended = await this.runGitOp(
+      "Amend",
+      () => provider.amendCommit(typed || undefined),
+      "Last commit amended.",
+    );
+    if (amended && typed) provider.setInputValue("");
+  }
+
+  /**
+   * Confirm rewriting a commit the remote already has. With an upstream and
+   * nothing ahead, the commit about to be rewritten is the one the remote points
+   * at: the branch will only push again by force, and anyone who pulled it
+   * diverges. Ahead of the upstream, the commit is local and needs no ceremony.
+   */
+  private async confirmHistoryRewrite(
+    provider: SpexrGitScmProvider,
+    title: string,
+    what: string,
+  ): Promise<boolean> {
+    const status = provider.lastStatus;
+    if (!status?.upstream || status.ahead > 0) return true;
+    const confirmed = await new ConfirmDialog({
+      title,
+      msg: `${what}\n\nThat commit is already on ${status.upstream}. Rewriting it means the branch can only be pushed by force, and anyone who has pulled it will diverge.`,
+      ok: "Rewrite",
+      cancel: "Cancel",
+    }).open();
+    return confirmed === true;
+  }
+
+  /**
+   * Report what the pull brought rather than that it ran. The message is built
+   * from the result, so it is shown here instead of through runGitOp's fixed
+   * success text.
+   */
+  private async pull(): Promise<void> {
+    await this.runGitOp("Pull", () =>
+      this.onProvider(async (provider) => {
+        this.messages.info(formatPullOutcome(await provider.pull()));
+      }),
+    );
+  }
+
+  /**
+   * Set the working tree aside, untracked files included. The message is
+   * optional — an empty one leaves git's own "WIP on <branch>" — because being
+   * made to name a two-minute detour is what stops people from stashing.
+   */
+  private async stashWithPrompt(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const message = await this.quickInput.input({
+      prompt: "Stash message (optional) — untracked files are included",
+      placeHolder: "What you are setting aside",
+    });
+    // Undefined is Escape — a cancelled prompt, not an unnamed stash.
+    if (message === undefined) return;
+    await this.runGitOp("Stash", async () => {
+      const stashed = await provider.stashPush(message.trim() || undefined);
+      this.messages.info(
+        stashed ? "Changes stashed." : "Nothing to stash — the working tree is clean.",
+      );
+    });
+  }
+
+  /**
+   * Pop a chosen entry rather than always the newest: the stack outlives the
+   * branch it was taken on, and the top of it is often not the one wanted.
+   */
+  private async stashPopWithPick(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const entries = await provider.stashList();
+    if (entries.length === 0) {
+      this.messages.info("No stashes to pop.");
+      return;
+    }
+    const picked = await this.quickInput.pick(
+      entries.map((e) => ({ label: e.message, description: `stash@{${e.index}}` })),
+      { placeHolder: "Select a stash to restore" },
+    );
+    if (!picked) return;
+    const entry = entries.find((e) => `stash@{${e.index}}` === picked.description);
+    if (!entry) return;
+    await this.runGitOp(
+      "Pop stash",
+      () => provider.stashPop(entry.index),
+      "Stash restored and dropped.",
     );
   }
 
@@ -322,6 +564,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       `Checkout ${picked.label}`,
       () => this.onProvider((p) => p.checkout(picked.label)),
       `Checked out branch: ${picked.label}`,
+      explainCheckoutFailure,
     );
   }
 
@@ -439,11 +682,21 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     });
   }
 
+  /**
+   * True when `op` completed. Returned rather than thrown because the errors are
+   * already reported here — a caller that chains two operations needs to know
+   * not to start the second one, and Commit & Push must not push after a commit
+   * that failed.
+   *
+   * `explainError` gets first refusal on the failure text, for operations whose
+   * git message states the problem in terms the user cannot act on.
+   */
   private async runGitOp(
     label: string,
     op: () => Promise<void>,
     successMessage?: string,
-  ): Promise<void> {
+    explainError?: (message: string) => string | undefined,
+  ): Promise<boolean> {
     const progress = await this.progressService.showProgress({
       text: `${label}…`,
       options: { location: "scm" },
@@ -451,8 +704,11 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     try {
       await op();
       if (successMessage) this.messages.info(successMessage);
+      return true;
     } catch (err) {
-      this.messages.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
+      const raw = err instanceof Error ? err.message : String(err);
+      this.messages.error(explainError?.(raw) ?? `${label} failed: ${raw}`);
+      return false;
     } finally {
       progress.cancel();
     }

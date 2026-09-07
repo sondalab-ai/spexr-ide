@@ -20,6 +20,8 @@ import type {
   GitFileState,
   GitConflictKind,
   GitBranchDto,
+  GitStashEntryDto,
+  GitPullResultDto,
   GitStatusDto,
 } from "../../common/git-protocol.js";
 import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
@@ -382,15 +384,34 @@ export class SpexrGitScmProvider implements ScmProvider {
     await this.refresh();
   }
 
-  async pull(): Promise<void> {
-    if (!this.rootFsPath) return;
-    await this.gitService.pull(this.rootFsPath);
+  /** Undefined when there is no repository bound yet, so the caller says nothing. */
+  async pull(): Promise<GitPullResultDto | undefined> {
+    if (!this.rootFsPath) return undefined;
+    const result = await this.gitService.pull(this.rootFsPath);
     await this.refresh();
+    return result;
   }
 
   async fetch(): Promise<void> {
     if (!this.rootFsPath) return;
     await this.gitService.fetch(this.rootFsPath);
+    await this.refresh();
+  }
+
+  /**
+   * Move the remote-tracking branches so `behind` reflects the remote, without
+   * touching the working tree. Swallows its own failure: this runs unattended,
+   * and being offline or having no remote is not something to interrupt anyone
+   * over. The refresh still runs — the fetch may have partly succeeded, and a
+   * status re-read costs nothing.
+   */
+  async backgroundFetch(): Promise<void> {
+    if (!this.rootFsPath) return;
+    try {
+      await this.gitService.backgroundFetch(this.rootFsPath);
+    } catch {
+      /* offline, no remote, credentials nobody can be asked for */
+    }
     await this.refresh();
   }
 
@@ -403,6 +424,37 @@ export class SpexrGitScmProvider implements ScmProvider {
   async createBranch(name: string, checkoutAfter: boolean): Promise<void> {
     if (!this.rootFsPath) return;
     await this.gitService.createBranch(this.rootFsPath, name, checkoutAfter);
+    await this.refresh();
+  }
+
+  /** False when the working tree was clean and there was nothing to set aside. */
+  async stashPush(message?: string): Promise<boolean> {
+    if (!this.rootFsPath) return false;
+    const stashed = await this.gitService.stashPush(this.rootFsPath, message);
+    await this.refresh();
+    return stashed;
+  }
+
+  async stashList(): Promise<GitStashEntryDto[]> {
+    if (!this.rootFsPath) return [];
+    return this.gitService.stashList(this.rootFsPath);
+  }
+
+  async stashPop(index: number): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.stashPop(this.rootFsPath, index);
+    await this.refresh();
+  }
+
+  async undoLastCommit(): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.undoLastCommit(this.rootFsPath);
+    await this.refresh();
+  }
+
+  async amendCommit(message?: string): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.amendCommit(this.rootFsPath, message);
     await this.refresh();
   }
 

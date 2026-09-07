@@ -11,6 +11,8 @@ import type {
   GitFileState,
   GitConflictKind,
   GitBranchDto,
+  GitStashEntryDto,
+  GitPullResultDto,
   GitLogEntryDto,
   BlameResultDto,
   BlameCommitDto,
@@ -31,6 +33,13 @@ const WATCH_DEBOUNCE_MS = 150;
  */
 const MAX_COMMIT_DIFF_CHARS = 512_000;
 
+/**
+ * How long a background fetch may go without output before it is killed. It
+ * runs unattended on a timer, so a remote that hangs must not leave a git
+ * process behind on every tick.
+ */
+const BACKGROUND_FETCH_TIMEOUT_MS = 20_000;
+
 export interface GitBackendDeps {
   /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
   watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
@@ -46,6 +55,19 @@ export interface GitBackendDeps {
  * fields, then a `\t`-prefixed line carrying the source content. We key
  * commits by hash so author/date/summary are stored once.
  */
+/**
+ * One stash entry per non-empty line of `git stash list --pretty=%gs`, in the
+ * order git prints them: newest first, so the position is the `n` of
+ * `stash@{n}`.
+ */
+export function parseStashList(raw: string): GitStashEntryDto[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((message, index) => ({ index, message }));
+}
+
 export function parseBlamePorcelain(raw: string): BlameResultDto {
   const commits: Record<string, BlameCommitDto> = {};
   const lines: BlameLineDto[] = [];
@@ -524,6 +546,55 @@ export class SpexrGitBackendService implements SpexrGitService {
     return subject.length > 0 ? `${commitPrefix(staged)}: ${subject}` : null;
   }
 
+  async stashPush(root: string, message?: string): Promise<boolean> {
+    const git = this.git(root);
+    // `git stash push` on a clean tree exits 0 with "No local changes to save",
+    // so the caller can only tell the two apart if we look first.
+    if ((await git.status()).isClean()) return false;
+    await git.stash(["push", "--include-untracked", ...(message ? ["--message", message] : [])]);
+    return true;
+  }
+
+  async stashList(root: string): Promise<GitStashEntryDto[]> {
+    // %gs is the reflog subject — "WIP on main: 1a2b3c subject", or "On main:
+    // <message>" for a named stash — which is what identifies an entry to a
+    // human. The default `git stash list` format prepends stash@{n}, which we
+    // derive from the position anyway.
+    return parseStashList(await this.git(root).raw(["stash", "list", "--pretty=%gs"]));
+  }
+
+  async stashPop(root: string, index: number): Promise<void> {
+    // The index arrives over RPC and is interpolated into a git revision.
+    if (!Number.isInteger(index) || index < 0) throw new Error(`Invalid stash index: ${index}`);
+    await this.git(root).stash(["pop", `stash@{${index}}`]);
+  }
+
+  async undoLastCommit(root: string): Promise<void> {
+    const git = this.git(root);
+    if (!(await this.hasRev(git, "HEAD~1"))) {
+      throw new Error("There is no earlier commit to fall back to — this is the repository's first.");
+    }
+    await git.reset(["--soft", "HEAD~1"]);
+  }
+
+  async amendCommit(root: string, message?: string): Promise<void> {
+    const git = this.git(root);
+    if (!(await this.hasRev(git, "HEAD"))) throw new Error("There is no commit to amend yet.");
+    await git.raw(
+      message === undefined
+        ? ["commit", "--amend", "--no-edit"]
+        : ["commit", "--amend", "-m", message],
+    );
+  }
+
+  /** Whether a revision resolves, for guards that must not surface git's plumbing errors. */
+  private async hasRev(git: SimpleGit, rev: string): Promise<boolean> {
+    return git
+      .raw(["rev-parse", "--verify", rev])
+      .then(() => true)
+      .catch(() => false);
+  }
+
   async getBranches(root: string): Promise<GitBranchDto[]> {
     const git = this.git(root);
     const result = await git.branch(["-a", "-vv"]);
@@ -584,12 +655,41 @@ export class SpexrGitBackendService implements SpexrGitService {
     await git.push(["--set-upstream", pickRemote(names), head]);
   }
 
-  async pull(root: string): Promise<void> {
-    await this.git(root).pull();
+  async pull(root: string): Promise<GitPullResultDto> {
+    const result = await this.git(root).pull();
+    return {
+      changedFiles: result.files.length,
+      insertions: result.summary.insertions,
+      deletions: result.summary.deletions,
+    };
   }
 
   async fetch(root: string): Promise<void> {
     await this.git(root).fetch();
+  }
+
+  async backgroundFetch(root: string): Promise<void> {
+    // Deliberately not `this.git(root)`: that client is maxConcurrentProcesses: 1,
+    // so a fetch stalled on an unreachable remote would hold every user
+    // operation on this repository behind it for the whole timeout.
+    const git = simpleGit(root, {
+      maxConcurrentProcesses: 1,
+      timeout: { block: BACKGROUND_FETCH_TIMEOUT_MS },
+    }).env({
+      ...process.env,
+      // There is no terminal to answer a credential prompt on, and a blocked
+      // prompt would burn the timeout every tick. Fail the fetch instead.
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: "echo",
+      SSH_ASKPASS: "echo",
+      SSH_ASKPASS_REQUIRE: "never",
+      // Same for an ssh remote whose key has a passphrase. An explicit
+      // GIT_SSH_COMMAND is the user's own configuration and is left alone.
+      GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes",
+    });
+    // --no-tags: this exists to move the remote-tracking branches that `behind`
+    // is computed from, and tags are not that.
+    await git.fetch(["--no-tags", "--quiet"]);
   }
 
   async getLog(root: string, maxCount = 20): Promise<GitLogEntryDto[]> {

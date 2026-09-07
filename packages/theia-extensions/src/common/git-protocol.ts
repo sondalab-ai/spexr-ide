@@ -43,6 +43,27 @@ export interface GitStatusDto {
   readonly mergeInProgress: boolean;
 }
 
+/**
+ * What a pull actually brought in. `git pull` on an up-to-date branch succeeds
+ * and changes nothing, which a fixed "Pulled from remote." toast reports the
+ * same way as a pull that rewrote half the tree.
+ */
+export interface GitPullResultDto {
+  readonly changedFiles: number;
+  readonly insertions: number;
+  readonly deletions: number;
+}
+
+/**
+ * One entry of the stash stack. `index` is a position, not an identity: it
+ * addresses `stash@{index}` at the moment it was listed, and every push or pop
+ * shifts the entries below it.
+ */
+export interface GitStashEntryDto {
+  readonly index: number;
+  readonly message: string;
+}
+
 export interface GitBranchDto {
   readonly name: string;
   readonly isCurrent: boolean;
@@ -136,6 +157,29 @@ export interface SpexrGitService {
    * distinguish "nothing staged" themselves, from the status they already hold.
    */
   generateCommitMessage(root: string): Promise<string | null>;
+  /**
+   * `git reset --soft HEAD~1`: drop the last commit and put its changes back in
+   * the index. Throws on the repository's first commit, which has no parent to
+   * fall back onto.
+   */
+  undoLastCommit(root: string): Promise<void>;
+  /**
+   * Replace the last commit with one that also carries whatever is staged.
+   *
+   * Without `message` the original message is kept whole (`--no-edit`), which is
+   * the only safe default: a commit body cannot be reconstructed from the
+   * subject, so re-supplying a subject would silently drop it.
+   */
+  amendCommit(root: string, message?: string): Promise<void>;
+  /**
+   * Set the working tree aside, untracked files included. False when there was
+   * nothing to stash — git treats that as success and says so only on stdout.
+   */
+  stashPush(root: string, message?: string): Promise<boolean>;
+  /** The stash stack, newest first, as `stash@{0}` upward. */
+  stashList(root: string): Promise<GitStashEntryDto[]>;
+  /** Restore one entry and drop it from the stack. */
+  stashPop(root: string, index: number): Promise<void>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;
@@ -145,8 +189,19 @@ export interface SpexrGitService {
    * the remote picked from the repository's own remotes.
    */
   push(root: string): Promise<void>;
-  pull(root: string): Promise<void>;
+  pull(root: string): Promise<GitPullResultDto>;
   fetch(root: string): Promise<void>;
+  /**
+   * Fetch on the IDE's own initiative, to keep `behind` truthful between user
+   * actions. Distinct from {@link fetch} because the failure contract differs:
+   * this one runs unattended against repositories that may have no remote, no
+   * network, or credentials nobody can be asked for, so callers swallow the
+   * error where a user-initiated fetch reports it.
+   *
+   * Never prompts and never blocks indefinitely: terminal and askpass prompts
+   * are disabled and the process is abandoned after a timeout.
+   */
+  backgroundFetch(root: string): Promise<void>;
   getLog(root: string, maxCount?: number): Promise<GitLogEntryDto[]>;
   getFileAtRevision(root: string, filePath: string, rev: string): Promise<string>;
   getBlame(root: string, filePath: string): Promise<BlameResultDto>;

@@ -12,6 +12,7 @@ import {
   pickRemote,
   mapFileChange,
   dirIdentity,
+  parseStashList,
 } from "./spexr-git-backend-service.js";
 
 describe("SpexrGitBackendService", () => {
@@ -191,6 +192,86 @@ describe("SpexrGitBackendService", () => {
     const current = branches.find((b) => b.isCurrent);
     expect(current).toBeDefined();
     expect(current!.isRemote).toBe(false);
+  });
+
+  describe("stash", () => {
+    it("stashPush: sets the working tree aside, untracked files included", async () => {
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "changed");
+      fs.writeFileSync(path.join(tmpDir, "untracked.txt"), "new");
+      expect(await service.stashPush(tmpDir, "my detour")).toBe(true);
+      expect((await service.getStatus(tmpDir)).isClean).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "untracked.txt"))).toBe(false);
+    });
+
+    it("stashPush: reports a clean tree instead of git's silent success", async () => {
+      expect(await service.stashPush(tmpDir)).toBe(false);
+    });
+
+    it("stashList: newest first, named entries keeping their message", async () => {
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "one");
+      await service.stashPush(tmpDir, "first");
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "two");
+      await service.stashPush(tmpDir, "second");
+      const list = await service.stashList(tmpDir);
+      expect(list).toHaveLength(2);
+      expect(list[0]).toEqual({ index: 0, message: "On main: second" });
+      expect(list[1]).toEqual({ index: 1, message: "On main: first" });
+    });
+
+    it("stashPop: restores the chosen entry and drops it", async () => {
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "one");
+      await service.stashPush(tmpDir, "first");
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "two");
+      await service.stashPush(tmpDir, "second");
+      await service.stashPop(tmpDir, 1);
+      expect(fs.readFileSync(path.join(tmpDir, "README.md"), "utf8")).toBe("one");
+      const list = await service.stashList(tmpDir);
+      expect(list.map((e) => e.message)).toEqual(["On main: second"]);
+    });
+
+    it("stashPop: refuses an index that is not a stash position", async () => {
+      await expect(service.stashPop(tmpDir, -1)).rejects.toThrow(/invalid stash index/i);
+      await expect(service.stashPop(tmpDir, 1.5)).rejects.toThrow(/invalid stash index/i);
+    });
+  });
+
+  describe("undoLastCommit and amendCommit", () => {
+    /** A second commit, so there is history to undo onto. */
+    function commitSecond(): void {
+      fs.writeFileSync(path.join(tmpDir, "second.txt"), "two");
+      execSync("git add second.txt", { cwd: tmpDir });
+      execSync('git commit -m "second"', { cwd: tmpDir });
+    }
+
+    it("undoLastCommit: drops the commit and leaves its changes staged", async () => {
+      commitSecond();
+      await service.undoLastCommit(tmpDir);
+      expect(execSync("git log --oneline", { cwd: tmpDir }).toString()).not.toContain("second");
+      const status = await service.getStatus(tmpDir);
+      expect(status.files.find((f) => f.path === "second.txt")?.stagedState).toBe("A");
+    });
+
+    it("undoLastCommit: refuses the repository's first commit, which has no parent", async () => {
+      await expect(service.undoLastCommit(tmpDir)).rejects.toThrow(/first/i);
+    });
+
+    it("amendCommit: replaces the message when given one", async () => {
+      await service.amendCommit(tmpDir, "init, restated");
+      expect(execSync("git log -1 --pretty=%s", { cwd: tmpDir }).toString().trim()).toBe(
+        "init, restated",
+      );
+    });
+
+    it("amendCommit: folds staged changes in and keeps the message when given none", async () => {
+      fs.writeFileSync(path.join(tmpDir, "extra.txt"), "more");
+      await service.stage(tmpDir, ["extra.txt"]);
+      await service.amendCommit(tmpDir);
+      expect(execSync("git log -1 --pretty=%s", { cwd: tmpDir }).toString().trim()).toBe("init");
+      expect(execSync("git show --name-only --pretty=", { cwd: tmpDir }).toString()).toContain(
+        "extra.txt",
+      );
+      expect((await service.getStatus(tmpDir)).isClean).toBe(true);
+    });
   });
 
   describe("generateCommitMessage", () => {
@@ -461,6 +542,20 @@ describe("parseIgnoredPaths", () => {
   });
 });
 
+describe("parseStashList", () => {
+  it("numbers the entries by position, which is the n of stash@{n}", () => {
+    expect(parseStashList("On main: second\nWIP on main: 1a2b3c init\n")).toEqual([
+      { index: 0, message: "On main: second" },
+      { index: 1, message: "WIP on main: 1a2b3c init" },
+    ]);
+  });
+
+  it("is empty for an empty stack", () => {
+    expect(parseStashList("")).toEqual([]);
+    expect(parseStashList("\n\n")).toEqual([]);
+  });
+});
+
 describe("parseBlamePorcelain", () => {
   it("deduplicates commits and parses fields", () => {
     const raw = [
@@ -511,6 +606,10 @@ describe("SpexrGitBackendService — virgin repo (no commits)", () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("amendCommit: refuses when there is no commit to amend", async () => {
+    await expect(service.amendCommit(tmpDir, "nope")).rejects.toThrow(/no commit to amend/i);
   });
 
   it("unstage: works on repo without HEAD (no commits yet)", async () => {

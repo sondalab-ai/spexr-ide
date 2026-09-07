@@ -1,8 +1,9 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
-import { Emitter, DisposableCollection } from "@theia/core";
+import { Emitter, DisposableCollection, Disposable } from "@theia/core";
 import type { Event } from "@theia/core";
 import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
 import URI from "@theia/core/lib/common/uri";
+import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { ScmService } from "@theia/scm/lib/browser/scm-service";
 import { SpexrGitServiceProxySymbol } from "./git-service-proxy.js";
@@ -10,6 +11,8 @@ import type { SpexrGitService } from "../../common/git-protocol.js";
 import type { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { distinctRepoRoots, type RepoRootMapping } from "./git-repo-roots.js";
 import { SingleFlight } from "./single-flight.js";
+import { BACKGROUND_FETCH_INTERVAL_MS, shouldFetchNow } from "./background-fetch-policy.js";
+import { SPEXR_GIT_AUTOFETCH_PREFERENCE } from "../preferences/spexr-preferences.js";
 
 /** A registered repository: its provider and the registry's own subscriptions to it. */
 interface ProviderEntry {
@@ -46,6 +49,9 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
   @inject(ScmService)
   private readonly scmService!: ScmService;
 
+  @inject(PreferenceService)
+  private readonly preferences!: PreferenceService;
+
   @inject(SpexrGitScmProviderFactory)
   private readonly createProvider!: SpexrGitScmProviderFactory;
 
@@ -55,6 +61,11 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
   private readonly toDispose = new DisposableCollection();
 
   private readonly syncer = new SingleFlight(() => this.syncProviders());
+
+  private fetchTimer: ReturnType<typeof setInterval> | undefined;
+
+  /** When the last background fetch started, so the timer and focus share a floor. */
+  private lastFetchAt: number | undefined;
 
   private readonly onDidChangeProvidersEmitter = new Emitter<void>();
   /** A repository joined or left the workspace. */
@@ -91,6 +102,41 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
   async onStart(): Promise<void> {
     this.toDispose.push(this.workspace.onWorkspaceChanged(() => void this.sync()));
     await this.sync();
+    this.startBackgroundFetch();
+  }
+
+  /**
+   * Keep divergence from the remote truthful between user actions. Without
+   * this, `behind` only ever moves when someone presses Fetch or Pull by hand,
+   * so "N behind" in the status bar — and any warning built on it — is stale
+   * for as long as the IDE stays open.
+   *
+   * One timer here rather than one per provider: the registry already owns the
+   * repository set and its own lifecycle. Regaining focus also fetches, which
+   * is when a user is most likely to be about to act on the number.
+   *
+   * Switched off by `spexr.git.autofetch`, for a metered connection or a
+   * network where an unattended authentication attempt is unwelcome.
+   */
+  private startBackgroundFetch(): void {
+    this.fetchTimer = setInterval(() => void this.fetchAll(), BACKGROUND_FETCH_INTERVAL_MS);
+    const onFocus = (): void => void this.fetchAll();
+    window.addEventListener("focus", onFocus);
+    this.toDispose.push(Disposable.create(() => window.removeEventListener("focus", onFocus)));
+  }
+
+  /**
+   * Fetch every repository, at most once per interval however many triggers
+   * fire. Providers swallow their own failures, so this never rejects.
+   */
+  private async fetchAll(): Promise<void> {
+    // Read per tick rather than subscribing: turning the preference off then
+    // takes effect at the next tick with no listener to keep in sync.
+    if (!this.preferences.get<boolean>(SPEXR_GIT_AUTOFETCH_PREFERENCE, true)) return;
+    const now = Date.now();
+    if (!shouldFetchNow(this.lastFetchAt, now)) return;
+    this.lastFetchAt = now;
+    await Promise.all(this.all.map((p) => p.backgroundFetch()));
   }
 
   /** Reconcile the registered repositories with the workspace folders. */
@@ -193,6 +239,7 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
   }
 
   dispose(): void {
+    if (this.fetchTimer !== undefined) clearInterval(this.fetchTimer);
     for (const entry of this.providers.values()) {
       entry.toDispose.dispose();
       entry.provider.dispose();

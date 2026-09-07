@@ -8,7 +8,8 @@ import { ScmWidget } from "@theia/scm/lib/browser/scm-widget";
 import { GitCommands } from "./git-commands-contribution.js";
 
 /**
- * Surfaces the core git actions (commit, push, pull, fetch, branch, refresh)
+ * Surfaces the core git actions (commit, commit & push, push, pull, fetch,
+ * branch, refresh)
  * as icon buttons in the SCM panel title toolbar. Items are only visible when
  * the active view is the SCM widget.
  */
@@ -17,6 +18,11 @@ export class SpexrGitToolbarContribution implements TabBarToolbarContribution {
   registerToolbarItems(registry: TabBarToolbarRegistry): void {
     const items: { command: typeof GitCommands[keyof typeof GitCommands]; icon: string; tooltip: string }[] = [
       { command: GitCommands.COMMIT, icon: "codicon codicon-check", tooltip: "Commit" },
+      {
+        command: GitCommands.COMMIT_AND_PUSH,
+        icon: "codicon codicon-check-all",
+        tooltip: "Commit & Push",
+      },
       { command: GitCommands.PUSH, icon: "codicon codicon-repo-push", tooltip: "Push" },
       { command: GitCommands.PULL, icon: "codicon codicon-repo-pull", tooltip: "Pull" },
       { command: GitCommands.FETCH, icon: "codicon codicon-sync", tooltip: "Fetch" },
