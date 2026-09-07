@@ -576,12 +576,25 @@ export function NewSessionLauncher(props: {
   /** Current arrangement of the active cards, and the way to change it. */
   layout: WallLayout;
   onLayoutChange: (layout: WallLayout) => void;
+  /** True while a rescan is running — the control shows it rather than queueing clicks. */
+  refreshing: boolean;
+  onRefresh: () => void;
   /** Ask for a folder; resolves to its normalized path, or undefined if cancelled. */
   onBrowse: () => Promise<string | undefined>;
   onStart: (projectPath: string, harness: HarnessId, configDir: string) => void;
 }): React.ReactElement {
-  const { targets, defaultPath, configs, profiles, layout, onLayoutChange, onBrowse, onStart } =
-    props;
+  const {
+    targets,
+    defaultPath,
+    configs,
+    profiles,
+    layout,
+    onLayoutChange,
+    refreshing,
+    onRefresh,
+    onBrowse,
+    onStart,
+  } = props;
   const first = targets[0]?.path ?? "";
   const [path, setPath] = React.useState(defaultPath || first);
   const [harness, setHarness] = React.useState<HarnessId>("claude");
@@ -635,6 +648,15 @@ export function NewSessionLauncher(props: {
         <i className="codicon codicon-add" />
         <span className="spexr-df-launcher__title">Start a new session</span>
         <WallLayoutToggle layout={layout} onChange={onLayoutChange} />
+        <button
+          className="spexr-df-refresh"
+          onClick={onRefresh}
+          disabled={refreshing}
+          title="Rescan for agent sessions started outside SPEXR"
+          aria-label="Rescan agent sessions"
+        >
+          <i className={`codicon codicon-refresh${refreshing ? " codicon-modifier-spin" : ""}`} />
+        </button>
       </div>
       <div className="spexr-df-launcher__controls">
         <label className="spexr-df-launcher__field">

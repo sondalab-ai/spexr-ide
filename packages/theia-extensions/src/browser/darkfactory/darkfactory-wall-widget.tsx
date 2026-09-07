@@ -79,6 +79,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private tiles: AgentTile[] = [];
   /** False until the first tile snapshot lands — the wall shows a loading state until then. */
   private loaded = false;
+  /** True while a user-triggered rescan is in flight; drives the header button's spinner. */
+  private refreshing = false;
   /** sessionId → AI summary state, filled asynchronously and refreshed for live sessions. */
   private readonly summaries = new Map<string, SummaryState>();
   /** Sessions awaiting a summary; drained one inference at a time by {@link drainSummaries}. */
@@ -126,9 +128,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private lastWallWheelAt = 0;
 
   /**
-   * Claude accounts a new session can start under. Discovered once by the
-   * backend — the set only changes when the user adds a config dir, which costs
-   * a restart anyway.
+   * Claude accounts a new session can start under. Re-read on every manual
+   * refresh, because the backend rediscovers them per call: an account dir added
+   * while this window was open would otherwise never reach the launcher.
    */
   private configs: ClaudeConfigDir[] = [];
 
@@ -188,15 +190,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // the first tiles land (without this the widget body stays blank until then).
     this.update();
     void this.loadRecentProjects();
-    void this.service
-      .listConfigDirs()
-      .then((configs) => {
-        this.configs = configs;
-        this.update();
-      })
-      .catch(() => {
-        // No account list — the launcher falls back to the harness default.
-      });
+    void this.loadConfigs();
     this.refresh().catch(() => {
       // Scan failed — stop the spinner and fall through to the empty state.
       this.loaded = true;
@@ -459,6 +453,37 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   private async refresh(): Promise<void> {
     this.setTiles(await this.service.listTiles());
+  }
+
+  /**
+   * The Claude accounts the launcher can start under. The backend rediscovers
+   * them per call, so this is re-read on every manual refresh and not only at
+   * startup — an account added while the window was open would otherwise be
+   * missing from the dropdown for as long as it stayed open.
+   */
+  private async loadConfigs(): Promise<void> {
+    try {
+      this.configs = await this.service.listConfigDirs();
+      this.update();
+    } catch {
+      // No account list — the launcher falls back to the harness default.
+    }
+  }
+
+  /**
+   * Rescan on demand. The backend polls and watches on its own, but both are
+   * best-effort: this is the user's way to say "look again now". Guarded by
+   * {@link refreshing} because `listTiles` has no single-flight of its own, so
+   * a second click during a scan would start a second full scan.
+   */
+  refreshNow(): void {
+    if (this.refreshing) return;
+    this.refreshing = true;
+    this.update();
+    void Promise.allSettled([this.refresh(), this.loadConfigs()]).then(() => {
+      this.refreshing = false;
+      this.update();
+    });
   }
 
   private setTiles(tiles: AgentTile[]): void {
@@ -737,6 +762,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           )}
           layout={this.wallLayout}
           onLayoutChange={(layout) => this.setLayout(layout)}
+          refreshing={this.refreshing}
+          onRefresh={() => this.refreshNow()}
           onBrowse={() => this.browseForProject()}
           onStart={(projectPath, harness, configDir) =>
             this.startNewSession(projectPath, harness, configDir)
