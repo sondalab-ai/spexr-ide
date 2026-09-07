@@ -11,6 +11,7 @@ import type {
   GitFileState,
   GitConflictKind,
   GitBranchDto,
+  GitPullResultDto,
   GitLogEntryDto,
   BlameResultDto,
   BlameCommitDto,
@@ -591,8 +592,13 @@ export class SpexrGitBackendService implements SpexrGitService {
     await git.push(["--set-upstream", pickRemote(names), head]);
   }
 
-  async pull(root: string): Promise<void> {
-    await this.git(root).pull();
+  async pull(root: string): Promise<GitPullResultDto> {
+    const result = await this.git(root).pull();
+    return {
+      changedFiles: result.files.length,
+      insertions: result.summary.insertions,
+      deletions: result.summary.deletions,
+    };
   }
 
   async fetch(root: string): Promise<void> {

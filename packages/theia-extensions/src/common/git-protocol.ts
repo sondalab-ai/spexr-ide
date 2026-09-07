@@ -43,6 +43,17 @@ export interface GitStatusDto {
   readonly mergeInProgress: boolean;
 }
 
+/**
+ * What a pull actually brought in. `git pull` on an up-to-date branch succeeds
+ * and changes nothing, which a fixed "Pulled from remote." toast reports the
+ * same way as a pull that rewrote half the tree.
+ */
+export interface GitPullResultDto {
+  readonly changedFiles: number;
+  readonly insertions: number;
+  readonly deletions: number;
+}
+
 export interface GitBranchDto {
   readonly name: string;
   readonly isCurrent: boolean;
@@ -145,7 +156,7 @@ export interface SpexrGitService {
    * the remote picked from the repository's own remotes.
    */
   push(root: string): Promise<void>;
-  pull(root: string): Promise<void>;
+  pull(root: string): Promise<GitPullResultDto>;
   fetch(root: string): Promise<void>;
   /**
    * Fetch on the IDE's own initiative, to keep `behind` truthful between user

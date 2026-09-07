@@ -14,6 +14,7 @@ import type { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { toRepoRelative } from "./relative-path.js";
 import { commitBlockReason } from "./commit-preflight.js";
+import { formatPullOutcome } from "./pull-outcome-format.js";
 import { pushBlockReason } from "./push-preflight.js";
 import {
   allDeleteModifyConflicts,
@@ -121,8 +122,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       execute: () => this.pushWithPreflight(),
     });
     commands.registerCommand(GitCommands.PULL, {
-      execute: () =>
-        this.runGitOp("Pull", () => this.onProvider((p) => p.pull()), "Pulled from remote."),
+      execute: () => this.pull(),
     });
     commands.registerCommand(GitCommands.FETCH, {
       execute: () =>
@@ -394,6 +394,19 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       return;
     }
     await this.runGitOp("Push", () => provider.push(), "Pushed to remote.");
+  }
+
+  /**
+   * Report what the pull brought rather than that it ran. The message is built
+   * from the result, so it is shown here instead of through runGitOp's fixed
+   * success text.
+   */
+  private async pull(): Promise<void> {
+    await this.runGitOp("Pull", () =>
+      this.onProvider(async (provider) => {
+        this.messages.info(formatPullOutcome(await provider.pull()));
+      }),
+    );
   }
 
   private async checkoutWithPrompt(): Promise<void> {

@@ -20,6 +20,7 @@ import type {
   GitFileState,
   GitConflictKind,
   GitBranchDto,
+  GitPullResultDto,
   GitStatusDto,
 } from "../../common/git-protocol.js";
 import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
@@ -382,10 +383,12 @@ export class SpexrGitScmProvider implements ScmProvider {
     await this.refresh();
   }
 
-  async pull(): Promise<void> {
-    if (!this.rootFsPath) return;
-    await this.gitService.pull(this.rootFsPath);
+  /** Undefined when there is no repository bound yet, so the caller says nothing. */
+  async pull(): Promise<GitPullResultDto | undefined> {
+    if (!this.rootFsPath) return undefined;
+    const result = await this.gitService.pull(this.rootFsPath);
     await this.refresh();
+    return result;
   }
 
   async fetch(): Promise<void> {
