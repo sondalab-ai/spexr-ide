@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-09-07
+
+> Now with fewer identity crises
+
+- Launch [Claude](https://github.com/anthropics/claude-code) per account through a [launch profile](https://en.wikipedia.org/wiki/Profile_(engineering)), because juggling credentials by hand was never a feature.
+
+
 ## 0.2.0 — 2026-09-06
 
 > Five Dependabot alerts survived. Everything else changed.
