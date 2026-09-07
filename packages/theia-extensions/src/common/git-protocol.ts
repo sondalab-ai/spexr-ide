@@ -54,6 +54,16 @@ export interface GitPullResultDto {
   readonly deletions: number;
 }
 
+/**
+ * One entry of the stash stack. `index` is a position, not an identity: it
+ * addresses `stash@{index}` at the moment it was listed, and every push or pop
+ * shifts the entries below it.
+ */
+export interface GitStashEntryDto {
+  readonly index: number;
+  readonly message: string;
+}
+
 export interface GitBranchDto {
   readonly name: string;
   readonly isCurrent: boolean;
@@ -161,6 +171,15 @@ export interface SpexrGitService {
    * subject, so re-supplying a subject would silently drop it.
    */
   amendCommit(root: string, message?: string): Promise<void>;
+  /**
+   * Set the working tree aside, untracked files included. False when there was
+   * nothing to stash — git treats that as success and says so only on stdout.
+   */
+  stashPush(root: string, message?: string): Promise<boolean>;
+  /** The stash stack, newest first, as `stash@{0}` upward. */
+  stashList(root: string): Promise<GitStashEntryDto[]>;
+  /** Restore one entry and drop it from the stack. */
+  stashPop(root: string, index: number): Promise<void>;
   getBranches(root: string): Promise<GitBranchDto[]>;
   checkout(root: string, branch: string): Promise<void>;
   createBranch(root: string, name: string, checkout: boolean): Promise<void>;

@@ -11,6 +11,7 @@ import type {
   GitFileState,
   GitConflictKind,
   GitBranchDto,
+  GitStashEntryDto,
   GitPullResultDto,
   GitLogEntryDto,
   BlameResultDto,
@@ -54,6 +55,19 @@ export interface GitBackendDeps {
  * fields, then a `\t`-prefixed line carrying the source content. We key
  * commits by hash so author/date/summary are stored once.
  */
+/**
+ * One stash entry per non-empty line of `git stash list --pretty=%gs`, in the
+ * order git prints them: newest first, so the position is the `n` of
+ * `stash@{n}`.
+ */
+export function parseStashList(raw: string): GitStashEntryDto[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((message, index) => ({ index, message }));
+}
+
 export function parseBlamePorcelain(raw: string): BlameResultDto {
   const commits: Record<string, BlameCommitDto> = {};
   const lines: BlameLineDto[] = [];
@@ -530,6 +544,29 @@ export class SpexrGitBackendService implements SpexrGitService {
     const clause = await generator.summarize(buildCommitPrompt(staged, diff), "commit");
     const subject = cleanCommitSubject(clause ?? "");
     return subject.length > 0 ? `${commitPrefix(staged)}: ${subject}` : null;
+  }
+
+  async stashPush(root: string, message?: string): Promise<boolean> {
+    const git = this.git(root);
+    // `git stash push` on a clean tree exits 0 with "No local changes to save",
+    // so the caller can only tell the two apart if we look first.
+    if ((await git.status()).isClean()) return false;
+    await git.stash(["push", "--include-untracked", ...(message ? ["--message", message] : [])]);
+    return true;
+  }
+
+  async stashList(root: string): Promise<GitStashEntryDto[]> {
+    // %gs is the reflog subject — "WIP on main: 1a2b3c subject", or "On main:
+    // <message>" for a named stash — which is what identifies an entry to a
+    // human. The default `git stash list` format prepends stash@{n}, which we
+    // derive from the position anyway.
+    return parseStashList(await this.git(root).raw(["stash", "list", "--pretty=%gs"]));
+  }
+
+  async stashPop(root: string, index: number): Promise<void> {
+    // The index arrives over RPC and is interpolated into a git revision.
+    if (!Number.isInteger(index) || index < 0) throw new Error(`Invalid stash index: ${index}`);
+    await this.git(root).stash(["pop", `stash@{${index}}`]);
   }
 
   async undoLastCommit(root: string): Promise<void> {

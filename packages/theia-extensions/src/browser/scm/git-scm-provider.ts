@@ -20,6 +20,7 @@ import type {
   GitFileState,
   GitConflictKind,
   GitBranchDto,
+  GitStashEntryDto,
   GitPullResultDto,
   GitStatusDto,
 } from "../../common/git-protocol.js";
@@ -423,6 +424,25 @@ export class SpexrGitScmProvider implements ScmProvider {
   async createBranch(name: string, checkoutAfter: boolean): Promise<void> {
     if (!this.rootFsPath) return;
     await this.gitService.createBranch(this.rootFsPath, name, checkoutAfter);
+    await this.refresh();
+  }
+
+  /** False when the working tree was clean and there was nothing to set aside. */
+  async stashPush(message?: string): Promise<boolean> {
+    if (!this.rootFsPath) return false;
+    const stashed = await this.gitService.stashPush(this.rootFsPath, message);
+    await this.refresh();
+    return stashed;
+  }
+
+  async stashList(): Promise<GitStashEntryDto[]> {
+    if (!this.rootFsPath) return [];
+    return this.gitService.stashList(this.rootFsPath);
+  }
+
+  async stashPop(index: number): Promise<void> {
+    if (!this.rootFsPath) return;
+    await this.gitService.stashPop(this.rootFsPath, index);
     await this.refresh();
   }
 

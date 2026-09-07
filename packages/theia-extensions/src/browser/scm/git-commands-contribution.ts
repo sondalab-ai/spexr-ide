@@ -46,6 +46,8 @@ export const GitCommands = {
   PUSH: { id: "spexr.git.push", label: "Git: Push" } satisfies Command,
   PULL: { id: "spexr.git.pull", label: "Git: Pull" } satisfies Command,
   FETCH: { id: "spexr.git.fetch", label: "Git: Fetch" } satisfies Command,
+  STASH: { id: "spexr.git.stash", label: "Git: Stash Changes" } satisfies Command,
+  STASH_POP: { id: "spexr.git.stashPop", label: "Git: Pop Stash" } satisfies Command,
   CHECKOUT: { id: "spexr.git.checkout", label: "Git: Checkout Branch" } satisfies Command,
   CREATE_BRANCH: { id: "spexr.git.createBranch", label: "Git: Create Branch" } satisfies Command,
   REFRESH: { id: "spexr.git.refresh", label: "Git: Refresh" } satisfies Command,
@@ -139,6 +141,12 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     commands.registerCommand(GitCommands.FETCH, {
       execute: () =>
         this.runGitOp("Fetch", () => this.onProvider((p) => p.fetch()), "Fetched from remote."),
+    });
+    commands.registerCommand(GitCommands.STASH, {
+      execute: () => this.stashWithPrompt(),
+    });
+    commands.registerCommand(GitCommands.STASH_POP, {
+      execute: () => this.stashPopWithPick(),
     });
     commands.registerCommand(GitCommands.CHECKOUT, {
       execute: () => this.checkoutWithPrompt(),
@@ -494,6 +502,54 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       this.onProvider(async (provider) => {
         this.messages.info(formatPullOutcome(await provider.pull()));
       }),
+    );
+  }
+
+  /**
+   * Set the working tree aside, untracked files included. The message is
+   * optional — an empty one leaves git's own "WIP on <branch>" — because being
+   * made to name a two-minute detour is what stops people from stashing.
+   */
+  private async stashWithPrompt(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const message = await this.quickInput.input({
+      prompt: "Stash message (optional)",
+      placeHolder: "What you are setting aside",
+    });
+    // Undefined is Escape — a cancelled prompt, not an unnamed stash.
+    if (message === undefined) return;
+    await this.runGitOp("Stash", async () => {
+      const stashed = await provider.stashPush(message.trim() || undefined);
+      this.messages.info(
+        stashed ? "Changes stashed." : "Nothing to stash — the working tree is clean.",
+      );
+    });
+  }
+
+  /**
+   * Pop a chosen entry rather than always the newest: the stack outlives the
+   * branch it was taken on, and the top of it is often not the one wanted.
+   */
+  private async stashPopWithPick(): Promise<void> {
+    const provider = this.provider;
+    if (!provider) return;
+    const entries = await provider.stashList();
+    if (entries.length === 0) {
+      this.messages.info("No stashes to pop.");
+      return;
+    }
+    const picked = await this.quickInput.pick(
+      entries.map((e) => ({ label: e.message, description: `stash@{${e.index}}` })),
+      { placeHolder: "Select a stash to restore" },
+    );
+    if (!picked) return;
+    const entry = entries.find((e) => `stash@{${e.index}}` === picked.description);
+    if (!entry) return;
+    await this.runGitOp(
+      "Pop stash",
+      () => provider.stashPop(entry.index),
+      "Stash restored and dropped.",
     );
   }
 
