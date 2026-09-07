@@ -147,6 +147,17 @@ export interface SpexrGitService {
   push(root: string): Promise<void>;
   pull(root: string): Promise<void>;
   fetch(root: string): Promise<void>;
+  /**
+   * Fetch on the IDE's own initiative, to keep `behind` truthful between user
+   * actions. Distinct from {@link fetch} because the failure contract differs:
+   * this one runs unattended against repositories that may have no remote, no
+   * network, or credentials nobody can be asked for, so callers swallow the
+   * error where a user-initiated fetch reports it.
+   *
+   * Never prompts and never blocks indefinitely: terminal and askpass prompts
+   * are disabled and the process is abandoned after a timeout.
+   */
+  backgroundFetch(root: string): Promise<void>;
   getLog(root: string, maxCount?: number): Promise<GitLogEntryDto[]>;
   getFileAtRevision(root: string, filePath: string, rev: string): Promise<string>;
   getBlame(root: string, filePath: string): Promise<BlameResultDto>;

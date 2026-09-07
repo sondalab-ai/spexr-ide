@@ -394,6 +394,23 @@ export class SpexrGitScmProvider implements ScmProvider {
     await this.refresh();
   }
 
+  /**
+   * Move the remote-tracking branches so `behind` reflects the remote, without
+   * touching the working tree. Swallows its own failure: this runs unattended,
+   * and being offline or having no remote is not something to interrupt anyone
+   * over. The refresh still runs — the fetch may have partly succeeded, and a
+   * status re-read costs nothing.
+   */
+  async backgroundFetch(): Promise<void> {
+    if (!this.rootFsPath) return;
+    try {
+      await this.gitService.backgroundFetch(this.rootFsPath);
+    } catch {
+      /* offline, no remote, credentials nobody can be asked for */
+    }
+    await this.refresh();
+  }
+
   async checkout(branch: string): Promise<void> {
     if (!this.rootFsPath) return;
     await this.gitService.checkout(this.rootFsPath, branch);

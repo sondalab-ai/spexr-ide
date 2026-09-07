@@ -31,6 +31,13 @@ const WATCH_DEBOUNCE_MS = 150;
  */
 const MAX_COMMIT_DIFF_CHARS = 512_000;
 
+/**
+ * How long a background fetch may go without output before it is killed. It
+ * runs unattended on a timer, so a remote that hangs must not leave a git
+ * process behind on every tick.
+ */
+const BACKGROUND_FETCH_TIMEOUT_MS = 20_000;
+
 export interface GitBackendDeps {
   /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
   watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
@@ -590,6 +597,30 @@ export class SpexrGitBackendService implements SpexrGitService {
 
   async fetch(root: string): Promise<void> {
     await this.git(root).fetch();
+  }
+
+  async backgroundFetch(root: string): Promise<void> {
+    // Deliberately not `this.git(root)`: that client is maxConcurrentProcesses: 1,
+    // so a fetch stalled on an unreachable remote would hold every user
+    // operation on this repository behind it for the whole timeout.
+    const git = simpleGit(root, {
+      maxConcurrentProcesses: 1,
+      timeout: { block: BACKGROUND_FETCH_TIMEOUT_MS },
+    }).env({
+      ...process.env,
+      // There is no terminal to answer a credential prompt on, and a blocked
+      // prompt would burn the timeout every tick. Fail the fetch instead.
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: "echo",
+      SSH_ASKPASS: "echo",
+      SSH_ASKPASS_REQUIRE: "never",
+      // Same for an ssh remote whose key has a passphrase. An explicit
+      // GIT_SSH_COMMAND is the user's own configuration and is left alone.
+      GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes",
+    });
+    // --no-tags: this exists to move the remote-tracking branches that `behind`
+    // is computed from, and tags are not that.
+    await git.fetch(["--no-tags", "--quiet"]);
   }
 
   async getLog(root: string, maxCount = 20): Promise<GitLogEntryDto[]> {
