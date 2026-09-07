@@ -23,3 +23,5 @@ One line per memory. Linked file holds the body.
 - [Validation after edits](validation-after-edits.md) — always run lint, typecheck, focused tests after writes.
 - [Propose then implement](propose-then-implement.md) — non-trivial work waits for OK before edits.
 - [One spec, one commit](one-spec-one-commit.md) — ship each spec as its own small reviewable commit; avoid mega-commits.
+- [Config dir inherited from the launching shell](config-dir-inherited-from-the-launching-shell.md) — SPEXR inherits CLAUDE_CONFIG_DIR from the shell that started it; every launch path must set the account itself.
+- [Which Claude account a config dir uses](which-claude-account-a-config-dir-uses.md) — read it with `claude auth status`; the keychain entry differs by whether the variable is set at all.
