@@ -243,8 +243,11 @@ export function AgentTileCard(props: {
   showProject: boolean;
   /** Move this session to the trash, out of the wall's project groups. */
   onTrash: (t: AgentTile) => void;
+  /** True for a search hit that lives outside the wall's recent-session window. */
+  archived?: boolean;
 }): React.ReactElement {
-  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject, onTrash } = props;
+  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject, onTrash, archived } =
+    props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
   const primary = capitalize(tile.goal || tile.actionLine);
@@ -269,6 +272,11 @@ export function AgentTileCard(props: {
           </>
         )}
         <span className="spexr-df-card__harness">{tile.harness}</span>
+        {archived && (
+          <span className="spexr-df-card__archived" title="Found by search, outside the wall">
+            archived
+          </span>
+        )}
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
         </span>
