@@ -41,6 +41,11 @@ unreachable from the interface.
   feature reads the existing harness adapters and reuses `AgentTile`.
 - **No search over trashed sessions.** Trash is a frontend concept
   (`browser/darkfactory/trash.ts`); hits are filtered through it client-side.
+- **No AI summary on a result card.** The wall queues its two-line summaries for
+  a handful of top sessions, each a roughly 13-second local inference; queueing
+  them for a result set would stall behind the wall's own queue. A hit renders
+  its goal and action line, plus a summary only if one is already cached for
+  that session. Revisit once summaries are cheaper or persisted.
 
 ## Status vocabulary
 
@@ -54,7 +59,9 @@ Everything in this spec is `Planned` until its slice merges.
 
 ## Design decisions
 
-**Hybrid lexical + dense scoring, no second model.** The vendored encoder is
+**Hybrid lexical + dense scoring, no second model.** Lexical scoring here means
+BM25 (Best Match 25), the ranking function the code search already uses; dense
+scoring means cosine similarity between sentence embeddings. The vendored encoder is
 English-only, while session goals on this machine are largely Italian. Adding a
 multilingual encoder (`multilingual-e5-small`, roughly 120 MB vendored plus a
 second ONNX runtime resident in the backend) was considered and rejected: the

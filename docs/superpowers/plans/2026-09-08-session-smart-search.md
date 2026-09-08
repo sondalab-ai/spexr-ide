@@ -96,11 +96,12 @@ describe("buildSessionDoc", () => {
     const doc = buildSessionDoc({
       projectPath: "/p/spexr",
       goal: "G".repeat(500),
-      prose: ["P".repeat(2000)],
+      prose: ["P".repeat(3600)],
       targets: Array.from({ length: 500 }, (_, i) => `/p/file-${i}.ts`),
     });
     expect(doc.length).toBe(4000);
     expect(doc.startsWith("G".repeat(500))).toBe(true);
+    expect(doc).not.toContain("/p/file-39.ts");
   });
 
   it("tolerates an empty session", () => {
@@ -777,6 +778,25 @@ describe("runSessionIndex", () => {
     expect(index.ids()).toEqual(["a"]);
   });
 
+  it("keeps the stored vector when a touched transcript still reads the same", async () => {
+    const index = new SessionIndex();
+    const embedSpy = vi.fn(embed);
+    await runSessionIndex({
+      index,
+      embed: embedSpy,
+      list: async () => [session("a", 1, "same goal")],
+      save: async () => {},
+    });
+    await runSessionIndex({
+      index,
+      embed: embedSpy,
+      list: async () => [session("a", 2, "same goal")],
+      save: async () => {},
+    });
+    expect(embedSpy).toHaveBeenCalledTimes(1);
+    expect(index.get("a")!.mtimeMs).toBe(2);
+  });
+
   it("reports progress, ending at done === total", async () => {
     const progress: Array<[number, number]> = [];
     await runSessionIndex({
@@ -855,7 +875,7 @@ export const PROSE_SEGMENTS = 6;
 /** Never persist more often than this while a crawl runs. */
 const SAVE_INTERVAL_MS = 5_000;
 
-/** Stable content key, so an mtime touch with identical text is a cheap no-op. */
+/** Stable content key: an mtime touch that left the text alone skips the encoder. */
 function hashDoc(doc: string): string {
   return createHash("sha1").update(doc).digest("hex");
 }
@@ -930,9 +950,22 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
       prepared.push({ session, doc, goal });
     });
 
-    if (prepared.length > 0) {
-      const vectors = await embed(prepared.map((p) => p.doc));
-      for (const [j, p] of prepared.entries()) {
+    // A transcript can be touched without its indexed head/tail changing — a
+    // resumed session that only appended past the bounded read, say. Those keep
+    // their vector and only take the new mtime, which is what the stored content
+    // hash is for.
+    const fresh: typeof prepared = [];
+    for (const p of prepared) {
+      const existing = index.get(p.session.sessionId);
+      if (existing && existing.docHash === hashDoc(p.doc)) {
+        index.upsert({ ...existing, mtimeMs: p.session.mtimeMs });
+      } else {
+        fresh.push(p);
+      }
+    }
+    if (fresh.length > 0) {
+      const vectors = await embed(fresh.map((p) => p.doc));
+      for (const [j, p] of fresh.entries()) {
         index.upsert(await toRecord(p.session, vectors[j]!, p.doc, p.goal));
       }
     }
@@ -953,7 +986,7 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter @spexr/theia-extensions exec vitest run src/node/darkfactory/session-indexer.test.ts`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1019,15 +1052,28 @@ In `packages/theia-extensions/src/browser/darkfactory/darkfactory-client.ts`, in
   }
 ```
 
-- [ ] **Step 3: Typecheck**
+- [ ] **Step 3: Keep the backend compiling**
 
-Run: `pnpm --filter @spexr/theia-extensions run typecheck`
-Expected: FAIL, with `SpexrDarkfactoryBackendService` reported as not implementing `searchSessions`. That is the expected state until Task 7; do not stub the method here.
+The service must satisfy the widened interface before the next task fills it in, so every commit stays green. In `spexr-darkfactory-backend-service.ts` add, next to `listConfigDirs`:
 
-- [ ] **Step 4: Commit**
+```ts
+  /** Replaced in full by the search implementation; see the session index. */
+  async searchSessions(): Promise<SessionHit[]> {
+    return [];
+  }
+```
+
+importing `type SessionHit` from the protocol.
+
+- [ ] **Step 4: Typecheck**
+
+Run: `pnpm --filter @spexr/theia-extensions run typecheck && pnpm --filter @spexr/theia-extensions run lint`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add packages/theia-extensions/src/common/darkfactory-protocol.ts packages/theia-extensions/src/browser/darkfactory/darkfactory-client.ts
+git add packages/theia-extensions/src/common/darkfactory-protocol.ts packages/theia-extensions/src/browser/darkfactory/darkfactory-client.ts packages/theia-extensions/src/node/darkfactory/spexr-darkfactory-backend-service.ts
 git commit -m "feat(darkfactory): declare the session search protocol surface"
 ```
 
@@ -1100,6 +1146,7 @@ describe("rankSessions", () => {
   it("returns at most 24 hits, best first", () => {
     const index = new SessionIndex();
     for (let i = 0; i < 40; i++) index.upsert(record(`s${i}`, [1, 0], "design system effects"));
+    index.upsert(record("unrelated", [0, 1], "hardening the git panel"));
     const ranked = rankSessions(index, Float32Array.from([1, 0]), "design system effects");
     expect(ranked).toHaveLength(24);
     expect(ranked[0]!.score).toBeGreaterThanOrEqual(ranked[23]!.score);
@@ -1274,7 +1321,9 @@ describe("searchSessions", () => {
   });
 
   it("opens an archived hit even after a scan has cleared the live index", async () => {
-    // One session older than the scan window, plus RECENT_LIMIT newer ones.
+    // 61 sessions, the archived one carrying the OLDEST mtime: listTiles sorts
+    // descending and keeps the first RECENT_LIMIT (60), so anything newer than
+    // the tail would land inside the window and come back with archived false.
     const service = makeService({
       sessionCount: 61,
       archivedGoal: "adding new effects to the design system",
@@ -1302,17 +1351,51 @@ Extend the file's existing `makeService` helper with the `sessionCount` and `arc
 In `spexr-darkfactory-backend-service.ts`:
 
 1. Add imports: `loadSessionIndex`, `saveSessionIndex` from `./session-index-store.js`; `runSessionIndex`, `type IndexableSession` from `./session-indexer.js`; `rankSessions` from `./session-query.js`; `expandQuery` from `../search/query-expander.js`; `SessionIndex` from `./session-index.js`; `type SessionHit` from the protocol.
-2. Add to `DarkfactoryDeps`: `embed?: (texts: string[]) => Promise<Float32Array[]>` and `sessionIndexPath?: string`, both seams for tests.
-3. Add fields:
+2. Add to `DarkfactoryDeps`:
+
+```ts
+  /** Sentence encoder for the session index; absent in tests that do not search. */
+  embed?: (texts: string[]) => Promise<Float32Array[]>;
+  /** Index location override, so tests never touch the real home directory. */
+  sessionIndexPath?: string;
+```
+
+and assign them in the constructor beside the existing `const d = deps ?? {};` block:
+
+```ts
+this.embed = d.embed;
+this.sessionIndexPath = d.sessionIndexPath;
+```
+
+with the matching fields `private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;` and `private readonly sessionIndexPath: string | undefined;`. 3. Add fields:
 
 ```ts
   private sessionIndex?: Promise<SessionIndex>;
   /** Metadata for sessions reached through search, not through the scan.
    *  `listTiles` clears `index` on every poll, so a hit registered there would
-   *  stop opening within one interval; this map is owned by the search path. */
+   *  stop opening within one interval; this map is owned by the search path and
+   *  only grows, so a hit the user pinned stays openable after later queries. */
   private readonly searchMeta = new Map<string, SessionMeta>();
+  /** The tiles the last scan produced, so a hit inside the window is returned
+   *  as-is rather than re-parsed and re-classified with different inputs. */
+  private readonly lastTiles = new Map<string, AgentTile>();
+  /** Enumeration is a full transcript scan plus an `opencode db` spawn; a query
+   *  must not pay for it on every keystroke's debounce. */
+  private enumCache?: { at: number; value: UnifiedRef[] };
   private indexing = false;
 ```
+
+and beside the other constants:
+
+```ts
+/** Enumeration freshness floor for the search path, mirroring LIVE_DIRS_TTL_MS. */
+const ENUM_TTL_MS = 15_000;
+/** The session index crawl waits this long after startup, so it never competes
+ *  with the first wall scan for the event loop. */
+const FIRST_CRAWL_DELAY_MS = 10_000;
+```
+
+Populate `lastTiles` in `listTiles`: clear it beside `this.index.clear()`, and set each tile as it is pushed.
 
 4. Resolve metadata through both maps:
 
@@ -1346,7 +1429,7 @@ Replace the three `this.index.get(sessionId)` reads in `summarize`, `planFocus` 
   }
 
   private async indexableSessions(): Promise<IndexableSession[]> {
-    const refs = await this.listTranscripts();
+    const refs = await this.cachedTranscripts();
     return refs.map((u) => ({
       sessionId: u.ref.sessionId,
       harness: u.harness.id,
@@ -1373,56 +1456,80 @@ Replace the three `this.index.get(sessionId)` reads in `summarize`, `planFocus` 
     const ranked = rankSessions(index, vector, expanded);
     if (ranked.length === 0) return [];
 
-    // Only the hits are parsed — never the whole index.
-    const refs = new Map((await this.listTranscripts()).map((u) => [u.ref.sessionId, u]));
-    const live = await this.cachedLiveDirs();
-    const now = this.now();
-    this.searchMeta.clear();
-
+    // A hit the last scan already rendered is returned as that scan built it —
+    // re-classifying it here would feed classifySession different inputs and
+    // could demote a live session. Only sessions outside the window are parsed,
+    // and only the hits among them, never the whole index.
+    const scored = new Map(ranked.map((r) => [r.sessionId, r.score]));
     const hits: SessionHit[] = [];
-    for (const { sessionId, score } of ranked) {
-      const scanned = this.index.get(sessionId);
-      const u = refs.get(sessionId);
-      if (!u) continue; // indexed but gone from disk; the next crawl drops it
-      const p = await u.harness.parseTranscript(u.ref);
-      if (!p.cwd || !p.interactive) continue;
-      const entries = (await u.ref.loadEntries()) as TurnEntry[];
-      const { state, needsYou, needsYouCertain } = classifySession(
-        p.cwd,
-        u.ref.mtimeMs,
-        false, // an archived session is never its project's newest
-        live,
-        now,
-        entries,
-        p.permissionMode,
-      );
-      const tile = buildTile({
-        sessionId,
-        harness: u.harness.id,
-        transcriptPath: u.claude?.transcriptPath ?? "",
-        projectPath: p.cwd,
-        mtimeMs: u.ref.mtimeMs,
-        entries,
-        parsed: p,
-        state,
-        needsYou,
-        needsYouCertain,
-        hashToIndex,
-      });
-      if (!scanned) {
+    const archived: string[] = [];
+    for (const { sessionId } of ranked) {
+      const tile = this.lastTiles.get(sessionId);
+      if (tile) hits.push({ tile, score: scored.get(sessionId)!, archived: false });
+      else archived.push(sessionId);
+    }
+
+    if (archived.length > 0) {
+      const refs = new Map((await this.cachedTranscripts()).map((u) => [u.ref.sessionId, u]));
+      const live = await this.cachedLiveDirs();
+      const now = this.now();
+      const built: SessionHit[] = [];
+      await forEachConcurrent(archived, PARSE_CONCURRENCY, async (sessionId) => {
+        const u = refs.get(sessionId);
+        if (!u) return; // indexed but gone from disk; the next crawl drops it
+        const p = await u.harness.parseTranscript(u.ref);
+        if (!p.cwd || !p.interactive) return;
+        const entries = (await u.ref.loadEntries()) as TurnEntry[];
+        const { state, needsYou, needsYouCertain } = classifySession(
+          p.cwd,
+          u.ref.mtimeMs,
+          false, // outside the scan window, so never its project's newest
+          live,
+          now,
+          entries,
+          p.permissionMode,
+        );
         this.searchMeta.set(sessionId, {
-          transcriptPath: tile.transcriptPath,
-          projectPath: tile.projectPath,
+          transcriptPath: u.claude?.transcriptPath ?? "",
+          projectPath: p.cwd,
           configDir: u.claude?.configDir ?? "",
           state,
           mtimeMs: u.ref.mtimeMs,
           harnessId: u.harness.id,
           loadEntries: u.ref.loadEntries,
         });
-      }
-      hits.push({ tile, score, archived: !scanned });
+        built.push({
+          tile: buildTile({
+            sessionId,
+            harness: u.harness.id,
+            transcriptPath: u.claude?.transcriptPath ?? "",
+            projectPath: p.cwd,
+            mtimeMs: u.ref.mtimeMs,
+            entries,
+            parsed: p,
+            state,
+            needsYou,
+            needsYouCertain,
+            hashToIndex,
+          }),
+          score: scored.get(sessionId)!,
+          archived: true,
+        });
+      });
+      hits.push(...built);
     }
+
+    hits.sort((a, b) => b.score - a.score);
     return hits;
+  }
+
+  /** Enumeration, cached briefly: one query must not rescan every transcript. */
+  private async cachedTranscripts(): Promise<UnifiedRef[]> {
+    const now = this.now();
+    if (this.enumCache && now - this.enumCache.at < ENUM_TTL_MS) return this.enumCache.value;
+    const value = await this.listTranscripts();
+    this.enumCache = { at: now, value };
+    return value;
   }
 
   private loadIndex(): Promise<SessionIndex> {
@@ -1439,7 +1546,7 @@ if (this.embed) {
 }
 ```
 
-with `const FIRST_CRAWL_DELAY_MS = 10_000;` beside the other constants, and its comment stating why the crawl does not run during startup.
+Both constants were added in step 3.
 
 8. In `packages/theia-extensions/src/node/spexr-backend-module.ts`, pass the embedder into the service:
 
@@ -1506,6 +1613,16 @@ describe("SessionSearchState", () => {
     vi.useRealTimers();
   });
 
+  it("repaints through the callback when results are accepted", async () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    const state = new SessionSearchState(onChange);
+    state.setQuery("design", async () => []);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(onChange).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("discards a result whose query was superseded", () => {
     const state = new SessionSearchState();
     const stale = state.token();
@@ -1567,6 +1684,9 @@ export class SessionSearchState {
   private seq = 0;
   private timer?: ReturnType<typeof setTimeout>;
 
+  /** `onChange` fires when accepted results change what should be on screen. */
+  constructor(private readonly onChange: () => void = () => {}) {}
+
   /** True while a query is in force, so the wall should render hits, not tiles. */
   get active(): boolean {
     return this.query.trim().length > 0;
@@ -1598,6 +1718,7 @@ export class SessionSearchState {
     if (token !== this.seq) return;
     this.hits = hits;
     this.pending = false;
+    this.onChange();
   }
 
   clear(): void {
@@ -1613,7 +1734,7 @@ export class SessionSearchState {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter @spexr/theia-extensions exec vitest run src/browser/darkfactory/session-search.test.ts`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Render the bar and the results**
 
@@ -1622,9 +1743,11 @@ In `darkfactory-wall-widget.tsx`:
 1. Import `SessionSearchState` and `type SessionHit`, and add fields:
 
 ```ts
-  private readonly search = new SessionSearchState();
+  private readonly search = new SessionSearchState(() => this.update());
   private indexProgress?: { done: number; total: number };
 ```
+
+The callback is how a result repaints: a query can take seconds, and nothing else wakes the widget when it lands.
 
 2. In `init()`, subscribe to progress alongside the existing client subscriptions:
 
@@ -1641,8 +1764,6 @@ this.client.onSessionIndexProgress$(({ done, total }) => {
   private readonly onSearchInput = (text: string): void => {
     this.search.setQuery(text, (q) => this.service.searchSessions(q));
     this.update();
-    // A late result must repaint too; `accept` has already discarded stale ones.
-    window.setTimeout(() => this.update(), SEARCH_DEBOUNCE_MS + 50);
   };
 
   private readonly onSearchKeyDown = (event: React.KeyboardEvent): void => {
