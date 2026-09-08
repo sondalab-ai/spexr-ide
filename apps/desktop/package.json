@@ -9,13 +9,13 @@
     "email": "marcello.barile@gmail.com"
   },
   "license": "MIT",
-  "main": "src-gen/backend/electron-main.js",
+  "main": "scripts/spexr-electron-main.js",
   "scripts": {
     "download:plugins": "theia download:plugins",
     "build": "theia build --mode=production",
     "build:dev": "pnpm download:plugins && theia build --mode=development",
     "rebuild": "theia rebuild:electron --cacheRoot ../../",
-    "start": "electron src-gen/backend/electron-main.js --plugins=local-dir:../../plugins",
+    "start": "electron scripts/spexr-electron-main.js",
     "dev": "theia build --mode=development --watch",
     "lint": "echo \"no source files\"",
     "typecheck": "echo \"no source files\"",
