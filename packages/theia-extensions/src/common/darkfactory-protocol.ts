@@ -47,6 +47,15 @@ export interface AgentSummary {
   overview: string;
 }
 
+/** One session matching a natural-language query, ready to render as a tile. */
+export interface SessionHit {
+  tile: AgentTile;
+  /** Hybrid score, dense and lexical blended; higher is a better match. */
+  score: number;
+  /** True when the session was outside the wall's current scan window. */
+  archived: boolean;
+}
+
 /** One rendered line of a read-only follow, tagged so the UI can style it like a terminal. */
 export interface FollowEvent {
   /**
@@ -84,6 +93,8 @@ export interface SpexrDarkfactoryService {
   listConfigDirs(): Promise<ClaudeConfigDir[]>;
   /** Two-level AI description (now + overview) from the local model; cached, empty fields if unavailable. */
   summarize(sessionId: string): Promise<AgentSummary>;
+  /** Rank indexed sessions against a natural-language query; `[]` for an empty query. */
+  searchSessions(query: string): Promise<SessionHit[]>;
   /** Decide whether a session opens as an interactive resume terminal or a read-only follow. */
   planFocus(sessionId: string): Promise<FocusPlan>;
   /** Begin streaming transcript turns for a read-only follow; idempotent per session. */
@@ -96,4 +107,6 @@ export interface SpexrDarkfactoryClient {
   onTilesChanged(tiles: AgentTile[]): void;
   /** Incremental read-only follow output, as typed events (newest transcript entries). */
   onFollowChunk(sessionId: string, events: FollowEvent[]): void;
+  /** Session-index crawl progress; `done === total` means the crawl finished. */
+  onSessionIndexProgress(done: number, total: number): void;
 }

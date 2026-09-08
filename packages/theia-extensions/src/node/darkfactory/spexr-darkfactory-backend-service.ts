@@ -46,6 +46,7 @@ import type {
   AgentTile,
   ClaudeConfigDir,
   FocusPlan,
+  SessionHit,
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
 } from "../../common/darkfactory-protocol.js";
@@ -439,6 +440,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    */
   async listConfigDirs(): Promise<ClaudeConfigDir[]> {
     return describeConfigDirs(this.currentConfigDirs(), this.defaultAccountDir);
+  }
+
+  /** Replaced in full by the search implementation; see the session index. */
+  async searchSessions(): Promise<SessionHit[]> {
+    return [];
   }
 
   async planFocus(sessionId: string): Promise<FocusPlan> {
