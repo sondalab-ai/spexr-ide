@@ -19,11 +19,22 @@ import { formatPullOutcome } from "./pull-outcome-format.js";
 import { pushBlockReason } from "./push-preflight.js";
 import {
   allDeleteModifyConflicts,
+  allInAnyGroup,
   allInGroup,
   allSingleOutcomeConflicts,
+  invokedGroupId,
+  isAnyResourceGroup,
   isResourceGroup,
   resourcePaths,
 } from "./scm-resource-args.js";
+
+/**
+ * The two groups the working tree is split across for display. Stage and
+ * Discard act on both: git makes no distinction between an edit and a
+ * never-seen file when staging one, and the split exists so a directory of
+ * build output cannot be read as changes the user (or a pull) made.
+ */
+const WORKING_TREE_GROUPS = ["workingTree", "untracked"] as const;
 
 export const GitCommands = {
   STAGE_ALL: { id: "spexr.git.stageAll", label: "Git: Stage All Changes" } satisfies Command,
@@ -104,11 +115,14 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
 
   registerCommands(commands: CommandRegistry): void {
     commands.registerCommand(GitCommands.STAGE_ALL, {
-      execute: () => this.runGitOp("Stage changes", () => this.stageAll()),
-      // Restricts the group-header button to the Changes group without
+      // The header button stages the group it sits on; the palette entry names
+      // no group and stages the whole working tree, as it always did.
+      execute: (...args: unknown[]) =>
+        this.runGitOp("Stage changes", () => this.stageAll(invokedGroupId(args))),
+      // Restricts the group-header button to the working-tree groups without
       // hiding the command from the command palette (which calls isVisible
       // with no args at all — see isResourceGroup).
-      isVisible: (...args: unknown[]) => isResourceGroup(args, "workingTree"),
+      isVisible: (...args: unknown[]) => isAnyResourceGroup(args, WORKING_TREE_GROUPS),
     });
     commands.registerCommand(GitCommands.UNSTAGE_ALL, {
       execute: () => this.runGitOp("Unstage changes", () => this.unstageAll()),
@@ -160,7 +174,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     commands.registerCommand(GitCommands.STAGE_FILE, {
       execute: (...args: unknown[]) =>
         this.runGitOp("Stage file", () => this.onProvider((p) => p.stage(this.pathsOf(args)))),
-      isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
+      isVisible: (...args: unknown[]) => allInAnyGroup(args, WORKING_TREE_GROUPS),
     });
     commands.registerCommand(GitCommands.UNSTAGE_FILE, {
       execute: (...args: unknown[]) =>
@@ -173,7 +187,7 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
       // further unstaged edit is two rows sharing one repo-relative path, and
       // discarding from the staged row would silently destroy the unstaged
       // edit the user did not click on.
-      isVisible: (...args: unknown[]) => allInGroup(args, "workingTree"),
+      isVisible: (...args: unknown[]) => allInAnyGroup(args, WORKING_TREE_GROUPS),
     });
     commands.registerCommand(GitCommands.MARK_RESOLVED, {
       execute: (...args: unknown[]) =>
@@ -276,9 +290,11 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
     }
   }
 
-  private async stageAll(): Promise<void> {
+  /** Stage one working-tree group, or both when no group was named. */
+  private async stageAll(groupId?: string): Promise<void> {
+    const groups = groupId === undefined ? WORKING_TREE_GROUPS : [groupId];
     await this.onProvider(async (provider) => {
-      const paths = this.groupPaths(provider, "workingTree");
+      const paths = groups.flatMap((g) => this.groupPaths(provider, g));
       if (paths.length === 0) return;
       await provider.stage(paths);
     });

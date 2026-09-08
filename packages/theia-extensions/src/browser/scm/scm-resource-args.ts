@@ -19,7 +19,10 @@ export function resourcePaths(root: string, items: unknown[]): string[] {
   return [...new Set(paths)];
 }
 
-/** The SCM resource group id ("index", "workingTree", or "conflicts") a resource belongs to, if any. */
+/**
+ * The SCM resource group id ("index", "workingTree", "untracked", or
+ * "conflicts") a resource belongs to, if any.
+ */
 export function resourceGroupId(item: unknown): string | undefined {
   return (item as { group?: { id?: string } })?.group?.id;
 }
@@ -33,6 +36,17 @@ export function resourceGroupId(item: unknown): string | undefined {
  */
 export function allInGroup(items: unknown[], groupId: string): boolean {
   return items.length > 0 && items.every((i) => resourceGroupId(i) === groupId);
+}
+
+/**
+ * Like {@link allInGroup}, but satisfied by any of several groups — and by a
+ * selection spanning more than one of them. Stage and Discard act on the
+ * working tree, which "Changes" and "Untracked" divide for display only: git
+ * stages an edit and a never-seen file with the same command, so a selection
+ * mixing the two rows is safe where one mixing in a Staged Changes row is not.
+ */
+export function allInAnyGroup(items: unknown[], groupIds: readonly string[]): boolean {
+  return items.length > 0 && items.every((i) => groupIds.includes(resourceGroupId(i) ?? ""));
 }
 
 /**
@@ -52,6 +66,25 @@ export function isResourceGroup(items: unknown[], groupId: string): boolean {
     items.length === 0 ||
     (items.length === 1 && (items[0] as { id?: string } | undefined)?.id === groupId)
   );
+}
+
+/**
+ * {@link isResourceGroup} for a command whose header button belongs on more
+ * than one group — Stage All sits on both "Changes" and "Untracked".
+ */
+export function isAnyResourceGroup(items: unknown[], groupIds: readonly string[]): boolean {
+  return groupIds.some((id) => isResourceGroup(items, id));
+}
+
+/**
+ * The group a group-menu command was invoked on, or undefined when it came
+ * from the command palette (no arguments). Lets one Stage All handler serve
+ * two headers: clicking "Untracked" must stage only untracked files, while the
+ * palette entry — which names no group — stages the whole working tree.
+ */
+export function invokedGroupId(items: unknown[]): string | undefined {
+  if (items.length !== 1) return undefined;
+  return (items[0] as { id?: string } | undefined)?.id;
 }
 
 /**

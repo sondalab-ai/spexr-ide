@@ -17,6 +17,7 @@ One line per memory. Linked file holds the body.
 - [Electron prefers-color-scheme](electron-prefers-color-scheme.md) — it follows nativeTheme.themeSource, pinned by Theia to the app's theme; not the OS setting.
 - [Electron window background flash](electron-window-background-flash.md) — a colour before the first paint is the window's own background; windowstate outranks windowOptions and re-saves itself.
 - [Theia tree scroll snap-back](theia-tree-scroll-snapback.md) — the virtualized tree scrolled back to the focused row on every re-render; patched in @theia/core.
+- [Git status untracked expansion](git-status-untracked-expansion.md) — the panel lists every untracked file where terminal `git status` collapses the directory; both counts are right.
 
 ## Feedback
 

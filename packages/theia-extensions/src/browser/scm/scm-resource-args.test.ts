@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   allDeleteModifyConflicts,
+  allInAnyGroup,
   allInGroup,
   allSingleOutcomeConflicts,
+  invokedGroupId,
+  isAnyResourceGroup,
   isResourceGroup,
   resourceGroupId,
   resourcePaths,
@@ -71,6 +74,34 @@ describe("allInGroup", () => {
   });
 });
 
+describe("allInAnyGroup", () => {
+  const workingTreeAndUntracked = ["workingTree", "untracked"];
+
+  it("accepts a selection spanning both working-tree groups, which stage one file", () => {
+    const args = [resource("/w/repo/a.ts", "workingTree"), resource("/w/repo/b.ts", "untracked")];
+    expect(allInAnyGroup(args, workingTreeAndUntracked)).toBe(true);
+  });
+
+  it("accepts a selection wholly inside one of the groups", () => {
+    expect(allInAnyGroup([resource("/w/repo/b.ts", "untracked")], workingTreeAndUntracked)).toBe(
+      true,
+    );
+  });
+
+  it("rejects a selection that reaches into Staged Changes", () => {
+    const args = [resource("/w/repo/a.ts", "untracked"), resource("/w/repo/b.ts", "index")];
+    expect(allInAnyGroup(args, workingTreeAndUntracked)).toBe(false);
+  });
+
+  it("rejects an item with no group at all", () => {
+    expect(allInAnyGroup([{}], workingTreeAndUntracked)).toBe(false);
+  });
+
+  it("is false for an empty selection, like allInGroup", () => {
+    expect(allInAnyGroup([], workingTreeAndUntracked)).toBe(false);
+  });
+});
+
 describe("isResourceGroup", () => {
   it("is true for a single ScmResourceGroup argument matching the id", () => {
     expect(isResourceGroup([{ id: "workingTree" }], "workingTree")).toBe(true);
@@ -88,6 +119,36 @@ describe("isResourceGroup", () => {
     expect(isResourceGroup([{ id: "workingTree" }, { id: "workingTree" }], "workingTree")).toBe(
       false,
     );
+  });
+});
+
+describe("isAnyResourceGroup", () => {
+  const stageAllGroups = ["workingTree", "untracked"];
+
+  it.each(stageAllGroups)("shows the header button on the %s group", (id) => {
+    expect(isAnyResourceGroup([{ id }], stageAllGroups)).toBe(true);
+  });
+
+  it("hides it on a group it was not registered for", () => {
+    expect(isAnyResourceGroup([{ id: "index" }], stageAllGroups)).toBe(false);
+  });
+
+  it("is true for an empty selection, keeping the command in the palette", () => {
+    expect(isAnyResourceGroup([], stageAllGroups)).toBe(true);
+  });
+});
+
+describe("invokedGroupId", () => {
+  it("names the group a header button was clicked on", () => {
+    expect(invokedGroupId([{ id: "untracked" }])).toBe("untracked");
+  });
+
+  it("is undefined for the command palette, which passes no arguments", () => {
+    expect(invokedGroupId([])).toBeUndefined();
+  });
+
+  it("is undefined for a spread list of resources rather than a single group", () => {
+    expect(invokedGroupId([{ id: "workingTree" }, { id: "workingTree" }])).toBeUndefined();
   });
 });
 

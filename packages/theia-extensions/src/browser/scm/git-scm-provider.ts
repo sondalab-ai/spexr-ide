@@ -23,9 +23,11 @@ import type {
   GitStashEntryDto,
   GitPullResultDto,
   GitStatusDto,
+  GitFileChangeDto,
 } from "../../common/git-protocol.js";
 import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
 import { SingleFlight } from "./single-flight.js";
+import { partitionUnstaged } from "./unstaged-partition.js";
 
 // Display glyphs following VS Code's own SCM decoration convention ("U" for
 // untracked, "!" for conflicted) — not the protocol's GitFileState letters,
@@ -164,6 +166,24 @@ export class SpexrGitScmProvider implements ScmProvider {
     "Changes",
     this as unknown as ScmProvider,
   );
+  private readonly untrackedGroup = new GitScmResourceGroup(
+    "untracked",
+    "Untracked",
+    this as unknown as ScmProvider,
+  );
+
+  /**
+   * Every group, in panel order. The one list that {@link groups}, the failure
+   * path and {@link dispose} all read, so a group added here cannot be missed
+   * by any of them — a group left uncleared on a failed refresh keeps rows on
+   * screen for a status the panel no longer has.
+   */
+  private readonly allGroups = [
+    this.conflictGroup,
+    this.indexGroup,
+    this.workingTreeGroup,
+    this.untrackedGroup,
+  ];
 
   private readonly toDispose = new DisposableCollection();
 
@@ -183,9 +203,11 @@ export class SpexrGitScmProvider implements ScmProvider {
   readonly acceptInputCommand = { command: "spexr.git.commitFromPanel", title: "Commit" };
 
   constructor() {
-    // Unlike the other two groups, an empty conflict group should not take up
-    // space in the SCM panel — most refreshes have no conflicts at all.
+    // Unlike Staged Changes and Changes, these two should not take up space in
+    // the SCM panel when empty: most refreshes have no conflicts at all, and a
+    // repository whose ignore rules are in order has nothing untracked.
     this.conflictGroup.hideWhenEmpty = true;
+    this.untrackedGroup.hideWhenEmpty = true;
   }
 
   /** Current text of the commit-message input box. */
@@ -205,7 +227,7 @@ export class SpexrGitScmProvider implements ScmProvider {
   }
 
   get groups(): ScmResourceGroup[] {
-    return [this.conflictGroup, this.indexGroup, this.workingTreeGroup];
+    return [...this.allGroups];
   }
 
   get rootUri(): string {
@@ -286,30 +308,28 @@ export class SpexrGitScmProvider implements ScmProvider {
           );
         });
 
-      const unstaged = status.files
-        .filter((f) => f.unstagedState !== undefined && f.unstagedState !== "U")
-        .map((f) => {
-          const isNew = f.unstagedState === "?";
-          const fileUri = buildFileUri(root, f.path);
-          return new GitScmResource(
-            this.workingTreeGroup,
-            fileUri,
-            { letter: STATE_LETTER[f.unstagedState!], tooltip: stateLabel(f.unstagedState!) },
-            () => this.openDiff(fileUri, f.path, "HEAD", isNew),
-          );
-        });
+      const workingTreeRow = (group: GitScmResourceGroup) => (f: GitFileChangeDto) => {
+        const isNew = f.unstagedState === "?";
+        const fileUri = buildFileUri(root, f.path);
+        return new GitScmResource(
+          group,
+          fileUri,
+          { letter: STATE_LETTER[f.unstagedState!], tooltip: stateLabel(f.unstagedState!) },
+          () => this.openDiff(fileUri, f.path, "HEAD", isNew),
+        );
+      };
+      const { tracked, untracked } = partitionUnstaged(status.files);
 
       this.conflictGroup.updateResources(conflicts);
       this.indexGroup.updateResources(staged);
-      this.workingTreeGroup.updateResources(unstaged);
+      this.workingTreeGroup.updateResources(tracked.map(workingTreeRow(this.workingTreeGroup)));
+      this.untrackedGroup.updateResources(untracked.map(workingTreeRow(this.untrackedGroup)));
       this._onDidChangeEmitter.fire();
     } catch {
       // Non-git workspace: clear groups silently. Also clear the status the
       // status bar is holding — otherwise it keeps showing e.g. "main ↑2"
       // for a repository the panel no longer has any status for.
-      this.conflictGroup.updateResources([]);
-      this.indexGroup.updateResources([]);
-      this.workingTreeGroup.updateResources([]);
+      for (const group of this.allGroups) group.updateResources([]);
       this._lastStatus = undefined;
       this._onDidChangeStatusEmitter.fire(undefined);
     }
@@ -477,9 +497,7 @@ export class SpexrGitScmProvider implements ScmProvider {
     this._onDidChangeEmitter.dispose();
     this._onDidChangeCommitTemplateEmitter.dispose();
     this._onDidChangeStatusEmitter.dispose();
-    this.conflictGroup.dispose();
-    this.indexGroup.dispose();
-    this.workingTreeGroup.dispose();
+    for (const group of this.allGroups) group.dispose();
   }
 }
 
