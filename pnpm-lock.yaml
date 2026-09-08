@@ -384,9 +384,6 @@ importers:
       simple-git:
         specifier: ^3.27.0
         version: 3.36.0
-      tm-grammars:
-        specifier: ^1.32.10
-        version: 1.32.10
     devDependencies:
       '@types/react':
         specifier: ^19.2.0
@@ -5336,9 +5333,6 @@ packages:
   tinyrainbow@3.1.0:
     resolution: {integrity: sha512-Bf+ILmBgretUrdJxzXM0SgXLZ3XfiaUuOj/IKQHuTXip+05Xn+uyEYdVg0kYDipTBcLrCVyUzAPz7QmArb0mmw==}
     engines: {node: '>=14.0.0'}
-
-  tm-grammars@1.32.10:
-    resolution: {integrity: sha512-I7jkOeYjee+EZ3Z6nt2VNWf8gFggXZYwVZBn3sxocDEXyq0Sz6HGi0K4uugwaUyeagoG97oNpgM5O4GQnW+qHw==}
 
   tmp-promise@3.0.3:
     resolution: {integrity: sha512-RwM7MoPojPxsOBYnyd2hy0bxtIlVrihNs9pj5SUvY8Zz1sQcQG2tG1hSr8PDxfgEB8RNKDhqbIlroIarSNDNsQ==}
@@ -12010,8 +12004,6 @@ snapshots:
       picomatch: 4.0.7
 
   tinyrainbow@3.1.0: {}
-
-  tm-grammars@1.32.10: {}
 
   tmp-promise@3.0.3:
     dependencies:
