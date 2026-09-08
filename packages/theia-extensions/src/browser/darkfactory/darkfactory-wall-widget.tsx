@@ -245,8 +245,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * for the work around the agent (a build, a git command) that wants a terminal
    * of its own rather than the one the agent is typing into.
    */
-  private openProjectTerminal(tile: AgentTile): void {
-    void this.projectTerminals.openAt(tile.projectPath, tile.projectName).catch(() => {
+  private openProjectTerminal(projectPath: string, projectName: string): void {
+    void this.projectTerminals.openAt(projectPath, projectName).catch(() => {
       /* ignore */
     });
   }
@@ -432,8 +432,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * drives the session in place, this repoints the whole workspace and costs a
    * window reload.
    */
-  private openProject(tile: AgentTile): void {
-    this.projectSwitch.switchTo(tile.projectPath);
+  private openProject(projectPath: string): void {
+    this.projectSwitch.switchTo(projectPath);
   }
 
   /**
@@ -638,7 +638,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         now={now}
         summary={this.summaries.get(tile.sessionId)}
         onOpen={(t) => this.pin(t)}
-        onOpenProject={(t) => this.openProject(t)}
+        onOpenProject={(t) => this.openProject(t.projectPath)}
         isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
         showProject={showProject}
         onTrash={(t) => this.moveToTrash(t.sessionId)}
@@ -727,7 +727,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           group={group}
           collapsed={collapsed}
           onToggle={(path) => this.toggleGroup(path)}
-          onOpenProject={(t) => this.openProject(t)}
+          onOpenProject={(t) => this.openProject(t.projectPath)}
         />
         {!collapsed && cards.length > 0 && (
           <div className="spexr-df-grid">{cards.map((t) => this.renderCard(t, now, false))}</div>
@@ -796,9 +796,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             <LaunchedSessionCard
               key={launch.key}
               projectName={launch.projectName}
+              projectPath={launch.projectPath}
               harness={launch.harness}
               terminal={this.terminals.live(launch.key)}
               onClose={() => this.closeLaunched(launch.key)}
+              onOpenProject={() => this.openProject(launch.projectPath)}
+              onOpenTerminal={() => this.openProjectTerminal(launch.projectPath, launch.projectName)}
+              isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
               layout={this.wallLayout}
             />
           ))}
@@ -812,8 +816,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               terminal={this.terminals.live(tile.sessionId)}
               onClose={() => this.unpin(tile.sessionId)}
               onFork={(t) => this.forkTakeover(t)}
-              onOpenProject={(t) => this.openProject(t)}
-              onOpenTerminal={(t) => this.openProjectTerminal(t)}
+              onOpenProject={(t) => this.openProject(t.projectPath)}
+              onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, t.projectName)}
               onTrash={(t) => this.moveToTrash(t.sessionId)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
               layout={this.wallLayout}
