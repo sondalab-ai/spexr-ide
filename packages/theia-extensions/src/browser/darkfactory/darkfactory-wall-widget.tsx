@@ -611,10 +611,38 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    */
   private moveToTrash(sessionId: string): void {
     if (this.trash.includes(sessionId)) return;
-    if (this.pinned.includes(sessionId)) this.unpin(sessionId, false);
+    const wasPinned = this.pinned.includes(sessionId);
+    if (wasPinned) this.unpin(sessionId, false);
     this.trash = addTrashed(this.trash, sessionId);
     writeTrashed(window.localStorage, this.trash);
+    // Open the trash, so the session is seen arriving somewhere. Trashing used
+    // to be indistinguishable from closing: the card vanished and the only
+    // trace was a count, in a collapsed section, at the very bottom of the wall.
+    this.trashCollapsed = false;
     this.update();
+    // Only for a card that was expanded. That one leaves a hole at the top of
+    // the wall with the trash far below it, which is the case that reads as a
+    // close. A grid tile is already in the list the trash sits under, and
+    // scrolling the wall every time one is set aside would be the worse
+    // surprise of the two.
+    if (wasPinned) this.revealTrash();
+  }
+
+  /**
+   * Bring the trash section into view once the render triggered above has
+   * produced it. Two frames because that render is not synchronous — Lumino
+   * flushes the update on an animation frame and React commits within it — and
+   * the element simply does not exist before then. Guarded rather than retried:
+   * failing to scroll is not worth a loop.
+   */
+  private revealTrash(): void {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        this.node
+          .querySelector(".spexr-df-trash")
+          ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    });
   }
 
   /** Take a session back out of the trash; it returns to its project group. */
