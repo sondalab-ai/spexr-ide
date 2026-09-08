@@ -15,7 +15,7 @@ import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { toRepoRelative } from "./relative-path.js";
 import { explainCheckoutFailure } from "./checkout-failure.js";
 import { commitBlockReason } from "./commit-preflight.js";
-import { formatPullOutcome } from "./pull-outcome-format.js";
+import { formatPullOutcome, localChanges } from "./pull-outcome-format.js";
 import { pushBlockReason } from "./push-preflight.js";
 import {
   allDeleteModifyConflicts,
@@ -516,7 +516,10 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
   private async pull(): Promise<void> {
     await this.runGitOp("Pull", () =>
       this.onProvider(async (provider) => {
-        this.messages.info(formatPullOutcome(await provider.pull()));
+        const result = await provider.pull();
+        // `pull` refreshes before returning, so this is the tree as it stands
+        // after the pull — the rows the message says the pull did not bring.
+        this.messages.info(formatPullOutcome(result, localChanges(provider.lastStatus)));
       }),
     );
   }
