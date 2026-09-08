@@ -3,11 +3,11 @@ import { formatPullOutcome, localChanges, type LocalChanges } from "./pull-outco
 import type { GitFileChangeDto, GitStatusDto } from "../../common/git-protocol.js";
 
 function local(partial: Partial<LocalChanges>): LocalChanges {
-  return { modified: 0, untracked: 0, conflicted: 0, ...partial };
+  return { modified: 0, untracked: 0, conflicted: 0, mergeInProgress: false, ...partial };
 }
 
-function status(files: GitFileChangeDto[]): GitStatusDto {
-  return { branch: "main", ahead: 0, behind: 0, files, isClean: false, mergeInProgress: false };
+function status(files: GitFileChangeDto[], mergeInProgress = false): GitStatusDto {
+  return { branch: "main", ahead: 0, behind: 0, files, isClean: false, mergeInProgress };
 }
 
 describe("formatPullOutcome", () => {
@@ -70,6 +70,18 @@ describe("formatPullOutcome", () => {
     );
   });
 
+  it("reports an open merge even once every conflict row is gone", () => {
+    // Accepting a deletion resolves the last conflict and empties the status,
+    // leaving the merge uncommitted — reassurance here would be the wrong half
+    // of the truth.
+    expect(
+      formatPullOutcome(
+        { changedFiles: 8, insertions: 20, deletions: 3 },
+        local({ mergeInProgress: true, untracked: 49 }),
+      ),
+    ).toBe("Pulled 8 files (+20 -3). The merge is resolved but not yet committed.");
+  });
+
   it("adds no clause on a clean working tree, or with no status at all", () => {
     expect(formatPullOutcome({ changedFiles: 3, insertions: 4, deletions: 1 }, local({}))).toBe(
       "Pulled 3 files (+4 -1).",
@@ -91,7 +103,16 @@ describe("localChanges", () => {
           { path: "d.ts", unstagedState: "U", conflict: "UU" },
         ]),
       ),
-    ).toEqual({ modified: 2, untracked: 1, conflicted: 1 });
+    ).toEqual({ modified: 2, untracked: 1, conflicted: 1, mergeInProgress: false });
+  });
+
+  it("carries the open merge through, which the file counts cannot express", () => {
+    expect(localChanges(status([], true))).toEqual({
+      modified: 0,
+      untracked: 0,
+      conflicted: 0,
+      mergeInProgress: true,
+    });
   });
 
   it("leaves staged-only files out — they are in the index, not the working tree", () => {
@@ -99,6 +120,7 @@ describe("localChanges", () => {
       modified: 0,
       untracked: 0,
       conflicted: 0,
+      mergeInProgress: false,
     });
   });
 

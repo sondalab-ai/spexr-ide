@@ -7,6 +7,13 @@ export interface LocalChanges {
   readonly modified: number;
   readonly untracked: number;
   readonly conflicted: number;
+  /**
+   * A merge is open and uncommitted. Independent of {@link conflicted}:
+   * resolving a delete/modify conflict in favour of the deletion empties the
+   * status while leaving the merge to finish, so a zero conflict count is not
+   * evidence that the pull is done.
+   */
+  readonly mergeInProgress: boolean;
 }
 
 /** Count the working-tree rows of a status, or nothing when there is no status. */
@@ -17,6 +24,7 @@ export function localChanges(status: GitStatusDto | undefined): LocalChanges | u
     modified: tracked.length,
     untracked: untracked.length,
     conflicted: status.files.filter((f) => f.unstagedState === "U").length,
+    mergeInProgress: status.mergeInProgress,
   };
 }
 
@@ -31,10 +39,11 @@ function count(n: number, singular: string, plural: string): string {
  *
  * `local` is the working tree as it stands after the pull, and exists to stop
  * the other half of the misreading: a pull reported as touching 312 files, next
- * to a panel showing 49 rows, reads as if the pull put them there. Outside a
- * conflict it cannot have — a pull either commits its merge or stops on
- * conflicts — so those rows predate it, and saying so ends the guesswork.
- * Omit it to report the pull alone.
+ * to a panel showing 49 rows, reads as if the pull put them there. Outside an
+ * open merge it cannot have — our `git pull` takes no arguments, so it either
+ * commits what it merged or stops with the merge unfinished — so those rows
+ * predate it, and saying so ends the guesswork. Omit it to report the pull
+ * alone.
  */
 export function formatPullOutcome(
   result: GitPullResultDto | undefined,
@@ -49,9 +58,10 @@ export function formatPullOutcome(
 }
 
 /**
- * Conflicts win over the pre-existing rows: they are the one kind of row a pull
- * does create, and burying them under a reassurance would be the exact
- * inversion of the message's purpose.
+ * An unfinished merge wins over the pre-existing rows: it is the one thing a
+ * pull does leave behind, and burying it under a reassurance would be the exact
+ * inversion of the message's purpose. Reported even with no conflict rows left,
+ * since resolving the last one does not commit the merge.
  */
 function localNote(local: LocalChanges | undefined): string | undefined {
   if (!local) return undefined;
@@ -60,6 +70,7 @@ function localNote(local: LocalChanges | undefined): string | undefined {
       ? "1 file has a conflict to resolve."
       : `${local.conflicted} files have conflicts to resolve.`;
   }
+  if (local.mergeInProgress) return "The merge is resolved but not yet committed.";
   const parts = [
     local.untracked > 0 ? count(local.untracked, "untracked file", "untracked files") : undefined,
     local.modified > 0 ? count(local.modified, "local change", "local changes") : undefined,
