@@ -85,8 +85,8 @@ already runs in-process for the code index (`EmbedderToken`, bound in
   the project path, git branch, the session goal (via `sessionGoal`), the most
   recent assistant prose segments (via `recentAssistantProse`), and the distinct
   tool targets seen in the transcript (file paths, command names). The result is
-  capped at 4000 characters, goal first, so truncation drops the least
-  identifying material last.
+  capped at 4000 characters with the goal first, so a document that hits the
+  cap loses tool targets rather than the sentence that identifies the session.
 - **AC-2 Index record.** `node/darkfactory/session-index.ts` exports
   `SESSION_INDEX_VERSION = 1` and a `SessionIndex` class holding one
   `SessionRecord` per session — `sessionId`, `harness`, `projectPath`,
