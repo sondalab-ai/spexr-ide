@@ -36,6 +36,10 @@ a way it would not be in a conventional editor.
   Adopting it was considered and rejected: it would trade control over the
   agent-facing integration for a large new runtime surface. The custom
   `@theia/scm` implementation stays.
+  **Superseded for language tooling by `docs/specs/0015-vscode-plugin-host.md`,
+  which adopts the plugin host to get language intelligence.** This non-goal
+  still holds for git: 0015 excludes the builtin git extensions, and the custom
+  `@theia/scm` implementation remains SPEXR's source-control surface.
 - **No merge conflict *resolution*.** Conflicts are surfaced and can be marked
   resolved; a three-way merge editor is out of scope. Resolution happens in the
   editor or the terminal.
