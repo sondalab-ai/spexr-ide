@@ -16,6 +16,7 @@ import type {
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+import { SpexrProjectTerminalService } from "../terminal/project-terminal-service.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 import { parseLaunchProfiles } from "../../common/claude-launch-profiles.js";
 import { SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE } from "../preferences/spexr-preferences.js";
@@ -70,6 +71,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
+  @inject(SpexrProjectTerminalService) private readonly projectTerminals!: SpexrProjectTerminalService;
   @inject(SpexrProjectSwitchService) private readonly projectSwitch!: SpexrProjectSwitchService;
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
   @inject(FileService) private readonly files!: FileService;
@@ -236,6 +238,17 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         /* ignore */
       });
     }
+  }
+
+  /**
+   * Open a plain shell in the bottom panel, at the session's project directory —
+   * for the work around the agent (a build, a git command) that wants a terminal
+   * of its own rather than the one the agent is typing into.
+   */
+  private openProjectTerminal(tile: AgentTile): void {
+    void this.projectTerminals.openAt(tile.projectPath, tile.projectName).catch(() => {
+      /* ignore */
+    });
   }
 
   /** Fork a live session into a writable terminal embedded in the pinned card. */
@@ -800,6 +813,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               onClose={() => this.unpin(tile.sessionId)}
               onFork={(t) => this.forkTakeover(t)}
               onOpenProject={(t) => this.openProject(t)}
+              onOpenTerminal={(t) => this.openProjectTerminal(t)}
               onTrash={(t) => this.moveToTrash(t.sessionId)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
               layout={this.wallLayout}

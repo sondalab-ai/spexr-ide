@@ -404,6 +404,8 @@ export function AgentPinnedCard(props: {
   onClose: () => void;
   onFork: (t: AgentTile) => void;
   onOpenProject: (t: AgentTile) => void;
+  /** Open a plain shell terminal in the bottom panel, at this session's project. */
+  onOpenTerminal: (t: AgentTile) => void;
   /** Close this card and move its session to the trash. */
   onTrash: (t: AgentTile) => void;
   /** True when this tile's project is the one loaded in the window. */
@@ -411,8 +413,20 @@ export function AgentPinnedCard(props: {
   /** How the wall arranges active cards; the card's height is remembered per arrangement. */
   layout: WallLayout;
 }): React.ReactElement {
-  const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, onTrash, isCurrent, layout } =
-    props;
+  const {
+    tile,
+    now,
+    summary,
+    events,
+    terminal,
+    onClose,
+    onFork,
+    onOpenProject,
+    onOpenTerminal,
+    onTrash,
+    isCurrent,
+    layout,
+  } = props;
   const status = statusOf(tile);
   // Both clauses, like a grid tile: the overview alone is the session goal, which
   // barely moves between inferences, so a card showing only it reads as frozen
@@ -485,6 +499,13 @@ export function AgentPinnedCard(props: {
               Open project
             </button>
           )}
+          <button
+            className="spexr-button"
+            onClick={() => onOpenTerminal(tile)}
+            title={`Open a shell in the bottom panel at ${tile.projectPath}`}
+          >
+            <i className="codicon codicon-terminal" /> Terminal here
+          </button>
           {!terminal && (
             <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
               Fork &amp; continue
