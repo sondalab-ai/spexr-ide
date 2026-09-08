@@ -29,6 +29,7 @@ import { forEachConcurrent as fanOut } from "./concurrency.js";
 import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
 import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
 import { rankSessions } from "./session-query.js";
+import { readFirstPrompt } from "./session-goal.js";
 import { expandQuery } from "../search/query-expander.js";
 import type { SessionIndex } from "./session-index.js";
 import { forEachConcurrent } from "./concurrency.js";
@@ -602,6 +603,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       mtimeMs: u.ref.mtimeMs,
       loadEntries: u.ref.loadEntries,
       parse: () => u.harness.parseTranscript(u.ref),
+      ...(u.claude
+        ? { readGoalHead: () => readFirstPrompt(u.claude!.transcriptPath) }
+        : {}),
     }));
   }
 

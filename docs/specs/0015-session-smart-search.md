@@ -89,7 +89,7 @@ already runs in-process for the code index (`EmbedderToken`, bound in
 - **AC-1 Session document.** `node/darkfactory/session-doc.ts` exports
   `buildSessionDoc(input: SessionDocInput): string`, a pure function producing
   the indexable text of one session from: project name, the last two segments of
-  the project path, git branch, the session goal (via `sessionGoal`), the most
+  the project path, git branch, the session goal, the most
   recent assistant prose segments (via `recentAssistantProse`), and the distinct
   tool targets seen in the transcript (file paths, command names). The result is
   capped at 4000 characters with the goal first, so a document that hits the
@@ -107,6 +107,14 @@ already runs in-process for the code index (`EmbedderToken`, bound in
   to a temporary file in the same directory and are renamed into place. A file
   whose `version` differs from `SESSION_INDEX_VERSION`, or which fails to parse,
   loads as an empty index rather than throwing.
+- **AC-1b Goal recovery.** The goal comes from `sessionGoal`, falling back to the
+  parsed transcript's own goal and last prompt. When all three are empty — a long
+  injected preamble (a project's CLAUDE.md, system reminders, hook output) can
+  exhaust the wall's 32 KB head read before the human's first sentence appears —
+  `node/darkfactory/session-goal.ts` reads 256 KB of the transcript head and
+  returns the first genuine prompt. Measured on this machine, that is the
+  difference between a third of sessions indexing with no goal and none of them.
+
 - **AC-4 Incremental crawl.** `node/darkfactory/session-indexer.ts` enumerates
   sessions through the installed harness adapters — the same `listSessions()`
   the wall uses, which is already global — and skips any session whose

@@ -20,6 +20,12 @@ export interface IndexableSession {
   mtimeMs: number;
   loadEntries(): Promise<unknown[]>;
   parse(): Promise<ParsedTranscript>;
+  /**
+   * Last resort for the goal: reads further into the transcript than the wall's
+   * bounded read does. A long injected preamble can push the human's first
+   * sentence past that window, and the goal is what a query matches best.
+   */
+  readGoalHead?(): Promise<string>;
 }
 
 export interface SessionIndexerDeps {
@@ -112,7 +118,8 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
       // cannot be placed, and a non-interactive one is an SDK or subagent run
       // nobody can open.
       if (!parsed.cwd || !parsed.interactive) return;
-      const goal = sessionGoal(entries) || parsed.goal || parsed.lastPrompt;
+      let goal = sessionGoal(entries) || parsed.goal || parsed.lastPrompt;
+      if (!goal && session.readGoalHead) goal = await session.readGoalHead();
       const doc = buildSessionDoc({
         projectPath: parsed.cwd,
         goal,
