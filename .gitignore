@@ -46,3 +46,6 @@ tests/e2e/dist/
 .claude/
 .remember/
 .superpowers/
+
+# VS Code builtin extensions, downloaded by `theia download:plugins`
+plugins/
