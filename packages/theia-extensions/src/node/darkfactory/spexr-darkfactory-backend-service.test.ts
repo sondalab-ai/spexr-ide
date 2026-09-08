@@ -721,3 +721,93 @@ describe("wall polling", () => {
     }
   });
 });
+
+describe("searchSessions", () => {
+  /**
+   * `count` sessions, the last of which carries the OLDEST mtime: listTiles
+   * sorts descending and keeps the first RECENT_LIMIT (60), so only that one
+   * ends up outside the scan window and comes back as an archived hit.
+   */
+  function searchSvc(count: number, archivedGoal: string, indexPath: string) {
+    const refs = Array.from({ length: count }, (_, i) => {
+      const last = i === count - 1;
+      const id = last ? "archived" : `s${i}`;
+      const goal = last ? archivedGoal : `unrelated maintenance chore number ${i}`;
+      const cwd = last ? "/Users/x/src/mine/spexr" : `/Users/x/src/proj${i}`;
+      const mtimeMs = last ? NOW - 10_000_000 : NOW - 1_000 * i;
+      const lines = [
+        `{"type":"mode","mode":"normal"}`,
+        `{"cwd":"${cwd}","type":"user","message":{"role":"user","content":[{"type":"text","text":"${goal}"}]}}`,
+        `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"${cwd}/src/theme.css"}}]}}`,
+      ];
+      return {
+        harness: claudeHarness,
+        ref: {
+          sessionId: id,
+          projectPath: "",
+          mtimeMs,
+          loadEntries: async () => lines.map((l) => JSON.parse(l)),
+        },
+        claude: {
+          sessionId: id,
+          transcriptPath: `/PD/-proj/${id}.jsonl`,
+          configDir: "/Users/x/.claude",
+          mtimeMs,
+          readLines: () => Promise.resolve(lines),
+        },
+      };
+    });
+    return svc({
+      listTranscripts: () => Promise.resolve(refs),
+      liveProjectDirs: () => Promise.resolve(new Set<string>()),
+      sessionIndexPath: indexPath,
+      // Two directions only: anything about effects, and everything else.
+      embed: async (texts: string[]) =>
+        texts.map((t) =>
+          /effect/i.test(t) ? Float32Array.from([1, 0]) : Float32Array.from([0, 1]),
+        ),
+    });
+  }
+
+  it("returns [] for an empty query", async () => {
+    expect(await svc().searchSessions("   ")).toEqual([]);
+  });
+
+  it("opens an archived hit even after a scan has cleared the live index", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-search-"));
+    try {
+      const s = searchSvc(61, "adding new effects to the spexr design system", join(dir, "i.json"));
+      await s.indexNow();
+      await s.listTiles(); // clears the scan-owned index, as every poll does
+
+      const hits = await s.searchSessions("new effects in the design system");
+      const archived = hits.find((h) => h.archived);
+      expect(archived).toBeDefined();
+      expect(archived!.tile.projectName).toBe("spexr");
+      expect(archived!.tile.goal).toContain("effects");
+      expect(hits[0]!.tile.sessionId).toBe("archived");
+
+      const plan = await s.planFocus("archived");
+      expect(plan.projectPath).toBe("/Users/x/src/mine/spexr");
+      expect(plan.configDir).toBe("/Users/x/.claude");
+      expect(plan.kind).toBe("resume-terminal");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a session inside the scan window as the scan built it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-search-"));
+    try {
+      const s = searchSvc(3, "adding new effects to the spexr design system", join(dir, "i.json"));
+      await s.indexNow();
+      const tiles = await s.listTiles();
+      const hits = await s.searchSessions("new effects in the design system");
+      const hit = hits.find((h) => h.tile.sessionId === "archived");
+      expect(hit!.archived).toBe(false);
+      expect(hit!.tile).toBe(tiles.find((t) => t.sessionId === "archived"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

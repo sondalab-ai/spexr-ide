@@ -850,11 +850,14 @@ import type { HarnessId } from "../../common/harness/harness-types.js";
 export interface IndexableSession {
   sessionId: string;
   harness: HarnessId;
-  projectPath: string;
   transcriptPath: string;
   configDir: string;
   mtimeMs: number;
   loadEntries(): Promise<unknown[]>;
+  /** The project path is NOT on the ref: Claude refs carry `projectPath: ""`
+   *  and the real working directory only appears once the transcript is
+   *  parsed. Called only for sessions the crawl has decided to index. */
+  parse(): Promise<ParsedTranscript>;
 }
 
 export interface SessionIndexerDeps {
@@ -1438,9 +1441,14 @@ Replace the three `this.index.get(sessionId)` reads in `summarize`, `planFocus` 
       configDir: u.claude?.configDir ?? "",
       mtimeMs: u.ref.mtimeMs,
       loadEntries: u.ref.loadEntries,
+      parse: () => u.harness.parseTranscript(u.ref),
     }));
   }
 ```
+
+The crawl reads `parsed.cwd` for the project path and applies the wall's two
+admission rules — no working directory, or `interactive: false` (an SDK or
+subagent run nobody can open) — before building a document.
 
 6. Implement the query:
 

@@ -6,7 +6,6 @@ function session(id: string, mtimeMs: number, goal: string): IndexableSession {
   return {
     sessionId: id,
     harness: "claude",
-    projectPath: `/p/${id}`,
     transcriptPath: `/t/${id}.jsonl`,
     configDir: "/c",
     mtimeMs,
@@ -14,6 +13,13 @@ function session(id: string, mtimeMs: number, goal: string): IndexableSession {
       { message: { role: "user", content: goal } },
       { message: { role: "assistant", content: [{ type: "text", text: "done" }] } },
     ],
+    parse: async () => ({
+      cwd: `/p/${id}`,
+      userTurns: 1,
+      goal,
+      lastPrompt: goal,
+      interactive: true,
+    }),
   };
 }
 
@@ -110,6 +116,43 @@ describe("runSessionIndex", () => {
       onProgress: (done, total) => progress.push([done, total]),
     });
     expect(progress.at(-1)).toEqual([2, 2]);
+  });
+
+  it("skips a session with no working directory, and a non-interactive one", async () => {
+    const index = new SessionIndex();
+    const noCwd: IndexableSession = {
+      ...session("nocwd", 1, "x"),
+      parse: async () => ({ userTurns: 1, goal: "x", lastPrompt: "x", interactive: true }),
+    };
+    const headless: IndexableSession = {
+      ...session("headless", 1, "y"),
+      parse: async () => ({
+        cwd: "/p/headless",
+        userTurns: 1,
+        goal: "y",
+        lastPrompt: "y",
+        interactive: false,
+      }),
+    };
+    await runSessionIndex({
+      index,
+      embed,
+      list: async () => [noCwd, headless, session("ok", 1, "z")],
+      save: async () => {},
+    });
+    expect(index.ids()).toEqual(["ok"]);
+  });
+
+  it("records the project path the transcript reports, not the ref", async () => {
+    const index = new SessionIndex();
+    await runSessionIndex({
+      index,
+      embed,
+      list: async () => [session("a", 1, "add effects")],
+      save: async () => {},
+    });
+    expect(index.get("a")!.projectPath).toBe("/p/a");
+    expect(index.get("a")!.doc).toContain("/p/a".slice(1));
   });
 
   it("skips a session whose entries cannot be read, without failing the crawl", async () => {

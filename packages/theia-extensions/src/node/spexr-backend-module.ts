@@ -7,7 +7,7 @@ import { GIT_SERVICE_PATH, type SpexrGitClient } from "../common/git-protocol.js
 import { SpexrAgentBackendService } from "./spexr-agent-backend-service.js";
 import { SpexrGitBackendService } from "./spexr-git-backend-service.js";
 import { SEARCH_SERVICE_PATH, type SpexrSearchClient } from "../common/search-protocol.js";
-import { EmbedderToken, TransformersEmbedder } from "./search/embedding-model.js";
+import { EmbedderToken, TransformersEmbedder, type Embedder } from "./search/embedding-model.js";
 import { DescriptionGeneratorToken, type DescriptionGenerator } from "./search/description-format.js";
 import { WorkerDescriptionGenerator } from "./search/worker-description-generator.js";
 import { SpexrSearchBackendService } from "./search/spexr-search-backend-service.js";
@@ -62,6 +62,7 @@ export default new ContainerModule((bind) => {
       (ctx) =>
         new SpexrDarkfactoryBackendService({
           generator: ctx.container.get<DescriptionGenerator>(DescriptionGeneratorToken),
+          embed: (texts) => ctx.container.get<Embedder>(EmbedderToken).embed(texts),
         }),
     )
     .inSingletonScope();

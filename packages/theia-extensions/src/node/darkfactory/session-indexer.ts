@@ -4,17 +4,22 @@ import { forEachConcurrent } from "./concurrency.js";
 import { buildSessionDoc, toolTargets } from "./session-doc.js";
 import { recentAssistantProse, sessionGoal, type TurnEntry } from "./turns.js";
 import type { SessionIndex, SessionRecord } from "./session-index.js";
-import type { HarnessId } from "../../common/harness/harness-types.js";
+import type { HarnessId, ParsedTranscript } from "../../common/harness/harness-types.js";
 
-/** One session the crawl can index, flattened out of its harness ref. */
+/**
+ * One session the crawl can index, flattened out of its harness ref. The project
+ * path is not a field: Claude refs carry none, and the real working directory
+ * only appears once the transcript is parsed — hence `parse`, which the crawl
+ * calls solely for sessions it has decided to index.
+ */
 export interface IndexableSession {
   sessionId: string;
   harness: HarnessId;
-  projectPath: string;
   transcriptPath: string;
   configDir: string;
   mtimeMs: number;
   loadEntries(): Promise<unknown[]>;
+  parse(): Promise<ParsedTranscript>;
 }
 
 export interface SessionIndexerDeps {
@@ -43,6 +48,7 @@ function hashDoc(doc: string): string {
 /** Assemble one index record around an already-computed document and vector. */
 function toRecord(
   session: IndexableSession,
+  projectPath: string,
   vector: Float32Array,
   doc: string,
   goal: string,
@@ -50,8 +56,8 @@ function toRecord(
   return {
     sessionId: session.sessionId,
     harness: session.harness,
-    projectPath: session.projectPath,
-    projectName: basename(session.projectPath),
+    projectPath,
+    projectName: basename(projectPath),
     transcriptPath: session.transcriptPath,
     configDir: session.configDir,
     mtimeMs: session.mtimeMs,
@@ -86,24 +92,36 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
   let lastSave = now();
   for (let i = 0; i < stale.length; i += EMBED_BATCH) {
     const batch = stale.slice(i, i + EMBED_BATCH);
-    const prepared: Array<{ session: IndexableSession; doc: string; goal: string }> = [];
+    const prepared: Array<{
+      session: IndexableSession;
+      projectPath: string;
+      doc: string;
+      goal: string;
+    }> = [];
 
     await forEachConcurrent(batch, PARSE_CONCURRENCY, async (session) => {
       let entries: TurnEntry[];
+      let parsed: ParsedTranscript;
       try {
+        parsed = await session.parse();
         entries = (await session.loadEntries()) as TurnEntry[];
       } catch {
         return; // unreadable transcript → not indexable, and not fatal
       }
-      const goal = sessionGoal(entries);
+      // The same two rules the wall applies: a session with no working directory
+      // cannot be placed, and a non-interactive one is an SDK or subagent run
+      // nobody can open.
+      if (!parsed.cwd || !parsed.interactive) return;
+      const goal = sessionGoal(entries) || parsed.goal || parsed.lastPrompt;
       const doc = buildSessionDoc({
-        projectPath: session.projectPath,
+        projectPath: parsed.cwd,
         goal,
         prose: recentAssistantProse(entries, PROSE_SEGMENTS),
         targets: toolTargets(entries),
+        ...(parsed.gitBranch !== undefined ? { gitBranch: parsed.gitBranch } : {}),
       });
       if (!doc) return;
-      prepared.push({ session, doc, goal });
+      prepared.push({ session, projectPath: parsed.cwd, doc, goal });
     });
 
     // A transcript can be touched without its indexed head/tail changing — a
@@ -122,7 +140,7 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
     if (fresh.length > 0) {
       const vectors = await embed(fresh.map((p) => p.doc));
       for (const [j, p] of fresh.entries()) {
-        index.upsert(toRecord(p.session, vectors[j]!, p.doc, p.goal));
+        index.upsert(toRecord(p.session, p.projectPath, vectors[j]!, p.doc, p.goal));
       }
     }
 
