@@ -496,6 +496,7 @@ export function AgentPinnedCard(props: {
           </span>
           {!isCurrent && (
             <button className="spexr-button" onClick={() => onOpenProject(tile)} title={tile.projectPath}>
+              <i className="codicon codicon-folder-opened" />
               Open project
             </button>
           )}
@@ -504,7 +505,8 @@ export function AgentPinnedCard(props: {
             onClick={() => onOpenTerminal(tile)}
             title={`Open a shell in the bottom panel at ${tile.projectPath}`}
           >
-            <i className="codicon codicon-terminal" /> Terminal here
+            <i className="codicon codicon-terminal" />
+            Terminal here
           </button>
           {!terminal && (
             <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
