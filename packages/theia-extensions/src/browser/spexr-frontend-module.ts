@@ -57,6 +57,7 @@ import {
   AGENT_SESSION_SERVICE_PATH,
 } from "./agent/agent-service-proxy.js";
 import { SpexrPreferenceContribution } from "./preferences/spexr-preferences.js";
+import { SpexrAiSurfaceCurationContribution } from "./shell/ai-surface-curation-contribution.js";
 import { SpexrTerminalStyleContribution } from "./terminal/spexr-terminal-style-contribution.js";
 import { SpexrProjectTerminalService } from "./terminal/project-terminal-service.js";
 import { PreferenceConfigurations } from "@theia/core/lib/common/preferences/preference-configurations";
@@ -221,6 +222,10 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
 
   bind(SpexrPreferenceConfigurations).toSelf().inSingletonScope();
   rebind(PreferenceConfigurations).toService(SpexrPreferenceConfigurations);
+
+  bind(SpexrAiSurfaceCurationContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrAiSurfaceCurationContribution);
+  bind(PreferenceContribution).toService(SpexrAiSurfaceCurationContribution);
 
   bind(SpexrAboutDialog).toSelf();
   rebind(AboutDialog).toService(SpexrAboutDialog);
