@@ -404,6 +404,8 @@ export function AgentPinnedCard(props: {
   onClose: () => void;
   onFork: (t: AgentTile) => void;
   onOpenProject: (t: AgentTile) => void;
+  /** Open a plain shell terminal in the bottom panel, at this session's project. */
+  onOpenTerminal: (t: AgentTile) => void;
   /** Close this card and move its session to the trash. */
   onTrash: (t: AgentTile) => void;
   /** True when this tile's project is the one loaded in the window. */
@@ -411,8 +413,20 @@ export function AgentPinnedCard(props: {
   /** How the wall arranges active cards; the card's height is remembered per arrangement. */
   layout: WallLayout;
 }): React.ReactElement {
-  const { tile, now, summary, events, terminal, onClose, onFork, onOpenProject, onTrash, isCurrent, layout } =
-    props;
+  const {
+    tile,
+    now,
+    summary,
+    events,
+    terminal,
+    onClose,
+    onFork,
+    onOpenProject,
+    onOpenTerminal,
+    onTrash,
+    isCurrent,
+    layout,
+  } = props;
   const status = statusOf(tile);
   // Both clauses, like a grid tile: the overview alone is the session goal, which
   // barely moves between inferences, so a card showing only it reads as frozen
@@ -482,9 +496,18 @@ export function AgentPinnedCard(props: {
           </span>
           {!isCurrent && (
             <button className="spexr-button" onClick={() => onOpenProject(tile)} title={tile.projectPath}>
+              <i className="codicon codicon-folder-opened" />
               Open project
             </button>
           )}
+          <button
+            className="spexr-button"
+            onClick={() => onOpenTerminal(tile)}
+            title={`Open a shell in the bottom panel at ${tile.projectPath}`}
+          >
+            <i className="codicon codicon-terminal" />
+            Terminal here
+          </button>
           {!terminal && (
             <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
               Fork &amp; continue
@@ -744,13 +767,31 @@ export function NewSessionLauncher(props: {
  */
 export function LaunchedSessionCard(props: {
   projectName: string;
+  /** Absolute path the session was started in; what the two actions below act on. */
+  projectPath: string;
   harness: HarnessId;
   terminal?: TerminalWidget | undefined;
   onClose: () => void;
+  /** Load this card's project into the window. */
+  onOpenProject: () => void;
+  /** Open a plain shell in the bottom panel, at this card's project. */
+  onOpenTerminal: () => void;
+  /** True when this card's project is the one loaded in the window. */
+  isCurrent: boolean;
   /** How the wall arranges active cards; the card's height is remembered per arrangement. */
   layout: WallLayout;
 }): React.ReactElement {
-  const { projectName, harness, terminal, onClose, layout } = props;
+  const {
+    projectName,
+    projectPath,
+    harness,
+    terminal,
+    onClose,
+    onOpenProject,
+    onOpenTerminal,
+    isCurrent,
+    layout,
+  } = props;
   const { ref: card, height, onResizeStart } = usePinnedHeight(layout);
   return (
     <section className="spexr-df-pinned" ref={card} data-state="working" style={heightStyle(height)}>
@@ -764,6 +805,28 @@ export function LaunchedSessionCard(props: {
           </span>
           <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
             <i className="codicon codicon-close" />
+          </button>
+        </div>
+        {/*
+          The same actions an AgentPinnedCard offers: they act on the project
+          directory, which this card knows from the moment it is launched — long
+          before the scan gives the session an id. Only the trash is missing,
+          and that one genuinely needs a session to hide.
+        */}
+        <div className="spexr-df-pinned__actions">
+          {isCurrent ? (
+            <CurrentProjectChip />
+          ) : (
+            <button className="spexr-button" onClick={onOpenProject} title={projectPath}>
+              Open project
+            </button>
+          )}
+          <button
+            className="spexr-button"
+            onClick={onOpenTerminal}
+            title={`Open a shell in the bottom panel at ${projectPath}`}
+          >
+            <i className="codicon codicon-terminal" /> Terminal here
           </button>
         </div>
       </header>

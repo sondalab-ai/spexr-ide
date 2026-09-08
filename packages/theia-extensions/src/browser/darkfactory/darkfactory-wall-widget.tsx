@@ -16,6 +16,7 @@ import type {
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+import { SpexrProjectTerminalService } from "../terminal/project-terminal-service.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 import { parseLaunchProfiles } from "../../common/claude-launch-profiles.js";
 import { SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE } from "../preferences/spexr-preferences.js";
@@ -70,6 +71,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
+  @inject(SpexrProjectTerminalService) private readonly projectTerminals!: SpexrProjectTerminalService;
   @inject(SpexrProjectSwitchService) private readonly projectSwitch!: SpexrProjectSwitchService;
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
   @inject(FileService) private readonly files!: FileService;
@@ -236,6 +238,17 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         /* ignore */
       });
     }
+  }
+
+  /**
+   * Open a plain shell in the bottom panel, at the session's project directory —
+   * for the work around the agent (a build, a git command) that wants a terminal
+   * of its own rather than the one the agent is typing into.
+   */
+  private openProjectTerminal(projectPath: string, projectName: string): void {
+    void this.projectTerminals.openAt(projectPath, projectName).catch(() => {
+      /* ignore */
+    });
   }
 
   /** Fork a live session into a writable terminal embedded in the pinned card. */
@@ -419,8 +432,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * drives the session in place, this repoints the whole workspace and costs a
    * window reload.
    */
-  private openProject(tile: AgentTile): void {
-    this.projectSwitch.switchTo(tile.projectPath);
+  private openProject(projectPath: string): void {
+    this.projectSwitch.switchTo(projectPath);
   }
 
   /**
@@ -598,10 +611,38 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    */
   private moveToTrash(sessionId: string): void {
     if (this.trash.includes(sessionId)) return;
-    if (this.pinned.includes(sessionId)) this.unpin(sessionId, false);
+    const wasPinned = this.pinned.includes(sessionId);
+    if (wasPinned) this.unpin(sessionId, false);
     this.trash = addTrashed(this.trash, sessionId);
     writeTrashed(window.localStorage, this.trash);
+    // Open the trash, so the session is seen arriving somewhere. Trashing used
+    // to be indistinguishable from closing: the card vanished and the only
+    // trace was a count, in a collapsed section, at the very bottom of the wall.
+    this.trashCollapsed = false;
     this.update();
+    // Only for a card that was expanded. That one leaves a hole at the top of
+    // the wall with the trash far below it, which is the case that reads as a
+    // close. A grid tile is already in the list the trash sits under, and
+    // scrolling the wall every time one is set aside would be the worse
+    // surprise of the two.
+    if (wasPinned) this.revealTrash();
+  }
+
+  /**
+   * Bring the trash section into view once the render triggered above has
+   * produced it. Two frames because that render is not synchronous — Lumino
+   * flushes the update on an animation frame and React commits within it — and
+   * the element simply does not exist before then. Guarded rather than retried:
+   * failing to scroll is not worth a loop.
+   */
+  private revealTrash(): void {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        this.node
+          .querySelector(".spexr-df-trash")
+          ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    });
   }
 
   /** Take a session back out of the trash; it returns to its project group. */
@@ -625,7 +666,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         now={now}
         summary={this.summaries.get(tile.sessionId)}
         onOpen={(t) => this.pin(t)}
-        onOpenProject={(t) => this.openProject(t)}
+        onOpenProject={(t) => this.openProject(t.projectPath)}
         isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
         showProject={showProject}
         onTrash={(t) => this.moveToTrash(t.sessionId)}
@@ -714,7 +755,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           group={group}
           collapsed={collapsed}
           onToggle={(path) => this.toggleGroup(path)}
-          onOpenProject={(t) => this.openProject(t)}
+          onOpenProject={(t) => this.openProject(t.projectPath)}
         />
         {!collapsed && cards.length > 0 && (
           <div className="spexr-df-grid">{cards.map((t) => this.renderCard(t, now, false))}</div>
@@ -783,9 +824,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             <LaunchedSessionCard
               key={launch.key}
               projectName={launch.projectName}
+              projectPath={launch.projectPath}
               harness={launch.harness}
               terminal={this.terminals.live(launch.key)}
               onClose={() => this.closeLaunched(launch.key)}
+              onOpenProject={() => this.openProject(launch.projectPath)}
+              onOpenTerminal={() => this.openProjectTerminal(launch.projectPath, launch.projectName)}
+              isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
               layout={this.wallLayout}
             />
           ))}
@@ -799,7 +844,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               terminal={this.terminals.live(tile.sessionId)}
               onClose={() => this.unpin(tile.sessionId)}
               onFork={(t) => this.forkTakeover(t)}
-              onOpenProject={(t) => this.openProject(t)}
+              onOpenProject={(t) => this.openProject(t.projectPath)}
+              onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, t.projectName)}
               onTrash={(t) => this.moveToTrash(t.sessionId)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
               layout={this.wallLayout}

@@ -39,6 +39,12 @@ body {
   padding: var(--sl-space-2) var(--sl-space-4);
   font: inherit;
   cursor: pointer;
+  /* Icon and label centred against each other: as inline content a codicon
+     sits on the text baseline, which leaves it visibly low beside its label. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sl-space-2);
   transition:
     background var(--sl-motion-fast) var(--sl-motion-ease),
     border-color var(--sl-motion-fast) var(--sl-motion-ease);
