@@ -27,6 +27,8 @@ import { readBoundedLines } from "./bounded-read.js";
 import { buildTile } from "./tile-builder.js";
 import { forEachConcurrent as fanOut } from "./concurrency.js";
 import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
+import { indexedText, type SessionRecord } from "./session-index.js";
+import { hashDoc } from "./session-indexer.js";
 import { loadSessionNames, saveSessionNames } from "./session-names-store.js";
 import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
 import { rankSessions, type RankedSession } from "./session-query.js";
@@ -629,7 +631,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
   /** The enumerated sessions, flattened into what the crawl needs. */
   private async indexableSessions(): Promise<IndexableSession[]> {
-    const refs = await this.cachedTranscripts();
+    const [refs, names] = await Promise.all([this.cachedTranscripts(), this.loadNames()]);
     return refs.map((u) => ({
       sessionId: u.ref.sessionId,
       harness: u.harness.id,
@@ -641,6 +643,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       ...(u.claude
         ? { readGoalHead: () => readFirstPrompt(u.claude!.transcriptPath) }
         : {}),
+      ...nameOf(names, u.ref.sessionId),
     }));
   }
 
@@ -662,11 +665,42 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     else names.delete(sessionId);
     await saveSessionNames(names, this.sessionNamesPath);
 
+    await this.reindexName(sessionId, trimmed);
+
     const tile = this.lastTiles.get(sessionId);
     if (!tile) return;
     const { customName: _dropped, ...rest } = tile;
     this.lastTiles.set(sessionId, trimmed ? { ...rest, customName: trimmed } : rest);
     this.client?.onTilesChanged([...this.lastTiles.values()]);
+  }
+
+  /**
+   * Make a renamed session findable by its new name straight away. The crawl
+   * would not: it skips a session whose transcript mtime has not moved, and a
+   * rename touches no transcript. Only this one record is rebuilt — its lexical
+   * half from the new text, its vector re-encoded when an encoder is available.
+   * Without one, the record is marked stale so the next crawl re-encodes it,
+   * which leaves the name searchable lexically in the meantime.
+   */
+  private async reindexName(sessionId: string, name: string): Promise<void> {
+    // Loaded rather than skipped when cold: an index sitting on disk unread would
+    // otherwise keep the old name until something else touched the transcript,
+    // because the crawl skips a session whose mtime has not moved.
+    const index = await this.loadIndex();
+    const existing = index.get(sessionId);
+    if (!existing) return; // not indexed yet → the next crawl builds it named
+
+    const { customName: _dropped, ...rest } = existing;
+    const record: SessionRecord = name ? { ...rest, customName: name } : rest;
+    record.docHash = hashDoc(indexedText(record));
+    if (this.embed) {
+      const [vector] = await this.embed([indexedText(record)]);
+      if (vector) record.vector = vector;
+    } else {
+      record.mtimeMs = 0; // no encoder here: let the next crawl rebuild the vector
+    }
+    index.upsert(record);
+    await saveSessionIndex(index, this.sessionIndexPath);
   }
 
   private loadIndex(): Promise<SessionIndex> {

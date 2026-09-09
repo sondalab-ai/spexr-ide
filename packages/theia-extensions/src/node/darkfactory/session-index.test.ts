@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { SessionIndex, SESSION_INDEX_VERSION, type SessionRecord } from "./session-index.js";
+import {
+  SessionIndex,
+  SESSION_INDEX_VERSION,
+  indexedText,
+  type SessionRecord,
+} from "./session-index.js";
 
 function record(id: string, vector: number[], doc: string): SessionRecord {
   return {
@@ -65,5 +70,40 @@ describe("SessionIndex", () => {
     expect(SessionIndex.fromJSON({ version: SESSION_INDEX_VERSION + 1, records: [] }).size).toBe(0);
     expect(SessionIndex.fromJSON({ version: SESSION_INDEX_VERSION }).size).toBe(0);
     expect(SessionIndex.fromJSON(null).size).toBe(0);
+  });
+});
+
+describe("indexedText", () => {
+  const record = { doc: "routine maintenance chore", customName: "Hydra migration" };
+
+  it("puts the user's own name first, ahead of the session's text", () => {
+    expect(indexedText(record)).toBe("Hydra migration\nroutine maintenance chore");
+  });
+
+  it("is the session's text alone when there is no name", () => {
+    expect(indexedText({ doc: "routine maintenance chore" })).toBe("routine maintenance chore");
+  });
+
+  it("ignores a name that is only whitespace", () => {
+    expect(indexedText({ doc: "chore", customName: "   " })).toBe("chore");
+  });
+
+  it("scores a session by its name once upserted", () => {
+    const index = new SessionIndex();
+    index.upsert({
+      sessionId: "a",
+      harness: "claude",
+      projectPath: "/p",
+      projectName: "p",
+      transcriptPath: "/t/a.jsonl",
+      configDir: "/c",
+      mtimeMs: 1,
+      docHash: "h",
+      vector: Float32Array.from([1, 0]),
+      goal: "g",
+      doc: "routine maintenance chore",
+      customName: "Hydra migration",
+    });
+    expect([...index.bm25.score("hydra").keys()]).toEqual(["a"]);
   });
 });
