@@ -2541,6 +2541,9 @@ code {
   background: transparent; border: none; outline: none;
   color: var(--sl-text-primary); font-size: var(--sl-text-sm);
 }
+/* The global focus ring would draw a second rectangle inside the box; the box's
+   own border is the one that marks focus here. */
+.spexr-df-search__input:focus-visible { outline: none; }
 /* A slot of fixed width, not a bare glyph: the spinner and the clear button take
    turns in it while typing, and without the reservation the field's right edge
    would twitch on every keystroke. */
