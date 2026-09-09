@@ -2516,32 +2516,53 @@ code {
  * only the class changes, so the terminals are never re-attached — and no box of
  * its own when nothing is running.
  */
-.spexr-df-search {
-  display: flex;
-  align-items: center;
-  gap: var(--sl-space-2);
-  padding: var(--sl-space-2) var(--sl-space-3);
+/*
+ * The wall's query bar. Built to the same control shape as the launcher's
+ * selects — full border, surface fill, 2rem — so it reads as one of the wall's
+ * fields rather than as a bare underlined line of text.
+ */
+.spexr-df-search { display: flex; align-items: center; gap: var(--sl-space-3); }
+/* Capped rather than stretched: on a wide window a full-width input is a metre
+   of empty field for a query that is a few words long. */
+.spexr-df-search__box {
+  /* Contains the clear button, which sits inside the field. */
+  position: relative;
+  display: flex; align-items: center; gap: var(--sl-space-2);
+  flex: 1 1 auto; max-width: 32rem; min-width: 0;
+  height: 2rem; padding: 0 8px;
+  background: var(--sl-bg-surface); color: var(--sl-text-primary);
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm);
 }
+/* The input carries no border of its own, so the focus ring belongs to the box. */
+.spexr-df-search__box:focus-within { border-color: var(--sl-focus-ring); }
+.spexr-df-search__icon { flex: none; color: var(--sl-text-muted); line-height: 1; }
 .spexr-df-search__input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--theia-editorWidget-border);
-  color: var(--theia-foreground);
-  padding: var(--sl-space-1) 0;
-  font-size: 1.05em;
+  flex: 1; min-width: 0;
+  background: transparent; border: none; outline: none;
+  color: var(--sl-text-primary); font-size: var(--sl-text-sm);
 }
-.spexr-df-search__input:focus { outline: none; border-bottom-color: var(--theia-focusBorder); }
-.spexr-df-search__count,
-.spexr-df-search__progress { opacity: 0.65; font-size: 0.85em; white-space: nowrap; }
+/* A slot of fixed width, not a bare glyph: the spinner and the clear button take
+   turns in it while typing, and without the reservation the field's right edge
+   would twitch on every keystroke. */
+.spexr-df-search__slot {
+  flex: none; width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--sl-text-muted);
+}
 .spexr-df-search__clear {
-  background: transparent;
-  border: 1px solid var(--theia-editorWidget-border);
-  border-radius: 2px;
-  color: var(--theia-foreground);
-  cursor: pointer;
-  font-size: 0.85em;
-  padding: 2px 8px;
+  width: 100%; height: 100%; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: var(--sl-radius-sm);
+  color: inherit; cursor: pointer;
+}
+.spexr-df-search__clear:hover {
+  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent);
+  color: var(--sl-text-primary);
+}
+.spexr-df-search__clear .codicon { line-height: 1; }
+.spexr-df-search__count,
+.spexr-df-search__progress {
+  color: var(--sl-text-muted); font-size: var(--sl-text-xs); white-space: nowrap;
 }
 .spexr-df-card__archived {
   font-size: 0.75em;

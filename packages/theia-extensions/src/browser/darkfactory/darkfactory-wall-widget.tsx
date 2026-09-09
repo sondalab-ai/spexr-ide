@@ -849,15 +849,40 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           }
         />
         <div className="spexr-df-search">
-          <i className="codicon codicon-search" />
-          <input
-            className="spexr-df-search__input"
-            placeholder="Find a session — describe it"
-            value={this.search.query}
-            onChange={(e) => this.onSearchInput(e.target.value)}
-            onKeyDown={this.onSearchKeyDown}
-          />
-          {this.search.pending && <i className="codicon codicon-loading codicon-modifier-spin" />}
+          <div className="spexr-df-search__box">
+            <i className="codicon codicon-search spexr-df-search__icon" />
+            <input
+              className="spexr-df-search__input"
+              placeholder="Find a session — describe it"
+              value={this.search.query}
+              onChange={(e) => this.onSearchInput(e.target.value)}
+              onKeyDown={this.onSearchKeyDown}
+            />
+            {/*
+              One slot for two states: a query in flight shows the spinner, a
+              settled one the clear button. Sharing the slot keeps the field's
+              right edge still while typing.
+            */}
+            {this.search.active && (
+              <span className="spexr-df-search__slot">
+                {this.search.pending ? (
+                  <i className="codicon codicon-loading codicon-modifier-spin" />
+                ) : (
+                  <button
+                    className="spexr-df-search__clear"
+                    title="Clear search"
+                    aria-label="Clear search"
+                    onClick={() => {
+                      this.search.clear();
+                      this.update();
+                    }}
+                  >
+                    <i className="codicon codicon-close" />
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
           {this.search.active && !this.search.pending && (
             <span className="spexr-df-search__count">{visibleHits.length} found</span>
           )}
@@ -865,17 +890,6 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             <span className="spexr-df-search__progress">
               indexing {this.indexProgress.done}/{this.indexProgress.total}
             </span>
-          )}
-          {this.search.active && (
-            <button
-              className="spexr-df-search__clear"
-              onClick={() => {
-                this.search.clear();
-                this.update();
-              }}
-            >
-              Clear
-            </button>
           )}
         </div>
         {/*
