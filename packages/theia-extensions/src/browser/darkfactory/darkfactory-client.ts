@@ -16,11 +16,18 @@ export class SpexrDarkfactoryClientDispatcher implements SpexrDarkfactoryClient 
   private readonly follow = new Emitter<{ sessionId: string; events: FollowEvent[] }>();
   readonly onFollowChunk$: Event<{ sessionId: string; events: FollowEvent[] }> = this.follow.event;
 
+  private readonly indexProgress = new Emitter<{ done: number; total: number }>();
+  readonly onSessionIndexProgress$: Event<{ done: number; total: number }> = this.indexProgress.event;
+
   onTilesChanged(tiles: AgentTile[]): void {
     this.tiles.fire(tiles);
   }
 
   onFollowChunk(sessionId: string, events: FollowEvent[]): void {
     this.follow.fire({ sessionId, events });
+  }
+
+  onSessionIndexProgress(done: number, total: number): void {
+    this.indexProgress.fire({ done, total });
   }
 }

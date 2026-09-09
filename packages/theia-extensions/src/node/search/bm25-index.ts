@@ -80,15 +80,47 @@ export class BM25Index {
       const dl = this.lengths.get(path) ?? 1;
       let s = 0;
       for (const term of qTokens) {
-        const df = this.df.get(term) ?? 0;
-        if (df === 0) continue;
-        const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
-        const tf  = docFreq.get(term) ?? 0;
-        s += idf * (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * (dl / this.avgLength)));
+        s += this._termScore(term, docFreq, dl, N);
       }
       out.set(path, s);
     }
     return out;
+  }
+
+  /**
+   * What one term contributes to one document's score. Shared with {@link explain}
+   * so the reported terms are ranked by the same arithmetic that ranked the
+   * document, rather than by a second formula that could drift from it.
+   */
+  private _termScore(term: string, docFreq: Map<string, number>, dl: number, N: number): number {
+    const df = this.df.get(term) ?? 0;
+    if (df === 0) return 0;
+    const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
+    const tf  = docFreq.get(term) ?? 0;
+    return idf * (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * (dl / this.avgLength)));
+  }
+
+  /**
+   * The query terms that actually moved this document's score, strongest first.
+   *
+   * Ranked by contribution rather than by the order they were typed: a rare term
+   * is most of the score and a common one is nearly none of it, so contribution
+   * order is what answers "why did this match". Terms the document does not
+   * contain score zero and are left out. `limit` keeps the caller from rendering
+   * every word of a long query.
+   */
+  explain(path: string, queryText: string, limit = 4): string[] {
+    const docFreq = this.tf.get(path);
+    if (!docFreq) return [];
+    const dl = this.lengths.get(path) ?? 1;
+    const N = this.tf.size || 1;
+    const scored: { term: string; weight: number }[] = [];
+    for (const term of new Set(bm25Tokenize(queryText))) {
+      const weight = this._termScore(term, docFreq, dl, N);
+      if (weight > 0) scored.push({ term, weight });
+    }
+    scored.sort((a, b) => b.weight - a.weight);
+    return scored.slice(0, limit).map((t) => t.term);
   }
 
   toJSON(): Serialized {

@@ -18,6 +18,8 @@ release/
 release-builds/
 
 # Theia
+# VS Code builtin extensions fetched at build time (~200 MB), not project content
+plugins/
 gen-webpack*.js
 gen-esbuild*.mjs
 .theia/

@@ -2516,6 +2516,101 @@ code {
  * only the class changes, so the terminals are never re-attached — and no box of
  * its own when nothing is running.
  */
+/*
+ * The wall's query bar. Built to the same control shape as the launcher's
+ * selects — full border, surface fill, 2rem — so it reads as one of the wall's
+ * fields rather than as a bare underlined line of text.
+ */
+.spexr-df-search { display: flex; align-items: center; gap: var(--sl-space-3); }
+/* Capped rather than stretched: on a wide window a full-width input is a metre
+   of empty field for a query that is a few words long. */
+.spexr-df-search__box {
+  /* Contains the clear button, which sits inside the field. */
+  position: relative;
+  display: flex; align-items: center; gap: var(--sl-space-2);
+  flex: 1 1 auto; max-width: 32rem; min-width: 0;
+  height: 2rem; padding: 0 8px;
+  background: var(--sl-bg-surface); color: var(--sl-text-primary);
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm);
+}
+/* The input carries no border of its own, so the focus ring belongs to the box. */
+.spexr-df-search__box:focus-within { border-color: var(--sl-focus-ring); }
+.spexr-df-search__icon { flex: none; color: var(--sl-text-muted); line-height: 1; }
+.spexr-df-search__input {
+  flex: 1; min-width: 0;
+  background: transparent; border: none; outline: none;
+  color: var(--sl-text-primary); font-size: var(--sl-text-sm);
+}
+/* The global focus ring would draw a second rectangle inside the box; the box's
+   own border is the one that marks focus here. */
+.spexr-df-search__input:focus-visible { outline: none; }
+/* A slot of fixed width, not a bare glyph: the spinner and the clear button take
+   turns in it while typing, and without the reservation the field's right edge
+   would twitch on every keystroke. */
+.spexr-df-search__slot {
+  flex: none; width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--sl-text-muted);
+}
+.spexr-df-search__clear {
+  width: 100%; height: 100%; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: var(--sl-radius-sm);
+  color: inherit; cursor: pointer;
+}
+.spexr-df-search__clear:hover {
+  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent);
+  color: var(--sl-text-primary);
+}
+.spexr-df-search__clear .codicon { line-height: 1; }
+.spexr-df-search__count,
+.spexr-df-search__progress {
+  color: var(--sl-text-muted); font-size: var(--sl-text-xs); white-space: nowrap;
+}
+/*
+ * Why a search hit is in the results. Last line of the card, below the branch,
+ * so a card outside a search is laid out exactly as before.
+ */
+.spexr-df-match {
+  display: flex; align-items: center; gap: var(--sl-space-2);
+  flex-wrap: wrap;
+  margin-top: var(--sl-space-1);
+}
+.spexr-df-match__track {
+  flex: none; width: 4rem; height: 3px;
+  border-radius: var(--sl-radius-pill);
+  background: var(--sl-border-subtle);
+  overflow: hidden;
+}
+/* Two colours in one fill, cut where meaning stops paying for the score and the
+   literal words start: amber found it by paraphrase, teal by the words typed. */
+.spexr-df-match__fill {
+  display: block; height: 100%;
+  width: var(--match-share);
+  border-radius: var(--sl-radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--sl-accent-default) 0 var(--match-dense),
+    var(--sl-accent-depth) var(--match-dense) 100%
+  );
+}
+.spexr-df-match__term {
+  padding: 0 6px;
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-pill);
+  color: var(--sl-text-muted); font-size: var(--sl-text-xs); line-height: 1.5;
+  white-space: nowrap;
+}
+/* Not a term the user typed but a statement about the match, so it carries no
+   term-chip border. */
+.spexr-df-match__term.is-dense { border-color: transparent; font-style: italic; }
+.spexr-df-card__archived {
+  font-size: 0.75em;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
 .spexr-df-active { display: flex; flex-direction: column; gap: var(--sl-space-5); }
 .spexr-df-active:empty { display: none; }
 /* The column count is computed in the widget (see `mosaicColumns`): the wall's
@@ -2740,13 +2835,19 @@ code {
 }
 .spexr-df-card:hover { background: var(--sl-bg-surface-raised); border-color: var(--sl-border-default); }
 
-.spexr-df-card__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; }
+/* Wraps rather than squeezing: on a narrow card the chips drop to a second row
+   so the project name keeps a readable width instead of collapsing to an
+   ellipsis. */
+.spexr-df-card__head {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: var(--sl-space-1) var(--sl-space-2); min-width: 0;
+}
 .spexr-df-card__led { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--sl-text-muted); align-self: center; }
 .spexr-df-card[data-state="working"] .spexr-df-card__led { background: var(--tile-accent); animation: spexr-df-pulse 1.6s ease-in-out infinite; }
 .spexr-df-card[data-state="done"] .spexr-df-card__led { background: var(--sl-border-default); }
 @keyframes spexr-df-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 .spexr-df-card__project {
-  flex: 1 1 auto; min-width: 0;
+  flex: 1 1 auto; min-width: 12ch;
   font-size: var(--sl-text-lg, 1.05rem); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -2783,6 +2884,28 @@ code {
 .spexr-df-card__open .codicon { font-size: 0.95em; }
 .spexr-df-card:hover .spexr-df-card__open { opacity: 1; }
 .spexr-df-card__open:hover {
+  color: var(--tile-accent);
+  background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
+}
+
+/*
+ * Name a session. Reveal-on-hover like the jump action, and it sits right after
+ * the heading it rewrites — on the pinned card too, where the head is a header
+ * row rather than the card's own hover surface.
+ */
+.spexr-df-card__rename {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  align-self: center;
+  width: 20px; height: 20px; border-radius: var(--sl-radius-sm);
+  color: var(--sl-text-muted); opacity: 0; cursor: pointer;
+  transition: opacity var(--sl-motion-fast) var(--sl-motion-ease),
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-df-card__rename .codicon { font-size: 0.9em; }
+.spexr-df-card:hover .spexr-df-card__rename,
+.spexr-df-pinned:hover .spexr-df-card__rename { opacity: 1; }
+.spexr-df-card__rename:hover {
   color: var(--tile-accent);
   background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
 }

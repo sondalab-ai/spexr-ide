@@ -6,6 +6,7 @@ import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { FileDialogService } from "@theia/filesystem/lib/browser/file-dialog";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
+import { QuickInputService } from "@theia/core/lib/browser";
 import type {
   AgentSummary,
   AgentTile,
@@ -13,6 +14,7 @@ import type {
   FollowEvent,
   SpexrDarkfactoryService,
 } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
@@ -21,7 +23,13 @@ import { SpexrProjectSwitchService } from "../project/spexr-project-switch-servi
 import { parseLaunchProfiles } from "../../common/claude-launch-profiles.js";
 import { SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE } from "../preferences/spexr-preferences.js";
 import { normalizeProjectPath } from "../project/project-switch-targets.js";
-import { sortTiles, groupTiles, summaryTargets, launchTargets } from "./darkfactory-format.js";
+import {
+  sortTiles,
+  groupTiles,
+  summaryTargets,
+  launchTargets,
+  defaultSessionName,
+} from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
 import {
   AgentTileCard,
@@ -31,11 +39,13 @@ import {
   TrashSectionHeader,
   NewSessionLauncher,
   LaunchedSessionCard,
+  type TileMatch,
 } from "./agent-tile.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
 import { mosaicColumns, readWallLayout, writeWallLayout, type WallLayout } from "./wall-layout.js";
 import { shouldRefresh, type SummaryState } from "./summary-refresh.js";
+import { SessionSearchState } from "./session-search.js";
 import { addTrashed, partitionTrashed, readTrashed, removeTrashed, writeTrashed } from "./trash.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
@@ -63,6 +73,13 @@ const FOLLOW_BUFFER = 400;
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
+/** A copy of the tile carrying `name`, with a blank name dropping the field entirely. */
+function renamedTile(tile: AgentTile, name: string): AgentTile {
+  const { customName: _dropped, ...rest } = tile;
+  const trimmed = name.trim();
+  return trimmed ? { ...rest, customName: trimmed } : rest;
+}
+
 /** Machine-wide monitoring wall of every agent session (Claude Code, opencode). */
 @injectable()
 export class SpexrDarkfactoryWidget extends ReactWidget {
@@ -77,8 +94,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(FileService) private readonly files!: FileService;
   @inject(FileDialogService) private readonly fileDialog!: FileDialogService;
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
+  @inject(QuickInputService) private readonly quickInput!: QuickInputService;
 
   private tiles: AgentTile[] = [];
+
+  /**
+   * The wall's query state. Filtering never touches the cards that own
+   * terminals, so a search cannot detach a running session.
+   */
+  private readonly search = new SessionSearchState(() => this.update());
+
+  /** Session-index crawl progress while it is incomplete; undefined when done. */
+  private indexProgress: { done: number; total: number } | undefined;
   /** False until the first tile snapshot lands — the wall shows a loading state until then. */
   private loaded = false;
   /** True while a user-triggered rescan is in flight; drives the header button's spinner. */
@@ -184,6 +211,12 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         const buffered = this.pinnedEvents.get(sessionId);
         if (!buffered) return;
         this.pinnedEvents.set(sessionId, [...buffered, ...events].slice(-FOLLOW_BUFFER));
+        this.update();
+      }),
+    );
+    this.toDispose.push(
+      this.client.onSessionIndexProgress$(({ done, total }) => {
+        this.indexProgress = done >= total ? undefined : { done, total };
         this.update();
       }),
     );
@@ -658,7 +691,47 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.update();
   }
 
-  private renderCard(tile: AgentTile, now: number, showProject: boolean): React.ReactNode {
+  /**
+   * Name a session. The field opens on the best short description the wall
+   * already has — the AI headline, else the session's own first sentence — so
+   * confirming without typing is itself a useful name. Submitting an empty field
+   * clears the name; dismissing the prompt changes nothing.
+   */
+  private async renameSession(tile: AgentTile): Promise<void> {
+    const summary = this.summaries.get(tile.sessionId);
+    const s = summary && !summary.loading ? summary.summary : undefined;
+    const name = await this.quickInput.input({
+      prompt: `Name this session — ${tile.projectName}`,
+      placeHolder: "Leave empty to go back to the project name",
+      value: defaultSessionName(tile, s ? s.overview || s.now : ""),
+      // Enforced here as well as in the store, so what the card ends up showing
+      // is what the field accepted rather than a silent truncation.
+      validateInput: (v) =>
+        Promise.resolve(
+          v.trim().length > MAX_SESSION_NAME_CHARS
+            ? `A session name fits in ${MAX_SESSION_NAME_CHARS} characters.`
+            : undefined,
+        ),
+    });
+    if (name === undefined) return; // dismissed
+    await this.service.renameSession(tile.sessionId, name);
+    // The backend pushes the renamed tile, but only for a session the last scan
+    // built. A search hit from outside that window is ours to update, or the
+    // card keeps the old heading until the query is run again.
+    this.search.hits = this.search.hits.map((hit) =>
+      hit.tile.sessionId === tile.sessionId
+        ? { ...hit, tile: renamedTile(hit.tile, name) }
+        : hit,
+    );
+    this.update();
+  }
+
+  private renderCard(
+    tile: AgentTile,
+    now: number,
+    showProject: boolean,
+    hit?: { archived: boolean; match: TileMatch },
+  ): React.ReactNode {
     return (
       <AgentTileCard
         key={tile.sessionId}
@@ -670,9 +743,23 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
         showProject={showProject}
         onTrash={(t) => this.moveToTrash(t.sessionId)}
+        onRename={(t) => void this.renameSession(t)}
+        archived={hit?.archived ?? false}
+        {...(hit ? { match: hit.match } : {})}
       />
     );
   }
+
+  private readonly onSearchInput = (text: string): void => {
+    this.search.setQuery(text, (q) => this.service.searchSessions(q));
+    this.update();
+  };
+
+  private readonly onSearchKeyDown = (event: React.KeyboardEvent): void => {
+    if (event.key !== "Escape") return;
+    this.search.clear();
+    this.update();
+  };
 
   private renderRow(tile: AgentTile, now: number, showProject: boolean): React.ReactNode {
     return (
@@ -792,6 +879,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // Headers earn their space only once there is more than one project to tell apart.
     const groups = groupTiles(rest, this.projectSwitch.currentProjectPath());
     const currentProject = this.projectSwitch.currentProjectPath();
+    // A trashed session stays out of results, and a pinned one is already on
+    // screen as its own card — listing it twice would suggest two sessions.
+    const visibleHits = this.search.hits.filter(
+      (h) => !this.trashedIds().has(h.tile.sessionId) && !this.pinned.includes(h.tile.sessionId),
+    );
+    // Relevance bars are drawn against the strongest hit still on screen, so
+    // filtering a pinned or trashed session out rescales the rest rather than
+    // leaving every bar short of a maximum nothing reaches.
+    const best = Math.max(0, ...visibleHits.map((h) => h.score));
     return (
       <div className="spexr-df-root">
         <NewSessionLauncher
@@ -810,6 +906,50 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             this.startNewSession(projectPath, harness, configDir)
           }
         />
+        <div className="spexr-df-search">
+          <div className="spexr-df-search__box">
+            <i className="codicon codicon-search spexr-df-search__icon" />
+            <input
+              className="spexr-df-search__input"
+              placeholder="Find a session — describe it"
+              value={this.search.query}
+              onChange={(e) => this.onSearchInput(e.target.value)}
+              onKeyDown={this.onSearchKeyDown}
+            />
+            {/*
+              One slot for two states: a query in flight shows the spinner, a
+              settled one the clear button. Sharing the slot keeps the field's
+              right edge still while typing.
+            */}
+            {this.search.active && (
+              <span className="spexr-df-search__slot">
+                {this.search.pending ? (
+                  <i className="codicon codicon-loading codicon-modifier-spin" />
+                ) : (
+                  <button
+                    className="spexr-df-search__clear"
+                    title="Clear search"
+                    aria-label="Clear search"
+                    onClick={() => {
+                      this.search.clear();
+                      this.update();
+                    }}
+                  >
+                    <i className="codicon codicon-close" />
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+          {this.search.active && !this.search.pending && (
+            <span className="spexr-df-search__count">{visibleHits.length} found</span>
+          )}
+          {this.indexProgress && (
+            <span className="spexr-df-search__progress">
+              indexing {this.indexProgress.done}/{this.indexProgress.total}
+            </span>
+          )}
+        </div>
         {/*
           One wrapper for every card that owns a terminal, in both arrangements:
           only its class changes, so React keeps the same DOM node and no
@@ -847,12 +987,37 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               onOpenProject={(t) => this.openProject(t.projectPath)}
               onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, t.projectName)}
               onTrash={(t) => this.moveToTrash(t.sessionId)}
+              onRename={(t) => void this.renameSession(t)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
               layout={this.wallLayout}
             />
           ))}
         </div>
-        {tiles.length === 0 ? (
+        {/*
+          Only the grid is replaced by results. The expanded and launched cards
+          above keep their positions inside spexr-df-active, so no TerminalMount
+          unmounts and no running session is detached by a search.
+        */}
+        {this.search.active ? (
+          visibleHits.length === 0 ? (
+            <div className="spexr-df-empty">
+              {this.search.pending
+                ? "Searching…"
+                : this.indexProgress
+                  ? `No session matches "${this.search.query}" yet — still indexing.`
+                  : `No session matches "${this.search.query}".`}
+            </div>
+          ) : (
+            <div className="spexr-df-grid">
+              {visibleHits.map((h) =>
+                this.renderCard(h.tile, now, true, {
+                  archived: h.archived,
+                  match: { score: h.score, dense: h.dense, lexical: h.lexical, terms: h.terms, best },
+                }),
+              )}
+            </div>
+          )
+        ) : tiles.length === 0 ? (
           <div className="spexr-df-empty">
             {discarded.length > 0
               ? "Every session on the wall is in the trash."
@@ -863,7 +1028,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         ) : (
           this.renderFlat(rest, now)
         )}
-        {discarded.length > 0 && this.renderTrash(discarded, now)}
+        {!this.search.active && discarded.length > 0 && this.renderTrash(discarded, now)}
       </div>
     );
   }

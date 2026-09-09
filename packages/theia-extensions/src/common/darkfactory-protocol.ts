@@ -4,6 +4,12 @@ export const DARKFACTORY_SERVICE_PATH = "/services/spexr-darkfactory";
 
 export type AgentState = "working" | "idle" | "done";
 
+/**
+ * How long a session name may be. It is a card heading, not a note: past this it
+ * stops fitting the head row and starts crowding out the chips beside it.
+ */
+export const MAX_SESSION_NAME_CHARS = 80;
+
 /** How the focus pane should present a session. */
 export type FocusKind = "resume-terminal" | "readonly-follow";
 
@@ -37,6 +43,8 @@ export interface AgentTile {
   turnCount: number;
   /** Stable index into the frontend accent palette, derived from `projectPath`. */
   accentId: number;
+  /** The name the user gave this session; absent until they rename it. */
+  customName?: string;
 }
 
 /** Two-level AI description of a session, from the local model. */
@@ -45,6 +53,28 @@ export interface AgentSummary {
   now: string;
   /** One sentence: what the whole session is trying to accomplish. */
   overview: string;
+}
+
+/** One session matching a natural-language query, ready to render as a tile. */
+export interface SessionHit {
+  tile: AgentTile;
+  /** Hybrid score, dense and lexical blended; higher is a better match. */
+  score: number;
+  /**
+   * The weighted halves `score` is made of, so the UI can show which pass found
+   * the session: `dense` is meaning, `lexical` is the literal words. They sum to
+   * `score`.
+   *
+   * Comparable within one result set only. The lexical half is normalised
+   * against the best lexical hit for the query that produced it, so the same
+   * session scores differently under a different query.
+   */
+  dense: number;
+  lexical: number;
+  /** Query terms that moved the lexical half, strongest contribution first. */
+  terms: string[];
+  /** True when the session was outside the wall's current scan window. */
+  archived: boolean;
 }
 
 /** One rendered line of a read-only follow, tagged so the UI can style it like a terminal. */
@@ -84,6 +114,14 @@ export interface SpexrDarkfactoryService {
   listConfigDirs(): Promise<ClaudeConfigDir[]>;
   /** Two-level AI description (now + overview) from the local model; cached, empty fields if unavailable. */
   summarize(sessionId: string): Promise<AgentSummary>;
+  /** Rank indexed sessions against a natural-language query; `[]` for an empty query. */
+  searchSessions(query: string): Promise<SessionHit[]>;
+  /**
+   * Name a session, or clear its name with an empty string. The name is stored
+   * per session id and survives restarts; the wall is pushed the updated tiles
+   * so the card renames without waiting for the next scan.
+   */
+  renameSession(sessionId: string, name: string): Promise<void>;
   /** Decide whether a session opens as an interactive resume terminal or a read-only follow. */
   planFocus(sessionId: string): Promise<FocusPlan>;
   /** Begin streaming transcript turns for a read-only follow; idempotent per session. */
@@ -96,4 +134,6 @@ export interface SpexrDarkfactoryClient {
   onTilesChanged(tiles: AgentTile[]): void;
   /** Incremental read-only follow output, as typed events (newest transcript entries). */
   onFollowChunk(sessionId: string, events: FollowEvent[]): void;
+  /** Session-index crawl progress; `done === total` means the crawl finished. */
+  onSessionIndexProgress(done: number, total: number): void;
 }

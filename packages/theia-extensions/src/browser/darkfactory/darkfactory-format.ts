@@ -223,3 +223,30 @@ export function launchTargets(
   const head: LaunchTarget[] = current ? [{ path: current, name: currentName, kind: "current" }] : [];
   return [...head, ...sessions, ...recents];
 }
+
+/** A session name is a card heading; past this it crowds out the chips beside it. */
+const NAME_CHARS = 60;
+
+/**
+ * What the rename field opens with. The name the user already gave wins; then
+ * the AI headline, which is the shortest true description the wall has; then the
+ * session's own first sentence. Sentence detection ignores a dot that is inside
+ * a word, so a URL in the prompt does not cut the name in half.
+ */
+export function defaultSessionName(tile: AgentTile, headline = ""): string {
+  const named = (tile.customName ?? "").trim();
+  if (named) return named;
+  if (headline.trim()) return clip(headline.trim());
+  const text = (tile.goal || tile.actionLine).trim();
+  if (!text) return "";
+  const end = text.search(/[.!?](\s|$)/);
+  return clip(end === -1 ? text : text.slice(0, end));
+}
+
+/** Cut to {@link NAME_CHARS}, on the last word boundary when there is one. */
+function clip(text: string): string {
+  if (text.length <= NAME_CHARS) return text;
+  const cut = text.slice(0, NAME_CHARS);
+  const space = cut.lastIndexOf(" ");
+  return space > NAME_CHARS / 2 ? cut.slice(0, space) : cut;
+}

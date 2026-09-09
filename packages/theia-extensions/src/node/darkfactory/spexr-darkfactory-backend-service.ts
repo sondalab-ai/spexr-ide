@@ -1,5 +1,4 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { basename } from "node:path";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { readFile, writeFile } from "node:fs/promises";
@@ -25,12 +24,19 @@ import { installedHarnesses, type DetectFn } from "../../common/harness/harness-
 import { once } from "../../common/harness/once.js";
 import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
 import { readBoundedLines } from "./bounded-read.js";
-import {
-  distillAction,
-  nowActionLine,
-  recentActions,
-  lastActionFailed,
-} from "./action-distiller.js";
+import { buildTile } from "./tile-builder.js";
+import { forEachConcurrent as fanOut } from "./concurrency.js";
+import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
+import { loadSessionNames, saveSessionNames } from "./session-names-store.js";
+import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
+import { rankSessions, type RankedSession } from "./session-query.js";
+import { readFirstPrompt } from "./session-goal.js";
+import { expandQuery } from "../search/query-expander.js";
+import type { SessionIndex } from "./session-index.js";
+import { forEachConcurrent } from "./concurrency.js";
+
+export { forEachConcurrent };
+import { nowActionLine } from "./action-distiller.js";
 import { buildFollowEvents, sessionGoal, recentAssistantProse, type TurnEntry } from "./turns.js";
 import {
   buildNowPrompt,
@@ -43,9 +49,11 @@ import type {
   AgentTile,
   ClaudeConfigDir,
   FocusPlan,
+  SessionHit,
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
 } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
@@ -62,7 +70,6 @@ const SUMMARY_PROSE_TURNS = 4;
  * session with a terse goal ("continua") but real work must still clear this.
  */
 const MIN_SUMMARY_CHARS = 60;
-const PALETTE_SIZE = 8;
 /**
  * Only the most-recently-active sessions are read on each scan. Transcript
  * history runs to hundreds of files, some tens of MB; reading them all on every
@@ -70,6 +77,15 @@ const PALETTE_SIZE = 8;
  * work anyway, so cap the parse to this many newest sessions.
  */
 const RECENT_LIMIT = 60;
+
+/** Enumeration freshness floor for the search path, mirroring LIVE_DIRS_TTL_MS. */
+const ENUM_TTL_MS = 15_000;
+
+/**
+ * The session index crawl waits this long after startup, so it never competes
+ * with the first wall scan for the event loop.
+ */
+const FIRST_CRAWL_DELAY_MS = 10_000;
 
 /**
  * Transcript parses run concurrently up to this limit. Each opencode session is
@@ -136,6 +152,12 @@ export interface DarkfactoryDeps {
   watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
   /** Local model used to infer a one-line session description. */
   generator?: DescriptionGenerator;
+  /** Sentence encoder for the session index; absent in tests that do not search. */
+  embed?: (texts: string[]) => Promise<Float32Array[]>;
+  /** Index location override, so tests never touch the real home directory. */
+  sessionIndexPath?: string;
+  /** Session-name store override, so tests never touch the real home directory. */
+  sessionNamesPath?: string;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -149,6 +171,25 @@ interface SessionMeta {
   harnessId: string;
   /** Entry loader from the last scan — summary source for file-less transcripts (opencode). */
   loadEntries?: () => Promise<unknown[]>;
+}
+
+/**
+ * The ranking half of a hit. Both places that build a `SessionHit` — the tiles
+ * the last scan already has, and the archived sessions parsed on demand — go
+ * through this, so a new match field cannot reach one and miss the other.
+ */
+function matchOf({ score, dense, lexical, terms }: RankedSession): Omit<SessionHit, "tile" | "archived"> {
+  return { score, dense, lexical, terms };
+}
+
+/**
+ * The stored name as a spreadable fragment, so both `buildTile` call sites — the
+ * wall scan and search's archived branch — attach it the same way, and an
+ * unnamed session carries no key at all.
+ */
+function nameOf(names: Map<string, string>, sessionId: string): { customName?: string } {
+  const name = names.get(sessionId);
+  return name ? { customName: name } : {};
 }
 
 @injectable()
@@ -184,6 +225,30 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /** TTL cache of discovered config dirs (one $HOME readdir per TTL, not per scan). */
   private configDirsCache?: { at: number; value: string[] };
   private readonly index = new Map<string, SessionMeta>();
+  /**
+   * Metadata for sessions reached through search, not through the scan.
+   * `listTiles` clears `index` on every poll, so a hit registered there would
+   * stop opening within one interval; this map is owned by the search path and
+   * only grows, so a hit the user pinned stays openable after later queries.
+   */
+  private readonly searchMeta = new Map<string, SessionMeta>();
+  /**
+   * The tiles the last scan produced, so a hit inside the window is returned
+   * as-is rather than re-parsed and re-classified with different inputs.
+   */
+  private readonly lastTiles = new Map<string, AgentTile>();
+  /**
+   * Enumeration is a full transcript scan plus an `opencode db` spawn; a query
+   * must not pay for it on every debounce.
+   */
+  private enumCache?: { at: number; value: UnifiedRef[] };
+  private sessionIndex?: Promise<SessionIndex>;
+  private indexing = false;
+  private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
+  private readonly sessionIndexPath: string | undefined;
+  private readonly sessionNamesPath: string | undefined;
+  /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
+  private sessionNames?: Promise<Map<string, string>>;
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
@@ -216,6 +281,12 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         );
       });
     this.generator = d.generator;
+    this.embed = d.embed;
+    this.sessionIndexPath = d.sessionIndexPath;
+    this.sessionNamesPath = d.sessionNamesPath;
+    if (this.embed) {
+      setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
+    }
   }
 
   /**
@@ -257,8 +328,17 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * Two-level AI description (now + overview) of a session, via the local model.
    * Cached by `sessionId + mtime`; returns empty fields when the model is unavailable.
    */
+  /**
+   * Session metadata from the last scan, falling back to what search resolved.
+   * Search hits live outside the scan window, and `listTiles` clears its own map
+   * on every poll, so without the fallback an older hit stops opening.
+   */
+  private meta(sessionId: string): SessionMeta | undefined {
+    return this.index.get(sessionId) ?? this.searchMeta.get(sessionId);
+  }
+
   async summarize(sessionId: string): Promise<AgentSummary> {
-    const meta = this.index.get(sessionId);
+    const meta = this.meta(sessionId);
     if (!meta) return EMPTY_SUMMARY;
     const cached = this.summaryCache.get(sessionId);
     if (cached && cached.mtimeMs === meta.mtimeMs) return cached.summary;
@@ -340,7 +420,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
-    const [allRefs, live] = await Promise.all([this.listTranscripts(), this.cachedLiveDirs()]);
+    const [allRefs, live, names] = await Promise.all([
+      this.listTranscripts(),
+      this.cachedLiveDirs(),
+      this.loadNames(),
+    ]);
     const now = this.now();
     // Only read the newest sessions — history is huge and reading it all stalls
     // the event loop; the wall only shows recent work.
@@ -365,6 +449,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     });
 
     this.index.clear();
+    this.lastTiles.clear();
     const tiles: AgentTile[] = [];
     // Iterate refs (not the parse map) so tile order stays recency-based, not completion-order.
     for (const u of refs) {
@@ -383,7 +468,6 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         entries,
         p.permissionMode,
       );
-      const action = distillAction(entries);
       this.index.set(ref.sessionId, {
         transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
@@ -393,28 +477,22 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         harnessId: u.harness.id,
         loadEntries: ref.loadEntries,
       });
-      tiles.push({
+      const tile = buildTile({
         sessionId: ref.sessionId,
         harness: u.harness.id,
         transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
-        projectName: basename(cwd),
+        mtimeMs: ref.mtimeMs,
+        entries,
+        parsed: p,
         state,
         needsYou,
         needsYouCertain,
-        lastFailed: lastActionFailed(entries),
-        goal: p.goal || p.lastPrompt,
-        actionLine: action.line,
-        recentActions: recentActions(entries, 4),
-        lastActivityMs: ref.mtimeMs,
-        turnCount: p.userTurns,
-        accentId: hashToIndex(cwd, PALETTE_SIZE),
-        ...(action.tool !== undefined ? { tool: action.tool } : {}),
-        ...(action.target !== undefined ? { target: action.target } : {}),
-        ...(p.gitBranch !== undefined ? { gitBranch: p.gitBranch } : {}),
-        ...(p.mode !== undefined ? { mode: p.mode } : {}),
-        ...(p.permissionMode !== undefined ? { permissionMode: p.permissionMode } : {}),
+        hashToIndex,
+        ...nameOf(names, ref.sessionId),
       });
+      this.lastTiles.set(ref.sessionId, tile);
+      tiles.push(tile);
     }
     // Evict AI-summary entries for sessions that no longer exist on disk, so the
     // cache tracks live sessions instead of growing unbounded over the process life.
@@ -438,8 +516,166 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     return describeConfigDirs(this.currentConfigDirs(), this.defaultAccountDir);
   }
 
+  /**
+   * Bring the session index up to date; at most one crawl runs at a time. Also
+   * callable directly, which is how tests index without waiting for the timer.
+   */
+  async indexNow(): Promise<void> {
+    if (this.indexing || !this.embed) return;
+    this.indexing = true;
+    try {
+      const index = await this.loadIndex();
+      await runSessionIndex({
+        index,
+        embed: this.embed,
+        list: () => this.indexableSessions(),
+        save: (i) => saveSessionIndex(i, this.sessionIndexPath),
+        onProgress: (done, total) => this.client?.onSessionIndexProgress(done, total),
+      });
+    } finally {
+      this.indexing = false;
+    }
+  }
+
+  async searchSessions(query: string): Promise<SessionHit[]> {
+    if (!query.trim() || !this.embed) return [];
+    const index = await this.loadIndex();
+    if (index.size === 0) return [];
+
+    const expanded = expandQuery(query);
+    const [vector] = await this.embed([expanded]);
+    if (!vector) return [];
+    const ranked = rankSessions(index, vector, expanded);
+    if (ranked.length === 0) return [];
+
+    // A hit the last scan already rendered is returned as that scan built it —
+    // re-classifying it here would feed classifySession different inputs and
+    // could demote a live session. Only sessions outside the window are parsed,
+    // and only the hits among them, never the whole index.
+    // The whole ranking is carried, not just the score: the archived branch
+    // below builds its hits in a separate pass and needs the same match detail.
+    const scored = new Map(ranked.map((r) => [r.sessionId, r]));
+    const hits: SessionHit[] = [];
+    const archived: string[] = [];
+    for (const r of ranked) {
+      const tile = this.lastTiles.get(r.sessionId);
+      if (tile) hits.push({ tile, ...matchOf(r), archived: false });
+      else archived.push(r.sessionId);
+    }
+
+    if (archived.length > 0) {
+      const refs = new Map((await this.cachedTranscripts()).map((u) => [u.ref.sessionId, u]));
+      const [live, names] = await Promise.all([this.cachedLiveDirs(), this.loadNames()]);
+      const now = this.now();
+      const built: SessionHit[] = [];
+      await fanOut(archived, PARSE_CONCURRENCY, async (sessionId) => {
+        const u = refs.get(sessionId);
+        if (!u) return; // indexed but gone from disk; the next crawl drops it
+        const p = await u.harness.parseTranscript(u.ref);
+        if (!p.cwd || !p.interactive) return;
+        const entries = (await u.ref.loadEntries()) as TurnEntry[];
+        const { state, needsYou, needsYouCertain } = classifySession(
+          p.cwd,
+          u.ref.mtimeMs,
+          false, // outside the scan window, so never its project's newest
+          live,
+          now,
+          entries,
+          p.permissionMode,
+        );
+        this.searchMeta.set(sessionId, {
+          transcriptPath: u.claude?.transcriptPath ?? "",
+          projectPath: p.cwd,
+          configDir: u.claude?.configDir ?? "",
+          state,
+          mtimeMs: u.ref.mtimeMs,
+          harnessId: u.harness.id,
+          loadEntries: u.ref.loadEntries,
+        });
+        built.push({
+          tile: buildTile({
+            sessionId,
+            harness: u.harness.id,
+            transcriptPath: u.claude?.transcriptPath ?? "",
+            projectPath: p.cwd,
+            mtimeMs: u.ref.mtimeMs,
+            entries,
+            parsed: p,
+            state,
+            needsYou,
+            needsYouCertain,
+            hashToIndex,
+            ...nameOf(names, sessionId),
+          }),
+          ...matchOf(scored.get(sessionId)!),
+          archived: true,
+        });
+      });
+      hits.push(...built);
+    }
+
+    hits.sort((a, b) => b.score - a.score);
+    return hits;
+  }
+
+  /** Enumeration, cached briefly: one query must not rescan every transcript. */
+  private async cachedTranscripts(): Promise<UnifiedRef[]> {
+    const now = this.now();
+    if (this.enumCache && now - this.enumCache.at < ENUM_TTL_MS) return this.enumCache.value;
+    const value = await this.listTranscripts();
+    this.enumCache = { at: now, value };
+    return value;
+  }
+
+  /** The enumerated sessions, flattened into what the crawl needs. */
+  private async indexableSessions(): Promise<IndexableSession[]> {
+    const refs = await this.cachedTranscripts();
+    return refs.map((u) => ({
+      sessionId: u.ref.sessionId,
+      harness: u.harness.id,
+      transcriptPath: u.claude?.transcriptPath ?? "",
+      configDir: u.claude?.configDir ?? "",
+      mtimeMs: u.ref.mtimeMs,
+      loadEntries: u.ref.loadEntries,
+      parse: () => u.harness.parseTranscript(u.ref),
+      ...(u.claude
+        ? { readGoalHead: () => readFirstPrompt(u.claude!.transcriptPath) }
+        : {}),
+    }));
+  }
+
+  private loadNames(): Promise<Map<string, string>> {
+    if (!this.sessionNames) this.sessionNames = loadSessionNames(this.sessionNamesPath);
+    return this.sessionNames;
+  }
+
+  /**
+   * Name a session, or clear the name when `name` is blank. The tiles the last
+   * scan produced are patched in place and pushed, so the card renames now
+   * rather than at the next poll — and every window sees it, not just the one
+   * that asked.
+   */
+  async renameSession(sessionId: string, name: string): Promise<void> {
+    const names = await this.loadNames();
+    const trimmed = name.trim().slice(0, MAX_SESSION_NAME_CHARS);
+    if (trimmed) names.set(sessionId, trimmed);
+    else names.delete(sessionId);
+    await saveSessionNames(names, this.sessionNamesPath);
+
+    const tile = this.lastTiles.get(sessionId);
+    if (!tile) return;
+    const { customName: _dropped, ...rest } = tile;
+    this.lastTiles.set(sessionId, trimmed ? { ...rest, customName: trimmed } : rest);
+    this.client?.onTilesChanged([...this.lastTiles.values()]);
+  }
+
+  private loadIndex(): Promise<SessionIndex> {
+    if (!this.sessionIndex) this.sessionIndex = loadSessionIndex(this.sessionIndexPath);
+    return this.sessionIndex;
+  }
+
   async planFocus(sessionId: string): Promise<FocusPlan> {
-    const meta = this.index.get(sessionId);
+    const meta = this.meta(sessionId);
     const projectPath = meta?.projectPath ?? "";
     const configDir = meta?.configDir ?? "";
     // A WORKING session always opens read-only, on every harness: resuming it
@@ -458,7 +694,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
   async startFollow(sessionId: string): Promise<void> {
     if (this.follows.has(sessionId)) return;
-    const meta = this.index.get(sessionId);
+    const meta = this.meta(sessionId);
     if (!meta) return;
     const emit = async (): Promise<void> => {
       const entry = this.follows.get(sessionId);
@@ -757,22 +993,3 @@ function debounce<T extends (...a: never[]) => void>(fn: T, ms: number): T {
   }) as T;
 }
 
-/**
- * Run `fn` over every item with at most `limit` calls in flight, resolving when
- * all complete. Errors propagate (callers fail soft inside `fn`).
- */
-export async function forEachConcurrent<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const item = items[next]!;
-      next += 1;
-      await fn(item);
-    }
-  });
-  await Promise.all(workers);
-}
