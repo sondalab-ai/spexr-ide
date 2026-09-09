@@ -37,6 +37,8 @@ export interface AgentTile {
   turnCount: number;
   /** Stable index into the frontend accent palette, derived from `projectPath`. */
   accentId: number;
+  /** The name the user gave this session; absent until they rename it. */
+  customName?: string;
 }
 
 /** Two-level AI description of a session, from the local model. */
@@ -108,6 +110,12 @@ export interface SpexrDarkfactoryService {
   summarize(sessionId: string): Promise<AgentSummary>;
   /** Rank indexed sessions against a natural-language query; `[]` for an empty query. */
   searchSessions(query: string): Promise<SessionHit[]>;
+  /**
+   * Name a session, or clear its name with an empty string. The name is stored
+   * per session id and survives restarts; the wall is pushed the updated tiles
+   * so the card renames without waiting for the next scan.
+   */
+  renameSession(sessionId: string, name: string): Promise<void>;
   /** Decide whether a session opens as an interactive resume terminal or a read-only follow. */
   planFocus(sessionId: string): Promise<FocusPlan>;
   /** Begin streaming transcript turns for a read-only follow; idempotent per session. */

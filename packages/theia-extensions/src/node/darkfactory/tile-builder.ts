@@ -19,6 +19,8 @@ export interface TileInput {
   needsYou: boolean;
   needsYouCertain: boolean;
   hashToIndex(value: string, buckets: number): number;
+  /** The name the user gave this session, if any. */
+  customName?: string;
 }
 
 /**
@@ -49,5 +51,6 @@ export function buildTile(input: TileInput): AgentTile {
     ...(p.gitBranch !== undefined ? { gitBranch: p.gitBranch } : {}),
     ...(p.mode !== undefined ? { mode: p.mode } : {}),
     ...(p.permissionMode !== undefined ? { permissionMode: p.permissionMode } : {}),
+    ...(input.customName ? { customName: input.customName } : {}),
   };
 }

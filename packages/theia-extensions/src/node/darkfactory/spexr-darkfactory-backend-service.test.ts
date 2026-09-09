@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FSWatcher } from "node:fs";
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
@@ -11,9 +11,21 @@ import {
 import { stitchBoundedLines } from "./bounded-read.js";
 import { configDirs as discoverConfigDirs } from "./config-dirs.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
-import type { SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
+import type { AgentTile, SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
 
 const NOW = 100 * 3_600_000;
+
+// Every service built here would otherwise read the developer's real
+// ~/.spexr/session-names.json when it builds tiles.
+let namesDir: string;
+beforeAll(async () => {
+  namesDir = await mkdtemp(join(tmpdir(), "spexr-df-names-"));
+  process.env["SPEXR_SESSION_NAMES"] = join(namesDir, "session-names.json");
+});
+afterAll(async () => {
+  delete process.env["SPEXR_SESSION_NAMES"];
+  await rm(namesDir, { recursive: true, force: true });
+});
 
 function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]> = {}) {
   return new SpexrDarkfactoryBackendService({
@@ -810,6 +822,91 @@ describe("searchSessions", () => {
       const hit = hits.find((h) => h.tile.sessionId === "archived");
       expect(hit!.archived).toBe(false);
       expect(hit!.tile).toBe(tiles.find((t) => t.sessionId === "archived"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("renameSession", () => {
+  async function namedSvc(): Promise<{
+    s: ReturnType<typeof svc>;
+    pushed: AgentTile[][];
+    dir: string;
+  }> {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-"));
+    const s = svc({ sessionNamesPath: join(dir, "names.json") });
+    const pushed: AgentTile[][] = [];
+    s.setClient({
+      onTilesChanged: (tiles) => pushed.push(tiles),
+      onFollowChunk: () => {},
+      onSessionIndexProgress: () => {},
+    } as SpexrDarkfactoryClient);
+    return { s, pushed, dir };
+  }
+
+  it("names a session and pushes the renamed tile without waiting for a scan", async () => {
+    const { s, pushed, dir } = await namedSvc();
+    try {
+      await s.listTiles();
+      pushed.length = 0;
+      await s.renameSession("s1", "  Typography fix  ");
+      expect(pushed.at(-1)!.find((t) => t.sessionId === "s1")!.customName).toBe("Typography fix");
+      expect((await s.listTiles())[0]!.customName).toBe("Typography fix");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("survives a restart, because the name is on disk and not in the tile", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-"));
+    try {
+      const first = svc({ sessionNamesPath: join(dir, "names.json") });
+      await first.listTiles();
+      await first.renameSession("s1", "Typography fix");
+      first.dispose();
+
+      const second = svc({ sessionNamesPath: join(dir, "names.json") });
+      expect((await second.listTiles())[0]!.customName).toBe("Typography fix");
+      second.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("clears the name on an empty string, leaving no blank heading behind", async () => {
+    const { s, pushed, dir } = await namedSvc();
+    try {
+      await s.listTiles();
+      await s.renameSession("s1", "Typography fix");
+      await s.renameSession("s1", "   ");
+      expect(pushed.at(-1)!.find((t) => t.sessionId === "s1")).not.toHaveProperty("customName");
+      expect((await s.listTiles())[0]).not.toHaveProperty("customName");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("caps a name at the width a card head can carry", async () => {
+    const { s, dir } = await namedSvc();
+    try {
+      await s.listTiles();
+      await s.renameSession("s1", "x".repeat(200));
+      expect((await s.listTiles())[0]!.customName).toHaveLength(80);
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stores a name for a session the wall has not scanned, and pushes nothing", async () => {
+    const { s, pushed, dir } = await namedSvc();
+    try {
+      await s.renameSession("never-scanned", "Old work");
+      expect(pushed).toEqual([]);
+      s.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

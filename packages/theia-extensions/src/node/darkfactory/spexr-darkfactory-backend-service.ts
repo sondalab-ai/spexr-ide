@@ -27,6 +27,7 @@ import { readBoundedLines } from "./bounded-read.js";
 import { buildTile } from "./tile-builder.js";
 import { forEachConcurrent as fanOut } from "./concurrency.js";
 import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
+import { loadSessionNames, saveSessionNames } from "./session-names-store.js";
 import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
 import { rankSessions, type RankedSession } from "./session-query.js";
 import { readFirstPrompt } from "./session-goal.js";
@@ -75,6 +76,12 @@ const MIN_SUMMARY_CHARS = 60;
  * work anyway, so cap the parse to this many newest sessions.
  */
 const RECENT_LIMIT = 60;
+
+/**
+ * A session name is a card heading, not a note: past this it stops fitting the
+ * head row and starts crowding out the chips beside it.
+ */
+const MAX_SESSION_NAME_CHARS = 80;
 
 /** Enumeration freshness floor for the search path, mirroring LIVE_DIRS_TTL_MS. */
 const ENUM_TTL_MS = 15_000;
@@ -154,6 +161,8 @@ export interface DarkfactoryDeps {
   embed?: (texts: string[]) => Promise<Float32Array[]>;
   /** Index location override, so tests never touch the real home directory. */
   sessionIndexPath?: string;
+  /** Session-name store override, so tests never touch the real home directory. */
+  sessionNamesPath?: string;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -176,6 +185,16 @@ interface SessionMeta {
  */
 function matchOf({ score, dense, lexical, terms }: RankedSession): Omit<SessionHit, "tile" | "archived"> {
   return { score, dense, lexical, terms };
+}
+
+/**
+ * The stored name as a spreadable fragment, so both `buildTile` call sites — the
+ * wall scan and search's archived branch — attach it the same way, and an
+ * unnamed session carries no key at all.
+ */
+function nameOf(names: Map<string, string>, sessionId: string): { customName?: string } {
+  const name = names.get(sessionId);
+  return name ? { customName: name } : {};
 }
 
 @injectable()
@@ -232,6 +251,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private indexing = false;
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
   private readonly sessionIndexPath: string | undefined;
+  private readonly sessionNamesPath: string | undefined;
+  /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
+  private sessionNames?: Promise<Map<string, string>>;
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
@@ -266,6 +288,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.generator = d.generator;
     this.embed = d.embed;
     this.sessionIndexPath = d.sessionIndexPath;
+    this.sessionNamesPath = d.sessionNamesPath;
     if (this.embed) {
       setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
     }
@@ -402,7 +425,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
-    const [allRefs, live] = await Promise.all([this.listTranscripts(), this.cachedLiveDirs()]);
+    const [allRefs, live, names] = await Promise.all([
+      this.listTranscripts(),
+      this.cachedLiveDirs(),
+      this.loadNames(),
+    ]);
     const now = this.now();
     // Only read the newest sessions — history is huge and reading it all stalls
     // the event loop; the wall only shows recent work.
@@ -467,6 +494,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYou,
         needsYouCertain,
         hashToIndex,
+        ...nameOf(names, ref.sessionId),
       });
       this.lastTiles.set(ref.sessionId, tile);
       tiles.push(tile);
@@ -542,7 +570,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
     if (archived.length > 0) {
       const refs = new Map((await this.cachedTranscripts()).map((u) => [u.ref.sessionId, u]));
-      const live = await this.cachedLiveDirs();
+      const [live, names] = await Promise.all([this.cachedLiveDirs(), this.loadNames()]);
       const now = this.now();
       const built: SessionHit[] = [];
       await fanOut(archived, PARSE_CONCURRENCY, async (sessionId) => {
@@ -582,6 +610,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYou,
             needsYouCertain,
             hashToIndex,
+            ...nameOf(names, sessionId),
           }),
           ...matchOf(scored.get(sessionId)!),
           archived: true,
@@ -618,6 +647,31 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         ? { readGoalHead: () => readFirstPrompt(u.claude!.transcriptPath) }
         : {}),
     }));
+  }
+
+  private loadNames(): Promise<Map<string, string>> {
+    if (!this.sessionNames) this.sessionNames = loadSessionNames(this.sessionNamesPath);
+    return this.sessionNames;
+  }
+
+  /**
+   * Name a session, or clear the name when `name` is blank. The tiles the last
+   * scan produced are patched in place and pushed, so the card renames now
+   * rather than at the next poll — and every window sees it, not just the one
+   * that asked.
+   */
+  async renameSession(sessionId: string, name: string): Promise<void> {
+    const names = await this.loadNames();
+    const trimmed = name.trim().slice(0, MAX_SESSION_NAME_CHARS);
+    if (trimmed) names.set(sessionId, trimmed);
+    else names.delete(sessionId);
+    await saveSessionNames(names, this.sessionNamesPath);
+
+    const tile = this.lastTiles.get(sessionId);
+    if (!tile) return;
+    const { customName: _dropped, ...rest } = tile;
+    this.lastTiles.set(sessionId, trimmed ? { ...rest, customName: trimmed } : rest);
+    this.client?.onTilesChanged([...this.lastTiles.values()]);
   }
 
   private loadIndex(): Promise<SessionIndex> {
