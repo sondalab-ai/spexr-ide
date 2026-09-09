@@ -192,6 +192,27 @@ already runs in-process for the code index (`EmbedderToken`, bound in
   the progress hint rather than an empty result.
 - **AC-18 Trash is respected.** Hits whose session is in the local trash are
   filtered out client-side, using the existing `trash.ts` predicate.
+- **AC-19 A hit says why it is a hit.** `SessionHit` carries the two weighted
+  halves its score is blended from (`dense`, `lexical`, summing to `score`) and
+  the query terms that moved the lexical half (`terms`), strongest contribution
+  first and capped so a long query cannot fill the card. Both places that build
+  a hit — the tiles the last scan holds and the archived sessions parsed on
+  demand — go through one helper, so a new field cannot reach one and miss the
+  other. Each result card renders a relevance bar and the matched terms.
+  - The bar is scaled against the **best hit of the same result set**, not
+    against an absolute. The lexical half is already normalised per query
+    (`maxLexical`), so a score is comparable within one result set and nowhere
+    else; an absolute scale would draw every result as a short stub and read as
+    "nothing matched". Filtering a pinned or trashed session out rescales the
+    remaining bars.
+  - The fill is cut where the dense half stops and the lexical half starts, so a
+    session found by paraphrase is visibly different from one found by its
+    literal words.
+  - Terms are ranked by their actual BM25 contribution — `BM25Index.explain`
+    shares its per-term arithmetic with `score`, so the reported terms cannot
+    drift from the ones that did the ranking. They come from the *expanded*
+    query, so a synonym the user did not type can appear: that is the point, it
+    explains an otherwise surprising hit.
 
 ## Architecture
 
@@ -251,7 +272,8 @@ index for a mid-sized workspace and needs no compaction in this version.
 | `session-doc.test.ts`                       | Composition order, 4000-character cap, target dedupe, empty inputs (AC-1).                                                                                                                  |
 | `session-index.test.ts`                     | Upsert/remove across both stores, round-trip persistence, version mismatch and corrupt file both yielding an empty index (AC-2, AC-3).                                                      |
 | `session-indexer.test.ts`                   | Unchanged sessions skipped by `mtimeMs`, batching, removal of vanished sessions, progress callback (AC-4 to AC-6).                                                                          |
-| `spexr-darkfactory-backend-service.test.ts` | Hybrid ranking with a fake embedder, empty-query short circuit, an archived hit outside `RECENT_LIMIT` being openable through `planFocus` after a scan has cleared `index` (AC-7 to AC-11). |
+| `spexr-darkfactory-backend-service.test.ts` | Hybrid ranking with a fake embedder, empty-query short circuit, an archived hit outside `RECENT_LIMIT` being openable through `planFocus` after a scan has cleared `index`, and that same hit carrying its match detail (AC-7 to AC-11, AC-19). |
+| `bm25-index.test.ts`                        | `explain` names only terms the document holds, ranks them by contribution, caps the list, and agrees with `score` (AC-19).                                                                   |
 | `session-search.test.ts`                    | Debounce, superseded query discarded, clear restores the unfiltered wall (AC-14).                                                                                                           |
 
 The archived-hit test is the regression guard for the failure this design exists

@@ -42,6 +42,34 @@ describe("rankSessions", () => {
     expect(rankSessions(index, Float32Array.from([1, 0]), "design system")).toEqual([]);
   });
 
+  it("splits the score into the two halves it was blended from", () => {
+    const index = new SessionIndex();
+    index.upsert(record("effects", [1, 0], "adding new effects to the spexr design system"));
+    const [hit] = rankSessions(index, Float32Array.from([1, 0]), "effects design system");
+    expect(hit!.dense + hit!.lexical).toBeCloseTo(hit!.score, 10);
+    expect(hit!.dense).toBeGreaterThan(0);
+    expect(hit!.lexical).toBeGreaterThan(0);
+  });
+
+  it("carries no lexical half for a hit the dense pass alone found", () => {
+    const index = new SessionIndex();
+    index.upsert(record("effects", [1, 0], "adding new effects to the spexr design system"));
+    index.upsert(record("git", [1, 0], "hardening the git panel"));
+    const hit = rankSessions(index, Float32Array.from([1, 0]), "effects").find(
+      (r) => r.sessionId === "git",
+    );
+    expect(hit!.lexical).toBe(0);
+    expect(hit!.terms).toEqual([]);
+  });
+
+  it("reports the query terms that put a session in the results", () => {
+    const index = new SessionIndex();
+    index.upsert(record("effects", [1, 0], "adding new effects to the spexr design system"));
+    const [hit] = rankSessions(index, Float32Array.from([1, 0]), "effects design nowhere");
+    expect(hit!.terms).toContain("effects");
+    expect(hit!.terms).not.toContain("nowhere");
+  });
+
   it("returns at most 24 hits, best first", () => {
     const index = new SessionIndex();
     for (let i = 0; i < 40; i++) index.upsert(record(`s${i}`, [1, 0], "design system effects"));

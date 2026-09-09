@@ -2564,6 +2564,39 @@ code {
 .spexr-df-search__progress {
   color: var(--sl-text-muted); font-size: var(--sl-text-xs); white-space: nowrap;
 }
+/*
+ * Why a search hit is in the results. Last line of the card, below the branch,
+ * so a card outside a search is laid out exactly as before.
+ */
+.spexr-df-match {
+  display: flex; align-items: center; gap: var(--sl-space-2);
+  flex-wrap: wrap;
+  margin-top: var(--sl-space-1);
+}
+.spexr-df-match__track {
+  flex: none; width: 4rem; height: 3px;
+  border-radius: var(--sl-radius-pill);
+  background: var(--sl-border-subtle);
+  overflow: hidden;
+}
+/* Two colours in one fill, cut where meaning stops paying for the score and the
+   literal words start: amber found it by paraphrase, teal by the words typed. */
+.spexr-df-match__fill {
+  display: block; height: 100%;
+  width: var(--match-share);
+  border-radius: var(--sl-radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--sl-accent-default) 0 var(--match-dense),
+    var(--sl-accent-depth) var(--match-dense) 100%
+  );
+}
+.spexr-df-match__term {
+  padding: 0 6px;
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-pill);
+  color: var(--sl-text-muted); font-size: var(--sl-text-xs); line-height: 1.5;
+  white-space: nowrap;
+}
 .spexr-df-card__archived {
   font-size: 0.75em;
   font-style: italic;

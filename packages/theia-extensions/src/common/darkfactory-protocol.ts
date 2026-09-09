@@ -52,6 +52,19 @@ export interface SessionHit {
   tile: AgentTile;
   /** Hybrid score, dense and lexical blended; higher is a better match. */
   score: number;
+  /**
+   * The weighted halves `score` is made of, so the UI can show which pass found
+   * the session: `dense` is meaning, `lexical` is the literal words. They sum to
+   * `score`.
+   *
+   * Comparable within one result set only. The lexical half is normalised
+   * against the best lexical hit for the query that produced it, so the same
+   * session scores differently under a different query.
+   */
+  dense: number;
+  lexical: number;
+  /** Query terms that moved the lexical half, strongest contribution first. */
+  terms: string[];
   /** True when the session was outside the wall's current scan window. */
   archived: boolean;
 }

@@ -28,7 +28,7 @@ import { buildTile } from "./tile-builder.js";
 import { forEachConcurrent as fanOut } from "./concurrency.js";
 import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
 import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
-import { rankSessions } from "./session-query.js";
+import { rankSessions, type RankedSession } from "./session-query.js";
 import { readFirstPrompt } from "./session-goal.js";
 import { expandQuery } from "../search/query-expander.js";
 import type { SessionIndex } from "./session-index.js";
@@ -167,6 +167,15 @@ interface SessionMeta {
   harnessId: string;
   /** Entry loader from the last scan — summary source for file-less transcripts (opencode). */
   loadEntries?: () => Promise<unknown[]>;
+}
+
+/**
+ * The ranking half of a hit. Both places that build a `SessionHit` — the tiles
+ * the last scan already has, and the archived sessions parsed on demand — go
+ * through this, so a new match field cannot reach one and miss the other.
+ */
+function matchOf({ score, dense, lexical, terms }: RankedSession): Omit<SessionHit, "tile" | "archived"> {
+  return { score, dense, lexical, terms };
 }
 
 @injectable()
@@ -520,13 +529,15 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // re-classifying it here would feed classifySession different inputs and
     // could demote a live session. Only sessions outside the window are parsed,
     // and only the hits among them, never the whole index.
-    const scored = new Map(ranked.map((r) => [r.sessionId, r.score]));
+    // The whole ranking is carried, not just the score: the archived branch
+    // below builds its hits in a separate pass and needs the same match detail.
+    const scored = new Map(ranked.map((r) => [r.sessionId, r]));
     const hits: SessionHit[] = [];
     const archived: string[] = [];
-    for (const { sessionId } of ranked) {
-      const tile = this.lastTiles.get(sessionId);
-      if (tile) hits.push({ tile, score: scored.get(sessionId)!, archived: false });
-      else archived.push(sessionId);
+    for (const r of ranked) {
+      const tile = this.lastTiles.get(r.sessionId);
+      if (tile) hits.push({ tile, ...matchOf(r), archived: false });
+      else archived.push(r.sessionId);
     }
 
     if (archived.length > 0) {
@@ -572,7 +583,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYouCertain,
             hashToIndex,
           }),
-          score: scored.get(sessionId)!,
+          ...matchOf(scored.get(sessionId)!),
           archived: true,
         });
       });

@@ -230,6 +230,59 @@ export function AgentGroupHeader(props: {
   );
 }
 
+/** How a search hit scored, as the card reports it. */
+export interface TileMatch {
+  /** Blended score for this hit. */
+  score: number;
+  /** The weighted halves of `score`: meaning and literal words. */
+  dense: number;
+  lexical: number;
+  /** Query terms that moved the lexical half, strongest first. */
+  terms: string[];
+  /** Best score in the same result set — the bar is drawn relative to it. */
+  best: number;
+}
+
+/**
+ * Why this session is in the results, and how strongly.
+ *
+ * The bar is scaled against the best hit of the same query rather than against
+ * an absolute: scores are a blend whose lexical half is already normalised per
+ * query, so an absolute scale would render every result as a short stub and
+ * read as "nothing matched". Within one result set the comparison is the one
+ * that matters anyway — which of these is the better answer.
+ *
+ * The fill is split at the point where meaning stops accounting for the score
+ * and literal words start, so a hit found by paraphrase looks different from
+ * one found by its file names.
+ */
+function MatchBadge({ match }: { match: TileMatch }): React.ReactElement {
+  const share = match.best > 0 ? Math.min(1, match.score / match.best) : 0;
+  const densePart = match.score > 0 ? match.dense / match.score : 0;
+  const pct = (n: number): string => `${Math.round(n * 100)}%`;
+  return (
+    <span
+      className="spexr-df-match"
+      title={`Relevance ${pct(share)} of the best match — ${pct(densePart)} meaning, ${pct(1 - densePart)} words`}
+    >
+      <span
+        className="spexr-df-match__track"
+        style={{
+          ["--match-share" as string]: pct(share),
+          ["--match-dense" as string]: pct(densePart),
+        }}
+      >
+        <span className="spexr-df-match__fill" />
+      </span>
+      {match.terms.map((t) => (
+        <span key={t} className="spexr-df-match__term">
+          {t}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Full agent card: goal (anchor, expandable), then AI now/overview lines, then branch. */
 export function AgentTileCard(props: {
   tile: AgentTile;
@@ -245,8 +298,10 @@ export function AgentTileCard(props: {
   onTrash: (t: AgentTile) => void;
   /** True for a search hit that lives outside the wall's recent-session window. */
   archived?: boolean;
+  /** Set only when the card is a search hit: why it matched, and how strongly. */
+  match?: TileMatch;
 }): React.ReactElement {
-  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject, onTrash, archived } =
+  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject, onTrash, archived, match } =
     props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
@@ -326,6 +381,7 @@ export function AgentTileCard(props: {
           <span className="spexr-df-card__branch-name">{tile.gitBranch}</span>
         </span>
       )}
+      {match && <MatchBadge match={match} />}
     </button>
   );
 }

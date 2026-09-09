@@ -786,6 +786,10 @@ describe("searchSessions", () => {
       expect(archived!.tile.projectName).toBe("spexr");
       expect(archived!.tile.goal).toContain("effects");
       expect(hits[0]!.tile.sessionId).toBe("archived");
+      // The archived branch builds its hits in a pass of its own, so it is the
+      // one that can silently lose a match field the other still carries.
+      expect(archived!.dense + archived!.lexical).toBeCloseTo(archived!.score, 10);
+      expect(archived!.terms).toContain("effects");
 
       const plan = await s.planFocus("archived");
       expect(plan.projectPath).toBe("/Users/x/src/mine/spexr");

@@ -31,6 +31,7 @@ import {
   TrashSectionHeader,
   NewSessionLauncher,
   LaunchedSessionCard,
+  type TileMatch,
 } from "./agent-tile.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
@@ -678,7 +679,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     tile: AgentTile,
     now: number,
     showProject: boolean,
-    archived = false,
+    hit?: { archived: boolean; match: TileMatch },
   ): React.ReactNode {
     return (
       <AgentTileCard
@@ -691,7 +692,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
         showProject={showProject}
         onTrash={(t) => this.moveToTrash(t.sessionId)}
-        archived={archived}
+        archived={hit?.archived ?? false}
+        {...(hit ? { match: hit.match } : {})}
       />
     );
   }
@@ -830,6 +832,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     const visibleHits = this.search.hits.filter(
       (h) => !this.trashedIds().has(h.tile.sessionId) && !this.pinned.includes(h.tile.sessionId),
     );
+    // Relevance bars are drawn against the strongest hit still on screen, so
+    // filtering a pinned or trashed session out rescales the rest rather than
+    // leaving every bar short of a maximum nothing reaches.
+    const best = Math.max(0, ...visibleHits.map((h) => h.score));
     return (
       <div className="spexr-df-root">
         <NewSessionLauncher
@@ -950,7 +956,12 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             </div>
           ) : (
             <div className="spexr-df-grid">
-              {visibleHits.map((h) => this.renderCard(h.tile, now, true, h.archived))}
+              {visibleHits.map((h) =>
+                this.renderCard(h.tile, now, true, {
+                  archived: h.archived,
+                  match: { score: h.score, dense: h.dense, lexical: h.lexical, terms: h.terms, best },
+                }),
+              )}
             </div>
           )
         ) : tiles.length === 0 ? (

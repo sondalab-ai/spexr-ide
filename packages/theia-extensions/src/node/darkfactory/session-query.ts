@@ -12,9 +12,24 @@ const BM25_CANDIDATE_RATIO = 0.3;
 /** Final cut: below this a hit is noise rather than a match. */
 const MIN_SCORE = 0.18;
 
+/** How many matched terms a hit reports, at most. */
+const EXPLAIN_TERMS = 4;
+
 export interface RankedSession {
   sessionId: string;
   score: number;
+  /**
+   * The two halves the score is blended from, already weighted, so they sum to
+   * `score` and can be shown as the split that produced the ranking.
+   */
+  dense: number;
+  lexical: number;
+  /**
+   * Query terms that moved this session's lexical score, strongest first.
+   * Drawn from the *expanded* query, so a synonym the user did not type can
+   * appear — which is the point: it explains an otherwise surprising hit.
+   */
+  terms: string[];
 }
 
 /**
@@ -42,8 +57,17 @@ export function rankSessions(
   for (const sessionId of candidates) {
     const cosine = denseScores.get(sessionId) ?? 0;
     const bm25 = (lexical.get(sessionId) ?? 0) / maxLexical;
-    const score = DENSE_WEIGHT * cosine + BM25_WEIGHT * bm25;
-    if (score >= MIN_SCORE) ranked.push({ sessionId, score });
+    const dense = DENSE_WEIGHT * cosine;
+    const lex = BM25_WEIGHT * bm25;
+    const score = dense + lex;
+    if (score < MIN_SCORE) continue;
+    ranked.push({
+      sessionId,
+      score,
+      dense,
+      lexical: lex,
+      terms: index.bm25.explain(sessionId, expandedQuery, EXPLAIN_TERMS),
+    });
   }
   ranked.sort((a, b) => b.score - a.score);
   return ranked.slice(0, TOP_K);
