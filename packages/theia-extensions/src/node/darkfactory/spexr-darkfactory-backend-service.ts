@@ -53,6 +53,7 @@ import type {
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
 } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
@@ -76,12 +77,6 @@ const MIN_SUMMARY_CHARS = 60;
  * work anyway, so cap the parse to this many newest sessions.
  */
 const RECENT_LIMIT = 60;
-
-/**
- * A session name is a card heading, not a note: past this it stops fitting the
- * head row and starts crowding out the chips beside it.
- */
-const MAX_SESSION_NAME_CHARS = 80;
 
 /** Enumeration freshness floor for the search path, mirroring LIVE_DIRS_TTL_MS. */
 const ENUM_TTL_MS = 15_000;

@@ -9,6 +9,7 @@ import {
   summaryTargets,
   launchTargets,
   projectDisplayName,
+  defaultSessionName,
 } from "./darkfactory-format.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
 
@@ -313,5 +314,48 @@ describe("projectDisplayName", () => {
 
   test("ignores a trailing slash", () => {
     expect(projectDisplayName("/Users/me/src/spexr/")).toBe("spexr");
+  });
+});
+
+describe("defaultSessionName", () => {
+  const goal = (text: string): AgentTile => tile("a", "idle", false, 0, { goal: text });
+
+  test("prefers the name the user already gave the session", () => {
+    const named = tile("a", "idle", false, 0, { goal: "Fix the login form", customName: "A name" });
+    expect(defaultSessionName(named, "Reworking auth")).toBe("A name");
+  });
+
+  test("falls back to the AI headline when the session has no name", () => {
+    expect(defaultSessionName(goal("Fix the login form"), "Reworking auth")).toBe("Reworking auth");
+  });
+
+  test("falls back to the first sentence of the goal when there is no headline", () => {
+    expect(defaultSessionName(goal("Fix the login form. Then ship it."))).toBe("Fix the login form");
+  });
+
+  test("does not break a sentence on the dots inside a URL", () => {
+    expect(defaultSessionName(goal("Tackle https://github.com/a/b/issues/4 with care"))).toBe(
+      "Tackle https://github.com/a/b/issues/4 with care",
+    );
+  });
+
+  test("keeps a goal that never terminates a sentence, cut to a heading's width", () => {
+    expect(defaultSessionName(goal("x".repeat(200)))).toBe("x".repeat(60));
+  });
+
+  test("cuts a long first sentence on a word boundary", () => {
+    const long = `${"word ".repeat(30)}end.`;
+    const name = defaultSessionName(goal(long));
+    expect(name.length).toBeLessThanOrEqual(60);
+    expect(name.endsWith("word")).toBe(true);
+  });
+
+  test("falls back to the action line for a session with no goal", () => {
+    const t = tile("a", "idle", false, 0, { goal: "", actionLine: "Editing auth.ts" });
+    expect(defaultSessionName(t)).toBe("Editing auth.ts");
+  });
+
+  test("is empty when the session says nothing at all", () => {
+    expect(defaultSessionName(tile("a", "idle", false, 0, { goal: "", actionLine: "" }))).toBe("");
   });
 });

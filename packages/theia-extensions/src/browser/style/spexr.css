@@ -2889,6 +2889,28 @@ code {
 }
 
 /*
+ * Name a session. Reveal-on-hover like the jump action, and it sits right after
+ * the heading it rewrites — on the pinned card too, where the head is a header
+ * row rather than the card's own hover surface.
+ */
+.spexr-df-card__rename {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  align-self: center;
+  width: 20px; height: 20px; border-radius: var(--sl-radius-sm);
+  color: var(--sl-text-muted); opacity: 0; cursor: pointer;
+  transition: opacity var(--sl-motion-fast) var(--sl-motion-ease),
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-df-card__rename .codicon { font-size: 0.9em; }
+.spexr-df-card:hover .spexr-df-card__rename,
+.spexr-df-pinned:hover .spexr-df-card__rename { opacity: 1; }
+.spexr-df-card__rename:hover {
+  color: var(--tile-accent);
+  background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
+}
+
+/*
  * Set a session aside. Same reveal-on-hover as the jump action, but it settles on
  * the danger colour: this one takes the session off the wall, and the accent is
  * the wall's "go here" colour.

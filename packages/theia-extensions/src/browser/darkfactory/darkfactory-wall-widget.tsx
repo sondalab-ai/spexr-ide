@@ -6,6 +6,7 @@ import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { FileDialogService } from "@theia/filesystem/lib/browser/file-dialog";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
+import { QuickInputService } from "@theia/core/lib/browser";
 import type {
   AgentSummary,
   AgentTile,
@@ -13,6 +14,7 @@ import type {
   FollowEvent,
   SpexrDarkfactoryService,
 } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
@@ -21,7 +23,13 @@ import { SpexrProjectSwitchService } from "../project/spexr-project-switch-servi
 import { parseLaunchProfiles } from "../../common/claude-launch-profiles.js";
 import { SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE } from "../preferences/spexr-preferences.js";
 import { normalizeProjectPath } from "../project/project-switch-targets.js";
-import { sortTiles, groupTiles, summaryTargets, launchTargets } from "./darkfactory-format.js";
+import {
+  sortTiles,
+  groupTiles,
+  summaryTargets,
+  launchTargets,
+  defaultSessionName,
+} from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
 import {
   AgentTileCard,
@@ -65,6 +73,13 @@ const FOLLOW_BUFFER = 400;
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
+/** A copy of the tile carrying `name`, with a blank name dropping the field entirely. */
+function renamedTile(tile: AgentTile, name: string): AgentTile {
+  const { customName: _dropped, ...rest } = tile;
+  const trimmed = name.trim();
+  return trimmed ? { ...rest, customName: trimmed } : rest;
+}
+
 /** Machine-wide monitoring wall of every agent session (Claude Code, opencode). */
 @injectable()
 export class SpexrDarkfactoryWidget extends ReactWidget {
@@ -79,6 +94,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(FileService) private readonly files!: FileService;
   @inject(FileDialogService) private readonly fileDialog!: FileDialogService;
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
+  @inject(QuickInputService) private readonly quickInput!: QuickInputService;
 
   private tiles: AgentTile[] = [];
 
@@ -675,6 +691,41 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.update();
   }
 
+  /**
+   * Name a session. The field opens on the best short description the wall
+   * already has — the AI headline, else the session's own first sentence — so
+   * confirming without typing is itself a useful name. Submitting an empty field
+   * clears the name; dismissing the prompt changes nothing.
+   */
+  private async renameSession(tile: AgentTile): Promise<void> {
+    const summary = this.summaries.get(tile.sessionId);
+    const s = summary && !summary.loading ? summary.summary : undefined;
+    const name = await this.quickInput.input({
+      prompt: `Name this session — ${tile.projectName}`,
+      placeHolder: "Leave empty to go back to the project name",
+      value: defaultSessionName(tile, s ? s.overview || s.now : ""),
+      // Enforced here as well as in the store, so what the card ends up showing
+      // is what the field accepted rather than a silent truncation.
+      validateInput: (v) =>
+        Promise.resolve(
+          v.trim().length > MAX_SESSION_NAME_CHARS
+            ? `A session name fits in ${MAX_SESSION_NAME_CHARS} characters.`
+            : undefined,
+        ),
+    });
+    if (name === undefined) return; // dismissed
+    await this.service.renameSession(tile.sessionId, name);
+    // The backend pushes the renamed tile, but only for a session the last scan
+    // built. A search hit from outside that window is ours to update, or the
+    // card keeps the old heading until the query is run again.
+    this.search.hits = this.search.hits.map((hit) =>
+      hit.tile.sessionId === tile.sessionId
+        ? { ...hit, tile: renamedTile(hit.tile, name) }
+        : hit,
+    );
+    this.update();
+  }
+
   private renderCard(
     tile: AgentTile,
     now: number,
@@ -692,6 +743,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
         showProject={showProject}
         onTrash={(t) => this.moveToTrash(t.sessionId)}
+        onRename={(t) => void this.renameSession(t)}
         archived={hit?.archived ?? false}
         {...(hit ? { match: hit.match } : {})}
       />
@@ -935,6 +987,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               onOpenProject={(t) => this.openProject(t.projectPath)}
               onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, t.projectName)}
               onTrash={(t) => this.moveToTrash(t.sessionId)}
+              onRename={(t) => void this.renameSession(t)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
               layout={this.wallLayout}
             />

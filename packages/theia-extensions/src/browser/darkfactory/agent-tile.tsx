@@ -145,6 +145,30 @@ function OpenProjectAction(props: {
 }
 
 /**
+ * Rename the session. A `span` for the same reason as {@link OpenProjectAction},
+ * and only ever shown next to a heading the name would replace.
+ */
+function RenameAction(props: {
+  tile: AgentTile;
+  onRename: (t: AgentTile) => void;
+}): React.ReactElement {
+  const { tile, onRename } = props;
+  return (
+    <span
+      className="spexr-df-card__rename"
+      role="button"
+      title={tile.customName ? "Rename this session" : "Name this session"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onRename(tile);
+      }}
+    >
+      <i className="codicon codicon-edit" />
+    </span>
+  );
+}
+
+/**
  * Move a session to the trash, or take it back out. A `span` for the same reason
  * as {@link OpenProjectAction}: the card and the condensed row are both buttons.
  * Nothing on disk is touched — the trash is only the wall's way of forgetting a
@@ -303,15 +327,31 @@ export function AgentTileCard(props: {
   showProject: boolean;
   /** Move this session to the trash, out of the wall's project groups. */
   onTrash: (t: AgentTile) => void;
+  /** Give this session a name, or change the one it has. */
+  onRename: (t: AgentTile) => void;
   /** True for a search hit that lives outside the wall's recent-session window. */
   archived?: boolean;
   /** Set only when the card is a search hit: why it matched, and how strongly. */
   match?: TileMatch;
 }): React.ReactElement {
-  const { tile, now, summary, onOpen, onOpenProject, isCurrent, showProject, onTrash, archived, match } =
-    props;
+  const {
+    tile,
+    now,
+    summary,
+    onOpen,
+    onOpenProject,
+    isCurrent,
+    showProject,
+    onTrash,
+    onRename,
+    archived,
+    match,
+  } = props;
   const [expanded, setExpanded] = React.useState(false);
   const status = statusOf(tile);
+  // Inside a project group the header already names the project, so an unnamed
+  // card there has no heading of its own.
+  const heading = tile.customName || (showProject ? tile.projectName : "");
   const primary = capitalize(tile.goal || tile.actionLine);
   const expandable = primary.length > 90;
   const ai = summary && !summary.loading ? summaryLines(summary.summary) : undefined;
@@ -327,12 +367,21 @@ export function AgentTileCard(props: {
     >
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
-        {showProject && (
+        {/*
+          A named session keeps its heading inside a project group, where the
+          project name is dropped as the group header already carries it. The
+          project actions stay tied to that header, not to the name.
+        */}
+        {heading && (
           <>
-            <span className="spexr-df-card__project">{tile.projectName}</span>
-            {isCurrent ? <CurrentProjectChip /> : <OpenProjectAction tile={tile} onOpenProject={onOpenProject} />}
+            <span className="spexr-df-card__project" title={tile.projectPath}>
+              {heading}
+            </span>
+            <RenameAction tile={tile} onRename={onRename} />
           </>
         )}
+        {showProject &&
+          (isCurrent ? <CurrentProjectChip /> : <OpenProjectAction tile={tile} onOpenProject={onOpenProject} />)}
         <span className="spexr-df-card__harness">{tile.harness}</span>
         {archived && (
           <span className="spexr-df-card__archived" title="Found by search, outside the wall">
@@ -343,6 +392,8 @@ export function AgentTileCard(props: {
           {status.label}
         </span>
         <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
+        {/* With no heading to sit beside, naming joins the row's other actions. */}
+        {!heading && <RenameAction tile={tile} onRename={onRename} />}
         <TrashAction tile={tile} mode="trash" onAct={onTrash} />
       </span>
 
@@ -479,6 +530,8 @@ export function AgentPinnedCard(props: {
   onOpenTerminal: (t: AgentTile) => void;
   /** Close this card and move its session to the trash. */
   onTrash: (t: AgentTile) => void;
+  /** Give this session a name, or change the one it has. */
+  onRename: (t: AgentTile) => void;
   /** True when this tile's project is the one loaded in the window. */
   isCurrent: boolean;
   /** How the wall arranges active cards; the card's height is remembered per arrangement. */
@@ -495,6 +548,7 @@ export function AgentPinnedCard(props: {
     onOpenProject,
     onOpenTerminal,
     onTrash,
+    onRename,
     isCurrent,
     layout,
   } = props;
@@ -531,7 +585,10 @@ export function AgentPinnedCard(props: {
       <header className="spexr-df-pinned__bar">
         <div className="spexr-df-pinned__head">
           <span className="spexr-df-card__led" />
-          <span className="spexr-df-pinned__project">{tile.projectName}</span>
+          <span className="spexr-df-pinned__project" title={tile.projectPath}>
+            {tile.customName || tile.projectName}
+          </span>
+          <RenameAction tile={tile} onRename={onRename} />
           {isCurrent && <CurrentProjectChip />}
           <span className="spexr-df-card__harness">{tile.harness}</span>
           <span className="spexr-df-card__status" data-kind={status.kind}>
@@ -937,12 +994,10 @@ export function AgentCondensedRow(props: {
       title={`${tile.projectPath} · ${status.label}`}
     >
       <span className="spexr-df-row__led" />
-      {showProject && (
-        <>
-          <span className="spexr-df-row__project">{tile.projectName}</span>
-          {isCurrent && <CurrentProjectChip />}
-        </>
+      {(showProject || tile.customName) && (
+        <span className="spexr-df-row__project">{tile.customName || tile.projectName}</span>
       )}
+      {showProject && isCurrent && <CurrentProjectChip />}
       <span className="spexr-df-row__harness">{tile.harness}</span>
       <span className="spexr-df-row__action">{tile.goal || tile.actionLine}</span>
       {(tile.lastFailed || tile.needsYou) && (
