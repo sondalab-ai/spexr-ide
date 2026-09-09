@@ -23,7 +23,23 @@ export interface SessionRecord {
   docHash: string;
   vector: Float32Array;
   goal: string;
+  /**
+   * The session's own text. The name the user gave it is kept apart, in
+   * `customName`, so a later rename replaces it instead of layering on top —
+   * {@link indexedText} is what actually gets scored.
+   */
   doc: string;
+  /** The name the user gave the session, if any. Leads the indexed text. */
+  customName?: string;
+}
+
+/**
+ * What the index scores: the user's own name for the session first, because it
+ * is the wording they will search with, then the session's text.
+ */
+export function indexedText(record: Pick<SessionRecord, "doc" | "customName">): string {
+  const name = record.customName?.trim();
+  return name ? `${name}\n${record.doc}` : record.doc;
 }
 
 /** One dense-pass result, before the lexical half is blended in. */
@@ -55,7 +71,7 @@ export class SessionIndex {
 
   upsert(record: SessionRecord): void {
     this.records.set(record.sessionId, record);
-    this.bm25.upsert(record.sessionId, record.doc);
+    this.bm25.upsert(record.sessionId, indexedText(record));
   }
 
   remove(sessionId: string): boolean {

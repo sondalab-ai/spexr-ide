@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { forEachConcurrent } from "./concurrency.js";
 import { buildSessionDoc, toolTargets } from "./session-doc.js";
 import { recentAssistantProse, sessionGoal, type TurnEntry } from "./turns.js";
-import type { SessionIndex, SessionRecord } from "./session-index.js";
+import { indexedText, type SessionIndex, type SessionRecord } from "./session-index.js";
 import type { HarnessId, ParsedTranscript } from "../../common/harness/harness-types.js";
 
 /**
@@ -26,6 +26,8 @@ export interface IndexableSession {
    * sentence past that window, and the goal is what a query matches best.
    */
   readGoalHead?(): Promise<string>;
+  /** The name the user gave this session, if any; it leads the indexed text. */
+  customName?: string;
 }
 
 export interface SessionIndexerDeps {
@@ -46,8 +48,12 @@ export const PROSE_SEGMENTS = 6;
 /** Never persist more often than this while a crawl runs. */
 const SAVE_INTERVAL_MS = 5_000;
 
-/** Stable content key: an mtime touch that left the text alone skips the encoder. */
-function hashDoc(doc: string): string {
+/**
+ * Stable content key over everything that is scored, the session name included:
+ * an mtime touch that left the text alone skips the encoder, while a rename does
+ * not.
+ */
+export function hashDoc(doc: string): string {
   return createHash("sha1").update(doc).digest("hex");
 }
 
@@ -59,6 +65,7 @@ function toRecord(
   doc: string,
   goal: string,
 ): SessionRecord {
+  const named = session.customName?.trim();
   return {
     sessionId: session.sessionId,
     harness: session.harness,
@@ -67,10 +74,11 @@ function toRecord(
     transcriptPath: session.transcriptPath,
     configDir: session.configDir,
     mtimeMs: session.mtimeMs,
-    docHash: hashDoc(doc),
+    docHash: hashDoc(indexedText({ doc, ...(named ? { customName: named } : {}) })),
     vector,
     goal,
     doc,
+    ...(named ? { customName: named } : {}),
   };
 }
 
@@ -138,14 +146,21 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
     const fresh: typeof prepared = [];
     for (const p of prepared) {
       const existing = index.get(p.session.sessionId);
-      if (existing && existing.docHash === hashDoc(p.doc)) {
+      const named = p.session.customName?.trim();
+      const text = indexedText({ doc: p.doc, ...(named ? { customName: named } : {}) });
+      if (existing && existing.docHash === hashDoc(text)) {
         index.upsert({ ...existing, mtimeMs: p.session.mtimeMs });
       } else {
         fresh.push(p);
       }
     }
     if (fresh.length > 0) {
-      const vectors = await embed(fresh.map((p) => p.doc));
+      const vectors = await embed(
+        fresh.map((p) => {
+          const named = p.session.customName?.trim();
+          return indexedText({ doc: p.doc, ...(named ? { customName: named } : {}) });
+        }),
+      );
       for (const [j, p] of fresh.entries()) {
         index.upsert(toRecord(p.session, p.projectPath, vectors[j]!, p.doc, p.goal));
       }

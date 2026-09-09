@@ -12,6 +12,7 @@ import { stitchBoundedLines } from "./bounded-read.js";
 import { configDirs as discoverConfigDirs } from "./config-dirs.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
 import type { AgentTile, SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 
 const NOW = 100 * 3_600_000;
 
@@ -894,7 +895,7 @@ describe("renameSession", () => {
     try {
       await s.listTiles();
       await s.renameSession("s1", "x".repeat(200));
-      expect((await s.listTiles())[0]!.customName).toHaveLength(80);
+      expect((await s.listTiles())[0]!.customName).toHaveLength(MAX_SESSION_NAME_CHARS);
       s.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -907,6 +908,96 @@ describe("renameSession", () => {
       await s.renameSession("never-scanned", "Old work");
       expect(pushed).toEqual([]);
       s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("renameSession and the search index", () => {
+  /**
+   * Two sessions with unremarkable goals, indexed. The encoder here answers on
+   * one axis only — "hydra" or not — so a query matches by the lexical half and
+   * by a vector the rename had to re-encode, not by chance.
+   */
+  function indexedSvc(indexPath: string, namesPath: string) {
+    const refs = ["s1", "s2"].map((id) => {
+      const lines = [
+        `{"type":"mode","mode":"normal"}`,
+        `{"cwd":"/Users/x/src/proj","type":"user","message":{"role":"user","content":[{"type":"text","text":"routine maintenance chore ${id}"}]}}`,
+      ];
+      return {
+        harness: claudeHarness,
+        ref: {
+          sessionId: id,
+          projectPath: "",
+          mtimeMs: NOW - 1_000,
+          loadEntries: async () => lines.map((l) => JSON.parse(l)),
+        },
+        claude: {
+          sessionId: id,
+          transcriptPath: `/PD/-proj/${id}.jsonl`,
+          configDir: "/Users/x/.claude",
+          mtimeMs: NOW - 1_000,
+          readLines: () => Promise.resolve(lines),
+        },
+      };
+    });
+    return svc({
+      listTranscripts: () => Promise.resolve(refs),
+      liveProjectDirs: () => Promise.resolve(new Set<string>()),
+      sessionIndexPath: indexPath,
+      sessionNamesPath: namesPath,
+      embed: async (texts: string[]) =>
+        texts.map((t) => (/hydra/i.test(t) ? Float32Array.from([1, 0]) : Float32Array.from([0, 1]))),
+    });
+  }
+
+  it("finds a session by the name it was just given, without waiting for a crawl", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-index-"));
+    try {
+      const s = indexedSvc(join(dir, "i.json"), join(dir, "names.json"));
+      await s.indexNow();
+      await s.listTiles();
+      expect(await s.searchSessions("hydra")).toEqual([]);
+
+      await s.renameSession("s2", "Hydra migration");
+      const hits = await s.searchSessions("hydra");
+      expect(hits.map((h) => h.tile.sessionId)).toEqual(["s2"]);
+      expect(hits[0]!.tile.customName).toBe("Hydra migration");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stops matching a name that was replaced, rather than keeping both", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-index-"));
+    try {
+      const s = indexedSvc(join(dir, "i.json"), join(dir, "names.json"));
+      await s.indexNow();
+      await s.listTiles();
+      await s.renameSession("s2", "Hydra migration");
+      await s.renameSession("s2", "Kraken migration");
+      expect(await s.searchSessions("hydra")).toEqual([]);
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries the name into a crawl, so a restart indexes it named", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-index-"));
+    try {
+      const first = indexedSvc(join(dir, "i.json"), join(dir, "names.json"));
+      await first.renameSession("s2", "Hydra migration"); // before any index exists
+      first.dispose();
+
+      const second = indexedSvc(join(dir, "i.json"), join(dir, "names.json"));
+      await second.indexNow();
+      await second.listTiles();
+      expect((await second.searchSessions("hydra")).map((h) => h.tile.sessionId)).toEqual(["s2"]);
+      second.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
