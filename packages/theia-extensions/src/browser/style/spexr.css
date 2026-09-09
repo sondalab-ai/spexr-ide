@@ -2597,6 +2597,9 @@ code {
   color: var(--sl-text-muted); font-size: var(--sl-text-xs); line-height: 1.5;
   white-space: nowrap;
 }
+/* Not a term the user typed but a statement about the match, so it carries no
+   term-chip border. */
+.spexr-df-match__term.is-dense { border-color: transparent; font-style: italic; }
 .spexr-df-card__archived {
   font-size: 0.75em;
   font-style: italic;

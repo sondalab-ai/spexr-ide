@@ -274,11 +274,18 @@ function MatchBadge({ match }: { match: TileMatch }): React.ReactElement {
       >
         <span className="spexr-df-match__fill" />
       </span>
-      {match.terms.map((t) => (
-        <span key={t} className="spexr-df-match__term">
-          {t}
-        </span>
-      ))}
+      {match.terms.length > 0 ? (
+        match.terms.map((t) => (
+          <span key={t} className="spexr-df-match__term">
+            {t}
+          </span>
+        ))
+      ) : (
+        // No literal term matched, so the dense pass alone found this session.
+        // Said in a word rather than left to the bar: a lone amber bar with
+        // nothing beside it reads as a missing explanation, not as an answer.
+        <span className="spexr-df-match__term is-dense">by meaning</span>
+      )}
     </span>
   );
 }

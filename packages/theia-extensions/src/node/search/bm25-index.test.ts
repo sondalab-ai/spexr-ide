@@ -1,26 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { BM25Index } from "./bm25-index.js";
 
-/** Two documents sharing a common word, each with one word of its own. */
+/**
+ * Four documents so the rarity of a term is decided by `df`, not by a coin
+ * flip. "panel" and "session" are in every document and "hardening" in one, a
+ * gap wide enough that the idf ordering does not depend on the tuning of `K1`
+ * or `B` — on a two-document corpus it would.
+ */
 function index(): BM25Index {
   const idx = new BM25Index();
   idx.upsert("a", "panel panel panel session hardening");
   idx.upsert("b", "panel session session session embedding");
+  idx.upsert("c", "panel session");
+  idx.upsert("d", "panel session");
   return idx;
 }
 
 describe("BM25Index.explain", () => {
-  it("names only the query terms the document contains", () => {
-    expect(index().explain("hardening embedding", 10)).toEqual([]);
+  it("says nothing when no query term is in the corpus at all", () => {
+    expect(index().explain("a", "kubernetes helm chart")).toEqual([]);
   });
 
   it("leaves out a query term the document does not have", () => {
     expect(index().explain("a", "hardening embedding")).toEqual(["hardening"]);
   });
 
-  it("puts the rarer term first, since it is most of the score", () => {
-    // "hardening" is in one document of two, "panel" in both — so the rare one
-    // carries the higher idf and should lead even though "panel" occurs more.
+  it("puts the rare term first, over a common one the document repeats", () => {
+    // "panel" occurs three times in the document and "hardening" once, but
+    // "hardening" is in one document of four against "panel" in all of them.
+    // Rarity is most of the score, and the order has to reflect that.
     expect(index().explain("a", "panel hardening")).toEqual(["hardening", "panel"]);
   });
 
