@@ -13,6 +13,7 @@ directories:
 files:
   - src-gen/**/*
   - lib/**/*
+  - scripts/**/*
   - package.json
   - "!**/*.map"
   - "!**/*.ts"
@@ -24,8 +25,13 @@ files:
   - "!node_modules/@spexr/*/src/**"
   - "!**/{.eslintrc*,.prettierrc*,tsconfig*,.editorconfig}"
   - "node_modules/@spexr/theia-extensions/resources/models/**"
+# The VS Code builtin extensions must stay outside the asar archive: the plugin
+# host deploys them by reading real files from disk.
+extraResources:
+  - from: ../../plugins
+    to: app/plugins
 extraMetadata:
-  main: src-gen/backend/electron-main.js
+  main: scripts/spexr-electron-main.js
 asar: true
 asarUnpack:
   - "node_modules/**/*.{node,dll,dylib,so}"

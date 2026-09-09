@@ -3,8 +3,15 @@
   "ui": "stream",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "download:plugins"],
       "outputs": ["dist/**", "lib/**", "src-gen/**"]
+    },
+    // Downloads the VS Code builtin extensions into the workspace-root `plugins/`
+    // directory. Never cached: it writes outside the package directory, so turbo
+    // cannot track it as an output, and a cache hit would leave the packaged
+    // application with no plugins at all.
+    "download:plugins": {
+      "cache": false
     },
     "package": {
       "dependsOn": ["build"],
