@@ -12,6 +12,7 @@ import {
   defaultSessionName,
 } from "./darkfactory-format.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 
 const tile = (
   id: string,
@@ -340,14 +341,21 @@ describe("defaultSessionName", () => {
   });
 
   test("keeps a goal that never terminates a sentence, cut to a heading's width", () => {
-    expect(defaultSessionName(goal("x".repeat(200)))).toBe("x".repeat(60));
+    expect(defaultSessionName(goal("x".repeat(200)))).toBe("x".repeat(MAX_SESSION_NAME_CHARS));
   });
 
   test("cuts a long first sentence on a word boundary", () => {
     const long = `${"word ".repeat(30)}end.`;
     const name = defaultSessionName(goal(long));
-    expect(name.length).toBeLessThanOrEqual(60);
+    expect(name.length).toBeLessThanOrEqual(MAX_SESSION_NAME_CHARS);
     expect(name.endsWith("word")).toBe(true);
+  });
+
+  test("keeps a whole model headline, which is what the field opens with", () => {
+    // 16 words, the model's own cap for an overview line.
+    const headline = "Session pushes the branch and opens a pull request describing the rename work it just finished";
+    expect(headline.length).toBeGreaterThan(60);
+    expect(defaultSessionName(goal("irrelevant"), headline)).toBe(headline);
   });
 
   test("falls back to the action line for a session with no goal", () => {

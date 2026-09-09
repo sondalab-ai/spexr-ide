@@ -1,4 +1,5 @@
 import type { AgentTile, AgentState } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 import { normalizeProjectPath } from "../project/project-switch-targets.js";
 
 /** Coarse "time ago" bucket for a past epoch-ms timestamp. */
@@ -224,9 +225,6 @@ export function launchTargets(
   return [...head, ...sessions, ...recents];
 }
 
-/** A session name is a card heading; past this it crowds out the chips beside it. */
-const NAME_CHARS = 60;
-
 /**
  * What the rename field opens with. The name the user already gave wins; then
  * the AI headline, which is the shortest true description the wall has; then the
@@ -243,10 +241,10 @@ export function defaultSessionName(tile: AgentTile, headline = ""): string {
   return clip(end === -1 ? text : text.slice(0, end));
 }
 
-/** Cut to {@link NAME_CHARS}, on the last word boundary when there is one. */
+/** Cut to {@link MAX_SESSION_NAME_CHARS}, on the last word boundary when there is one. */
 function clip(text: string): string {
-  if (text.length <= NAME_CHARS) return text;
-  const cut = text.slice(0, NAME_CHARS);
+  if (text.length <= MAX_SESSION_NAME_CHARS) return text;
+  const cut = text.slice(0, MAX_SESSION_NAME_CHARS);
   const space = cut.lastIndexOf(" ");
-  return space > NAME_CHARS / 2 ? cut.slice(0, space) : cut;
+  return space > MAX_SESSION_NAME_CHARS / 2 ? cut.slice(0, space) : cut;
 }

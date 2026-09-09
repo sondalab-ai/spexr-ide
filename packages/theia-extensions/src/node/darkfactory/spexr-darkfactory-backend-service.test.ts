@@ -12,6 +12,7 @@ import { stitchBoundedLines } from "./bounded-read.js";
 import { configDirs as discoverConfigDirs } from "./config-dirs.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
 import type { AgentTile, SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
+import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
 
 const NOW = 100 * 3_600_000;
 
@@ -894,7 +895,7 @@ describe("renameSession", () => {
     try {
       await s.listTiles();
       await s.renameSession("s1", "x".repeat(200));
-      expect((await s.listTiles())[0]!.customName).toHaveLength(80);
+      expect((await s.listTiles())[0]!.customName).toHaveLength(MAX_SESSION_NAME_CHARS);
       s.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });

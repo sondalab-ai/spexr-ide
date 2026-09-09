@@ -5,10 +5,12 @@ export const DARKFACTORY_SERVICE_PATH = "/services/spexr-darkfactory";
 export type AgentState = "working" | "idle" | "done";
 
 /**
- * How long a session name may be. It is a card heading, not a note: past this it
- * stops fitting the head row and starts crowding out the chips beside it.
+ * How long a session name may be. Wide enough to hold a whole model-written
+ * headline (max 16 words), which is what the rename field opens with — cutting
+ * it would hand the user a name ending mid-sentence. The card head shortens
+ * whatever does not fit with an ellipsis.
  */
-export const MAX_SESSION_NAME_CHARS = 80;
+export const MAX_SESSION_NAME_CHARS = 100;
 
 /** How the focus pane should present a session. */
 export type FocusKind = "resume-terminal" | "readonly-follow";
