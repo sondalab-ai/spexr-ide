@@ -1,0 +1,2 @@
+- [ ] Consenti di rinominare sessioni su darkfactory, usando come valore di default una descrizione brevissima e precomputata
+- [x] verifica se la folder 'plugins' debba essere aggiunta a gitignore
