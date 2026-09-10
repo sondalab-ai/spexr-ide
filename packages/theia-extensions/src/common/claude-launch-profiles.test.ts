@@ -13,6 +13,7 @@ import {
   mergeLaunchProfiles,
   describeAddedProfiles,
   parseLaunchProfiles,
+  profilesFromScopes,
   profileForConfigDir,
   sameConfigDir,
   type ClaudeLaunchProfile,
@@ -369,5 +370,48 @@ describe("launchPlanFor", () => {
       exportConfigDir: "",
       unquoted: true,
     });
+  });
+});
+
+describe("profilesFromScopes", () => {
+  // `parseLaunchProfiles` fills in `ownsConfigDir`, so the expected value is
+  // the normalized profile rather than the literal written in settings.
+  const WORK: ClaudeLaunchProfile = {
+    label: "Work",
+    command: "cld",
+    configDir: "~/.claude-work",
+    ownsConfigDir: false,
+  };
+  const raw = (p: ClaudeLaunchProfile): unknown => ({ ...p });
+
+  it("keeps the user's profiles when an outer scope holds an empty array", () => {
+    // The case this exists for: the settings UI writes to the workspace file
+    // whenever a workspace is open, and Theia replaces arrays instead of
+    // merging them, so `[]` there used to erase every account.
+    expect(profilesFromScopes({ workspace: [], user: [raw(PERSO)] })).toEqual([PERSO]);
+  });
+
+  it("prefers the innermost scope that configures any", () => {
+    expect(profilesFromScopes({ folder: [raw(WORK)], user: [raw(PERSO)] })).toEqual([WORK]);
+  });
+
+  it("falls through every empty scope in turn", () => {
+    expect(profilesFromScopes({ folder: [], workspace: [], user: [], fallback: [raw(PERSO)] })).toEqual([
+      PERSO,
+    ]);
+  });
+
+  it("reads a scope holding only malformed entries as configuring nothing", () => {
+    expect(profilesFromScopes({ workspace: [{ command: "cld --print" }], user: [raw(PERSO)] })).toEqual([
+      PERSO,
+    ]);
+  });
+
+  it("is empty when no scope holds a profile", () => {
+    expect(profilesFromScopes({})).toEqual([]);
+  });
+
+  it("lets the session scope win, as Theia's own precedence does", () => {
+    expect(profilesFromScopes({ session: [raw(WORK)], folder: [raw(PERSO)] })).toEqual([WORK]);
   });
 });

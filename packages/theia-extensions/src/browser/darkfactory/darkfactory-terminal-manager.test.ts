@@ -66,8 +66,12 @@ function makeManager(prefs: Record<string, unknown> = {}): {
       return term;
     },
   };
+  // Stands in for both reads the manager makes: `get` for scalars, and
+  // `inspect` for the launch profiles, whose scopes are read one by one so an
+  // empty outer array cannot erase an inner one.
   (manager as unknown as { preferences: unknown }).preferences = {
     get: (key: string) => prefs[key] ?? "",
+    inspect: (key: string) => ({ preferenceName: key, globalValue: prefs[key] }),
   };
   return { manager, calls, terms };
 }

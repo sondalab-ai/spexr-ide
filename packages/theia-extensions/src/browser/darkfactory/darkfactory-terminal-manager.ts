@@ -5,16 +5,15 @@ import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-w
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
   SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
-  SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import {
   accountForConfigDir,
   AMBIGUOUS_ACCOUNT,
   launchPlanFor,
-  parseLaunchProfiles,
   resolveAccount,
   type LaunchPlan,
 } from "../../common/claude-launch-profiles.js";
+import { readLaunchProfiles } from "../preferences/launch-profiles.js";
 import { claudeCore } from "../../common/harness/claude-harness-core.js";
 import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
 import type { ClaudeLaunchProfile } from "../../common/claude-launch-profiles.js";
@@ -234,13 +233,7 @@ export class SpexrDarkfactoryTerminalManager {
    * projects that are not the first workspace root.
    */
   private launchProfiles(projectPath: string): ClaudeLaunchProfile[] {
-    return parseLaunchProfiles(
-      this.preferences.get<unknown>(
-        SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
-        [],
-        resourceUriFor(projectPath),
-      ),
-    );
+    return readLaunchProfiles(this.preferences, resourceUriFor(projectPath));
   }
 
   /**

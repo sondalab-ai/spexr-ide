@@ -81,6 +81,49 @@ export function parseLaunchProfiles(raw: unknown): ClaudeLaunchProfile[] {
   return profiles;
 }
 
+/**
+ * What one preference holds at each scope, innermost first.
+ *
+ * Mirrors the fields of Theia's `PreferenceInspection` that matter here, so the
+ * precedence rule below can be tested without a preference service.
+ */
+export interface ScopedProfileValues {
+  readonly session?: unknown;
+  readonly folder?: unknown;
+  readonly workspace?: unknown;
+  readonly user?: unknown;
+  readonly fallback?: unknown;
+}
+
+/**
+ * Launch profiles from the innermost scope that actually configures any.
+ *
+ * Theia merges a top-level array by *replacement*, not by concatenation
+ * (`PreferenceUtils.merge` copies the target when the source is not an object),
+ * so an empty array at an outer scope silently erases every account configured
+ * further in. That is not a hypothetical: the settings UI writes to the
+ * workspace file whenever a workspace is open, and a `"launchProfiles": []`
+ * left there takes away the profiles the user has at user level — leaving SPEXR
+ * with one apparent account and no reason to ask which one to use.
+ *
+ * An empty list therefore means "nothing configured at this scope" and the
+ * search continues outward, which is the only reading under which a scope can
+ * add accounts without being able to destroy them.
+ */
+export function profilesFromScopes(scopes: ScopedProfileValues): ClaudeLaunchProfile[] {
+  for (const raw of [
+    scopes.session,
+    scopes.folder,
+    scopes.workspace,
+    scopes.user,
+    scopes.fallback,
+  ]) {
+    const profiles = parseLaunchProfiles(raw);
+    if (profiles.length > 0) return profiles;
+  }
+  return [];
+}
+
 /** The profile that owns a config dir, if one is configured for it. */
 export function profileForConfigDir(
   profiles: readonly ClaudeLaunchProfile[],

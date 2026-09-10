@@ -18,17 +18,16 @@ import { isClaudeReady } from "./claude-readiness.js";
 import { expandLeftPanelWithMinWidth } from "../shell/side-panel.js";
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
-  SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
   SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
+import { readLaunchProfiles } from "../preferences/launch-profiles.js";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
   DEFAULT_ACCOUNT_ID,
   DEFAULT_CONFIG_DIR,
   launchPlanFor,
-  parseLaunchProfiles,
   resolveAccount,
   type ClaudeLaunchProfile,
   type LaunchPlan,
@@ -514,9 +513,7 @@ export class ClaudeTerminalManager {
   }
 
   private launchProfiles(): ClaudeLaunchProfile[] {
-    return parseLaunchProfiles(
-      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE, [], this.rootUri()),
-    );
+    return readLaunchProfiles(this.preferences, this.rootUri());
   }
 
   private executablePath(): string {
