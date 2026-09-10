@@ -229,15 +229,19 @@ const PlanChecklist: React.FC<{
 export interface WorkspaceProgressBarProps {
   readonly percent: number;
   readonly specCount: number;
+  /** What the bar covers. Defaults to the whole workspace; a multi-folder
+   * workspace passes a folder name to head each folder's own bar. */
+  readonly label?: string;
 }
 
 export const WorkspaceProgressBar: React.FC<WorkspaceProgressBarProps> = ({
   percent,
   specCount,
+  label = "Workspace progression",
 }) => (
-  <div className="spexr-progress" role="group" aria-label="Workspace workflow progression">
+  <div className="spexr-progress" role="group" aria-label={`${label} workflow progression`}>
     <div className="spexr-progress__head">
-      <span className="spexr-progress__label">Workspace progression</span>
+      <span className="spexr-progress__label">{label}</span>
       <span className="spexr-progress__value">
         {percent}% · {specCount} {specCount === 1 ? "spec" : "specs"}
       </span>
