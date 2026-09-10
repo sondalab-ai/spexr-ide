@@ -2653,11 +2653,11 @@ code {
   border-bottom: 1px solid var(--sl-border-subtle);
   border-radius: var(--sl-radius-md) var(--sl-radius-md) 0 0;
 }
-.spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; }
+.spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; overflow: hidden; }
 .spexr-df-pinned__actions { display: flex; align-items: center; gap: var(--sl-space-3); min-width: 0; }
 .spexr-df-pinned__project {
   /* Same as the grid card: the name yields to the actions beside it. */
-  flex: 0 1 auto; min-width: 8ch;
+  flex: 0 1 auto; min-width: 0;
   font-size: var(--sl-text-lg); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -2839,20 +2839,23 @@ code {
 
 /* One row, never two: the chips and the rename/trash actions stay beside the
    heading, and a heading too long for the space is cut with an ellipsis rather
-   than pushing them onto a second line. The floor below keeps that cut from
-   eating the whole name. */
+   than pushing them onto a second line. `overflow: hidden` is the backstop for
+   the case the heading cannot absorb on its own — a card narrow enough that the
+   chips alone overrun it, which otherwise spilled the timestamp past the card's
+   own border. */
 .spexr-df-card__head {
   display: flex; align-items: baseline;
-  gap: var(--sl-space-2); min-width: 0;
+  gap: var(--sl-space-2); min-width: 0; overflow: hidden;
 }
 .spexr-df-card__led { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--sl-text-muted); align-self: center; }
 .spexr-df-card[data-state="working"] .spexr-df-card__led { background: var(--tile-accent); animation: spexr-df-pulse 1.6s ease-in-out infinite; }
 .spexr-df-card[data-state="done"] .spexr-df-card__led { background: var(--sl-border-default); }
 @keyframes spexr-df-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 .spexr-df-card__project {
-  /* Shrinks before anything else in the row does, but not past a readable
-     stub — the alternative was a heading cut to "d…" on a narrow card. */
-  flex: 1 1 auto; min-width: 8ch;
+  /* 8ch is where the heading would rather sit, not a floor it defends: as a
+     flex-basis it yields when the row genuinely has no room, where a min-width
+     held its ground and pushed the timestamp out of the card instead. */
+  flex: 1 1 8ch; min-width: 0;
   font-size: var(--sl-text-lg, 1.05rem); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
