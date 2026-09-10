@@ -36,6 +36,37 @@ describe("parseTranscript", () => {
     expect(p.goal).toBe("build the darkfactory view");
   });
 
+  it("takes prompt-cache facts from the last usage-bearing assistant entry", () => {
+    const p = parseTranscript([
+      `{"type":"assistant","timestamp":"2026-09-10T08:00:00.000Z","message":{"role":"assistant","usage":{"input_tokens":4,"cache_creation_input_tokens":1000,"cache_read_input_tokens":9000}}}`,
+      `{"type":"assistant","timestamp":"not a date","message":{"role":"assistant","usage":{"input_tokens":1,"cache_read_input_tokens":50}}}`,
+      `{"type":"assistant","timestamp":"2026-09-10T08:10:00.000Z","message":{"role":"assistant","usage":{"input_tokens":2,"cache_creation_input_tokens":500,"cache_read_input_tokens":20000}}}`,
+      `{"type":"assistant","timestamp":"2026-09-10T08:11:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}`,
+    ]);
+    // Last one wins, and the unparseable timestamp in between is skipped whole.
+    expect(p.cache).toEqual({
+      contextTokens: 20_502,
+      lastRequestMs: Date.parse("2026-09-10T08:10:00.000Z"),
+    });
+  });
+
+  it("ignores a subagent's usage — it runs against its own prompt cache", () => {
+    const p = parseTranscript([
+      `{"type":"assistant","timestamp":"2026-09-10T08:00:00.000Z","message":{"role":"assistant","usage":{"input_tokens":2,"cache_read_input_tokens":180000}}}`,
+      `{"type":"assistant","isSidechain":true,"timestamp":"2026-09-10T08:05:00.000Z","message":{"role":"assistant","usage":{"input_tokens":1,"cache_read_input_tokens":4000}}}`,
+    ]);
+    expect(p.cache?.contextTokens).toBe(180_002);
+  });
+
+  it("leaves the cache facts absent when no entry reports usage", () => {
+    const p = parseTranscript([
+      `{"cwd":"/x","type":"user","message":{"role":"user","content":"go"}}`,
+      `{"type":"assistant","timestamp":"2026-09-10T08:00:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit"}]}}`,
+      `{"type":"assistant","timestamp":"2026-09-10T08:01:00.000Z","message":{"role":"assistant","usage":{"input_tokens":0}}}`,
+    ]);
+    expect(p.cache).toBeUndefined();
+  });
+
   it("empty transcript yields safe defaults", () => {
     const p = parseTranscript([]);
     expect(p.cwd).toBeUndefined();

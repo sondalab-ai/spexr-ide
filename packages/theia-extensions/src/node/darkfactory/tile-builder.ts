@@ -3,6 +3,7 @@ import { distillAction, lastActionFailed, recentActions } from "./action-distill
 import type { TurnEntry } from "./turns.js";
 import type { HarnessId, ParsedTranscript } from "../../common/harness/harness-types.js";
 import type { AgentState, AgentTile } from "../../common/darkfactory-protocol.js";
+import { CACHE_TTL_MS } from "../../common/darkfactory-protocol.js";
 
 /** Palette slots the frontend cycles through, keyed off the project path. */
 const PALETTE_SIZE = 8;
@@ -52,5 +53,11 @@ export function buildTile(input: TileInput): AgentTile {
     ...(p.mode !== undefined ? { mode: p.mode } : {}),
     ...(p.permissionMode !== undefined ? { permissionMode: p.permissionMode } : {}),
     ...(input.customName ? { customName: input.customName } : {}),
+    ...(p.cache
+      ? {
+          contextTokens: p.cache.contextTokens,
+          cacheDeadlineMs: p.cache.lastRequestMs + CACHE_TTL_MS,
+        }
+      : {}),
   };
 }
