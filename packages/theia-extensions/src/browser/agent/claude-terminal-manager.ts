@@ -538,10 +538,12 @@ export class ClaudeTerminalManager {
   /**
    * Ask which account to run Claude under and remember the answer.
    *
-   * Written folder-scoped, like the active expert: personal projects and work
-   * projects want different identities, so the question belongs to the project
-   * and each one is asked once. With no folder open there is nothing to scope
-   * it to, and the answer falls back to user scope.
+   * Written folder-scoped, like the active expert: personal and work projects
+   * want different identities, so the question belongs to the project and each
+   * one is asked once. The folder is the first workspace root, the one this
+   * terminal runs in — the other roots of a multi-root workspace share its
+   * account, because there is one side agent per window. With no folder open
+   * there is nothing to scope it to, and the answer falls back to user scope.
    */
   async promptForAccount(): Promise<ResolvedAccount | undefined> {
     const profiles = this.launchProfiles();
