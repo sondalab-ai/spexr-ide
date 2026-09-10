@@ -32,19 +32,6 @@ export interface MemoryLinkResult {
 }
 
 /**
- * Dependency-light DTO for a detected Claude account profile.
- *
- * Mirrors `ClaudeProfile` from `claude-profile-detector.ts` without any
- * node-only imports so the browser bundle can use it safely.
- */
-export interface ClaudeProfileDto {
-  readonly id: string;
-  readonly label: string;
-  readonly executablePath: string;
-  readonly configDir?: string;
-}
-
-/**
  * Dependency-light DTO for an expert persona.
  *
  * Mirrors `ExpertAgent` from `@spexr/agent` without importing node-capable code,
@@ -108,19 +95,11 @@ export type ShipOutcome = ShipResult | ShipError;
 /**
  * Backend service exposed over JSON-RPC.
  *
- * Only pure-node operations remain after the SDK proxy removal:
- * profile detection, launch-context building, and project-memory symlink
- * management for the embedded terminal.
+ * Only pure-node operations remain after the SDK proxy removal: launch-profile
+ * detection, launch-context building, and project-memory symlink management
+ * for the embedded terminal.
  */
 export interface SpexrAgentService {
-  /**
-   * Detect Claude account profiles available to the current user by scanning
-   * shell configuration files for claude-launching aliases with `CLAUDE_CONFIG_DIR`.
-   *
-   * Always resolves (never rejects); always includes at least the `default` profile.
-   */
-  detectClaudeProfiles(): Promise<ClaudeProfileDto[]>;
-
   /**
    * Launch profiles read from the user's shell configuration: aliases that
    * start Claude under a config dir, including through a wrapper. Offered so

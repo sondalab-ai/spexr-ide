@@ -4,16 +4,20 @@ import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-servi
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
-  SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
+  SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
   SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import {
+  accountForConfigDir,
+  AMBIGUOUS_ACCOUNT,
+  launchPlanFor,
   parseLaunchProfiles,
-  resolveLaunchPlan,
+  resolveAccount,
   type LaunchPlan,
 } from "../../common/claude-launch-profiles.js";
 import { claudeCore } from "../../common/harness/claude-harness-core.js";
 import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
+import type { ClaudeLaunchProfile } from "../../common/claude-launch-profiles.js";
 import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.js";
 import { SESSION_TERMINAL_KIND } from "../terminal/terminal-style.js";
 import { evictOnAttachFailure, isReusableTerminal } from "../terminal/terminal-liveness.js";
@@ -173,7 +177,7 @@ export class SpexrDarkfactoryTerminalManager {
    * shell expands an alias such as `cld-perso`.
    *
    * The command is only quoted when it is a path: quoting is exactly what stops
-   * zsh from expanding an alias, and `resolveLaunchPlan` says which case this is
+   * zsh from expanding an alias, and `launchPlanFor` says which case this is
    * (the preference that can hold a command is restricted to a single bare word
    * for that reason). CLAUDE_CONFIG_DIR is set authoritatively inside the `-c`
    * line: exported when the plan carries an account, and unset when the command
@@ -211,17 +215,27 @@ export class SpexrDarkfactoryTerminalManager {
   private launchPlan(harness: HarnessCore, dir: string): LaunchPlan {
     if (harness.id !== "claude") return { command: "opencode", exportConfigDir: "", unquoted: true };
     const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
-    const profiles = parseLaunchProfiles(
+    return launchPlanFor(accountForConfigDir(this.launchProfiles(), dir), exe);
+  }
+
+  private launchProfiles(): ClaudeLaunchProfile[] {
+    return parseLaunchProfiles(
       this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
     );
-    return resolveLaunchPlan(profiles, dir, exe);
   }
 
   /**
-   * CLAUDE_CONFIG_DIR for the resume. The session's own config dir wins (so the
-   * CLI finds the conversation); otherwise fall back to the SPEXR preference.
+   * CLAUDE_CONFIG_DIR for the session. The session's own config dir wins (so the
+   * CLI finds the conversation); otherwise fall back to the account SPEXR runs
+   * the side agent under, so a wall session started with nothing picked lands on
+   * the same identity as the rest of the IDE.
    */
   private resolveConfigDir(configDir: string): string {
-    return configDir.trim() || (this.preferences.get<string>(SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE) ?? "").trim();
+    if (configDir.trim()) return configDir.trim();
+    const account = resolveAccount(
+      this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE) ?? "",
+      this.launchProfiles(),
+    );
+    return account === AMBIGUOUS_ACCOUNT ? "" : account.configDir.trim();
   }
 }

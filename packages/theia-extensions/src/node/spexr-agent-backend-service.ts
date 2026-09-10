@@ -22,7 +22,6 @@ import { SpexrGitBackendService } from "./spexr-git-backend-service.js";
 import type { GitStatusDto } from "../common/git-protocol.js";
 import type {
   SpexrAgentService,
-  ClaudeProfileDto,
   ExpertAgentDto,
   LaunchContextDto,
   MemoryLinkResult,
@@ -36,7 +35,6 @@ import {
   type ClaudeLaunchProfile,
 } from "../common/claude-launch-profiles.js";
 import {
-  detectClaudeProfiles,
   detectLaunchProfiles,
   isFileExecutable,
   resolveClaudeExecutableRobust,
@@ -57,10 +55,6 @@ export class SpexrAgentBackendService implements SpexrAgentService {
 
   async detectLaunchProfiles(): Promise<ClaudeLaunchProfile[]> {
     return detectLaunchProfiles();
-  }
-
-  async detectClaudeProfiles(): Promise<ClaudeProfileDto[]> {
-    return detectClaudeProfiles();
   }
 
   async listMarketplaceExperts(): Promise<ExpertAgentDto[]> {

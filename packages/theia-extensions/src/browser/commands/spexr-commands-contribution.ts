@@ -186,6 +186,10 @@ export const SpexrCommands = {
     id: "spexr.claude.detectLaunchProfiles",
     label: "Spexr: Detect Claude launch profiles",
   } satisfies Command,
+  CLAUDE_SELECT_ACCOUNT: {
+    id: "spexr.claude.selectAccount",
+    label: "Spexr: Select Claude account",
+  } satisfies Command,
   SPEC_TOGGLE_TASK: {
     id: "spexr.spec.toggleTask",
     label: "Spexr: Toggle plan task",
@@ -450,6 +454,9 @@ export class SpexrCommandsContribution
     commands.registerCommand(SpexrCommands.CLAUDE_DETECT_LAUNCH_PROFILES, {
       execute: () => this.detectLaunchProfiles(),
     });
+    commands.registerCommand(SpexrCommands.CLAUDE_SELECT_ACCOUNT, {
+      execute: () => this.selectClaudeAccount(),
+    });
     commands.registerCommand(SpexrCommands.SPEC_TOGGLE_TASK, {
       execute: (rawUri: unknown, rawTaskId: unknown) =>
         this.togglePlanTask(this.resolveSpecUri(rawUri), typeof rawTaskId === "string" ? rawTaskId : undefined),
@@ -617,6 +624,19 @@ export class SpexrCommandsContribution
       return;
     }
     this.messages.info(describeAddedProfiles(result.added));
+  }
+
+  /**
+   * Change the account SPEXR starts Claude under.
+   *
+   * The choice only reaches a session at launch, so a running one is left alone
+   * rather than being restarted underneath the user: the message says so.
+   */
+  private async selectClaudeAccount(): Promise<void> {
+    const account = await this.claudeTerminal.promptForAccount();
+    if (!account) return; // dismissed
+    const where = account.profile?.command ?? "claude";
+    this.messages.info(`SPEXR will start Claude with ${where}. Restart the session to apply it.`);
   }
 
   /**
@@ -1116,7 +1136,12 @@ export class SpexrCommandsContribution
       return;
     }
     try {
-      await this.claudeTerminal.startWithExpert({ id: raw.id, name: raw.name, icon: raw.icon });
+      const started = await this.claudeTerminal.startWithExpert({
+        id: raw.id,
+        name: raw.name,
+        icon: raw.icon,
+      });
+      if (!started) return; // no session to announce, and nothing to type into
       this.messages.info(`Started session as ${raw.name}.`);
       if (raw.kickoffPrompt) await this.sendKickoff(raw.kickoffPrompt);
     } catch (err) {
@@ -1165,7 +1190,8 @@ export class SpexrCommandsContribution
 
   private async deactivateExpert(): Promise<void> {
     try {
-      await this.claudeTerminal.deactivateExpert();
+      const started = await this.claudeTerminal.deactivateExpert();
+      if (!started) return;
       this.messages.info("Expert deactivated. Running the base agent.");
     } catch (err) {
       console.error("[spexr] deactivateExpert failed", err);

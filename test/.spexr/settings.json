@@ -1,5 +1,4 @@
 {
-    "spexr.claude.profileId": "default",
-    "spexr.claude.executablePath": "/Users/marcello.barile/.local/bin/claude",
-    "spexr.claude.configDir": ""
+    "spexr.claude.activeProfile": "",
+    "spexr.claude.executablePath": "/Users/marcello.barile/.local/bin/claude"
 }

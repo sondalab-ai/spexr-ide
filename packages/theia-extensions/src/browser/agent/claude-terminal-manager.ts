@@ -1,7 +1,7 @@
 import { injectable, inject, optional } from "@theia/core/shared/inversify";
 import { Disposable, DisposableCollection } from "@theia/core";
 import { Deferred } from "@theia/core/lib/common/promise-util";
-import { ApplicationShell } from "@theia/core/lib/browser";
+import { ApplicationShell, QuickInputService } from "@theia/core/lib/browser";
 import { MessageService } from "@theia/core/lib/common/message-service";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { PreferenceScope } from "@theia/core/lib/common/preferences/preference-scope";
@@ -11,7 +11,7 @@ import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-servi
 import { AGENT_TERMINAL_KIND } from "../terminal/terminal-style.js";
 import { evictOnAttachFailure, isReusableTerminal, isTerminalLive } from "../terminal/terminal-liveness.js";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
-import type { ClaudeProfileDto, MemoryLinkStatus } from "../../common/agent-protocol.js";
+import type { MemoryLinkStatus } from "../../common/agent-protocol.js";
 import { SpexrAgentServiceProxy } from "./agent-service-proxy.js";
 import type { SpexrAgentService } from "./agent-service-proxy.js";
 import { isClaudeReady } from "./claude-readiness.js";
@@ -19,13 +19,20 @@ import { expandLeftPanelWithMinWidth } from "../shell/side-panel.js";
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
   SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
-  SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE,
-  SPEXR_CLAUDE_PROFILE_ID_PREFERENCE,
+  SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import {
+  AMBIGUOUS_ACCOUNT,
+  availableAccounts,
+  DEFAULT_ACCOUNT_ID,
+  DEFAULT_CONFIG_DIR,
+  launchPlanFor,
   parseLaunchProfiles,
-  resolveAgentLaunch,
+  resolveAccount,
+  type ClaudeLaunchProfile,
+  type LaunchPlan,
+  type ResolvedAccount,
 } from "../../common/claude-launch-profiles.js";
 
 export const CLAUDE_TERMINAL_ID = "spexr-claude";
@@ -65,6 +72,9 @@ export class ClaudeTerminalManager {
 
   @inject(MessageService)
   private readonly messages!: MessageService;
+
+  @inject(QuickInputService)
+  private readonly quickInput!: QuickInputService;
 
   @optional()
   @inject(SpexrAgentServiceProxy)
@@ -123,8 +133,9 @@ export class ClaudeTerminalManager {
    * reusing the existing terminal slot if a different one is running.
    *
    * @param expert  Minimal expert info for title/icon, or undefined for base.
+   * @returns  Whether a session is running as that expert afterwards.
    */
-  async startWithExpert(expert: { id: string; name: string; icon: string }): Promise<void> {
+  async startWithExpert(expert: { id: string; name: string; icon: string }): Promise<boolean> {
     const firstRoot = this.workspace.tryGetRoots()[0];
     if (firstRoot) {
       await this.preferences.set(
@@ -136,10 +147,10 @@ export class ClaudeTerminalManager {
     }
     if (this.widget && isReusableTerminal(this.widget) && this.currentExpertId === expert.id) {
       await this.reveal();
-      return;
+      return true;
     }
     this.disposeCurrent();
-    await this.launchSession(expert);
+    return this.launchSession(expert);
   }
 
   /**
@@ -148,8 +159,10 @@ export class ClaudeTerminalManager {
    * The installed expert files under `docs/agents/` are left untouched; only
    * the active selection is reset. Relaunches the single terminal because the
    * persona is fixed at process start.
+   *
+   * @returns  Whether the base agent is running afterwards.
    */
-  async deactivateExpert(): Promise<void> {
+  async deactivateExpert(): Promise<boolean> {
     const firstRoot = this.workspace.tryGetRoots()[0];
     if (firstRoot) {
       await this.preferences.set(
@@ -160,7 +173,7 @@ export class ClaudeTerminalManager {
       );
     }
     this.disposeCurrent();
-    await this.launchSession(undefined);
+    return this.launchSession(undefined);
   }
 
   private activeExpertId(): string | undefined {
@@ -189,29 +202,37 @@ export class ClaudeTerminalManager {
     this.currentExpertId = undefined;
   }
 
+  /**
+   * Launch a session, or report that none was started.
+   *
+   * The return value is what stops a caller announcing a session that does not
+   * exist: no workspace, no backend, a dismissed account prompt and a failed
+   * launch all leave the terminal slot empty.
+   */
   private async launchSession(
     expert?: { id: string; name: string; icon: string },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const firstRoot = this.workspace.tryGetRoots()[0];
     if (!firstRoot) {
       void this.messages.info("SPEXR: open a workspace to start the Claude session.");
-      return;
+      return false;
     }
-    if (!this.agentService) return;
+    if (!this.agentService) return false;
 
     const workspaceRoot = firstRoot.resource.path.toString();
-    const workspaceUri = firstRoot.resource.toString();
 
     try {
-      const profile = await this.resolveProfile(workspaceUri);
-      if (!profile) return;
-      await this.linkMemory(workspaceRoot);
+      const account = await this.chooseAccount();
+      if (!account) return false; // the account prompt was dismissed
+      await this.linkMemory(workspaceRoot, account.configDir.trim() || undefined);
       const shellArgs = await this.buildShellArgs(workspaceRoot, expert?.id);
-      await this.launch(workspaceRoot, profile, shellArgs, expert);
+      await this.launch(workspaceRoot, account, shellArgs, expert);
       this.currentExpertId = expert?.id;
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       void this.messages.error(`SPEXR: ${message}`);
+      return false;
     }
   }
 
@@ -230,11 +251,7 @@ export class ClaudeTerminalManager {
    * expanding an alias such as `cld-perso`. Such a command sets the account
    * itself, so the variable is unset and left to it.
    */
-  private resolveShell(profile: ClaudeProfileDto, shellArgs: string[]): { shellArgs: string[] } {
-    const plan = resolveAgentLaunch(
-      parseLaunchProfiles(this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE)),
-      profile,
-    );
+  private resolveShell(plan: LaunchPlan, shellArgs: string[]): { shellArgs: string[] } {
     const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
     const account = plan.exportConfigDir
       ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}`
@@ -255,14 +272,16 @@ export class ClaudeTerminalManager {
   }
 
   /**
-   * Resolve the configDir that the active profile would use.
+   * The config dir the active account runs under.
    *
-   * Returns the trimmed preference value, or `undefined` when the preference
-   * is unset (which maps to the CLI default `~/.claude`).
+   * `undefined` means the default account (CLAUDE_CONFIG_DIR unset), which is
+   * also the answer while the account is still undecided: this is the sync
+   * accessor the memory-link callers use, and it must never open a prompt.
    */
   currentConfigDir(): string | undefined {
-    const stored = this.preferences.get<string>(SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE) ?? "";
-    return stored.trim() || undefined;
+    const account = resolveAccount(this.storedAccount(), this.launchProfiles());
+    if (account === AMBIGUOUS_ACCOUNT) return undefined;
+    return account.configDir.trim() || undefined;
   }
 
   /**
@@ -271,13 +290,11 @@ export class ClaudeTerminalManager {
    * but does not prevent launch.
    *
    * @param workspaceRoot  Absolute path to the open workspace.
+   * @param configDir      Account to link into; defaults to the active one.
    */
-  async linkMemory(workspaceRoot: string): Promise<void> {
+  async linkMemory(workspaceRoot: string, configDir = this.currentConfigDir()): Promise<void> {
     if (!this.agentService) return;
-    const result = await this.agentService.linkProjectMemory(
-      workspaceRoot,
-      this.currentConfigDir(),
-    );
+    const result = await this.agentService.linkProjectMemory(workspaceRoot, configDir);
     if (result.status === "blocked" || result.status === "error") {
       void this.messages.warn(`SPEXR memory link: ${result.message ?? result.status}`);
     }
@@ -341,12 +358,15 @@ export class ClaudeTerminalManager {
    */
   private async launch(
     workspaceRoot: string,
-    profile: ClaudeProfileDto,
+    account: ResolvedAccount,
     shellArgs: string[],
     expert?: { id: string; name: string; icon: string },
   ): Promise<void> {
-    const env: { [k: string]: string | null } = profile.configDir
-      ? { CLAUDE_CONFIG_DIR: profile.configDir }
+    const plan = launchPlanFor(account, this.executablePath());
+    // Only what the plan says to export: a wrapper that owns the account must
+    // not be handed a second, possibly divergent, value through the env.
+    const env: { [k: string]: string | null } = plan.exportConfigDir
+      ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir }
       : {};
 
     const term = await this.terminalService.newTerminal({
@@ -356,7 +376,7 @@ export class ClaudeTerminalManager {
         : nls.localize("spexr/agent/title", "Agent"),
       useServerTitle: false,
       iconClass: expert ? `codicon ${expert.icon}` : "codicon codicon-sparkle",
-      ...this.resolveShell(profile, shellArgs),
+      ...this.resolveShell(plan, shellArgs),
       cwd: workspaceRoot,
       env,
       destroyTermOnClose: false,
@@ -474,28 +494,67 @@ export class ClaudeTerminalManager {
     expandLeftPanelWithMinWidth(this.shell);
   }
 
-  private async resolveProfile(_workspaceUri: string): Promise<ClaudeProfileDto | undefined> {
-    const storedProfileId = this.preferences.get<string>(SPEXR_CLAUDE_PROFILE_ID_PREFERENCE) ?? "";
-    const storedExecPath = this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "";
-    const storedConfigDir = this.preferences.get<string>(SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE) ?? "";
+  private storedAccount(): string {
+    return this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE) ?? "";
+  }
 
-    if (storedProfileId) {
-      return this.buildProfileDto(storedProfileId, storedExecPath, storedConfigDir);
+  private launchProfiles(): ClaudeLaunchProfile[] {
+    return parseLaunchProfiles(
+      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+    );
+  }
+
+  private executablePath(): string {
+    return this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "";
+  }
+
+  /**
+   * The account to launch under, asking the user when the machine has several
+   * and none has been chosen. `undefined` means the prompt was dismissed, which
+   * cancels the launch rather than guessing an identity.
+   */
+  private async chooseAccount(): Promise<ResolvedAccount | undefined> {
+    const account = resolveAccount(this.storedAccount(), this.launchProfiles());
+    return account === AMBIGUOUS_ACCOUNT ? this.promptForAccount() : account;
+  }
+
+  /**
+   * Ask which account to run Claude under and remember the answer.
+   *
+   * Written folder-scoped, like the active expert: personal projects and work
+   * projects want different identities, so the question belongs to the project
+   * and each one is asked once. With no folder open there is nothing to scope
+   * it to, and the answer falls back to user scope.
+   */
+  async promptForAccount(): Promise<ResolvedAccount | undefined> {
+    const profiles = this.launchProfiles();
+    const picked = await this.quickInput.pick(
+      availableAccounts(profiles).map((account) => ({
+        id: account.profile?.label ?? DEFAULT_ACCOUNT_ID,
+        label: account.profile?.label ?? "Default account",
+        description: account.profile
+          ? `${account.profile.command} — ${account.profile.configDir}`
+          : `claude — ${DEFAULT_CONFIG_DIR}, with CLAUDE_CONFIG_DIR unset`,
+      })),
+      { placeHolder: "Which Claude account should SPEXR start in this project?" },
+    );
+    if (!picked?.id) return undefined;
+    await this.storeAccount(picked.id);
+    const account = resolveAccount(picked.id, profiles);
+    return account === AMBIGUOUS_ACCOUNT ? undefined : account;
+  }
+
+  private async storeAccount(id: string): Promise<void> {
+    const firstRoot = this.workspace.tryGetRoots()[0];
+    if (!firstRoot) {
+      await this.preferences.set(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE, id, PreferenceScope.User);
+      return;
     }
-
-    // No profile stored — auto-select the first detected profile without prompting.
-    // Configure spexr.claude.* preferences in workspace settings for per-folder overrides.
-    const profiles = await this.agentService!.detectClaudeProfiles();
-    return profiles[0];
-  }
-
-  private buildProfileDto(id: string, executablePath: string, configDir: string): ClaudeProfileDto {
-    return {
+    await this.preferences.set(
+      SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
       id,
-      label: id,
-      executablePath: executablePath || "claude",
-      ...(configDir.trim() ? { configDir: configDir.trim() } : {}),
-    };
+      PreferenceScope.Folder,
+      firstRoot.resource.toString(),
+    );
   }
-
 }

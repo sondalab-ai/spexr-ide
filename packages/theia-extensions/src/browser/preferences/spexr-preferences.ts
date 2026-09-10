@@ -21,21 +21,17 @@ import {
 export const SPEXR_CLAUDE_EXECUTABLE_PREFERENCE = "spexr.claude.executablePath";
 
 /**
- * Key for the `CLAUDE_CONFIG_DIR` override preference.
+ * Key for the account SPEXR starts Claude under.
  *
- * When set, the spawned CLI uses this directory for authentication instead of
- * the default `~/.claude`. Populated automatically by the profile quick-pick.
- */
-export const SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE = "spexr.claude.configDir";
-
-/**
- * Key for the selected Claude profile identifier preference.
+ * Holds the `label` of an entry in {@link SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE},
+ * or `"default"` for the account that runs with no `CLAUDE_CONFIG_DIR` at all.
+ * Empty means the user has not chosen yet: with a single account SPEXR uses it,
+ * with several it asks once and writes the answer here.
  *
- * Persisted per-folder once the user makes a choice in the quick-pick so the
- * prompt does not appear again for the same workspace. Empty string means
- * the user has not yet chosen.
+ * Folder-scoped, like the active expert: which identity a project runs under is
+ * a property of the project, not of the machine.
  */
-export const SPEXR_CLAUDE_PROFILE_ID_PREFERENCE = "spexr.claude.profileId";
+export const SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE = "spexr.claude.activeProfile";
 
 /**
  * Key for the Claude launch profiles preference.
@@ -166,19 +162,16 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "auto-detect from PATH. For a shell alias use spexr.claude.launchProfiles " +
         "instead: an alias names no file. Folder-scoped.",
     },
-    [SPEXR_CLAUDE_CONFIG_DIR_PREFERENCE]: {
+    [SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE]: {
       type: "string",
       default: "",
       description:
-        "CLAUDE_CONFIG_DIR override passed to the spawned CLI, e.g. ~/.claude-perso. " +
-        "Set automatically when a Claude account profile is chosen. Folder-scoped.",
-    },
-    [SPEXR_CLAUDE_PROFILE_ID_PREFERENCE]: {
-      type: "string",
-      default: "",
-      description:
-        "ID of the Claude account profile chosen for this workspace. " +
-        "Empty means not yet selected (prompt will appear on next open). Folder-scoped.",
+        "Account SPEXR starts Claude under: the label of a spexr.claude.launchProfiles " +
+        "entry, or \"default\" for the account that runs with no CLAUDE_CONFIG_DIR. " +
+        "Empty means not chosen yet — SPEXR asks once per project when the machine " +
+        "has more than one account. Folder-scoped, so personal and work projects " +
+        "can run under different identities. Change it with " +
+        "`Spexr: Select Claude account`.",
     },
     [SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE]: {
       type: "array",

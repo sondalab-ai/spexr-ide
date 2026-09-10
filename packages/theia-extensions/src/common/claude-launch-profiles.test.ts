@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountForConfigDir,
+  AMBIGUOUS_ACCOUNT,
+  availableAccounts,
+  DEFAULT_ACCOUNT,
+  DEFAULT_ACCOUNT_ID,
   isValidLaunchCommand,
+  launchPlanFor,
+  resolveAccount,
   launchOptionLabel,
   loginShellArgs,
   mergeLaunchProfiles,
   describeAddedProfiles,
   parseLaunchProfiles,
   profileForConfigDir,
-  resolveAgentLaunch,
-  resolveLaunchPlan,
   sameConfigDir,
   type ClaudeLaunchProfile,
 } from "./claude-launch-profiles.js";
@@ -122,63 +127,6 @@ describe("profileForConfigDir", () => {
   });
 });
 
-describe("resolveLaunchPlan", () => {
-  it("uses the profile command and suppresses the export when it owns the account", () => {
-    expect(resolveLaunchPlan([PERSO], "/Users/x/.claude-perso", "")).toEqual({
-      command: "cld-perso",
-      exportConfigDir: "",
-      unquoted: true,
-    });
-  });
-
-  it("still exports the config dir for a profile that does not set it", () => {
-    const wrapper: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude-work" };
-    expect(resolveLaunchPlan([wrapper], "/Users/x/.claude-work", "")).toEqual({
-      command: "cld",
-      exportConfigDir: "/Users/x/.claude-work",
-      unquoted: true,
-    });
-  });
-
-  // Claude Code stores its token in a different keychain entry depending on
-  // whether CLAUDE_CONFIG_DIR is set at all, so exporting the default path
-  // reaches a different account than running `claude` by hand does.
-  it("never exports the default account, which is named by leaving it unset", () => {
-    expect(resolveLaunchPlan([], "/Users/x/.claude", "").exportConfigDir).toBe("");
-  });
-
-  it("leaves the default account unset for a profile that does not own it", () => {
-    const wrapper: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude" };
-    expect(resolveLaunchPlan([wrapper], "/Users/x/.claude", "")).toEqual({
-      command: "cld",
-      exportConfigDir: "",
-      unquoted: true,
-    });
-  });
-
-  it("prefers the profile over the configured executable path", () => {
-    expect(resolveLaunchPlan([PERSO], "/Users/x/.claude-perso", "/opt/claude").command).toBe(
-      "cld-perso",
-    );
-  });
-
-  it("falls back to the executable path, which stays quotable", () => {
-    expect(resolveLaunchPlan([], "/Users/x/.claude-work", "/opt/my claude/claude")).toEqual({
-      command: "/opt/my claude/claude",
-      exportConfigDir: "/Users/x/.claude-work",
-      unquoted: false,
-    });
-  });
-
-  it("falls back to a bare claude when nothing is configured", () => {
-    expect(resolveLaunchPlan([], "", "")).toEqual({
-      command: "claude",
-      exportConfigDir: "",
-      unquoted: true,
-    });
-  });
-});
-
 describe("launchOptionLabel", () => {
   it("marks the default account", () => {
     expect(launchOptionLabel(".claude", true)).toBe(".claude (default)");
@@ -196,60 +144,6 @@ describe("launchOptionLabel", () => {
 
   it("shows the bare account when no profile is configured", () => {
     expect(launchOptionLabel(".claude-perso", false)).toBe(".claude-perso");
-  });
-});
-
-describe("resolveAgentLaunch", () => {
-  it("uses the profile bound to the account's config dir", () => {
-    expect(resolveAgentLaunch([PERSO], { configDir: "/Users/x/.claude-perso" })).toEqual({
-      command: "cld-perso",
-      exportConfigDir: "",
-      unquoted: true,
-    });
-  });
-
-  it("matches a profile for ~/.claude when the account carries no config dir", () => {
-    const work: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude" };
-
-    expect(resolveAgentLaunch([work], {})).toEqual({
-      command: "cld",
-      // Empty: the account has no dir of its own, so the variable is unset —
-      // which is what the default account needs anyway.
-      exportConfigDir: "",
-      unquoted: true,
-    });
-  });
-
-  it("keeps exporting the account's dir for a profile that does not own it", () => {
-    const work: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude-work" };
-
-    expect(resolveAgentLaunch([work], { configDir: "/Users/x/.claude-work" })).toEqual({
-      command: "cld",
-      exportConfigDir: "/Users/x/.claude-work",
-      unquoted: true,
-    });
-  });
-
-  it("falls back to the profile's executable path, quoted", () => {
-    expect(resolveAgentLaunch([], { executablePath: "/opt/my claude/claude" })).toEqual({
-      command: "/opt/my claude/claude",
-      exportConfigDir: "",
-      unquoted: false,
-    });
-  });
-
-  it("falls back to a bare claude and clears the account", () => {
-    expect(resolveAgentLaunch([], {})).toEqual({
-      command: "claude",
-      exportConfigDir: "",
-      unquoted: true,
-    });
-  });
-
-  it("does not let a profile for another account take over", () => {
-    expect(resolveAgentLaunch([PERSO], { configDir: "/Users/x/.claude-work" }).command).toBe(
-      "claude",
-    );
   });
 });
 
@@ -318,5 +212,162 @@ describe("describeAddedProfiles", () => {
     expect(describeAddedProfiles([PERSO, { ...PERSO, command: "cld" }])).toContain(
       "2 Claude launch profiles from",
     );
+  });
+});
+
+describe("resolveAccount", () => {
+  const WORK: ClaudeLaunchProfile = { label: "Work", command: "cld", configDir: "~/.claude-work" };
+
+  it("falls back to the default account when nothing is configured", () => {
+    expect(resolveAccount("", [])).toEqual(DEFAULT_ACCOUNT);
+  });
+
+  it("asks even with a single profile: the default account is the other answer", () => {
+    expect(resolveAccount("", [PERSO])).toBe(AMBIGUOUS_ACCOUNT);
+  });
+
+  it("does not ask when the only profile is the default account with a wrapper", () => {
+    const home: ClaudeLaunchProfile = { label: "H", command: "cld", configDir: "~/.claude" };
+
+    expect(resolveAccount("", [home])).toEqual({ profile: home, configDir: "~/.claude" });
+  });
+
+  it("reports ambiguity when several profiles exist and none was chosen", () => {
+    expect(resolveAccount("", [PERSO, WORK])).toBe(AMBIGUOUS_ACCOUNT);
+  });
+
+  it("uses the chosen profile, named by its label", () => {
+    expect(resolveAccount("Work", [PERSO, WORK])).toEqual({
+      profile: WORK,
+      configDir: "~/.claude-work",
+    });
+  });
+
+  it("matches a label regardless of case and surrounding blanks", () => {
+    expect(resolveAccount("  work ", [PERSO, WORK])).toEqual({
+      profile: WORK,
+      configDir: "~/.claude-work",
+    });
+  });
+
+  it("honours an explicit choice of the default account over the profiles", () => {
+    expect(resolveAccount(DEFAULT_ACCOUNT_ID, [PERSO, WORK])).toEqual(DEFAULT_ACCOUNT);
+  });
+
+  it("lets a profile the user labelled \"default\" win over the built-in account", () => {
+    const named: ClaudeLaunchProfile = {
+      label: "default",
+      command: "cld",
+      configDir: "~/.claude-work",
+    };
+
+    expect(resolveAccount(DEFAULT_ACCOUNT_ID, [named, WORK])).toEqual({
+      profile: named,
+      configDir: "~/.claude-work",
+    });
+  });
+
+  it("re-asks when the chosen label no longer names a profile", () => {
+    // A renamed or deleted profile leaves a dangling choice: falling through to
+    // the quick-pick heals it, where honouring it silently would not.
+    expect(resolveAccount("Gone", [PERSO, WORK])).toBe(AMBIGUOUS_ACCOUNT);
+  });
+
+  it("re-asks when the chosen label is stale and a real choice remains", () => {
+    expect(resolveAccount("Gone", [PERSO])).toBe(AMBIGUOUS_ACCOUNT);
+  });
+});
+
+describe("availableAccounts", () => {
+  const WORK2: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude-work" };
+
+  it("offers the default account beside the profiles", () => {
+    expect(availableAccounts([PERSO])).toEqual([
+      { profile: PERSO, configDir: "~/.claude-perso" },
+      DEFAULT_ACCOUNT,
+    ]);
+  });
+
+  it("counts the default account once when a profile already wraps it", () => {
+    const home: ClaudeLaunchProfile = { label: "H", command: "cld", configDir: "~/.claude" };
+
+    expect(availableAccounts([home, WORK2])).toEqual([
+      { profile: home, configDir: "~/.claude" },
+      { profile: WORK2, configDir: "~/.claude-work" },
+    ]);
+  });
+
+  it("drops the built-in account when a profile has taken its name", () => {
+    const named: ClaudeLaunchProfile = { ...WORK2, label: "Default" };
+
+    expect(availableAccounts([named])).toEqual([{ profile: named, configDir: "~/.claude-work" }]);
+  });
+
+  it("is the default account alone when nothing is configured", () => {
+    expect(availableAccounts([])).toEqual([DEFAULT_ACCOUNT]);
+  });
+});
+
+describe("accountForConfigDir", () => {
+  it("binds the profile that owns the config dir", () => {
+    expect(accountForConfigDir([PERSO], "/Users/x/.claude-perso")).toEqual({
+      profile: PERSO,
+      configDir: "/Users/x/.claude-perso",
+    });
+  });
+
+  it("keeps the config dir when no profile claims it", () => {
+    expect(accountForConfigDir([PERSO], "/Users/x/.claude-work")).toEqual({
+      configDir: "/Users/x/.claude-work",
+    });
+  });
+
+  it("reads an empty config dir as the default account, matching no profile", () => {
+    const home: ClaudeLaunchProfile = { label: "H", command: "cld", configDir: "~/.claude" };
+
+    expect(accountForConfigDir([home], "")).toEqual(DEFAULT_ACCOUNT);
+  });
+});
+
+describe("launchPlanFor", () => {
+  it("runs the account's profile command, unquoted so an alias expands", () => {
+    expect(launchPlanFor({ profile: PERSO, configDir: "~/.claude-perso" }, "")).toEqual({
+      command: "cld-perso",
+      // PERSO owns the account, so SPEXR must not export it too.
+      exportConfigDir: "",
+      unquoted: true,
+    });
+  });
+
+  it("exports the config dir for a profile that does not own it", () => {
+    const work: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude-work" };
+
+    expect(launchPlanFor({ profile: work, configDir: "/Users/x/.claude-work" }, "")).toEqual({
+      command: "cld",
+      exportConfigDir: "/Users/x/.claude-work",
+      unquoted: true,
+    });
+  });
+
+  it("leaves the default account unset rather than exporting ~/.claude", () => {
+    const home: ClaudeLaunchProfile = { label: "H", command: "cld", configDir: "~/.claude" };
+
+    expect(launchPlanFor({ profile: home, configDir: "~/.claude" }, "").exportConfigDir).toBe("");
+  });
+
+  it("falls back to the configured executable path, which stays quotable", () => {
+    expect(launchPlanFor({ configDir: "/Users/x/.claude-work" }, "/opt/my claude/claude")).toEqual({
+      command: "/opt/my claude/claude",
+      exportConfigDir: "/Users/x/.claude-work",
+      unquoted: false,
+    });
+  });
+
+  it("falls back to a bare claude when nothing is configured", () => {
+    expect(launchPlanFor(DEFAULT_ACCOUNT, "")).toEqual({
+      command: "claude",
+      exportConfigDir: "",
+      unquoted: true,
+    });
   });
 });
