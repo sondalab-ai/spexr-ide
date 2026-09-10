@@ -177,7 +177,7 @@ export class SpexrDarkfactoryTerminalManager {
    * shell expands an alias such as `cld-perso`.
    *
    * The command is only quoted when it is a path: quoting is exactly what stops
-   * zsh from expanding an alias, and `resolveLaunchPlan` says which case this is
+   * zsh from expanding an alias, and `launchPlanFor` says which case this is
    * (the preference that can hold a command is restricted to a single bare word
    * for that reason). CLAUDE_CONFIG_DIR is set authoritatively inside the `-c`
    * line: exported when the plan carries an account, and unset when the command

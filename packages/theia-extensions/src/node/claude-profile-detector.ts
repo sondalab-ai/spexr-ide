@@ -7,37 +7,6 @@ import {
   type ClaudeLaunchProfile,
 } from "../common/claude-launch-profiles.js";
 
-/**
- * A detected Claude account profile derived from the user's shell configuration.
- *
- * The `default` profile always exists with no `configDir`; additional entries
- * correspond to shell aliases or functions that launch Claude with a custom
- * `CLAUDE_CONFIG_DIR`.
- */
-export interface ClaudeProfile {
-  /** Unique stable identifier (URL-safe, e.g. "default" or the alias name). */
-  readonly id: string;
-  /** Human-readable label shown in the quick-pick. */
-  readonly label: string;
-  /** Resolved absolute path to the Claude Code CLI binary. */
-  readonly executablePath: string;
-  /** When set, passed as `CLAUDE_CONFIG_DIR` to the spawned CLI. */
-  readonly configDir?: string;
-}
-
-/**
- * Dependency-light DTO transmitted over JSON-RPC.
- *
- * Mirrors `ClaudeProfile` — kept separate so `common/agent-protocol.ts`
- * has no dependency on node-only modules.
- */
-export interface ClaudeProfileDto {
-  readonly id: string;
-  readonly label: string;
-  readonly executablePath: string;
-  readonly configDir?: string;
-}
-
 // ---------------------------------------------------------------------------
 // Pure shell-profile parsers (exported for unit tests)
 // ---------------------------------------------------------------------------
@@ -317,38 +286,6 @@ export function detectLaunchProfiles(): ClaudeLaunchProfile[] {
       });
     }
   }
-  return profiles;
-}
-
-export async function detectClaudeProfiles(): Promise<ClaudeProfile[]> {
-  const resolvedExec = await resolveClaudeExecutableRobust();
-  const executablePath = typeof resolvedExec === "string" ? resolvedExec : "claude";
-
-  const profiles: ClaudeProfile[] = [
-    { id: "default", label: "Default", executablePath },
-  ];
-
-  const seen = new Set<string>();
-  const profileFiles = collectProfileFiles();
-
-  for (const { filePath, kind } of profileFiles) {
-    const text = safeReadFile(filePath);
-    if (text === undefined) continue;
-
-    const parsed = parseClaudeProfiles(text, kind);
-    for (const entry of parsed) {
-      const key = entry.configDir;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      profiles.push({
-        id: entry.label,
-        label: entry.label,
-        executablePath,
-        configDir: entry.configDir,
-      });
-    }
-  }
-
   return profiles;
 }
 

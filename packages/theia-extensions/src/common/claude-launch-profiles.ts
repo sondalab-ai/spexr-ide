@@ -204,32 +204,6 @@ export function launchPlanFor(account: ResolvedAccount, executablePath: string):
 }
 
 /**
- * Decide how to launch Claude for a config dir.
- *
- * A profile wins over the executable-path preference, and a profile that sets
- * the account itself suppresses the export so the two cannot disagree. With no
- * profile the behaviour is what it was before profiles existed: the configured
- * path, or a bare `claude`. The config dir is exported unless it is the default
- * account, which is expressed by leaving the variable unset.
- */
-export function resolveLaunchPlan(
-  profiles: readonly ClaudeLaunchProfile[],
-  configDir: string,
-  executablePath: string,
-): LaunchPlan {
-  const profile = profileForConfigDir(profiles, configDir);
-  if (profile) {
-    return {
-      command: profile.command,
-      exportConfigDir: profile.ownsConfigDir ? "" : exportFor(configDir),
-      unquoted: true,
-    };
-  }
-  const exe = executablePath.trim();
-  return { command: exe || "claude", exportConfigDir: exportFor(configDir), unquoted: !exe };
-}
-
-/**
  * Text for one account in the session launcher.
  *
  * The account is still what the user picks — the command follows from it — so
@@ -243,38 +217,6 @@ export function launchOptionLabel(
 ): string {
   const account = isDefault ? `${label} (default)` : label;
   return profile ? `${account} — ${profile.command}` : account;
-}
-
-/** The parts of an account profile a launch decision depends on. */
-export interface AccountProfile {
-  readonly executablePath?: string;
-  readonly configDir?: string;
-}
-
-/**
- * Decide how the agent terminal starts Claude for an account profile.
- *
- * Both callers now treat an empty `exportConfigDir` the same way — unset the
- * variable rather than leave it — so a stray value in the host environment
- * cannot redirect the default account, and a launch profile that owns the
- * account is left in sole charge of it. An account that names the default
- * config dir explicitly is also expressed by unsetting: see `exportFor`.
- */
-export function resolveAgentLaunch(
-  profiles: readonly ClaudeLaunchProfile[],
-  account: AccountProfile,
-): LaunchPlan {
-  const configDir = account.configDir ?? "";
-  const match = profileForConfigDir(profiles, configDir || DEFAULT_CONFIG_DIR);
-  if (match) {
-    return {
-      command: match.command,
-      exportConfigDir: match.ownsConfigDir ? "" : exportFor(configDir),
-      unquoted: true,
-    };
-  }
-  const exe = (account.executablePath ?? "").trim();
-  return { command: exe || "claude", exportConfigDir: exportFor(configDir), unquoted: !exe };
 }
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
