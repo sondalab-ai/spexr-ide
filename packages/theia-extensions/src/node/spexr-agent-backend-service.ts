@@ -36,6 +36,7 @@ import {
 } from "../common/claude-launch-profiles.js";
 import {
   detectLaunchProfiles,
+  expandHome,
   isFileExecutable,
   resolveClaudeExecutableRobust,
 } from "./claude-profile-detector.js";
@@ -167,13 +168,21 @@ export class SpexrAgentBackendService implements SpexrAgentService {
 // Memory symlink helpers (module-level so they can be unit-tested directly)
 // ---------------------------------------------------------------------------
 
-function resolveMemoryPaths(
+/**
+ * Where the workspace memory lives and where the CLI expects to find it.
+ *
+ * Exported for tests: the target is built from a config dir the user wrote by
+ * hand, so the `~` expansion is the part worth pinning down.
+ */
+export function resolveMemoryPaths(
   workspaceRoot: string,
   configDir?: string,
 ): { source: string; target: string } {
   const slug = workspaceRoot.replace(/[^a-zA-Z0-9]/g, "-");
   const configRoot =
-    configDir && configDir.trim() ? configDir.trim() : path.join(os.homedir(), ".claude");
+    configDir && configDir.trim()
+      ? expandHome(configDir.trim())
+      : path.join(os.homedir(), ".claude");
   const source = path.join(workspaceRoot, "docs", "memory");
   const target = path.join(configRoot, "projects", slug, "memory");
   return { source, target };

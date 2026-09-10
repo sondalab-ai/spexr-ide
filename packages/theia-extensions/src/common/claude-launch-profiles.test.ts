@@ -14,6 +14,8 @@ import {
   describeAddedProfiles,
   parseLaunchProfiles,
   profilesFromScopes,
+  shellQuoteConfigDir,
+  isHomeRelative,
   profileForConfigDir,
   sameConfigDir,
   type ClaudeLaunchProfile,
@@ -413,5 +415,44 @@ describe("profilesFromScopes", () => {
 
   it("lets the session scope win, as Theia's own precedence does", () => {
     expect(profilesFromScopes({ session: [raw(WORK)], folder: [raw(PERSO)] })).toEqual([WORK]);
+  });
+});
+
+describe("shellQuoteConfigDir", () => {
+  it("leaves an absolute path single-quoted", () => {
+    expect(shellQuoteConfigDir("/Users/x/.claude-perso")).toBe("'/Users/x/.claude-perso'");
+  });
+
+  it("hands the home part to the shell so a tilde still expands", () => {
+    // Single quotes suppress tilde expansion, which would send a literal `~`
+    // to the CLI and point it at a directory relative to the process cwd.
+    expect(shellQuoteConfigDir("~/.claude-perso")).toBe(`"$HOME"'/.claude-perso'`);
+  });
+
+  it("treats an explicit $HOME the same way", () => {
+    expect(shellQuoteConfigDir("$HOME/.claude-work")).toBe(`"$HOME"'/.claude-work'`);
+  });
+
+  it("quotes the home directory itself", () => {
+    expect(shellQuoteConfigDir("~")).toBe(`"$HOME"`);
+  });
+
+  it("still escapes a quote inside the path", () => {
+    expect(shellQuoteConfigDir("/tmp/it's")).toBe(`'/tmp/it'\\''s'`);
+  });
+
+  it("does not read a lookalike prefix as home", () => {
+    expect(shellQuoteConfigDir("~root/.claude")).toBe("'~root/.claude'");
+    expect(shellQuoteConfigDir("$HOMEBREW/.claude")).toBe("'$HOMEBREW/.claude'");
+  });
+});
+
+describe("isHomeRelative", () => {
+  it.each(["~", "~/.claude-perso", "$HOME", "$HOME/.claude"])("is true for %s", (dir) => {
+    expect(isHomeRelative(dir)).toBe(true);
+  });
+
+  it.each(["/Users/x/.claude", "", "~root/.claude", "$HOMEBREW/x"])("is false for %j", (dir) => {
+    expect(isHomeRelative(dir)).toBe(false);
   });
 });

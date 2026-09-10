@@ -296,6 +296,33 @@ function shellQuote(arg: string): string {
 }
 
 /**
+ * Quote a config dir for a shell assignment, keeping `~` meaningful.
+ *
+ * Profiles are written by hand and say `~/.claude-perso`, but single quotes are
+ * exactly what stops the shell expanding a tilde — the variable would reach the
+ * CLI with a literal `~` in it, naming a directory relative to wherever the
+ * process happens to run. The home part becomes `"$HOME"`, which the shell does
+ * expand, and the rest stays single-quoted so nothing else is interpreted.
+ */
+export function shellQuoteConfigDir(dir: string): string {
+  if (dir === "~" || dir === "$HOME") return `"$HOME"`;
+  if (dir.startsWith("~/")) return `"$HOME"${shellQuote(dir.slice(1))}`;
+  if (dir.startsWith("$HOME/")) return `"$HOME"${shellQuote(dir.slice("$HOME".length))}`;
+  return shellQuote(dir);
+}
+
+/**
+ * Whether a config dir is written relative to the home directory.
+ *
+ * The frontend cannot expand it — it has no home directory to expand against —
+ * so such a value must not be handed to anything that treats it as a path. The
+ * shell line resolves it instead, via {@link shellQuoteConfigDir}.
+ */
+export function isHomeRelative(dir: string): boolean {
+  return dir === "~" || dir === "$HOME" || dir.startsWith("~/") || dir.startsWith("$HOME/");
+}
+
+/**
  * Argv for running a launch command through an interactive login shell.
  *
  * Needed wherever a command may be a shell alias: an alias exists only inside a

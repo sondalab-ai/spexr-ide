@@ -9,8 +9,10 @@ import {
 import {
   accountForConfigDir,
   AMBIGUOUS_ACCOUNT,
+  isHomeRelative,
   launchPlanFor,
   resolveAccount,
+  shellQuoteConfigDir,
   type LaunchPlan,
 } from "../../common/claude-launch-profiles.js";
 import { readLaunchProfiles } from "../preferences/launch-profiles.js";
@@ -149,7 +151,12 @@ export class SpexrDarkfactoryTerminalManager {
       iconClass: "codicon codicon-sparkle",
       ...this.resolveShell(plan, args, projectPath, harness.id === "claude"),
       cwd: projectPath,
-      env: plan.exportConfigDir ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir } : {},
+      // Home-relative dirs are left to the shell line: the env is not a shell,
+      // so a `~` handed over here would stay literal.
+      env:
+        plan.exportConfigDir && !isHomeRelative(plan.exportConfigDir)
+          ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir }
+          : {},
       destroyTermOnClose: false,
       kind: SESSION_TERMINAL_KIND,
     });
@@ -196,7 +203,7 @@ export class SpexrDarkfactoryTerminalManager {
     ownsAccount: boolean,
   ): { shellArgs: string[] } {
     const account = plan.exportConfigDir
-      ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}`
+      ? `export CLAUDE_CONFIG_DIR=${shellQuoteConfigDir(plan.exportConfigDir)}`
       : "unset CLAUDE_CONFIG_DIR";
     const prefix = [
       ownsAccount ? account : "",

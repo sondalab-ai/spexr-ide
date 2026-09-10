@@ -27,8 +27,10 @@ import {
   availableAccounts,
   DEFAULT_ACCOUNT_ID,
   DEFAULT_CONFIG_DIR,
+  isHomeRelative,
   launchPlanFor,
   resolveAccount,
+  shellQuoteConfigDir,
   type ClaudeLaunchProfile,
   type LaunchPlan,
   type ResolvedAccount,
@@ -266,7 +268,7 @@ export class ClaudeTerminalManager {
   private resolveShell(plan: LaunchPlan, shellArgs: string[]): { shellArgs: string[] } {
     const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
     const account = plan.exportConfigDir
-      ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}`
+      ? `export CLAUDE_CONFIG_DIR=${shellQuoteConfigDir(plan.exportConfigDir)}`
       : "unset CLAUDE_CONFIG_DIR";
     const line = `${account}; ${[bin, ...shellArgs.map(shellQuote)].join(" ")}`;
     return { shellArgs: ["-i", "-l", "-c", line] };
@@ -376,10 +378,13 @@ export class ClaudeTerminalManager {
   ): Promise<void> {
     const plan = launchPlanFor(account, this.executablePath());
     // Only what the plan says to export: a wrapper that owns the account must
-    // not be handed a second, possibly divergent, value through the env.
-    const env: { [k: string]: string | null } = plan.exportConfigDir
-      ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir }
-      : {};
+    // not be handed a second, possibly divergent, value through the env. A
+    // home-relative dir is left out entirely — the env is not a shell, so `~`
+    // would arrive literal; the `-c` line exports the expanded value anyway.
+    const env: { [k: string]: string | null } =
+      plan.exportConfigDir && !isHomeRelative(plan.exportConfigDir)
+        ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir }
+        : {};
 
     const term = await this.terminalService.newTerminal({
       id: CLAUDE_TERMINAL_ID,
