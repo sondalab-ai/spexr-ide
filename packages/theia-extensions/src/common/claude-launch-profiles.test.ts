@@ -13,6 +13,9 @@ import {
   mergeLaunchProfiles,
   describeAddedProfiles,
   parseLaunchProfiles,
+  profilesFromScopes,
+  shellQuoteConfigDir,
+  isHomeRelative,
   profileForConfigDir,
   sameConfigDir,
   type ClaudeLaunchProfile,
@@ -369,5 +372,87 @@ describe("launchPlanFor", () => {
       exportConfigDir: "",
       unquoted: true,
     });
+  });
+});
+
+describe("profilesFromScopes", () => {
+  // `parseLaunchProfiles` fills in `ownsConfigDir`, so the expected value is
+  // the normalized profile rather than the literal written in settings.
+  const WORK: ClaudeLaunchProfile = {
+    label: "Work",
+    command: "cld",
+    configDir: "~/.claude-work",
+    ownsConfigDir: false,
+  };
+  const raw = (p: ClaudeLaunchProfile): unknown => ({ ...p });
+
+  it("keeps the user's profiles when an outer scope holds an empty array", () => {
+    // The case this exists for: the settings UI writes to the workspace file
+    // whenever a workspace is open, and Theia replaces arrays instead of
+    // merging them, so `[]` there used to erase every account.
+    expect(profilesFromScopes({ workspace: [], user: [raw(PERSO)] })).toEqual([PERSO]);
+  });
+
+  it("prefers the innermost scope that configures any", () => {
+    expect(profilesFromScopes({ folder: [raw(WORK)], user: [raw(PERSO)] })).toEqual([WORK]);
+  });
+
+  it("falls through every empty scope in turn", () => {
+    expect(profilesFromScopes({ folder: [], workspace: [], user: [], fallback: [raw(PERSO)] })).toEqual([
+      PERSO,
+    ]);
+  });
+
+  it("reads a scope holding only malformed entries as configuring nothing", () => {
+    expect(profilesFromScopes({ workspace: [{ command: "cld --print" }], user: [raw(PERSO)] })).toEqual([
+      PERSO,
+    ]);
+  });
+
+  it("is empty when no scope holds a profile", () => {
+    expect(profilesFromScopes({})).toEqual([]);
+  });
+
+  it("lets the session scope win, as Theia's own precedence does", () => {
+    expect(profilesFromScopes({ session: [raw(WORK)], folder: [raw(PERSO)] })).toEqual([WORK]);
+  });
+});
+
+describe("shellQuoteConfigDir", () => {
+  it("leaves an absolute path single-quoted", () => {
+    expect(shellQuoteConfigDir("/Users/x/.claude-perso")).toBe("'/Users/x/.claude-perso'");
+  });
+
+  it("hands the home part to the shell so a tilde still expands", () => {
+    // Single quotes suppress tilde expansion, which would send a literal `~`
+    // to the CLI and point it at a directory relative to the process cwd.
+    expect(shellQuoteConfigDir("~/.claude-perso")).toBe(`"$HOME"'/.claude-perso'`);
+  });
+
+  it("treats an explicit $HOME the same way", () => {
+    expect(shellQuoteConfigDir("$HOME/.claude-work")).toBe(`"$HOME"'/.claude-work'`);
+  });
+
+  it("quotes the home directory itself", () => {
+    expect(shellQuoteConfigDir("~")).toBe(`"$HOME"`);
+  });
+
+  it("still escapes a quote inside the path", () => {
+    expect(shellQuoteConfigDir("/tmp/it's")).toBe(`'/tmp/it'\\''s'`);
+  });
+
+  it("does not read a lookalike prefix as home", () => {
+    expect(shellQuoteConfigDir("~root/.claude")).toBe("'~root/.claude'");
+    expect(shellQuoteConfigDir("$HOMEBREW/.claude")).toBe("'$HOMEBREW/.claude'");
+  });
+});
+
+describe("isHomeRelative", () => {
+  it.each(["~", "~/.claude-perso", "$HOME", "$HOME/.claude"])("is true for %s", (dir) => {
+    expect(isHomeRelative(dir)).toBe(true);
+  });
+
+  it.each(["/Users/x/.claude", "", "~root/.claude", "$HOMEBREW/x"])("is false for %j", (dir) => {
+    expect(isHomeRelative(dir)).toBe(false);
   });
 });

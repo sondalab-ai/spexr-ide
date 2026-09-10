@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { stripFrontmatter, formatGitContext } from "./spexr-agent-backend-service.js";
+import * as os from "os";
+import * as path from "path";
+import {
+  stripFrontmatter,
+  formatGitContext,
+  resolveMemoryPaths,
+} from "./spexr-agent-backend-service.js";
 import type { GitStatusDto } from "../common/git-protocol.js";
 
 describe("stripFrontmatter", () => {
@@ -95,5 +101,36 @@ describe("formatGitContext", () => {
     const result = formatGitContext(status);
     expect(result).not.toContain("Working tree clean");
     expect(result).toContain("nothing left to resolve");
+  });
+});
+
+describe("resolveMemoryPaths", () => {
+  const root = "/Users/x/proj";
+
+  it("expands a home-relative config dir instead of using it as a path", () => {
+    // Left unexpanded, `~/.claude-perso/...` is a *relative* path: fs resolves
+    // it against the process cwd and creates a literal `~` directory there.
+    const { target } = resolveMemoryPaths(root, "~/.claude-perso");
+
+    expect(target.startsWith(path.join(os.homedir(), ".claude-perso"))).toBe(true);
+    expect(target).not.toContain("~");
+  });
+
+  it("keeps an absolute config dir as given", () => {
+    const { target } = resolveMemoryPaths(root, "/Users/x/.claude-work");
+
+    expect(target).toBe(path.join("/Users/x/.claude-work", "projects", "-Users-x-proj", "memory"));
+  });
+
+  it("falls back to the default account when no config dir is given", () => {
+    const { target } = resolveMemoryPaths(root);
+
+    expect(target).toBe(
+      path.join(os.homedir(), ".claude", "projects", "-Users-x-proj", "memory"),
+    );
+  });
+
+  it("links the workspace docs/memory folder", () => {
+    expect(resolveMemoryPaths(root).source).toBe(path.join(root, "docs", "memory"));
   });
 });
