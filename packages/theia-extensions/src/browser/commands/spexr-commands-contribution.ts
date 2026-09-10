@@ -646,7 +646,11 @@ export class SpexrCommandsContribution
    */
   private launchCommand(): string | undefined {
     const profiles = parseLaunchProfiles(
-      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+      this.preferences.get<unknown>(
+        SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
+        [],
+        this.workspaceRoot()?.toString(),
+      ),
     );
     const configDir = this.claudeTerminal.currentConfigDir() ?? DEFAULT_CONFIG_DIR;
     return profileForConfigDir(profiles, configDir)?.command;
@@ -1034,7 +1038,12 @@ export class SpexrCommandsContribution
   }
 
   private activeExpertId(): string | undefined {
-    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE) ?? "";
+    const stored =
+      this.preferences.get<string>(
+        SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
+        "",
+        this.workspaceRoot()?.toString(),
+      ) ?? "";
     return stored.trim() || undefined;
   }
 
@@ -1112,7 +1121,12 @@ export class SpexrCommandsContribution
     if (!confirmed) return;
     try {
       await this.fileService.delete(fileUri, { useTrash: false, recursive: false });
-      const active = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE) ?? "";
+      const active =
+        this.preferences.get<string>(
+          SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
+          "",
+          root.toString(),
+        ) ?? "";
       if (active === id) {
         await this.preferences.set(
           SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,

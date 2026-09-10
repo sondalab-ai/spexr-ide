@@ -27,6 +27,11 @@ function shellQuote(arg: string): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
+/** A workspace path as the resource uri folder-scoped preferences are keyed by. */
+function resourceUriFor(projectPath: string): string | undefined {
+  return projectPath ? `file://${projectPath}` : undefined;
+}
+
 /** Last path segment, without importing node:path into the browser bundle. */
 function baseName(p: string): string {
   const parts = p.replace(/\/+$/, "").split("/");
@@ -136,8 +141,8 @@ export class SpexrDarkfactoryTerminalManager {
     configDir: string,
   ): Promise<TerminalWidget | undefined> {
     if (!projectPath) return undefined;
-    const dir = harness.id === "claude" ? this.resolveConfigDir(configDir) : "";
-    const plan = this.launchPlan(harness, dir);
+    const dir = harness.id === "claude" ? this.resolveConfigDir(configDir, projectPath) : "";
+    const plan = this.launchPlan(harness, dir, projectPath);
     const term = await this.terminalService.newTerminal({
       id: `spexr-df-${key}`,
       title: baseName(projectPath),
@@ -212,15 +217,29 @@ export class SpexrDarkfactoryTerminalManager {
    * dir when there is one, else the configured executable path, else the bare
    * binary. Opencode takes no account and no profile.
    */
-  private launchPlan(harness: HarnessCore, dir: string): LaunchPlan {
+  private launchPlan(harness: HarnessCore, dir: string, projectPath: string): LaunchPlan {
     if (harness.id !== "claude") return { command: "opencode", exportConfigDir: "", unquoted: true };
-    const exe = (this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "").trim();
-    return launchPlanFor(accountForConfigDir(this.launchProfiles(), dir), exe);
+    const resource = resourceUriFor(projectPath);
+    const exe = (
+      this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE, "", resource) ?? ""
+    ).trim();
+    return launchPlanFor(accountForConfigDir(this.launchProfiles(projectPath), dir), exe);
   }
 
-  private launchProfiles(): ClaudeLaunchProfile[] {
+  /**
+   * Launch profiles as the session's own project sees them.
+   *
+   * Read against the project rather than the window: a folder-scoped value is
+   * invisible to a read that names no resource, and the wall opens sessions for
+   * projects that are not the first workspace root.
+   */
+  private launchProfiles(projectPath: string): ClaudeLaunchProfile[] {
     return parseLaunchProfiles(
-      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+      this.preferences.get<unknown>(
+        SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
+        [],
+        resourceUriFor(projectPath),
+      ),
     );
   }
 
@@ -230,11 +249,12 @@ export class SpexrDarkfactoryTerminalManager {
    * the side agent under, so a wall session started with nothing picked lands on
    * the same identity as the rest of the IDE.
    */
-  private resolveConfigDir(configDir: string): string {
+  private resolveConfigDir(configDir: string, projectPath: string): string {
     if (configDir.trim()) return configDir.trim();
+    const resource = resourceUriFor(projectPath);
     const account = resolveAccount(
-      this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE) ?? "",
-      this.launchProfiles(),
+      this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE, "", resource) ?? "",
+      this.launchProfiles(projectPath),
     );
     return account === AMBIGUOUS_ACCOUNT ? "" : account.configDir.trim();
   }

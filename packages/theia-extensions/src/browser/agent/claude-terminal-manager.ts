@@ -177,8 +177,21 @@ export class ClaudeTerminalManager {
   }
 
   private activeExpertId(): string | undefined {
-    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE) ?? "";
+    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE, "", this.rootUri()) ?? "";
     return stored.trim() || undefined;
+  }
+
+  /**
+   * Resource the folder-scoped preferences are read against.
+   *
+   * Theia's folder provider returns nothing at all when `get` is called without
+   * a resource (`getFolderProviders` bails on an undefined uri), so a value
+   * written at folder scope is invisible unless the read names a folder. The
+   * side agent is one terminal for the whole window, opened in the first root,
+   * so that root is the resource its settings belong to.
+   */
+  private rootUri(): string | undefined {
+    return this.workspace.tryGetRoots()[0]?.resource.toString();
   }
 
   private async resolveExpert(
@@ -495,17 +508,19 @@ export class ClaudeTerminalManager {
   }
 
   private storedAccount(): string {
-    return this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE) ?? "";
+    return (
+      this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE, "", this.rootUri()) ?? ""
+    );
   }
 
   private launchProfiles(): ClaudeLaunchProfile[] {
     return parseLaunchProfiles(
-      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE, [], this.rootUri()),
     );
   }
 
   private executablePath(): string {
-    return this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "";
+    return this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE, "", this.rootUri()) ?? "";
   }
 
   /**
