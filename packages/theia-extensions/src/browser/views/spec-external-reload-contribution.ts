@@ -6,9 +6,8 @@ import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { type FileChangesEvent } from "@theia/filesystem/lib/common/files";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import type URI from "@theia/core/lib/common/uri";
-import { allSpecsDirs } from "../workspace-paths.js";
+import { locateSpec } from "../spec/spec-roots.js";
 
-const SPEC_FILE_RE = /^\d{4}-[a-z0-9][a-z0-9-]*\.md$/;
 
 /**
  * Debounce window before deciding a dirty spec editor conflicts with disk.
@@ -100,11 +99,7 @@ export class SpexrSpecExternalReloadContribution implements FrontendApplicationC
   }
 
   private isSpec(uri: URI): boolean {
-    const root = this.workspace.tryGetRoots()[0]?.resource;
-    if (!root) return false;
-    if (uri.scheme !== root.scheme) return false;
-    const uriStr = uri.toString();
-    return allSpecsDirs(root).some((dir) => uriStr.startsWith(dir.toString() + "/"))
-      && SPEC_FILE_RE.test(uri.path.base);
+    const roots = this.workspace.tryGetRoots().map((root) => root.resource);
+    return locateSpec(roots, uri) !== undefined;
   }
 }

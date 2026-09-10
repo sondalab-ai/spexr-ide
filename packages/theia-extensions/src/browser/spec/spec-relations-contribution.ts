@@ -9,9 +9,8 @@ import { type FileOperationEvent } from "@theia/filesystem/lib/common/files";
 const FILE_OPERATION_MOVE = 2;
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import type URI from "@theia/core/lib/common/uri";
-import { allSpecsDirs, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
-
-const SPEC_FILE_RE = /^(\d{4})-([a-z0-9][a-z0-9-]*)\.md$/;
+import { SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import { locateSpec, SPEC_SLUG_RE } from "./spec-roots.js";
 
 /**
  * Keeps spec-related artefacts in sync when a spec file is renamed.
@@ -45,10 +44,9 @@ export class SpexrSpecRelationsContribution implements FrontendApplicationContri
   }
 
   private async syncSpecContextRename(source: URI, target: URI): Promise<void> {
-    const root = this.workspaceRoot();
-    if (!root) return;
-    const oldSlug = this.specSlugUnderRoot(source, root);
-    const newSlug = this.specSlugUnderRoot(target, root);
+    const roots = this.workspaceRoots();
+    const oldSlug = this.specSlugInWorkspace(source, roots);
+    const newSlug = this.specSlugInWorkspace(target, roots);
     if (!oldSlug || !newSlug) return;
     if (oldSlug === newSlug) return;
 
@@ -75,18 +73,14 @@ export class SpexrSpecRelationsContribution implements FrontendApplicationContri
     }
   }
 
-  private specSlugUnderRoot(uri: URI, root: URI): string | undefined {
-    if (uri.scheme !== root.scheme) return undefined;
-    const uriStr = uri.toString();
-    const inAnySpecDir = allSpecsDirs(root).some((dir) => uriStr.startsWith(dir.toString() + "/"));
-    if (!inAnySpecDir) return undefined;
-    const match = uri.path.base.match(SPEC_FILE_RE);
-    if (!match) return undefined;
-    return `${match[1]}-${match[2]}`;
+  /** Slug of `uri` when it is a spec in any workspace folder, else undefined. */
+  private specSlugInWorkspace(uri: URI, roots: readonly URI[]): string | undefined {
+    if (!locateSpec(roots, uri)) return undefined;
+    return uri.path.base.match(SPEC_SLUG_RE)?.[1];
   }
 
-  private workspaceRoot(): URI | undefined {
-    return this.workspace.tryGetRoots()[0]?.resource;
+  private workspaceRoots(): URI[] {
+    return this.workspace.tryGetRoots().map((root) => root.resource);
   }
 
   private async exists(uri: URI): Promise<boolean> {
