@@ -2572,27 +2572,38 @@ code {
  * so a card outside a search is laid out exactly as before.
  */
 .spexr-df-match {
-  display: flex; align-items: center; gap: var(--sl-space-2);
-  flex-wrap: wrap;
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   margin-top: var(--sl-space-1);
 }
-.spexr-df-match__track {
-  flex: none; width: 4rem; height: 3px;
-  border-radius: var(--sl-radius-pill);
-  background: var(--sl-border-subtle);
-  overflow: hidden;
+/*
+ * One pass of the hybrid score per row: its name, its share of this hit, and a
+ * bar of the same figure. It replaced a single two-coloured bar, whose split was
+ * a change of hue partway along three pixels with nothing on screen to explain
+ * it. The two rows share a column grid so the bars line up under each other.
+ */
+.spexr-df-match__row {
+  display: grid; grid-template-columns: 4.5em 3.5rem auto;
+  align-items: center; gap: var(--sl-space-2);
+  font-size: var(--sl-text-xs); color: var(--sl-text-muted);
 }
-/* Two colours in one fill, cut where meaning stops paying for the score and the
-   literal words start: amber found it by paraphrase, teal by the words typed. */
+.spexr-df-match__label { white-space: nowrap; }
+.spexr-df-match__track {
+  height: 4px; border-radius: var(--sl-radius-pill);
+  background: var(--sl-border-subtle); overflow: hidden;
+}
 .spexr-df-match__fill {
-  display: block; height: 100%;
-  width: var(--match-share);
-  border-radius: var(--sl-radius-pill);
-  background: linear-gradient(
-    to right,
-    var(--sl-accent-default) 0 var(--match-dense),
-    var(--sl-accent-depth) var(--match-dense) 100%
-  );
+  display: block; height: 100%; border-radius: var(--sl-radius-pill);
+  background: var(--sl-accent-default);
+}
+/* The literal-words half keeps the second accent it has always had. */
+.spexr-df-match__row[data-kind="words"] .spexr-df-match__fill { background: var(--sl-accent-depth); }
+.spexr-df-match__pct {
+  font-variant-numeric: tabular-nums; color: var(--sl-text-primary);
+}
+.spexr-df-match__terms {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--sl-space-1); margin-top: var(--sl-space-1);
 }
 .spexr-df-match__term {
   padding: 0 6px;
@@ -2600,9 +2611,6 @@ code {
   color: var(--sl-text-muted); font-size: var(--sl-text-xs); line-height: 1.5;
   white-space: nowrap;
 }
-/* Not a term the user typed but a statement about the match, so it carries no
-   term-chip border. */
-.spexr-df-match__term.is-dense { border-color: transparent; font-style: italic; }
 .spexr-df-card__archived {
   font-size: 0.75em;
   font-style: italic;
@@ -2653,11 +2661,11 @@ code {
   border-bottom: 1px solid var(--sl-border-subtle);
   border-radius: var(--sl-radius-md) var(--sl-radius-md) 0 0;
 }
-.spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; }
+.spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; overflow: hidden; }
 .spexr-df-pinned__actions { display: flex; align-items: center; gap: var(--sl-space-3); min-width: 0; }
 .spexr-df-pinned__project {
   /* Same as the grid card: the name yields to the actions beside it. */
-  flex: 0 1 auto; min-width: 8ch;
+  flex: 0 1 auto; min-width: 0;
   font-size: var(--sl-text-lg); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -2839,20 +2847,23 @@ code {
 
 /* One row, never two: the chips and the rename/trash actions stay beside the
    heading, and a heading too long for the space is cut with an ellipsis rather
-   than pushing them onto a second line. The floor below keeps that cut from
-   eating the whole name. */
+   than pushing them onto a second line. `overflow: hidden` is the backstop for
+   the case the heading cannot absorb on its own — a card narrow enough that the
+   chips alone overrun it, which otherwise spilled the timestamp past the card's
+   own border. */
 .spexr-df-card__head {
   display: flex; align-items: baseline;
-  gap: var(--sl-space-2); min-width: 0;
+  gap: var(--sl-space-2); min-width: 0; overflow: hidden;
 }
 .spexr-df-card__led { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--sl-text-muted); align-self: center; }
 .spexr-df-card[data-state="working"] .spexr-df-card__led { background: var(--tile-accent); animation: spexr-df-pulse 1.6s ease-in-out infinite; }
 .spexr-df-card[data-state="done"] .spexr-df-card__led { background: var(--sl-border-default); }
 @keyframes spexr-df-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 .spexr-df-card__project {
-  /* Shrinks before anything else in the row does, but not past a readable
-     stub — the alternative was a heading cut to "d…" on a narrow card. */
-  flex: 1 1 auto; min-width: 8ch;
+  /* 8ch is where the heading would rather sit, not a floor it defends: as a
+     flex-basis it yields when the row genuinely has no room, where a min-width
+     held its ground and pushed the timestamp out of the card instead. */
+  flex: 1 1 8ch; min-width: 0;
   font-size: var(--sl-text-lg, 1.05rem); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

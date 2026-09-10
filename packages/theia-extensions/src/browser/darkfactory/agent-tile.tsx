@@ -9,7 +9,12 @@ import type {
   FollowEvent,
 } from "../../common/darkfactory-protocol.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
-import { stateLabel, relativeTime, projectDisplayName } from "./darkfactory-format.js";
+import {
+  stateLabel,
+  relativeTime,
+  projectDisplayName,
+  matchShares,
+} from "./darkfactory-format.js";
 import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
 import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
 import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.js";
@@ -282,34 +287,55 @@ export interface TileMatch {
  */
 function MatchBadge({ match }: { match: TileMatch }): React.ReactElement {
   const share = match.best > 0 ? Math.min(1, match.score / match.best) : 0;
-  const densePart = match.score > 0 ? match.dense / match.score : 0;
+  const shares = matchShares(match);
   const pct = (n: number): string => `${Math.round(n * 100)}%`;
   return (
     <span
       className="spexr-df-match"
-      title={`Relevance ${pct(share)} of the best match — ${pct(densePart)} meaning, ${pct(1 - densePart)} words`}
+      title={`Relevance ${pct(share)} of the best match in these results`}
     >
-      <span
-        className="spexr-df-match__track"
-        style={{
-          ["--match-share" as string]: pct(share),
-          ["--match-dense" as string]: pct(densePart),
-        }}
-      >
-        <span className="spexr-df-match__fill" />
-      </span>
-      {match.terms.length > 0 ? (
-        match.terms.map((t) => (
-          <span key={t} className="spexr-df-match__term">
-            {t}
-          </span>
-        ))
-      ) : (
-        // No literal term matched, so the dense pass alone found this session.
-        // Said in a word rather than left to the bar: a lone amber bar with
-        // nothing beside it reads as a missing explanation, not as an answer.
-        <span className="spexr-df-match__term is-dense">by meaning</span>
+      {/*
+        Two named rows rather than one two-coloured bar: the bar carried the
+        split as a change of hue partway along three pixels, which nothing on
+        screen explained. Each pass now says its own name and its own number.
+      */}
+      <MatchRow kind="meaning" label="meaning" percent={shares.meaning} />
+      <MatchRow kind="words" label="words" percent={shares.words} />
+      {/*
+        No fallback chip when nothing matched literally: the words row already
+        reads 0%, and a "by meaning" chip beside it would say it twice.
+      */}
+      {match.terms.length > 0 && (
+        <span className="spexr-df-match__terms">
+          {match.terms.map((t) => (
+            <span key={t} className="spexr-df-match__term">
+              {t}
+            </span>
+          ))}
+        </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * One pass of the hybrid score: its name, how much of this hit it accounts for,
+ * and that same figure as a bar. A `span` grid, not a description list — the
+ * card around it is a `button`, which may only contain phrasing content.
+ */
+function MatchRow(props: {
+  kind: "meaning" | "words";
+  label: string;
+  percent: number;
+}): React.ReactElement {
+  const { kind, label, percent } = props;
+  return (
+    <span className="spexr-df-match__row" data-kind={kind}>
+      <span className="spexr-df-match__label">{label}</span>
+      <span className="spexr-df-match__track">
+        <span className="spexr-df-match__fill" style={{ width: `${percent}%` }} />
+      </span>
+      <span className="spexr-df-match__pct">{percent > 0 ? `${percent}%` : "—"}</span>
     </span>
   );
 }

@@ -10,6 +10,7 @@ import {
   launchTargets,
   projectDisplayName,
   defaultSessionName,
+  matchShares,
 } from "./darkfactory-format.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
 import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
@@ -365,5 +366,31 @@ describe("defaultSessionName", () => {
 
   test("is empty when the session says nothing at all", () => {
     expect(defaultSessionName(tile("a", "idle", false, 0, { goal: "", actionLine: "" }))).toBe("");
+  });
+});
+
+describe("matchShares", () => {
+  test("splits a mixed hit into the two passes that produced it", () => {
+    expect(matchShares({ score: 0.5, dense: 0.29, lexical: 0.21 })).toEqual({
+      meaning: 58,
+      words: 42,
+    });
+  });
+
+  test("gives the whole score to meaning when no literal term matched", () => {
+    expect(matchShares({ score: 0.4, dense: 0.4, lexical: 0 })).toEqual({ meaning: 100, words: 0 });
+  });
+
+  test("gives the whole score to words when the dense pass missed", () => {
+    expect(matchShares({ score: 0.2, dense: 0, lexical: 0.2 })).toEqual({ meaning: 0, words: 100 });
+  });
+
+  test("always sums to 100, so the two rows never contradict each other", () => {
+    const { meaning, words } = matchShares({ score: 0.3, dense: 0.1, lexical: 0.2 });
+    expect(meaning + words).toBe(100);
+  });
+
+  test("is empty for a hit with no score, rather than dividing by zero", () => {
+    expect(matchShares({ score: 0, dense: 0, lexical: 0 })).toEqual({ meaning: 0, words: 0 });
   });
 });
