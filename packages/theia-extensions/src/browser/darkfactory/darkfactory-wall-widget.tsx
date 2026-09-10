@@ -41,6 +41,7 @@ import {
   LaunchedSessionCard,
   type TileMatch,
 } from "./agent-tile.js";
+import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
 import { mosaicColumns, readWallLayout, writeWallLayout, type WallLayout } from "./wall-layout.js";
@@ -169,6 +170,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * offer projects an agent is already working in.
    */
   private recentProjects: string[] = [];
+
+  /**
+   * True while the wall is narrowed to the sessions whose prompt cache is about
+   * to expire. Deliberately not persisted: it answers "which ones do I resume in
+   * the next few minutes", a question that has gone stale by the next window.
+   */
+  private expiringOnly = false;
 
   /**
    * How the cards holding a live terminal are arranged; remembered across
@@ -535,6 +543,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private setTiles(tiles: AgentTile[]): void {
     this.tiles = tiles;
     this.loaded = true;
+    // Once the last expiring session has been dealt with, the narrowed wall has
+    // nothing left to say — leaving the mode armed would silently re-filter the
+    // wall an hour later, when some unrelated session enters its own window.
+    if (this.expiringOnly && expiringTiles(tiles, Date.now()).length === 0) this.expiringOnly = false;
     this.update();
     // Drop cached descriptions for sessions no longer on the wall (no unbounded growth).
     const live = new Set(tiles.map((t) => t.sessionId));
@@ -876,8 +888,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       return tile ? [tile] : [];
     });
     const rest = tiles.filter((t) => !this.pinned.includes(t.sessionId));
+    // Sessions minutes away from losing their prompt cache. Expanded cards are
+    // left out of the filter on purpose: they hold live terminals, and hiding
+    // one would tear down a running session to answer a question about idle ones.
+    const expiring = expiringTiles(rest, now);
+    const shown = this.expiringOnly && expiring.length > 0 ? expiring : rest;
     // Headers earn their space only once there is more than one project to tell apart.
-    const groups = groupTiles(rest, this.projectSwitch.currentProjectPath());
+    const groups = groupTiles(shown, this.projectSwitch.currentProjectPath());
     const currentProject = this.projectSwitch.currentProjectPath();
     // A trashed session stays out of results, and a pinned one is already on
     // screen as its own card — listing it twice would suggest two sessions.
@@ -906,6 +923,29 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             this.startNewSession(projectPath, harness, configDir)
           }
         />
+        {/*
+          The alert is withheld while a search is running: search already
+          replaces the grid, and a second filter competing with it would leave
+          the user unable to tell which one is hiding what.
+        */}
+        {expiring.length > 0 && !this.search.active && (
+          <div className="spexr-df-expiry">
+            <i className="codicon codicon-watch" />
+            <span className="spexr-df-expiry__text">
+              {expiring.length === 1 ? "1 session loses" : `${expiring.length} sessions lose`}
+              {` their prompt cache within ${EXPIRING_WINDOW_MS / 60_000} min — resuming after that re-sends the whole conversation.`}
+            </span>
+            <button
+              className="spexr-button"
+              onClick={() => {
+                this.expiringOnly = !this.expiringOnly;
+                this.update();
+              }}
+            >
+              {this.expiringOnly ? "Show all" : "Show them"}
+            </button>
+          </div>
+        )}
         <div className="spexr-df-search">
           <div className="spexr-df-search__box">
             <i className="codicon codicon-search spexr-df-search__icon" />

@@ -2878,6 +2878,39 @@ code {
   flex: none; font-family: var(--theia-code-font-family);
   font-size: var(--sl-text-xs); color: var(--sl-text-muted);
 }
+/*
+  Cache countdown — the harness chip's shape, in warning colour, so it reads as
+  the same kind of tag rather than a new species. Only ever drawn in the last
+  minutes of a session's prompt cache, which is why it can afford to be loud.
+*/
+.spexr-df-card__cache, .spexr-df-row__cache {
+  flex: none; display: inline-flex; align-items: center; gap: 0.25em;
+  padding: 0 var(--sl-space-1);
+  font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs);
+  color: var(--sl-status-warning); line-height: 1.5;
+}
+.spexr-df-card__cache {
+  border: 1px solid color-mix(in srgb, var(--sl-status-warning) 45%, transparent);
+  border-radius: var(--sl-radius-sm);
+  background: color-mix(in srgb, var(--sl-status-warning) 12%, transparent);
+}
+.spexr-df-card__cache .codicon, .spexr-df-row__cache .codicon { font-size: 0.9em; }
+
+/*
+  Expiry banner — a rule with a warning-tinted left edge rather than a filled
+  card, so a transient alert never competes with the wall's own cards for
+  attention. Sits above the search field and disappears with the last session
+  it is about.
+*/
+.spexr-df-expiry {
+  display: flex; align-items: center; gap: var(--sl-space-2);
+  margin: 0 0 var(--sl-space-2); padding: var(--sl-space-2) var(--sl-space-3);
+  border-left: 2px solid var(--sl-status-warning);
+  background: color-mix(in srgb, var(--sl-status-warning) 8%, transparent);
+  color: var(--sl-text-secondary); font-size: var(--sl-text-xs);
+}
+.spexr-df-expiry > .codicon { flex: none; color: var(--sl-status-warning); }
+.spexr-df-expiry__text { flex: 1 1 auto; min-width: 0; }
 /* The project this window has loaded — takes the place of the jump action. */
 .spexr-df-card__current {
   flex: none; align-self: center; padding: 0 var(--sl-space-1);

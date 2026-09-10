@@ -21,6 +21,18 @@ export interface FollowHandle {
 /** The set of agent CLIs SPEXR can drive. */
 export type HarnessId = "claude" | "opencode";
 
+/** What the last model call of a session says about its prompt cache. */
+export interface TranscriptCache {
+  /** Prefix size at that call: cache reads + cache writes + uncached input. */
+  contextTokens: number;
+  /**
+   * When that call finished, epoch ms. The cache TTL runs from when the call
+   * *started*, so any deadline derived from this is optimistic by that one
+   * call's generation time — seconds, occasionally a couple of minutes.
+   */
+  lastRequestMs: number;
+}
+
 /** Fields distilled from one session transcript, harness-independent. */
 export interface ParsedTranscript {
   cwd?: string;
@@ -38,6 +50,12 @@ export interface ParsedTranscript {
    * interactive (it has no headless flood today).
    */
   interactive: boolean;
+  /**
+   * Prompt-cache facts from the last model call in the scanned window. Absent
+   * when that window held no usage-bearing assistant entry — an old transcript
+   * tail, or a harness that does not report usage at all (opencode).
+   */
+  cache?: TranscriptCache;
 }
 
 /**

@@ -12,6 +12,28 @@ export type AgentState = "working" | "idle" | "done";
  */
 export const MAX_SESSION_NAME_CHARS = 100;
 
+/**
+ * How long a session's prompt cache survives without a request, in ms.
+ *
+ * Claude Code writes the conversation prefix with a one-hour TTL, and every
+ * request refreshes that timer for free — so an active session stays warm
+ * indefinitely and an idle one falls off a cliff at the hour. Measured over this
+ * machine's transcripts: resumes 5–60 minutes apart served ~99% of their context
+ * from cache; past 60 minutes, 2 of 66 did.
+ *
+ * It is a constant on purpose. `usage.cache_creation.ephemeral_*` reports the
+ * TTL per write, but the big one-hour write happens at session start — outside
+ * the head of the bounded read — while the last write in a transcript is usually
+ * a small five-minute one inserted after a server tool. Reading the flavour per
+ * session would therefore mislabel most sessions as five-minute and light the
+ * expiry chip on sessions that are still being worked in.
+ *
+ * The one case this misses: a session in usage overage drops to a five-minute
+ * TTL, and will go cold without ever being flagged. A missed alert, not a false
+ * one, which is the right way round.
+ */
+export const CACHE_TTL_MS = 60 * 60 * 1000;
+
 /** How the focus pane should present a session. */
 export type FocusKind = "resume-terminal" | "readonly-follow";
 
@@ -47,6 +69,19 @@ export interface AgentTile {
   accentId: number;
   /** The name the user gave this session; absent until they rename it. */
   customName?: string;
+  /**
+   * Conversation size at the last model call, in tokens — what resuming would
+   * re-send. Absent for sessions whose scanned window reported no usage.
+   */
+  contextTokens?: number;
+  /**
+   * When this session's prompt cache is expected to expire, epoch ms. An
+   * estimate, not a promise: a model switch, a changed tool set or an edit
+   * upstream of the prefix drops the cache early (~5% of resumes inside the
+   * window), and the anchor is when the last call finished rather than when it
+   * started, which leaves the estimate optimistic by one generation.
+   */
+  cacheDeadlineMs?: number;
 }
 
 /** Two-level AI description of a session, from the local model. */

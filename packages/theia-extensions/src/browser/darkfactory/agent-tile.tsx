@@ -16,6 +16,7 @@ import {
   matchShares,
 } from "./darkfactory-format.js";
 import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
+import { cacheFreshness, expiryLabel, formatTokens } from "./cache-freshness.js";
 import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
 import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.js";
 import type { WallLayout } from "./wall-layout.js";
@@ -106,6 +107,40 @@ function summaryLines(s: AgentSummary): { headline: string; sub: string } {
   const headline = s.overview || s.now;
   const sub = s.overview ? s.now : "";
   return { headline, sub };
+}
+
+/** How much conversation resuming this session would re-send; empty when unknown. */
+function contextNote(tile: AgentTile): string {
+  return tile.contextTokens === undefined ? "" : `${formatTokens(tile.contextTokens)} tokens of context`;
+}
+
+/**
+ * Countdown to the end of a session's prompt cache, drawn only in the last
+ * minutes of it. Opening the session refreshes that cache; letting it lapse
+ * means the next turn re-sends the whole conversation instead of reading it
+ * back. Deliberately not a control of its own — every card is already a button
+ * that resumes, and that is the action being asked for.
+ */
+function CacheChip(props: {
+  tile: AgentTile;
+  now: number;
+  /** Which BEM block the chip belongs to: the cards, or the condensed row. */
+  block: "card" | "row";
+}): React.ReactElement | null {
+  const { tile, now, block } = props;
+  const freshness = cacheFreshness(tile, now);
+  if (freshness?.kind !== "expiring") return null;
+  const left = expiryLabel(freshness.remainingMs);
+  const note = contextNote(tile);
+  return (
+    <span
+      className={`spexr-df-${block}__cache`}
+      title={`Prompt cache expires in about ${left} — open the session to keep it, or the next turn re-sends ${note || "the whole conversation"}`}
+    >
+      <i className="codicon codicon-watch" />
+      {left}
+    </span>
+  );
 }
 
 /** The single most important status word for a tile, with its visual class. */
@@ -389,7 +424,7 @@ export function AgentTileCard(props: {
       data-status={status.kind}
       style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
       onClick={() => onOpen(tile)}
-      title={tile.projectPath}
+      title={[tile.projectPath, contextNote(tile)].filter(Boolean).join("\n")}
     >
       <span className="spexr-df-card__head">
         <span className="spexr-df-card__led" />
@@ -417,6 +452,7 @@ export function AgentTileCard(props: {
         <span className="spexr-df-card__status" data-kind={status.kind}>
           {status.label}
         </span>
+        <CacheChip tile={tile} now={now} block="card" />
         <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
         {/* With no heading to sit beside, naming joins the row's other actions. */}
         {!heading && <RenameAction tile={tile} onRename={onRename} />}
@@ -620,6 +656,7 @@ export function AgentPinnedCard(props: {
           <span className="spexr-df-card__status" data-kind={status.kind}>
             {status.label}
           </span>
+          <CacheChip tile={tile} now={now} block="card" />
           <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
           <button
             className="spexr-df-pinned__close spexr-df-pinned__trash"
@@ -1017,7 +1054,7 @@ export function AgentCondensedRow(props: {
       data-status={status.kind}
       style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
       onClick={() => onOpen(tile)}
-      title={`${tile.projectPath} · ${status.label}`}
+      title={[`${tile.projectPath} · ${status.label}`, contextNote(tile)].filter(Boolean).join("\n")}
     >
       <span className="spexr-df-row__led" />
       {(showProject || tile.customName) && (
@@ -1031,6 +1068,7 @@ export function AgentCondensedRow(props: {
           {status.label}
         </span>
       )}
+      <CacheChip tile={tile} now={now} block="row" />
       <time className="spexr-df-row__time">{relativeTime(tile.lastActivityMs, now)}</time>
       {onTrash && <TrashAction tile={tile} mode="trash" onAct={onTrash} />}
       {onRestore && <TrashAction tile={tile} mode="restore" onAct={onRestore} />}

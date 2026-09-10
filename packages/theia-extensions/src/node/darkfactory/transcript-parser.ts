@@ -1,4 +1,4 @@
-import type { ParsedTranscript } from "../../common/harness/harness-types.js";
+import type { ParsedTranscript, TranscriptCache } from "../../common/harness/harness-types.js";
 
 export type { ParsedTranscript } from "../../common/harness/harness-types.js";
 
@@ -40,6 +40,30 @@ function toolName(content: unknown): string | undefined {
   return undefined;
 }
 
+/** A finite number, or 0 — token counts arrive untyped and sometimes missing. */
+function tokenCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Prefix size and finish time of one model call, read off its `usage` block.
+ * Undefined unless both are usable: a call that reports no tokens says nothing
+ * about the cache, and a deadline cannot be built on an unparseable timestamp.
+ */
+function cacheFacts(usage: unknown, timestamp: unknown): TranscriptCache | undefined {
+  if (!usage || typeof usage !== "object") return undefined;
+  const u = usage as Record<string, unknown>;
+  const contextTokens =
+    tokenCount(u.cache_read_input_tokens) +
+    tokenCount(u.cache_creation_input_tokens) +
+    tokenCount(u.input_tokens);
+  if (contextTokens <= 0) return undefined;
+  if (typeof timestamp !== "string") return undefined;
+  const lastRequestMs = Date.parse(timestamp);
+  if (Number.isNaN(lastRequestMs)) return undefined;
+  return { contextTokens, lastRequestMs };
+}
+
 /**
  * Parse transcript lines into display fields. Lines that are not valid JSON, or
  * do not match a known shape, are skipped — never throw.
@@ -65,7 +89,7 @@ export function parseTranscript(lines: string[]): ParsedTranscript {
       out.permissionMode = e.permissionMode;
       out.interactive = true;
     }
-    const msg = e.message as { role?: string; content?: unknown } | undefined;
+    const msg = e.message as { role?: string; content?: unknown; usage?: unknown } | undefined;
     if (msg?.role === "user") {
       const text = userText(msg.content);
       if (typeof text === "string" && isGenuinePrompt(e.isMeta === true, text)) {
@@ -77,6 +101,14 @@ export function parseTranscript(lines: string[]): ParsedTranscript {
     } else if (msg?.role === "assistant") {
       const tool = toolName(msg.content);
       if (tool) out.lastTool = tool;
+      // Every model call reports usage; the last one describes the cache the
+      // next turn would either read or have to rebuild. A subagent's calls are
+      // skipped: they run against their own, much smaller prompt cache, and
+      // taking their numbers would understate the session's own context.
+      if (e.isSidechain !== true) {
+        const cache = cacheFacts(msg.usage, e.timestamp);
+        if (cache) out.cache = cache;
+      }
     }
   }
   return out;
