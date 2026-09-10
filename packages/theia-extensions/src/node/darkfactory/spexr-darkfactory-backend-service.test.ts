@@ -12,19 +12,24 @@ import { stitchBoundedLines } from "./bounded-read.js";
 import { configDirs as discoverConfigDirs } from "./config-dirs.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
 import type { AgentTile, SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
-import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
+import {
+  MAX_PROJECT_NAME_CHARS,
+  MAX_SESSION_NAME_CHARS,
+} from "../../common/darkfactory-protocol.js";
 
 const NOW = 100 * 3_600_000;
 
 // Every service built here would otherwise read the developer's real
-// ~/.spexr/session-names.json when it builds tiles.
+// ~/.spexr/session-names.json and ~/.spexr/project-names.json when it builds tiles.
 let namesDir: string;
 beforeAll(async () => {
   namesDir = await mkdtemp(join(tmpdir(), "spexr-df-names-"));
   process.env["SPEXR_SESSION_NAMES"] = join(namesDir, "session-names.json");
+  process.env["SPEXR_PROJECT_NAMES"] = join(namesDir, "project-names.json");
 });
 afterAll(async () => {
   delete process.env["SPEXR_SESSION_NAMES"];
+  delete process.env["SPEXR_PROJECT_NAMES"];
   await rm(namesDir, { recursive: true, force: true });
 });
 
@@ -906,6 +911,148 @@ describe("renameSession", () => {
     const { s, pushed, dir } = await namedSvc();
     try {
       await s.renameSession("never-scanned", "Old work");
+      expect(pushed).toEqual([]);
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("renameProject", () => {
+  /** Two sessions in one project, plus one in another, so a rename has a scope to respect. */
+  function ref(sessionId: string, cwd: string) {
+    return {
+      harness: claudeHarness,
+      ref: {
+        sessionId,
+        projectPath: "",
+        mtimeMs: NOW - 5_000,
+        loadEntries: async () => [
+          { type: "mode", mode: "normal" },
+          {
+            cwd,
+            type: "assistant",
+            message: {
+              role: "assistant",
+              content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/a.ts" } }],
+            },
+          },
+        ],
+      },
+      claude: {
+        sessionId,
+        transcriptPath: `/PD/-p/${sessionId}.jsonl`,
+        configDir: "/Users/x/.claude",
+        mtimeMs: NOW - 5_000,
+        readLines: () => Promise.resolve([]),
+      },
+    };
+  }
+
+  async function projectSvc(): Promise<{
+    s: ReturnType<typeof svc>;
+    pushed: AgentTile[][];
+    dir: string;
+  }> {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-project-rename-"));
+    const s = svc({
+      projectNamesPath: join(dir, "projects.json"),
+      listTranscripts: () =>
+        Promise.resolve([
+          ref("a", "/Users/x/src/proj"),
+          ref("b", "/Users/x/src/proj"),
+          ref("c", "/Users/x/src/other"),
+        ]),
+    });
+    const pushed: AgentTile[][] = [];
+    s.setClient({
+      onTilesChanged: (tiles) => pushed.push(tiles),
+      onFollowChunk: () => {},
+      onSessionIndexProgress: () => {},
+    } as SpexrDarkfactoryClient);
+    return { s, pushed, dir };
+  }
+
+  const named = (tiles: AgentTile[], id: string) =>
+    tiles.find((t) => t.sessionId === id)!.projectCustomName;
+
+  it("names every session of the project in one push, and leaves the others alone", async () => {
+    const { s, pushed, dir } = await projectSvc();
+    try {
+      await s.listTiles();
+      pushed.length = 0;
+      await s.renameProject("/Users/x/src/proj", "  Day job  ");
+      expect(pushed).toHaveLength(1);
+      expect(named(pushed[0]!, "a")).toBe("Day job");
+      expect(named(pushed[0]!, "b")).toBe("Day job");
+      expect(named(pushed[0]!, "c")).toBeUndefined();
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("survives a restart, because the name is on disk and not in the tile", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-project-rename-"));
+    try {
+      const first = svc({ projectNamesPath: join(dir, "projects.json") });
+      await first.listTiles();
+      await first.renameProject("/Users/x/src/proj", "Day job");
+      first.dispose();
+
+      const second = svc({ projectNamesPath: join(dir, "projects.json") });
+      expect((await second.listTiles())[0]!.projectCustomName).toBe("Day job");
+      second.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("matches the project despite a trailing slash on the path it is given", async () => {
+    const { s, dir } = await projectSvc();
+    try {
+      await s.listTiles();
+      await s.renameProject("/Users/x/src/proj/", "Day job");
+      expect(named(await s.listTiles(), "a")).toBe("Day job");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("clears the name on an empty string, leaving the folder name to stand", async () => {
+    const { s, pushed, dir } = await projectSvc();
+    try {
+      await s.listTiles();
+      await s.renameProject("/Users/x/src/proj", "Day job");
+      await s.renameProject("/Users/x/src/proj", "   ");
+      expect(pushed.at(-1)!.find((t) => t.sessionId === "a")).not.toHaveProperty("projectCustomName");
+      expect((await s.listTiles()).find((t) => t.sessionId === "a")).not.toHaveProperty(
+        "projectCustomName",
+      );
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("caps a name at the width a group header can carry", async () => {
+    const { s, dir } = await projectSvc();
+    try {
+      await s.listTiles();
+      await s.renameProject("/Users/x/src/proj", "x".repeat(200));
+      expect(named(await s.listTiles(), "a")).toHaveLength(MAX_PROJECT_NAME_CHARS);
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stores a name for a project the wall has not scanned, and pushes nothing", async () => {
+    const { s, pushed, dir } = await projectSvc();
+    try {
+      await s.renameProject("/Users/x/src/never-scanned", "Old work");
       expect(pushed).toEqual([]);
       s.dispose();
     } finally {

@@ -2799,6 +2799,8 @@ code {
 /* The folder action reveals on card hover; in a header there is no card to hover. */
 .spexr-df-group__bar .spexr-df-card__open { opacity: 0; }
 .spexr-df-group__bar:hover .spexr-df-card__open { opacity: 1; }
+/* The pencil that renames the project rides the same header hover as the folder action. */
+.spexr-df-group__bar:hover .spexr-df-card__rename { opacity: 1; }
 
 /*
  * Sessions the user has set aside. It sits below every project group and is muted

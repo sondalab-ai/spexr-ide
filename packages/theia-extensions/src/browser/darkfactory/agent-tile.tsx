@@ -13,6 +13,7 @@ import {
   stateLabel,
   relativeTime,
   projectDisplayName,
+  projectLabel,
   matchShares,
 } from "./darkfactory-format.js";
 import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
@@ -209,6 +210,31 @@ function RenameAction(props: {
 }
 
 /**
+ * Rename the project a group stands for. Kept next to the group's own name and
+ * apart from a session's pencil: this one renames every card under the header,
+ * not the one it was clicked from.
+ */
+function RenameProjectAction(props: {
+  group: TileGroup;
+  onRename: (g: TileGroup) => void;
+}): React.ReactElement {
+  const { group, onRename } = props;
+  return (
+    <span
+      className="spexr-df-card__rename"
+      role="button"
+      title={group.customName ? "Rename this project" : "Name this project"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onRename(group);
+      }}
+    >
+      <i className="codicon codicon-edit" />
+    </span>
+  );
+}
+
+/**
  * Move a session to the trash, or take it back out. A `span` for the same reason
  * as {@link OpenProjectAction}: the card and the condensed row are both buttons.
  * Nothing on disk is touched — the trash is only the wall's way of forgetting a
@@ -250,8 +276,9 @@ export function AgentGroupHeader(props: {
   collapsed: boolean;
   onToggle: (projectPath: string) => void;
   onOpenProject: (t: AgentTile) => void;
+  onRename: (g: TileGroup) => void;
 }): React.ReactElement {
-  const { group, collapsed, onToggle, onOpenProject } = props;
+  const { group, collapsed, onToggle, onOpenProject, onRename } = props;
   const head = group.tiles[0]!;
   // Same precedence as a tile's own status: a failure outranks a wait, and the two
   // keep the wall's colours apart — accent for waiting, danger for failed.
@@ -276,6 +303,7 @@ export function AgentGroupHeader(props: {
       <span className="spexr-df-group__name" title={group.projectPath}>
         {group.label}
       </span>
+      <RenameProjectAction group={group} onRename={onRename} />
       {group.isCurrent ? <CurrentProjectChip /> : <OpenProjectAction tile={head} onOpenProject={onOpenProject} />}
       <span className="spexr-df-group__count">
         {group.tiles.length} {group.tiles.length === 1 ? "session" : "sessions"}
@@ -412,7 +440,7 @@ export function AgentTileCard(props: {
   const status = statusOf(tile);
   // Inside a project group the header already names the project, so an unnamed
   // card there has no heading of its own.
-  const heading = tile.customName || (showProject ? tile.projectName : "");
+  const heading = tile.customName || (showProject ? projectLabel(tile) : "");
   const primary = capitalize(tile.goal || tile.actionLine);
   const expandable = primary.length > 90;
   const ai = summary && !summary.loading ? summaryLines(summary.summary) : undefined;
@@ -648,7 +676,7 @@ export function AgentPinnedCard(props: {
         <div className="spexr-df-pinned__head">
           <span className="spexr-df-card__led" />
           <span className="spexr-df-pinned__project" title={tile.projectPath}>
-            {tile.customName || tile.projectName}
+            {tile.customName || projectLabel(tile)}
           </span>
           <RenameAction tile={tile} onRename={onRename} />
           {isCurrent && <CurrentProjectChip />}
@@ -1058,7 +1086,7 @@ export function AgentCondensedRow(props: {
     >
       <span className="spexr-df-row__led" />
       {(showProject || tile.customName) && (
-        <span className="spexr-df-row__project">{tile.customName || tile.projectName}</span>
+        <span className="spexr-df-row__project">{tile.customName || projectLabel(tile)}</span>
       )}
       {showProject && isCurrent && <CurrentProjectChip />}
       <span className="spexr-df-row__harness">{tile.harness}</span>

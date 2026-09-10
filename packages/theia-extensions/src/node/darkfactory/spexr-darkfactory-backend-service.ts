@@ -30,6 +30,7 @@ import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
 import { indexedText, type SessionRecord } from "./session-index.js";
 import { hashDoc } from "./session-indexer.js";
 import { loadSessionNames, saveSessionNames } from "./session-names-store.js";
+import { loadProjectNames, projectNameKey, saveProjectNames } from "./project-names-store.js";
 import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
 import { rankSessions, type RankedSession } from "./session-query.js";
 import { readFirstPrompt } from "./session-goal.js";
@@ -55,7 +56,10 @@ import type {
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
 } from "../../common/darkfactory-protocol.js";
-import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
+import {
+  MAX_PROJECT_NAME_CHARS,
+  MAX_SESSION_NAME_CHARS,
+} from "../../common/darkfactory-protocol.js";
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
@@ -160,6 +164,8 @@ export interface DarkfactoryDeps {
   sessionIndexPath?: string;
   /** Session-name store override, so tests never touch the real home directory. */
   sessionNamesPath?: string;
+  /** Project-name store override, so tests never touch the real home directory. */
+  projectNamesPath?: string;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -192,6 +198,19 @@ function matchOf({ score, dense, lexical, terms }: RankedSession): Omit<SessionH
 function nameOf(names: Map<string, string>, sessionId: string): { customName?: string } {
   const name = names.get(sessionId);
   return name ? { customName: name } : {};
+}
+
+/**
+ * The stored project name as a spreadable fragment, the project-level twin of
+ * {@link nameOf}. Keyed through {@link projectNameKey} because a transcript's
+ * `cwd` and the path the header sends back need not agree on a trailing slash.
+ */
+function projectNameOf(
+  names: Map<string, string>,
+  projectPath: string,
+): { projectCustomName?: string } {
+  const name = names.get(projectNameKey(projectPath));
+  return name ? { projectCustomName: name } : {};
 }
 
 @injectable()
@@ -249,8 +268,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
   private readonly sessionIndexPath: string | undefined;
   private readonly sessionNamesPath: string | undefined;
+  private readonly projectNamesPath: string | undefined;
   /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
   private sessionNames?: Promise<Map<string, string>>;
+  /** projectPath → the name the user gave it; loaded once, then kept in step with writes. */
+  private projectNames?: Promise<Map<string, string>>;
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
@@ -286,6 +308,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.embed = d.embed;
     this.sessionIndexPath = d.sessionIndexPath;
     this.sessionNamesPath = d.sessionNamesPath;
+    this.projectNamesPath = d.projectNamesPath;
     if (this.embed) {
       setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
     }
@@ -422,10 +445,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
-    const [allRefs, live, names] = await Promise.all([
+    const [allRefs, live, names, projectNames] = await Promise.all([
       this.listTranscripts(),
       this.cachedLiveDirs(),
       this.loadNames(),
+      this.loadProjectNames(),
     ]);
     const now = this.now();
     // Only read the newest sessions — history is huge and reading it all stalls
@@ -492,6 +516,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYouCertain,
         hashToIndex,
         ...nameOf(names, ref.sessionId),
+        ...projectNameOf(projectNames, cwd),
       });
       this.lastTiles.set(ref.sessionId, tile);
       tiles.push(tile);
@@ -567,7 +592,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
     if (archived.length > 0) {
       const refs = new Map((await this.cachedTranscripts()).map((u) => [u.ref.sessionId, u]));
-      const [live, names] = await Promise.all([this.cachedLiveDirs(), this.loadNames()]);
+      const [live, names, projectNames] = await Promise.all([
+        this.cachedLiveDirs(),
+        this.loadNames(),
+        this.loadProjectNames(),
+      ]);
       const now = this.now();
       const built: SessionHit[] = [];
       await fanOut(archived, PARSE_CONCURRENCY, async (sessionId) => {
@@ -608,6 +637,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYouCertain,
             hashToIndex,
             ...nameOf(names, sessionId),
+            ...projectNameOf(projectNames, p.cwd),
           }),
           ...matchOf(scored.get(sessionId)!),
           archived: true,
@@ -652,6 +682,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     return this.sessionNames;
   }
 
+  private loadProjectNames(): Promise<Map<string, string>> {
+    if (!this.projectNames) this.projectNames = loadProjectNames(this.projectNamesPath);
+    return this.projectNames;
+  }
+
   /**
    * Name a session, or clear the name when `name` is blank. The tiles the last
    * scan produced are patched in place and pushed, so the card renames now
@@ -672,6 +707,34 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const { customName: _dropped, ...rest } = tile;
     this.lastTiles.set(sessionId, trimmed ? { ...rest, customName: trimmed } : rest);
     this.client?.onTilesChanged([...this.lastTiles.values()]);
+  }
+
+  /**
+   * Name a project, or clear the name when `name` is blank. Every tile of the
+   * project is patched, not just one: the name stands on the group header and on
+   * each of its cards, so renaming one member would show the wall two names for
+   * the same project until the next scan.
+   *
+   * The search index is left alone. A project name is a label on the wall, not
+   * part of what a session says it did — reindexing would rebuild every record
+   * of the project for a string no query is asked to match.
+   */
+  async renameProject(projectPath: string, name: string): Promise<void> {
+    const names = await this.loadProjectNames();
+    const key = projectNameKey(projectPath);
+    const trimmed = name.trim().slice(0, MAX_PROJECT_NAME_CHARS);
+    if (trimmed) names.set(key, trimmed);
+    else names.delete(key);
+    await saveProjectNames(names, this.projectNamesPath);
+
+    let changed = false;
+    for (const [sessionId, tile] of this.lastTiles) {
+      if (projectNameKey(tile.projectPath) !== key) continue;
+      const { projectCustomName: _dropped, ...rest } = tile;
+      this.lastTiles.set(sessionId, trimmed ? { ...rest, projectCustomName: trimmed } : rest);
+      changed = true;
+    }
+    if (changed) this.client?.onTilesChanged([...this.lastTiles.values()]);
   }
 
   /**
