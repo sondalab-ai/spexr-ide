@@ -11,6 +11,8 @@ import {
 import { stitchBoundedLines } from "./bounded-read.js";
 import { configDirs as discoverConfigDirs } from "./config-dirs.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
+import { loadSessionNames } from "./session-names-store.js";
+import { loadProjectNames } from "./project-names-store.js";
 import type { AgentTile, SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
 import {
   MAX_PROJECT_NAME_CHARS,
@@ -1055,6 +1057,167 @@ describe("renameProject", () => {
       await s.renameProject("/Users/x/src/never-scanned", "Old work");
       expect(pushed).toEqual([]);
       s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the name sweep", () => {
+  /** A clock the test moves, so a second sweep can come due without waiting ten minutes. */
+  function clock(): { now: () => number; advance: (ms: number) => void } {
+    let at = NOW;
+    return { now: () => at, advance: (ms) => (at += ms) };
+  }
+
+  const TEN_MINUTES = 10 * 60_000;
+
+  /** A session of some other project, so a scan can be short of `s1` without being empty. */
+  function otherRef(sessionId: string) {
+    return {
+      harness: claudeHarness,
+      ref: {
+        sessionId,
+        projectPath: "",
+        mtimeMs: NOW - 5_000,
+        loadEntries: async () => [{ cwd: "/Users/x/src/other", type: "user", message: { role: "user", content: "hi" } }],
+      },
+      claude: {
+        sessionId,
+        transcriptPath: `/PD/-other/${sessionId}.jsonl`,
+        configDir: "/Users/x/.claude",
+        mtimeMs: NOW - 5_000,
+        readLines: () => Promise.resolve([]),
+      },
+    };
+  }
+
+  async function storeDir(): Promise<string> {
+    return mkdtemp(join(tmpdir(), "spexr-df-sweep-"));
+  }
+
+  it("forgets the name of a session whose transcript is gone, once a second sweep agrees", async () => {
+    const dir = await storeDir();
+    const namesPath = join(dir, "names.json");
+    try {
+      const c = clock();
+      const named = svc({ now: c.now, sessionNamesPath: namesPath });
+      await named.listTiles();
+      await named.renameSession("s1", "Typography fix");
+      named.dispose();
+
+      const gone = svc({
+        now: c.now,
+        sessionNamesPath: namesPath,
+        listTranscripts: () => Promise.resolve([otherRef("s2")]),
+      });
+      await gone.listTiles(); // first strike: the name is kept
+      expect((await loadSessionNames(namesPath)).get("s1")).toBe("Typography fix");
+      c.advance(TEN_MINUTES + 1);
+      await gone.listTiles(); // second strike: the name goes
+      expect(await loadSessionNames(namesPath)).toEqual(new Map());
+      gone.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a name the sweep has missed only once, so a flaky scan costs nothing", async () => {
+    const dir = await storeDir();
+    const namesPath = join(dir, "names.json");
+    try {
+      const c = clock();
+      const named = svc({ now: c.now, sessionNamesPath: namesPath });
+      await named.listTiles();
+      await named.renameSession("s1", "Typography fix");
+      named.dispose();
+
+      const flaky = svc({
+        now: c.now,
+        sessionNamesPath: namesPath,
+        listTranscripts: () => Promise.resolve([otherRef("s2")]),
+      });
+      await flaky.listTiles();
+      c.advance(TEN_MINUTES + 1);
+      flaky.dispose();
+
+      // The session is back on the second sweep: the first strike is forgotten.
+      const back = svc({ now: c.now, sessionNamesPath: namesPath });
+      await back.listTiles();
+      expect((await loadSessionNames(namesPath)).get("s1")).toBe("Typography fix");
+      back.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps every name when the scan came back empty, which is never proof", async () => {
+    const dir = await storeDir();
+    const namesPath = join(dir, "names.json");
+    try {
+      const c = clock();
+      const named = svc({ now: c.now, sessionNamesPath: namesPath });
+      await named.listTiles();
+      await named.renameSession("s1", "Typography fix");
+      named.dispose();
+
+      const blind = svc({
+        now: c.now,
+        sessionNamesPath: namesPath,
+        listTranscripts: () => Promise.resolve([]),
+      });
+      await blind.listTiles();
+      c.advance(TEN_MINUTES + 1);
+      await blind.listTiles();
+      expect((await loadSessionNames(namesPath)).get("s1")).toBe("Typography fix");
+      blind.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("forgets the name of a project whose folder was deleted", async () => {
+    const dir = await storeDir();
+    const projectsPath = join(dir, "projects.json");
+    try {
+      const c = clock();
+      const named = svc({ now: c.now, projectNamesPath: projectsPath });
+      await named.listTiles();
+      await named.renameProject("/Users/x/src/proj", "Day job");
+      named.dispose();
+
+      const swept = svc({
+        now: c.now,
+        projectNamesPath: projectsPath,
+        // The project folder is gone; its parent is still there.
+        dirExists: (p) => Promise.resolve(p === "/Users/x/src"),
+      });
+      await swept.listTiles();
+      expect(await loadProjectNames(projectsPath)).toEqual(new Map());
+      swept.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a project name when the parent is unreachable too, as an unplugged volume is", async () => {
+    const dir = await storeDir();
+    const projectsPath = join(dir, "projects.json");
+    try {
+      const c = clock();
+      const named = svc({ now: c.now, projectNamesPath: projectsPath });
+      await named.listTiles();
+      await named.renameProject("/Users/x/src/proj", "Day job");
+      named.dispose();
+
+      const swept = svc({
+        now: c.now,
+        projectNamesPath: projectsPath,
+        dirExists: () => Promise.resolve(false),
+      });
+      await swept.listTiles();
+      expect((await loadProjectNames(projectsPath)).get("/Users/x/src/proj")).toBe("Day job");
+      swept.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,7 +1,7 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { execFile } from "node:child_process";
 import { Session as InspectorSession } from "node:inspector";
@@ -31,6 +31,7 @@ import { indexedText, type SessionRecord } from "./session-index.js";
 import { hashDoc } from "./session-indexer.js";
 import { loadSessionNames, saveSessionNames } from "./session-names-store.js";
 import { loadProjectNames, projectNameKey, saveProjectNames } from "./project-names-store.js";
+import { staleProjectNames, staleSessionNames } from "./stale-names.js";
 import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
 import { rankSessions, type RankedSession } from "./session-query.js";
 import { readFirstPrompt } from "./session-goal.js";
@@ -120,6 +121,15 @@ const LIVE_DIRS_TTL_MS = 15_000;
 const POLL_INTERVAL_MS = 20_000;
 
 /**
+ * How often the name stores are swept for entries that name nothing any more.
+ * Far longer than a poll, because the sweep's protection against a scan that
+ * came back short is that a session must be missing from two sweeps in a row:
+ * spacing them makes a directory that is briefly unreadable a much weaker
+ * coincidence than two polls twenty seconds apart would be.
+ */
+const NAME_PRUNE_INTERVAL_MS = 10 * 60_000;
+
+/**
  * Config-dir discovery freshness floor. Discovery is a `readdirSync` of $HOME
  * plus a `statSync` per `.claude*` entry, and it now sits on the `listTiles`
  * path — which the 400ms-debounced watcher drives, not just the poll. Kept
@@ -166,6 +176,8 @@ export interface DarkfactoryDeps {
   sessionNamesPath?: string;
   /** Project-name store override, so tests never touch the real home directory. */
   projectNamesPath?: string;
+  /** Directory-existence seam used by the name sweep (default: a `stat` that must say "directory"). */
+  dirExists?: (path: string) => Promise<boolean>;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -205,6 +217,19 @@ function nameOf(names: Map<string, string>, sessionId: string): { customName?: s
  * {@link nameOf}. Keyed through {@link projectNameKey} because a transcript's
  * `cwd` and the path the header sends back need not agree on a trailing slash.
  */
+/**
+ * Production directory check for the name sweep. A path that is not a directory
+ * — or that cannot be read at all — answers false, which the sweep reads as
+ * "gone" only when the parent answered true.
+ */
+async function defaultDirExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function projectNameOf(
   names: Map<string, string>,
   projectPath: string,
@@ -273,6 +298,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private sessionNames?: Promise<Map<string, string>>;
   /** projectPath → the name the user gave it; loaded once, then kept in step with writes. */
   private projectNames?: Promise<Map<string, string>>;
+  private readonly dirExists: (path: string) => Promise<boolean>;
+  /** When the name stores were last swept; 0 so the first scan opens the first sweep. */
+  private lastNamePruneAt = 0;
+  /** Named sessions the previous sweep could not find — the second strike the sweep waits for. */
+  private missingSessionNames: ReadonlySet<string> = new Set();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
@@ -309,6 +339,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.sessionIndexPath = d.sessionIndexPath;
     this.sessionNamesPath = d.sessionNamesPath;
     this.projectNamesPath = d.projectNamesPath;
+    this.dirExists = d.dirExists ?? defaultDirExists;
     if (this.embed) {
       setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
     }
@@ -526,7 +557,63 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     for (const id of this.summaryCache.keys()) {
       if (!this.index.has(id)) this.summaryCache.delete(id);
     }
+    // The names on disk get the same treatment, on a much longer clock. A failed
+    // sweep must not fail the scan: the wall is what the user asked for.
+    await this.pruneNames(allRefs).catch(() => {});
     return tiles;
+  }
+
+  /**
+   * Drop stored names that no longer name anything — a session whose transcript
+   * the user deleted, a project whose folder is gone. Without this a name is
+   * kept for the life of the machine, since nothing else ever revisits the file.
+   *
+   * Runs on the full enumeration, not the {@link RECENT_LIMIT} slice the wall
+   * renders: judging by the slice would drop the name of every session older
+   * than the sixty most recent. See {@link staleSessionNames} for why a single
+   * absence is not enough to delete anything.
+   */
+  private async pruneNames(allRefs: UnifiedRef[]): Promise<void> {
+    const now = this.now();
+    if (now - this.lastNamePruneAt < NAME_PRUNE_INTERVAL_MS) return;
+    this.lastNamePruneAt = now;
+
+    const [names, projectNames] = await Promise.all([this.loadNames(), this.loadProjectNames()]);
+
+    const enumerated = new Set(allRefs.map((u) => u.ref.sessionId));
+    const { drop, missingNow } = staleSessionNames(names, enumerated, this.missingSessionNames);
+    this.missingSessionNames = missingNow;
+    if (drop.length > 0) {
+      for (const id of drop) names.delete(id);
+      await saveSessionNames(names, this.sessionNamesPath);
+    }
+
+    const gone = staleProjectNames(projectNames, await this.projectDirState([...projectNames.keys()]));
+    if (gone.length > 0) {
+      for (const path of gone) projectNames.delete(path);
+      await saveProjectNames(projectNames, this.projectNamesPath);
+    }
+  }
+
+  /**
+   * Whether each named project — and its parent folder — is still on disk. The
+   * parent is what tells a deleted project from an unreachable one: an unplugged
+   * volume takes the parent with it, and a name there is not the user's doing.
+   */
+  private async projectDirState(
+    paths: string[],
+  ): Promise<Map<string, { exists: boolean; parentExists: boolean }>> {
+    const state = new Map<string, { exists: boolean; parentExists: boolean }>();
+    await Promise.all(
+      paths.map(async (path) => {
+        const [exists, parentExists] = await Promise.all([
+          this.dirExists(path),
+          this.dirExists(dirname(path)),
+        ]);
+        state.set(path, { exists, parentExists });
+      }),
+    );
+    return state;
   }
 
   /**
