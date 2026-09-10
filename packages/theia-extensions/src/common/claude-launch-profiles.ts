@@ -116,6 +116,94 @@ function exportFor(configDir: string): string {
 }
 
 /**
+ * An account once it has been decided: the profile that starts it, when one is
+ * configured for it, and the config dir it runs under.
+ *
+ * `configDir` is empty for the default account, which is named by *not* setting
+ * CLAUDE_CONFIG_DIR rather than by setting it to `~/.claude` — see `exportFor`.
+ */
+export interface ResolvedAccount {
+  readonly profile?: ClaudeLaunchProfile;
+  readonly configDir: string;
+}
+
+/** The account Claude uses when CLAUDE_CONFIG_DIR is left unset. */
+export const DEFAULT_ACCOUNT: ResolvedAccount = { configDir: "" };
+
+/** Value of the active-account preference that names the default account. */
+export const DEFAULT_ACCOUNT_ID = "default";
+
+/** Returned when the user has to pick, because more than one account exists. */
+export const AMBIGUOUS_ACCOUNT = "ambiguous";
+
+/**
+ * The account a config dir names.
+ *
+ * An empty config dir is the default account and deliberately matches no
+ * profile: a profile bound to `~/.claude` describes a *wrapper* for that
+ * account, and picking it up here would start a session under a command the
+ * caller never asked for.
+ */
+export function accountForConfigDir(
+  profiles: readonly ClaudeLaunchProfile[],
+  configDir: string,
+): ResolvedAccount {
+  const profile = profileForConfigDir(profiles, configDir);
+  return profile ? { profile, configDir } : { configDir: configDir.trim() };
+}
+
+/**
+ * The account SPEXR should run Claude under, or {@link AMBIGUOUS_ACCOUNT} when
+ * only the user can say.
+ *
+ * The stored choice names a profile by label, so the profile stays the single
+ * source of truth for the command, the config dir, and who exports it. A label
+ * that no longer names a profile — renamed, deleted — is not honoured silently:
+ * it falls through to the same rules as an unmade choice, which re-asks when
+ * there is anything to ask about and heals the stale value.
+ *
+ * @param activeProfile  Stored choice: a profile label, {@link DEFAULT_ACCOUNT_ID}, or empty.
+ * @param profiles       Launch profiles configured for this machine.
+ */
+export function resolveAccount(
+  activeProfile: string,
+  profiles: readonly ClaudeLaunchProfile[],
+): ResolvedAccount | typeof AMBIGUOUS_ACCOUNT {
+  const chosen = activeProfile.trim().toLowerCase();
+  if (chosen === DEFAULT_ACCOUNT_ID) return DEFAULT_ACCOUNT;
+  const match = profiles.find((p) => p.label.trim().toLowerCase() === chosen);
+  if (match) return { profile: match, configDir: match.configDir };
+  if (profiles.length === 0) return DEFAULT_ACCOUNT;
+  if (profiles.length === 1) return { profile: profiles[0]!, configDir: profiles[0]!.configDir };
+  return AMBIGUOUS_ACCOUNT;
+}
+
+/**
+ * How to start Claude for a decided account.
+ *
+ * The account's profile wins over the executable-path preference, and a profile
+ * that sets CLAUDE_CONFIG_DIR itself suppresses the export so the two cannot
+ * disagree. With no profile the behaviour is what it was before profiles
+ * existed: the configured path, or a bare `claude`.
+ *
+ * @param account         The account to run under.
+ * @param executablePath  `spexr.claude.executablePath`, for a binary a profile
+ *                        cannot name (a path with spaces, say).
+ */
+export function launchPlanFor(account: ResolvedAccount, executablePath: string): LaunchPlan {
+  const { profile, configDir } = account;
+  if (profile) {
+    return {
+      command: profile.command,
+      exportConfigDir: profile.ownsConfigDir ? "" : exportFor(configDir),
+      unquoted: true,
+    };
+  }
+  const exe = executablePath.trim();
+  return { command: exe || "claude", exportConfigDir: exportFor(configDir), unquoted: !exe };
+}
+
+/**
  * Decide how to launch Claude for a config dir.
  *
  * A profile wins over the executable-path preference, and a profile that sets
