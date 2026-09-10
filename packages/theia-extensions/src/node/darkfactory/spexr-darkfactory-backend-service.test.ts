@@ -1151,6 +1151,31 @@ describe("the name sweep", () => {
     }
   });
 
+  it("gives a name typed between two sweeps its strikes back, rather than deleting it", async () => {
+    const dir = await storeDir();
+    const namesPath = join(dir, "names.json");
+    try {
+      const c = clock();
+      // The scan never sees `s1`: naming a session whose transcript is not
+      // written yet is supported, and it is the case this regression is about.
+      const s = svc({
+        now: c.now,
+        sessionNamesPath: namesPath,
+        listTranscripts: () => Promise.resolve([otherRef("s2")]),
+      });
+      await s.renameSession("s1", "Typography fix");
+      await s.listTiles(); // first strike
+
+      c.advance(TEN_MINUTES + 1);
+      await s.renameSession("s1", "Typography fix, take two"); // the strike is spent
+      await s.listTiles();
+      expect((await loadSessionNames(namesPath)).get("s1")).toBe("Typography fix, take two");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps every name when the scan came back empty, which is never proof", async () => {
     const dir = await storeDir();
     const namesPath = join(dir, "names.json");

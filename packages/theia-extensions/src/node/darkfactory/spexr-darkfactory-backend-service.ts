@@ -302,7 +302,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /** When the name stores were last swept; 0 so the first scan opens the first sweep. */
   private lastNamePruneAt = 0;
   /** Named sessions the previous sweep could not find — the second strike the sweep waits for. */
-  private missingSessionNames: ReadonlySet<string> = new Set();
+  private missingSessionNames = new Set<string>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
@@ -572,6 +572,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * renders: judging by the slice would drop the name of every session older
    * than the sixty most recent. See {@link staleSessionNames} for why a single
    * absence is not enough to delete anything.
+   *
+   * The clock it keeps is one of successful scans, not of wall time: a scan
+   * that threw never reaches here, which is the intended silence — with no
+   * enumeration there is nothing to judge names against.
    */
   private async pruneNames(allRefs: UnifiedRef[]): Promise<void> {
     const now = this.now();
@@ -786,6 +790,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     if (trimmed) names.set(sessionId, trimmed);
     else names.delete(sessionId);
     await saveSessionNames(names, this.sessionNamesPath);
+    // A name the user just typed has served no strikes. Without this, naming a
+    // session the scan cannot see — one whose transcript is not written yet —
+    // between two sweeps would count as the second strike and delete it.
+    this.missingSessionNames.delete(sessionId);
 
     await this.reindexName(sessionId, trimmed);
 
