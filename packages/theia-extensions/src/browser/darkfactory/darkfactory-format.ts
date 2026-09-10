@@ -248,3 +248,24 @@ function clip(text: string): string {
   const space = cut.lastIndexOf(" ");
   return space > MAX_SESSION_NAME_CHARS / 2 ? cut.slice(0, space) : cut;
 }
+
+/** The two halves of a search hit's score, as percentages of the score itself. */
+export interface MatchShares {
+  /** What the meaning pass contributed, 0-100. */
+  meaning: number;
+  /** What the literal words contributed, 0-100. */
+  words: number;
+}
+
+/**
+ * Split a hit's score into the two passes that produced it. Percentages of the
+ * hit's own score, not of the best result: the question the rows answer is "why
+ * is this here", and a share of the winner would answer a different one. They
+ * sum to 100 except when a hit has no score at all.
+ */
+export function matchShares(match: { score: number; dense: number; lexical: number }): MatchShares {
+  const total = match.dense + match.lexical;
+  if (total <= 0) return { meaning: 0, words: 0 };
+  const meaning = Math.round((match.dense / total) * 100);
+  return { meaning, words: 100 - meaning };
+}

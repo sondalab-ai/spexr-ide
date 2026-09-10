@@ -2572,27 +2572,38 @@ code {
  * so a card outside a search is laid out exactly as before.
  */
 .spexr-df-match {
-  display: flex; align-items: center; gap: var(--sl-space-2);
-  flex-wrap: wrap;
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   margin-top: var(--sl-space-1);
 }
-.spexr-df-match__track {
-  flex: none; width: 4rem; height: 3px;
-  border-radius: var(--sl-radius-pill);
-  background: var(--sl-border-subtle);
-  overflow: hidden;
+/*
+ * One pass of the hybrid score per row: its name, its share of this hit, and a
+ * bar of the same figure. It replaced a single two-coloured bar, whose split was
+ * a change of hue partway along three pixels with nothing on screen to explain
+ * it. The two rows share a column grid so the bars line up under each other.
+ */
+.spexr-df-match__row {
+  display: grid; grid-template-columns: 4.5em 3.5rem auto;
+  align-items: center; gap: var(--sl-space-2);
+  font-size: var(--sl-text-xs); color: var(--sl-text-muted);
 }
-/* Two colours in one fill, cut where meaning stops paying for the score and the
-   literal words start: amber found it by paraphrase, teal by the words typed. */
+.spexr-df-match__label { white-space: nowrap; }
+.spexr-df-match__track {
+  height: 4px; border-radius: var(--sl-radius-pill);
+  background: var(--sl-border-subtle); overflow: hidden;
+}
 .spexr-df-match__fill {
-  display: block; height: 100%;
-  width: var(--match-share);
-  border-radius: var(--sl-radius-pill);
-  background: linear-gradient(
-    to right,
-    var(--sl-accent-default) 0 var(--match-dense),
-    var(--sl-accent-depth) var(--match-dense) 100%
-  );
+  display: block; height: 100%; border-radius: var(--sl-radius-pill);
+  background: var(--sl-accent-default);
+}
+/* The literal-words half keeps the second accent it has always had. */
+.spexr-df-match__row[data-kind="words"] .spexr-df-match__fill { background: var(--sl-accent-depth); }
+.spexr-df-match__pct {
+  font-variant-numeric: tabular-nums; color: var(--sl-text-primary);
+}
+.spexr-df-match__terms {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--sl-space-1); margin-top: var(--sl-space-1);
 }
 .spexr-df-match__term {
   padding: 0 6px;
@@ -2600,9 +2611,6 @@ code {
   color: var(--sl-text-muted); font-size: var(--sl-text-xs); line-height: 1.5;
   white-space: nowrap;
 }
-/* Not a term the user typed but a statement about the match, so it carries no
-   term-chip border. */
-.spexr-df-match__term.is-dense { border-color: transparent; font-style: italic; }
 .spexr-df-card__archived {
   font-size: 0.75em;
   font-style: italic;
