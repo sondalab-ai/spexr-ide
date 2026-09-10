@@ -1,7 +1,7 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { execFile } from "node:child_process";
 import { Session as InspectorSession } from "node:inspector";
@@ -30,6 +30,8 @@ import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
 import { indexedText, type SessionRecord } from "./session-index.js";
 import { hashDoc } from "./session-indexer.js";
 import { loadSessionNames, saveSessionNames } from "./session-names-store.js";
+import { loadProjectNames, projectNameKey, saveProjectNames } from "./project-names-store.js";
+import { staleProjectNames, staleSessionNames } from "./stale-names.js";
 import { runSessionIndex, type IndexableSession } from "./session-indexer.js";
 import { rankSessions, type RankedSession } from "./session-query.js";
 import { readFirstPrompt } from "./session-goal.js";
@@ -55,7 +57,10 @@ import type {
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
 } from "../../common/darkfactory-protocol.js";
-import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
+import {
+  MAX_PROJECT_NAME_CHARS,
+  MAX_SESSION_NAME_CHARS,
+} from "../../common/darkfactory-protocol.js";
 
 const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
@@ -116,6 +121,15 @@ const LIVE_DIRS_TTL_MS = 15_000;
 const POLL_INTERVAL_MS = 20_000;
 
 /**
+ * How often the name stores are swept for entries that name nothing any more.
+ * Far longer than a poll, because the sweep's protection against a scan that
+ * came back short is that a session must be missing from two sweeps in a row:
+ * spacing them makes a directory that is briefly unreadable a much weaker
+ * coincidence than two polls twenty seconds apart would be.
+ */
+const NAME_PRUNE_INTERVAL_MS = 10 * 60_000;
+
+/**
  * Config-dir discovery freshness floor. Discovery is a `readdirSync` of $HOME
  * plus a `statSync` per `.claude*` entry, and it now sits on the `listTiles`
  * path — which the 400ms-debounced watcher drives, not just the poll. Kept
@@ -160,6 +174,10 @@ export interface DarkfactoryDeps {
   sessionIndexPath?: string;
   /** Session-name store override, so tests never touch the real home directory. */
   sessionNamesPath?: string;
+  /** Project-name store override, so tests never touch the real home directory. */
+  projectNamesPath?: string;
+  /** Directory-existence seam used by the name sweep (default: a `stat` that must say "directory"). */
+  dirExists?: (path: string) => Promise<boolean>;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -192,6 +210,32 @@ function matchOf({ score, dense, lexical, terms }: RankedSession): Omit<SessionH
 function nameOf(names: Map<string, string>, sessionId: string): { customName?: string } {
   const name = names.get(sessionId);
   return name ? { customName: name } : {};
+}
+
+/**
+ * The stored project name as a spreadable fragment, the project-level twin of
+ * {@link nameOf}. Keyed through {@link projectNameKey} because a transcript's
+ * `cwd` and the path the header sends back need not agree on a trailing slash.
+ */
+/**
+ * Production directory check for the name sweep. A path that is not a directory
+ * — or that cannot be read at all — answers false, which the sweep reads as
+ * "gone" only when the parent answered true.
+ */
+async function defaultDirExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function projectNameOf(
+  names: Map<string, string>,
+  projectPath: string,
+): { projectCustomName?: string } {
+  const name = names.get(projectNameKey(projectPath));
+  return name ? { projectCustomName: name } : {};
 }
 
 @injectable()
@@ -249,8 +293,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
   private readonly sessionIndexPath: string | undefined;
   private readonly sessionNamesPath: string | undefined;
+  private readonly projectNamesPath: string | undefined;
   /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
   private sessionNames?: Promise<Map<string, string>>;
+  /** projectPath → the name the user gave it; loaded once, then kept in step with writes. */
+  private projectNames?: Promise<Map<string, string>>;
+  private readonly dirExists: (path: string) => Promise<boolean>;
+  /** When the name stores were last swept; 0 so the first scan opens the first sweep. */
+  private lastNamePruneAt = 0;
+  /** Named sessions the previous sweep could not find — the second strike the sweep waits for. */
+  private missingSessionNames = new Set<string>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, offset } for active read-only follows. */
@@ -286,6 +338,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.embed = d.embed;
     this.sessionIndexPath = d.sessionIndexPath;
     this.sessionNamesPath = d.sessionNamesPath;
+    this.projectNamesPath = d.projectNamesPath;
+    this.dirExists = d.dirExists ?? defaultDirExists;
     if (this.embed) {
       setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
     }
@@ -422,10 +476,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
-    const [allRefs, live, names] = await Promise.all([
+    const [allRefs, live, names, projectNames] = await Promise.all([
       this.listTranscripts(),
       this.cachedLiveDirs(),
       this.loadNames(),
+      this.loadProjectNames(),
     ]);
     const now = this.now();
     // Only read the newest sessions — history is huge and reading it all stalls
@@ -492,6 +547,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYouCertain,
         hashToIndex,
         ...nameOf(names, ref.sessionId),
+        ...projectNameOf(projectNames, cwd),
       });
       this.lastTiles.set(ref.sessionId, tile);
       tiles.push(tile);
@@ -501,7 +557,67 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     for (const id of this.summaryCache.keys()) {
       if (!this.index.has(id)) this.summaryCache.delete(id);
     }
+    // The names on disk get the same treatment, on a much longer clock. A failed
+    // sweep must not fail the scan: the wall is what the user asked for.
+    await this.pruneNames(allRefs).catch(() => {});
     return tiles;
+  }
+
+  /**
+   * Drop stored names that no longer name anything — a session whose transcript
+   * the user deleted, a project whose folder is gone. Without this a name is
+   * kept for the life of the machine, since nothing else ever revisits the file.
+   *
+   * Runs on the full enumeration, not the {@link RECENT_LIMIT} slice the wall
+   * renders: judging by the slice would drop the name of every session older
+   * than the sixty most recent. See {@link staleSessionNames} for why a single
+   * absence is not enough to delete anything.
+   *
+   * The clock it keeps is one of successful scans, not of wall time: a scan
+   * that threw never reaches here, which is the intended silence — with no
+   * enumeration there is nothing to judge names against.
+   */
+  private async pruneNames(allRefs: UnifiedRef[]): Promise<void> {
+    const now = this.now();
+    if (now - this.lastNamePruneAt < NAME_PRUNE_INTERVAL_MS) return;
+    this.lastNamePruneAt = now;
+
+    const [names, projectNames] = await Promise.all([this.loadNames(), this.loadProjectNames()]);
+
+    const enumerated = new Set(allRefs.map((u) => u.ref.sessionId));
+    const { drop, missingNow } = staleSessionNames(names, enumerated, this.missingSessionNames);
+    this.missingSessionNames = missingNow;
+    if (drop.length > 0) {
+      for (const id of drop) names.delete(id);
+      await saveSessionNames(names, this.sessionNamesPath);
+    }
+
+    const gone = staleProjectNames(projectNames, await this.projectDirState([...projectNames.keys()]));
+    if (gone.length > 0) {
+      for (const path of gone) projectNames.delete(path);
+      await saveProjectNames(projectNames, this.projectNamesPath);
+    }
+  }
+
+  /**
+   * Whether each named project — and its parent folder — is still on disk. The
+   * parent is what tells a deleted project from an unreachable one: an unplugged
+   * volume takes the parent with it, and a name there is not the user's doing.
+   */
+  private async projectDirState(
+    paths: string[],
+  ): Promise<Map<string, { exists: boolean; parentExists: boolean }>> {
+    const state = new Map<string, { exists: boolean; parentExists: boolean }>();
+    await Promise.all(
+      paths.map(async (path) => {
+        const [exists, parentExists] = await Promise.all([
+          this.dirExists(path),
+          this.dirExists(dirname(path)),
+        ]);
+        state.set(path, { exists, parentExists });
+      }),
+    );
+    return state;
   }
 
   /**
@@ -567,7 +683,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
     if (archived.length > 0) {
       const refs = new Map((await this.cachedTranscripts()).map((u) => [u.ref.sessionId, u]));
-      const [live, names] = await Promise.all([this.cachedLiveDirs(), this.loadNames()]);
+      const [live, names, projectNames] = await Promise.all([
+        this.cachedLiveDirs(),
+        this.loadNames(),
+        this.loadProjectNames(),
+      ]);
       const now = this.now();
       const built: SessionHit[] = [];
       await fanOut(archived, PARSE_CONCURRENCY, async (sessionId) => {
@@ -608,6 +728,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYouCertain,
             hashToIndex,
             ...nameOf(names, sessionId),
+            ...projectNameOf(projectNames, p.cwd),
           }),
           ...matchOf(scored.get(sessionId)!),
           archived: true,
@@ -652,6 +773,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     return this.sessionNames;
   }
 
+  private loadProjectNames(): Promise<Map<string, string>> {
+    if (!this.projectNames) this.projectNames = loadProjectNames(this.projectNamesPath);
+    return this.projectNames;
+  }
+
   /**
    * Name a session, or clear the name when `name` is blank. The tiles the last
    * scan produced are patched in place and pushed, so the card renames now
@@ -664,6 +790,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     if (trimmed) names.set(sessionId, trimmed);
     else names.delete(sessionId);
     await saveSessionNames(names, this.sessionNamesPath);
+    // A name the user just typed has served no strikes. Without this, naming a
+    // session the scan cannot see — one whose transcript is not written yet —
+    // between two sweeps would count as the second strike and delete it.
+    this.missingSessionNames.delete(sessionId);
 
     await this.reindexName(sessionId, trimmed);
 
@@ -672,6 +802,34 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const { customName: _dropped, ...rest } = tile;
     this.lastTiles.set(sessionId, trimmed ? { ...rest, customName: trimmed } : rest);
     this.client?.onTilesChanged([...this.lastTiles.values()]);
+  }
+
+  /**
+   * Name a project, or clear the name when `name` is blank. Every tile of the
+   * project is patched, not just one: the name stands on the group header and on
+   * each of its cards, so renaming one member would show the wall two names for
+   * the same project until the next scan.
+   *
+   * The search index is left alone. A project name is a label on the wall, not
+   * part of what a session says it did — reindexing would rebuild every record
+   * of the project for a string no query is asked to match.
+   */
+  async renameProject(projectPath: string, name: string): Promise<void> {
+    const names = await this.loadProjectNames();
+    const key = projectNameKey(projectPath);
+    const trimmed = name.trim().slice(0, MAX_PROJECT_NAME_CHARS);
+    if (trimmed) names.set(key, trimmed);
+    else names.delete(key);
+    await saveProjectNames(names, this.projectNamesPath);
+
+    let changed = false;
+    for (const [sessionId, tile] of this.lastTiles) {
+      if (projectNameKey(tile.projectPath) !== key) continue;
+      const { projectCustomName: _dropped, ...rest } = tile;
+      this.lastTiles.set(sessionId, trimmed ? { ...rest, projectCustomName: trimmed } : rest);
+      changed = true;
+    }
+    if (changed) this.client?.onTilesChanged([...this.lastTiles.values()]);
   }
 
   /**

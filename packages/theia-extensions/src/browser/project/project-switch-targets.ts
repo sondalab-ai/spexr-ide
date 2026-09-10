@@ -7,6 +7,8 @@
 export interface SessionOrigin {
   readonly projectPath: string;
   readonly projectName: string;
+  /** The name the user gave the project on the wall; it wins over the folder name here too. */
+  readonly projectCustomName?: string;
   readonly lastActivityMs: number;
 }
 
@@ -14,7 +16,7 @@ export interface SessionOrigin {
 export interface ProjectTarget {
   /** Absolute filesystem path of the project root. */
   path: string;
-  /** Last path segment — the quick-pick label. */
+  /** The quick-pick label: the name the user gave the project, else its last path segment. */
   name: string;
   /** How many agent sessions on the Darkfactory wall belong to this project. */
   sessions: number;
@@ -66,7 +68,7 @@ export function buildProjectTargets(
     }
     byPath.set(path, {
       path,
-      name: session.projectName || baseName(path),
+      name: session.projectCustomName?.trim() || session.projectName || baseName(path),
       sessions: 1,
       lastActivityMs: session.lastActivityMs,
     });

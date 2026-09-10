@@ -34,6 +34,13 @@ export const MAX_SESSION_NAME_CHARS = 100;
  */
 export const CACHE_TTL_MS = 60 * 60 * 1000;
 
+/**
+ * How long a project name may be. Shorter than a session name because it is a
+ * label, not a description: it stands where a folder name stands, on a group
+ * header that also carries the session count and the attention chips.
+ */
+export const MAX_PROJECT_NAME_CHARS = 40;
+
 /** How the focus pane should present a session. */
 export type FocusKind = "resume-terminal" | "readonly-follow";
 
@@ -82,6 +89,12 @@ export interface AgentTile {
    * started, which leaves the estimate optimistic by one generation.
    */
   cacheDeadlineMs?: number;
+  /**
+   * The name the user gave this session's project; absent until they rename it.
+   * Carried per tile rather than per group because the project is what the tile
+   * already knows — `projectName` and `accentId` ride along the same way.
+   */
+  projectCustomName?: string;
 }
 
 /** Two-level AI description of a session, from the local model. */
@@ -159,6 +172,12 @@ export interface SpexrDarkfactoryService {
    * so the card renames without waiting for the next scan.
    */
   renameSession(sessionId: string, name: string): Promise<void>;
+  /**
+   * Name a project, or clear its name with an empty string. The name is stored
+   * per project path and survives restarts; every tile of that project is
+   * pushed renamed, so the group header and its cards change together.
+   */
+  renameProject(projectPath: string, name: string): Promise<void>;
   /** Decide whether a session opens as an interactive resume terminal or a read-only follow. */
   planFocus(sessionId: string): Promise<FocusPlan>;
   /** Begin streaming transcript turns for a read-only follow; idempotent per session. */

@@ -16,6 +16,14 @@ describe("buildProjectTargets", () => {
     expect(targets.map((t) => t.path)).toEqual(["/home/me/busy", "/home/me/quiet", "/home/me/old"]);
   });
 
+  test("labels a project with the name the user gave it on the wall", () => {
+    const [target] = buildProjectTargets(
+      [],
+      [{ ...session("/home/me/app", 100, "app"), projectCustomName: "Day job" }],
+    );
+    expect(target!.name).toBe("Day job");
+  });
+
   test("collapses several sessions of one project into a single target", () => {
     const [target] = buildProjectTargets(
       [],

@@ -58,8 +58,10 @@ export function modeLabel(mode: string | undefined): string | undefined {
 export interface TileGroup {
   /** Group identity — two checkouts may share a name, never a path. */
   projectPath: string;
-  /** Header copy: the project name, suffixed with its parent folder when the name is ambiguous. */
+  /** Header copy: the project's name, suffixed with its parent folder when the name is ambiguous. */
   label: string;
+  /** The name the user gave the project; absent until they rename it. */
+  customName?: string;
   /** True when this is the project loaded in the window. */
   isCurrent: boolean;
   /** Shared by every member, since the accent derives from `projectPath`. */
@@ -80,6 +82,15 @@ function parentFolder(path: string): string {
 }
 
 /**
+ * What a project is called on the wall: the name the user gave it, else the
+ * folder name the scan derived. Every surface that shows a project goes through
+ * this, so a renamed project cannot read as two projects across the wall.
+ */
+export function projectLabel(tile: AgentTile): string {
+  return (tile.projectCustomName ?? "").trim() || tile.projectName;
+}
+
+/**
  * Bucket sessions by project. Members keep the flat attention order; groups lead
  * with the project loaded in this window, then by their most urgent member, then
  * by the most recent activity — so a group only moves when its own state does.
@@ -92,20 +103,25 @@ export function groupTiles(tiles: AgentTile[], currentProjectPath?: string): Til
     else byPath.set(tile.projectPath, [tile]);
   }
   // A name shared by two checkouts is not an identity — say which one this is.
+  // Counted on the name actually shown: renaming one of two same-named checkouts
+  // ends the collision, and two projects renamed alike start one.
   const nameCount = new Map<string, number>();
   for (const [, members] of byPath) {
-    const name = members[0]!.projectName;
+    const name = projectLabel(members[0]!);
     nameCount.set(name, (nameCount.get(name) ?? 0) + 1);
   }
   const groups: TileGroup[] = [];
   for (const [projectPath, members] of byPath) {
     const sorted = sortTiles(members);
     const head = sorted[0]!;
+    const name = projectLabel(head);
     const parent = parentFolder(projectPath);
-    const ambiguous = (nameCount.get(head.projectName) ?? 0) > 1 && parent !== "";
+    const ambiguous = (nameCount.get(name) ?? 0) > 1 && parent !== "";
+    const custom = (head.projectCustomName ?? "").trim();
     groups.push({
       projectPath,
-      label: ambiguous ? `${head.projectName} — ${parent}` : head.projectName,
+      label: ambiguous ? `${name} — ${parent}` : name,
+      ...(custom ? { customName: custom } : {}),
       isCurrent: currentProjectPath !== undefined && trimPath(projectPath) === trimPath(currentProjectPath),
       accentId: head.accentId,
       tiles: sorted,
@@ -204,12 +220,12 @@ export function launchTargets(
     const path = normalizeProjectPath(tile.projectPath);
     if (!path) continue;
     if (path === current) {
-      currentName = tile.projectName || currentName;
+      currentName = projectLabel(tile) || currentName;
       continue;
     }
     if (seen.has(path)) continue;
     seen.add(path);
-    sessions.push({ path, name: tile.projectName || projectDisplayName(path), kind: "session" });
+    sessions.push({ path, name: projectLabel(tile) || projectDisplayName(path), kind: "session" });
   }
   sessions.sort((a, b) => a.name.localeCompare(b.name));
 

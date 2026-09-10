@@ -22,6 +22,8 @@ export interface TileInput {
   hashToIndex(value: string, buckets: number): number;
   /** The name the user gave this session, if any. */
   customName?: string;
+  /** The name the user gave this session's project, if any. */
+  projectCustomName?: string;
 }
 
 /**
@@ -53,6 +55,7 @@ export function buildTile(input: TileInput): AgentTile {
     ...(p.mode !== undefined ? { mode: p.mode } : {}),
     ...(p.permissionMode !== undefined ? { permissionMode: p.permissionMode } : {}),
     ...(input.customName ? { customName: input.customName } : {}),
+    ...(input.projectCustomName ? { projectCustomName: input.projectCustomName } : {}),
     ...(p.cache
       ? {
           contextTokens: p.cache.contextTokens,

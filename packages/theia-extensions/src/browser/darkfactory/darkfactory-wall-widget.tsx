@@ -14,7 +14,10 @@ import type {
   FollowEvent,
   SpexrDarkfactoryService,
 } from "../../common/darkfactory-protocol.js";
-import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
+import {
+  MAX_PROJECT_NAME_CHARS,
+  MAX_SESSION_NAME_CHARS,
+} from "../../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
@@ -29,6 +32,7 @@ import {
   summaryTargets,
   launchTargets,
   defaultSessionName,
+  projectLabel,
 } from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
 import {
@@ -79,6 +83,13 @@ function renamedTile(tile: AgentTile, name: string): AgentTile {
   const { customName: _dropped, ...rest } = tile;
   const trimmed = name.trim();
   return trimmed ? { ...rest, customName: trimmed } : rest;
+}
+
+/** The same, for the name of the tile's project. */
+function projectRenamedTile(tile: AgentTile, name: string): AgentTile {
+  const { projectCustomName: _dropped, ...rest } = tile;
+  const trimmed = name.trim();
+  return trimmed ? { ...rest, projectCustomName: trimmed } : rest;
 }
 
 /** Machine-wide monitoring wall of every agent session (Claude Code, opencode). */
@@ -279,6 +290,17 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         /* ignore */
       });
     }
+  }
+
+  /**
+   * What to call `projectPath` right now: the name the user gave it, read from
+   * the tiles rather than from what was true when a card was created, so a
+   * rename reaches a placeholder card that no scan has replaced yet.
+   */
+  private projectNameAt(projectPath: string, fallback: string): string {
+    const path = normalizeProjectPath(projectPath);
+    const tile = this.tiles.find((t) => normalizeProjectPath(t.projectPath) === path);
+    return tile ? projectLabel(tile) : fallback;
   }
 
   /**
@@ -713,7 +735,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     const summary = this.summaries.get(tile.sessionId);
     const s = summary && !summary.loading ? summary.summary : undefined;
     const name = await this.quickInput.input({
-      prompt: `Name this session — ${tile.projectName}`,
+      prompt: `Name this session — ${projectLabel(tile)}`,
       placeHolder: "Leave empty to go back to the project name",
       value: defaultSessionName(tile, s ? s.overview || s.now : ""),
       // Enforced here as well as in the store, so what the card ends up showing
@@ -733,6 +755,38 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.search.hits = this.search.hits.map((hit) =>
       hit.tile.sessionId === tile.sessionId
         ? { ...hit, tile: renamedTile(hit.tile, name) }
+        : hit,
+    );
+    this.update();
+  }
+
+  /**
+   * Name a project. The field opens on what the header shows now — the name the
+   * user gave it, else the folder name — so a rename edits a real string rather
+   * than starting from blank. Submitting an empty field goes back to the folder
+   * name; dismissing the prompt changes nothing.
+   */
+  private async renameProject(group: TileGroup): Promise<void> {
+    const name = await this.quickInput.input({
+      prompt: `Name this project — ${group.projectPath}`,
+      placeHolder: "Leave empty to go back to the folder name",
+      value: group.customName ?? group.tiles[0]!.projectName,
+      // Enforced here as well as in the store, so what the header ends up showing
+      // is what the field accepted rather than a silent truncation.
+      validateInput: (v) =>
+        Promise.resolve(
+          v.trim().length > MAX_PROJECT_NAME_CHARS
+            ? `A project name fits in ${MAX_PROJECT_NAME_CHARS} characters.`
+            : undefined,
+        ),
+    });
+    if (name === undefined) return; // dismissed
+    await this.service.renameProject(group.projectPath, name);
+    // Same reason as a session rename: a hit from outside the scan window is not
+    // in the tiles the backend pushes back, so its card is ours to update.
+    this.search.hits = this.search.hits.map((hit) =>
+      normalizeProjectPath(hit.tile.projectPath) === normalizeProjectPath(group.projectPath)
+        ? { ...hit, tile: projectRenamedTile(hit.tile, name) }
         : hit,
     );
     this.update();
@@ -852,6 +906,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       <section className="spexr-df-group" key={group.projectPath} data-collapsed={collapsed}>
         <AgentGroupHeader
           group={group}
+          onRename={(g) => void this.renameProject(g)}
           collapsed={collapsed}
           onToggle={(path) => this.toggleGroup(path)}
           onOpenProject={(t) => this.openProject(t.projectPath)}
@@ -1003,13 +1058,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           {this.launched.map((launch) => (
             <LaunchedSessionCard
               key={launch.key}
-              projectName={launch.projectName}
+              projectName={this.projectNameAt(launch.projectPath, launch.projectName)}
               projectPath={launch.projectPath}
               harness={launch.harness}
               terminal={this.terminals.live(launch.key)}
               onClose={() => this.closeLaunched(launch.key)}
               onOpenProject={() => this.openProject(launch.projectPath)}
-              onOpenTerminal={() => this.openProjectTerminal(launch.projectPath, launch.projectName)}
+              onOpenTerminal={() =>
+                this.openProjectTerminal(
+                  launch.projectPath,
+                  this.projectNameAt(launch.projectPath, launch.projectName),
+                )
+              }
               isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
               layout={this.wallLayout}
             />
@@ -1025,7 +1085,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               onClose={() => this.unpin(tile.sessionId)}
               onFork={(t) => this.forkTakeover(t)}
               onOpenProject={(t) => this.openProject(t.projectPath)}
-              onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, t.projectName)}
+              onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, projectLabel(t))}
               onTrash={(t) => this.moveToTrash(t.sessionId)}
               onRename={(t) => void this.renameSession(t)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}

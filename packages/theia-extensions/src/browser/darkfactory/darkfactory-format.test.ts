@@ -131,6 +131,54 @@ describe("darkfactory-format", () => {
     expect(out.map((g) => g.label)).toEqual(["spexr — work", "spexr — mine", "other"]);
   });
 
+  test("groupTiles labels a group with the name the user gave the project", () => {
+    const out = groupTiles([
+      tile("a", "idle", false, 0, {
+        projectPath: "/home/me/work/spexr",
+        projectName: "spexr",
+        projectCustomName: "The wall",
+      }),
+    ]);
+    expect(out[0]!.label).toBe("The wall");
+    expect(out[0]!.customName).toBe("The wall");
+  });
+
+  test("groupTiles drops the parent suffix once a rename ends the collision", () => {
+    const out = groupTiles([
+      tile("a", "working", false, 20, {
+        projectPath: "/home/me/work/spexr",
+        projectName: "spexr",
+        projectCustomName: "Day job",
+      }),
+      tile("b", "working", false, 10, { projectPath: "/home/me/mine/spexr", projectName: "spexr" }),
+    ]);
+    expect(out.map((g) => g.label)).toEqual(["Day job", "spexr"]);
+  });
+
+  test("groupTiles disambiguates two projects renamed to the same thing", () => {
+    const out = groupTiles([
+      tile("a", "working", false, 20, {
+        projectPath: "/home/me/work/one",
+        projectName: "one",
+        projectCustomName: "Wall",
+      }),
+      tile("b", "working", false, 10, {
+        projectPath: "/home/me/mine/two",
+        projectName: "two",
+        projectCustomName: "Wall",
+      }),
+    ]);
+    expect(out.map((g) => g.label)).toEqual(["Wall — work", "Wall — mine"]);
+  });
+
+  test("groupTiles ignores a blank project name, so the folder name stands", () => {
+    const out = groupTiles([
+      tile("a", "idle", false, 0, { projectPath: "/x", projectName: "x", projectCustomName: "  " }),
+    ]);
+    expect(out[0]!.label).toBe("x");
+    expect(out[0]!.customName).toBeUndefined();
+  });
+
   test("groupTiles carries the shared accent of its members", () => {
     const out = groupTiles([tile("a", "idle", false, 0, { projectPath: "/x", projectName: "x", accentId: 3 })]);
     expect(out[0]!.accentId).toBe(3);
