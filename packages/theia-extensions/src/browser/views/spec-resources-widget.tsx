@@ -6,13 +6,13 @@ import { EditorManager } from "@theia/editor/lib/browser";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { type FileOperationEvent } from "@theia/filesystem/lib/common/files";
-import type URI from "@theia/core/lib/common/uri";
+import URI from "@theia/core/lib/common/uri";
 import { parseSpec, parseFrontmatter } from "@spexr/spec";
 import { SPEC_RESOURCES_VIEW_ID } from "./spec-resources-view-contribution.js";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
-import { specContextDir, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import { SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import { locateSpec, SPEC_SLUG_RE } from "../spec/spec-roots.js";
 
-const SPEC_SLUG_RE = /^(\d{4}-[a-z0-9][a-z0-9-]*)\.md$/;
 const LINK_LINE_RE = /^-\s*\[([^\]]+)\]\(([^)]+)\)/;
 const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
@@ -134,14 +134,14 @@ export class SpexrSpecResourcesWidget extends ReactWidget {
       this.update();
       return;
     }
-    this.state = { slug, specUri, title, resources: await this.loadResources(slug) };
+    this.state = { slug, specUri, title, resources: await this.loadResources(specUri, slug) };
     this.update();
   }
 
   private async reload(): Promise<void> {
     if (!this.state) return;
     const { slug, specUri, title } = this.state;
-    this.state = { slug, specUri, title, resources: await this.loadResources(slug) };
+    this.state = { slug, specUri, title, resources: await this.loadResources(specUri, slug) };
     this.update();
   }
 
@@ -190,9 +190,9 @@ export class SpexrSpecResourcesWidget extends ReactWidget {
 
   private affectsCurrent(event: FileOperationEvent): boolean {
     if (!this.state) return false;
-    const dir = this.contextDir(this.state.slug);
-    if (!dir) return false;
-    const prefix = dir.toString() + "/";
+    const context = this.contextDir(this.state.specUri, this.state.slug);
+    if (!context) return false;
+    const prefix = context.dir.toString() + "/";
     const candidates = [event.resource, event.target?.resource].filter(
       (u): u is URI => u !== undefined,
     );
@@ -204,15 +204,26 @@ export class SpexrSpecResourcesWidget extends ReactWidget {
     return name.match(SPEC_SLUG_RE)?.[1];
   }
 
-  private contextDir(slug: string): URI | undefined {
-    const root = this.workspace.tryGetRoots()[0]?.resource;
-    return root ? specContextDir(root, slug) : undefined;
+  /**
+   * The tracked spec's own `.context/<slug>/` folder, with the workspace folder
+   * that owns it.
+   *
+   * Resolved from the spec URI rather than the first workspace folder: spec
+   * numbering is per folder, so two folders can hold the same slug, and the
+   * superpowers layout keeps its context beside its own specs.
+   */
+  private contextDir(specUri: string, slug: string): { root: URI; dir: URI } | undefined {
+    const roots = this.workspace.tryGetRoots().map((root) => root.resource);
+    const located = locateSpec(roots, new URI(specUri));
+    if (!located) return undefined;
+    return { root: located.root, dir: located.specsDir.resolve(SPEC_CONTEXT_DIR).resolve(slug) };
   }
 
-  private async loadResources(slug: string): Promise<SpecResource[]> {
-    const dir = this.contextDir(slug);
-    if (!dir) return [];
-    const base = `docs/specs/${SPEC_CONTEXT_DIR}/${slug}`;
+  private async loadResources(specUri: string, slug: string): Promise<SpecResource[]> {
+    const context = this.contextDir(specUri, slug);
+    if (!context) return [];
+    const { root, dir } = context;
+    const base = root.relative(dir)?.toString() ?? `${SPEC_CONTEXT_DIR}/${slug}`;
     const resources: SpecResource[] = [];
     try {
       const stat = await this.fileService.resolve(dir);

@@ -462,6 +462,25 @@ body {
   font-size: var(--sl-text-sm);
 }
 
+/* One workspace folder's specs. The folder's progress bar doubles as the
+   section heading: stripped of the card chrome the workspace-level bar keeps,
+   so a folder reads as a division of the panel rather than a nested card. */
+.spexr-spec-group {
+  margin-top: var(--sl-space-5);
+}
+
+.spexr-spec-group .spexr-progress {
+  padding: 0 0 var(--sl-space-2);
+  border: 0;
+  border-bottom: 1px solid var(--sl-border-subtle);
+  border-radius: 0;
+  background: transparent;
+}
+
+.spexr-spec-group .spexr-spec-list {
+  margin-top: var(--sl-space-3);
+}
+
 .spexr-spec-list {
   list-style: none;
   margin: var(--sl-space-4) 0 0;

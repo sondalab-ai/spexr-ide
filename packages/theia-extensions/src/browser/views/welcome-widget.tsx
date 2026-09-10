@@ -10,12 +10,11 @@ import type URI from "@theia/core/lib/common/uri";
 import { WELCOME_VIEW_ID } from "./welcome-view-contribution.js";
 import { WelcomeSplash } from "./welcome-splash.js";
 import { WelcomeBackground } from "./welcome-background.js";
-import { specsDir } from "../workspace-paths.js";
+import { specDirPrefixes, specDirsForRoots, SPEC_FILE_RE } from "../spec/spec-roots.js";
 import { fetchReleaseNotes } from "../release-notes-source.js";
 import type { ReleaseNote } from "../../common/changelog.js";
 
 /** Matches a spec file name (`NNNN-<slug>.md`). */
-const SPEC_FILE_RE = /^\d{4}-[a-z0-9][a-z0-9-]*\.md$/;
 
 @injectable()
 export class SpexrWelcomeWidget extends ReactWidget {
@@ -88,18 +87,17 @@ export class SpexrWelcomeWidget extends ReactWidget {
     }
   }
 
-  private workspaceRoot(): URI | undefined {
-    return this.workspace.tryGetRoots()[0]?.resource;
+  private workspaceRoots(): URI[] {
+    return this.workspace.tryGetRoots().map((root) => root.resource);
   }
 
   private affectsSpecs(event: FileOperationEvent): boolean {
-    const root = this.workspaceRoot();
-    if (!root) return false;
-    const specsRoot = specsDir(root).toString() + "/";
+    const prefixes = specDirPrefixes(this.workspaceRoots());
+    if (prefixes.length === 0) return false;
     const candidates = [event.resource, event.target?.resource].filter(
       (u): u is URI => u !== undefined,
     );
-    return candidates.some((uri) => uri.toString().startsWith(specsRoot));
+    return candidates.some((uri) => prefixes.some((prefix) => uri.toString().startsWith(prefix)));
   }
 
   /** Recompute whether the open workspace has no specs yet. */
@@ -111,15 +109,19 @@ export class SpexrWelcomeWidget extends ReactWidget {
     }
   }
 
+  /** True when no workspace folder holds a spec yet. */
   private async computeEmptyProject(): Promise<boolean> {
-    const root = this.workspaceRoot();
-    if (!root) return false;
-    try {
-      const stat = await this.fileService.resolve(specsDir(root));
-      return !(stat.children ?? []).some((c) => c.isFile && SPEC_FILE_RE.test(c.name));
-    } catch {
-      return true;
+    const locations = specDirsForRoots(this.workspaceRoots());
+    if (locations.length === 0) return false;
+    for (const { specsDir } of locations) {
+      try {
+        const stat = await this.fileService.resolve(specsDir);
+        if ((stat.children ?? []).some((c) => c.isFile && SPEC_FILE_RE.test(c.name))) return false;
+      } catch {
+        // collection absent in this folder — keep looking
+      }
     }
+    return true;
   }
 
   protected render(): React.ReactNode {

@@ -53,7 +53,8 @@ import {
 } from "../agent/launch-profiles-service.js";
 import { SpexrShellLayoutContribution } from "../shell/spexr-shell-layout-contribution.js";
 import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view-contribution.js";
-import { memoryDir, specsDir, specContextDir, agentsDir, allSpecsDirs, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import { memoryDir, specsDir, agentsDir, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import { locateSpec, rootContaining, specContextDirFor } from "../spec/spec-roots.js";
 import {
   buildSpecHandoff,
   buildSpecLintFixPrompt,
@@ -307,6 +308,8 @@ function resolveLintFindings(raw: unknown): SpecLintFixFinding[] {
 
 /** Quick-pick entry for {@link SpexrCommands.SWITCH_PROJECT}, carrying the project root. */
 type ProjectPick = QuickPickItem & { path: string };
+
+type RootPick = QuickPickItem & { root: URI };
 
 @injectable()
 export class SpexrCommandsContribution
@@ -892,14 +895,11 @@ export class SpexrCommandsContribution
       return;
     }
     const filename = uri.path.base;
-    const slug = this.specSlug(uri);
-    const root = this.workspaceRoot();
-    const contextDir =
-      root && slug ? specContextDir(root, slug) : undefined;
+    const contextDir = this.specContextDirFor(uri);
     const hasContext = contextDir ? await this.exists(contextDir) : false;
 
-    const detail = hasContext
-      ? `Also deletes context folder docs/specs/.context/${slug}/. This cannot be undone.`
+    const detail = hasContext && contextDir
+      ? `Also deletes context folder ${this.workspacePath(contextDir)}/. This cannot be undone.`
       : "This cannot be undone.";
     const confirmed = await new ConfirmDialog({
       title: `Delete ${filename}?`,
@@ -1389,14 +1389,9 @@ export class SpexrCommandsContribution
       this.messages.warn("Add context requires a spec URI.");
       return;
     }
-    const root = this.workspaceRoot();
-    if (!root) {
-      this.messages.warn("Open a workspace before adding spec context.");
-      return;
-    }
-    const slug = this.specSlug(uri);
-    if (!slug) {
-      this.messages.warn("Spec filename must match NNNN-slug.md.");
+    const contextDir = this.specContextDirFor(uri);
+    if (!contextDir) {
+      this.messages.warn("Spec filename must match NNNN-slug.md inside a workspace folder.");
       return;
     }
     await this.ensureSpecResourcesVisible(uri);
@@ -1409,7 +1404,6 @@ export class SpexrCommandsContribution
     );
     if (!choice) return;
 
-    const contextDir = specContextDir(root, slug);
     await this.ensureDir(contextDir);
 
     if (choice.label === "From file…") {
@@ -1518,10 +1512,12 @@ export class SpexrCommandsContribution
 
   /** Resolve the `.context/<slug>/` folder for the spec a resource belongs to. */
   private resourceContextDir(specUri: string): URI | undefined {
-    const root = this.workspaceRoot();
-    if (!root) return undefined;
-    const slug = this.specSlug(new URI(specUri));
-    return slug ? specContextDir(root, slug) : undefined;
+    return this.specContextDirFor(new URI(specUri));
+  }
+
+  /** The `.context/<slug>/` folder of a spec, resolved from the spec's own folder. */
+  private specContextDirFor(uri: URI): URI | undefined {
+    return specContextDirFor(this.workspaceRoots(), uri);
   }
 
   private resolveResourceRef(raw: unknown): SpecResourceRef | undefined {
@@ -1631,13 +1627,7 @@ export class SpexrCommandsContribution
   }
 
   isSpecUri(uri: URI | undefined): boolean {
-    if (!uri) return false;
-    const root = this.workspaceRoot();
-    if (!root) return false;
-    if (uri.scheme !== root.scheme) return false;
-    const uriStr = uri.toString();
-    const isUnderSpecs = allSpecsDirs(root).some((dir) => uriStr.startsWith(dir.toString() + "/"));
-    return isUnderSpecs && SPEC_FILE_RE.test(uri.path.base);
+    return uri !== undefined && locateSpec(this.workspaceRoots(), uri) !== undefined;
   }
 
   resolveSpecUri(raw: unknown): URI | undefined {
@@ -1699,9 +1689,22 @@ export class SpexrCommandsContribution
     }
   }
 
+  /**
+   * Which folder hosts the new spec.
+   *
+   * With several workspace folders the first one is no longer an answer, only a
+   * guess. The folder of the file being edited is the better one and needs no
+   * prompt; when nothing is open, or it sits outside every folder, ask.
+   */
   private async resolveSpecTarget(): Promise<{ uri: URI; openAfter: boolean } | undefined> {
-    const existing = this.workspaceRoot();
-    if (existing) return { uri: existing, openAfter: false };
+    const roots = this.workspaceRoots();
+    if (roots.length === 1) return { uri: roots[0]!, openAfter: false };
+    if (roots.length > 1) {
+      const active = rootContaining(roots, this.editorManager.currentEditor?.editor.uri);
+      if (active) return { uri: active, openAfter: false };
+      const chosen = await this.pickSpecRoot(roots);
+      return chosen ? { uri: chosen, openAfter: false } : undefined;
+    }
 
     const picked = await this.fileDialog.showOpenDialog({
       title: "Select folder to host the new spec",
@@ -1817,15 +1820,33 @@ export class SpexrCommandsContribution
     }
   }
 
-  /** Workspace-relative path of `uri`, falling back to its filename. */
+  /** Ask which workspace folder should host the new spec. */
+  private async pickSpecRoot(roots: readonly URI[]): Promise<URI | undefined> {
+    const items: RootPick[] = roots.map((root) => ({
+      label: root.path.base,
+      description: root.path.toString(),
+      root,
+    }));
+    const choice = await this.quickInput.pick<RootPick>(items, {
+      placeHolder: "Workspace folder for the new spec",
+    });
+    return choice?.root;
+  }
+
+  /** Path of `uri` relative to its own workspace folder, else its filename. */
   private workspacePath(uri: URI): string {
-    return this.workspaceRoot()?.relative(uri)?.toString() ?? uri.path.base;
+    const root = rootContaining(this.workspaceRoots(), uri);
+    return root?.relative(uri)?.toString() ?? uri.path.base;
   }
 
   private workspaceRoot(): URI | undefined {
     const roots = this.workspace.tryGetRoots();
     const first = roots[0];
     return first ? first.resource : undefined;
+  }
+
+  private workspaceRoots(): URI[] {
+    return this.workspace.tryGetRoots().map((root) => root.resource);
   }
 
   private async nextSpecNumber(root: URI): Promise<number> {

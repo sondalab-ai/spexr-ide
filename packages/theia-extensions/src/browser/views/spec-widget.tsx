@@ -19,33 +19,52 @@ import {
 } from "@spexr/spec";
 import { SPEC_VIEW_ID } from "./spec-view-contribution.js";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
-import { allSpecsDirs, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import { SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import {
+  specDirPrefixes,
+  specDirsForRoots,
+  specGroupsFor,
+  SPEC_FILE_RE,
+  SPEC_SLUG_RE,
+  type SpecRootGroup,
+} from "../spec/spec-roots.js";
 import {
   SpecWorkflowStepper,
   WorkspaceProgressBar,
 } from "./spec-workflow-stepper.js";
 
-const SPEC_FILE_RE = /^\d{4}-[a-z0-9][a-z0-9-]*\.md$/;
-const SPEC_SLUG_RE = /^(\d{4}-[a-z0-9][a-z0-9-]*)\.md$/;
-
 interface SpecEntry {
   readonly uri: string;
+  /** Workspace folder this spec belongs to, as a URI string. */
+  readonly rootUri: string;
   readonly name: string;
   readonly title: string;
   readonly progress: EffectiveWorkflowProgress;
   readonly planTasks: readonly PlanTask[];
 }
 
-interface SpecPanelProps {
+interface SpecPanelProps extends SpecItemHandlers {
   readonly specs: readonly SpecEntry[];
+  /** Populated only in a multi-folder workspace; empty means render one flat list. */
+  readonly groups: readonly SpecRootGroup<SpecEntry>[];
   readonly hasWorkspace: boolean;
   readonly aggregatePercent: number;
   readonly onCreate: () => void;
+  readonly onRefresh: () => void;
+}
+
+/**
+ * Row actions, passed through unchanged from the panel to each list.
+ *
+ * `SpecPanelProps` extends this rather than restating it: the panel forwards
+ * them with a rest spread, which excess-property checking cannot police, so
+ * the two surfaces must be one declaration to stay in step.
+ */
+interface SpecItemHandlers {
   readonly onSendToAgent: (uri: string) => void;
   readonly onRetrospective: (uri: string) => void;
   readonly onOpen: (uri: string) => void;
   readonly onDelete: (uri: string) => void;
-  readonly onRefresh: () => void;
   readonly onStepClick: (uri: string, step: WorkflowStep) => void;
   readonly onTaskToggle: (uri: string, taskId: string) => void;
   readonly onForceStep: (uri: string, step: WorkflowStep) => void;
@@ -66,6 +85,7 @@ export class SpexrSpecWidget extends ReactWidget {
   private readonly fileService!: FileService;
 
   private specs: readonly SpecEntry[] = [];
+  private groups: readonly SpecRootGroup<SpecEntry>[] = [];
   private aggregatePercent = 0;
 
   constructor() {
@@ -100,9 +120,8 @@ export class SpexrSpecWidget extends ReactWidget {
   }
 
   private affectsSpecs(event: FileOperationEvent): boolean {
-    const root = this.workspaceRoot();
-    if (!root) return false;
-    const specsDirPrefixes = allSpecsDirs(root).map((d) => d.toString() + "/");
+    const specsDirPrefixes = specDirPrefixes(this.workspaceRoots());
+    if (specsDirPrefixes.length === 0) return false;
     const candidates = [event.resource, event.target?.resource].filter(
       (u): u is URI => u !== undefined,
     );
@@ -117,28 +136,22 @@ export class SpexrSpecWidget extends ReactWidget {
   }
 
   private async refreshSpecs(): Promise<void> {
-    this.specs = await this.loadSpecs();
-    this.aggregatePercent = this.computeAggregate(this.specs);
+    const roots = this.workspaceRoots();
+    this.specs = await this.loadSpecs(roots);
+    this.groups = specGroupsFor(this.specs, roots);
+    this.aggregatePercent = averagePercent(this.specs);
     this.update();
   }
 
-  private computeAggregate(specs: readonly SpecEntry[]): number {
-    if (specs.length === 0) return 0;
-    const totalPercent = specs.reduce((sum, s) => sum + s.progress.percent, 0);
-    return Math.round(totalPercent / specs.length);
-  }
-
-  private async loadSpecs(): Promise<readonly SpecEntry[]> {
-    const root = this.workspaceRoot();
-    if (!root) return [];
+  private async loadSpecs(roots: readonly URI[]): Promise<readonly SpecEntry[]> {
     const entries: SpecEntry[] = [];
-    for (const spcsDir of allSpecsDirs(root)) {
+    for (const { root, specsDir } of specDirsForRoots(roots)) {
       try {
-        const stat = await this.fileService.resolve(spcsDir);
+        const stat = await this.fileService.resolve(specsDir);
         for (const child of stat.children ?? []) {
           if (!child.isFile || !child.name.endsWith(".md")) continue;
           if (!SPEC_FILE_RE.test(child.name)) continue;
-          const entry = await this.buildEntry(child.resource, child.name, spcsDir);
+          const entry = await this.buildEntry(child.resource, child.name, specsDir, root);
           if (entry) entries.push(entry);
         }
       } catch {
@@ -152,6 +165,7 @@ export class SpexrSpecWidget extends ReactWidget {
     uri: URI,
     filename: string,
     spcsDir: URI,
+    root: URI,
   ): Promise<SpecEntry | undefined> {
     const slugMatch = filename.match(SPEC_SLUG_RE);
     if (!slugMatch) return undefined;
@@ -175,6 +189,7 @@ export class SpexrSpecWidget extends ReactWidget {
       };
       return {
         uri: uri.toString(),
+        rootUri: root.toString(),
         name: filename,
         title: spec.frontmatter.title || filename,
         progress: computeEffectiveProgress(spec.frontmatter, signals),
@@ -230,9 +245,8 @@ export class SpexrSpecWidget extends ReactWidget {
     }
   }
 
-  private workspaceRoot(): URI | undefined {
-    const roots = this.workspace.tryGetRoots();
-    return roots[0]?.resource;
+  private workspaceRoots(): URI[] {
+    return this.workspace.tryGetRoots().map((root) => root.resource);
   }
 
   private readonly handleCreate = (): void => {
@@ -288,7 +302,8 @@ export class SpexrSpecWidget extends ReactWidget {
     return (
       <SpecPanel
         specs={this.specs}
-        hasWorkspace={Boolean(this.workspaceRoot())}
+        groups={this.groups}
+        hasWorkspace={this.workspaceRoots().length > 0}
         aggregatePercent={this.aggregatePercent}
         onCreate={this.handleCreate}
         onSendToAgent={this.handleSendToAgent}
@@ -305,28 +320,109 @@ export class SpexrSpecWidget extends ReactWidget {
   }
 }
 
-const SpecPanel: React.FC<SpecPanelProps> = ({
+/** Mean workflow progression over a set of specs; 0 when there are none. */
+function averagePercent(specs: readonly SpecEntry[]): number {
+  if (specs.length === 0) return 0;
+  const total = specs.reduce((sum, spec) => sum + spec.progress.percent, 0);
+  return Math.round(total / specs.length);
+}
+
+const SpecList: React.FC<{ readonly specs: readonly SpecEntry[] } & SpecItemHandlers> = ({
   specs,
-  hasWorkspace,
-  aggregatePercent,
-  onCreate,
   onSendToAgent,
   onRetrospective,
   onOpen,
   onDelete,
-  onRefresh,
   onStepClick,
   onTaskToggle,
   onForceStep,
   onUnforceStep,
 }) => (
+  <ul className="spexr-spec-list" role="list">
+    {specs.map((spec) => {
+      const isComplete = spec.progress.currentStep === "done";
+      return (
+        <li key={spec.uri} className="spexr-spec-list__item">
+          <div className="spexr-spec-list__row">
+            <div className="spexr-spec-list__meta">
+              <span className="spexr-spec-list__title">{spec.title}</span>
+              <span className="spexr-spec-list__filename">{spec.name}</span>
+            </div>
+            <SpecWorkflowStepper
+              progress={spec.progress}
+              onStepClick={(step) => onStepClick(spec.uri, step)}
+              planTasks={spec.planTasks}
+              onTaskToggle={(taskId) => onTaskToggle(spec.uri, taskId)}
+              unverifiedForcedSteps={spec.progress.unverifiedForcedSteps}
+              {...(spec.progress.undoableForcedStep
+                ? { undoableStep: spec.progress.undoableForcedStep }
+                : {})}
+              onForceStep={(step) => onForceStep(spec.uri, step)}
+              onUnforceStep={(step) => onUnforceStep(spec.uri, step)}
+            />
+            <div className="spexr-spec-list__actions">
+              {isComplete ? (
+                <button
+                  type="button"
+                  className="spexr-button spexr-button--primary spexr-button--compact"
+                  onClick={() => onRetrospective(spec.uri)}
+                  aria-label={`Run retrospective with agent for ${spec.title}`}
+                >
+                  Retrospective with agent
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="spexr-button spexr-button--primary spexr-button--compact"
+                  onClick={() => onSendToAgent(spec.uri)}
+                  aria-label={`Chat with agent about ${spec.title}`}
+                >
+                  Chat with agent
+                </button>
+              )}
+              <button
+                type="button"
+                className="spexr-button spexr-button--ghost spexr-button--compact"
+                onClick={() => onOpen(spec.uri)}
+                aria-label={`Open ${spec.title}`}
+              >
+                Open
+              </button>
+              <button
+                type="button"
+                className="spexr-button spexr-button--ghost spexr-button--compact spexr-button--danger"
+                onClick={() => onDelete(spec.uri)}
+                aria-label={`Delete ${spec.title}`}
+                title="Delete spec (and its context folder)"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </li>
+      );
+    })}
+  </ul>
+);
+
+const SpecPanel: React.FC<SpecPanelProps> = ({
+  specs,
+  groups,
+  hasWorkspace,
+  aggregatePercent,
+  onCreate,
+  onRefresh,
+  ...handlers
+}) => (
   <section className="spexr-spec-panel" aria-label="Specs">
     <header className="spexr-spec-panel__header">
       <h2>Specs</h2>
       <p className="spexr-spec-panel__hint">
-        {hasWorkspace
-          ? `Files under docs/specs/ at the workspace root. Each spec moves through ${WORKFLOW_STEP_ORDER.length} workflow steps.`
-          : "Open a workspace to list its specs."}
+        {!hasWorkspace
+          ? "Open a workspace to list its specs."
+          : groups.length > 0
+            ? `Files under docs/specs/ in each workspace folder. Each spec moves through ${WORKFLOW_STEP_ORDER.length} workflow steps.`
+            : `Files under docs/specs/ at the workspace root. Each spec moves through ${WORKFLOW_STEP_ORDER.length} workflow steps.`}
       </p>
     </header>
 
@@ -354,72 +450,23 @@ const SpecPanel: React.FC<SpecPanelProps> = ({
       </p>
     ) : null}
 
-    {specs.length > 0 ? (
-      <ul className="spexr-spec-list" role="list">
-        {specs.map((spec) => {
-          const isComplete = spec.progress.currentStep === "done";
-          return (
-          <li key={spec.uri} className="spexr-spec-list__item">
-            <div className="spexr-spec-list__row">
-              <div className="spexr-spec-list__meta">
-                <span className="spexr-spec-list__title">{spec.title}</span>
-                <span className="spexr-spec-list__filename">{spec.name}</span>
-              </div>
-              <SpecWorkflowStepper
-                progress={spec.progress}
-                onStepClick={(step) => onStepClick(spec.uri, step)}
-                planTasks={spec.planTasks}
-                onTaskToggle={(taskId) => onTaskToggle(spec.uri, taskId)}
-                unverifiedForcedSteps={spec.progress.unverifiedForcedSteps}
-                {...(spec.progress.undoableForcedStep
-                  ? { undoableStep: spec.progress.undoableForcedStep }
-                  : {})}
-                onForceStep={(step) => onForceStep(spec.uri, step)}
-                onUnforceStep={(step) => onUnforceStep(spec.uri, step)}
-              />
-              <div className="spexr-spec-list__actions">
-                {isComplete ? (
-                  <button
-                    type="button"
-                    className="spexr-button spexr-button--primary spexr-button--compact"
-                    onClick={() => onRetrospective(spec.uri)}
-                    aria-label={`Run retrospective with agent for ${spec.title}`}
-                  >
-                    Retrospective with agent
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="spexr-button spexr-button--primary spexr-button--compact"
-                    onClick={() => onSendToAgent(spec.uri)}
-                    aria-label={`Chat with agent about ${spec.title}`}
-                  >
-                    Chat with agent
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="spexr-button spexr-button--ghost spexr-button--compact"
-                  onClick={() => onOpen(spec.uri)}
-                  aria-label={`Open ${spec.title}`}
-                >
-                  Open
-                </button>
-                <button
-                  type="button"
-                  className="spexr-button spexr-button--ghost spexr-button--compact spexr-button--danger"
-                  onClick={() => onDelete(spec.uri)}
-                  aria-label={`Delete ${spec.title}`}
-                  title="Delete spec (and its context folder)"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </li>
-          );
-        })}
-      </ul>
+    {groups.length > 0 ? (
+      groups.map((group) => (
+        <section
+          key={group.rootUri}
+          className="spexr-spec-group"
+          aria-label={`Specs in ${group.label}`}
+        >
+          <WorkspaceProgressBar
+            percent={averagePercent(group.items)}
+            specCount={group.items.length}
+            label={group.label}
+          />
+          <SpecList specs={group.items} {...handlers} />
+        </section>
+      ))
+    ) : specs.length > 0 ? (
+      <SpecList specs={specs} {...handlers} />
     ) : null}
   </section>
 );

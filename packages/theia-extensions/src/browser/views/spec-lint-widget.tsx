@@ -18,9 +18,7 @@ import {
 import type { SpecLintFixFinding } from "@spexr/agent";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
 import { SPEC_LINT_VIEW_ID } from "./spec-lint-view-contribution.js";
-import { specsDir } from "../workspace-paths.js";
-
-const SPEC_SLUG_RE = /^(\d{4}-[a-z0-9][a-z0-9-]*)\.md$/;
+import { locateSpec, SPEC_SLUG_RE } from "../spec/spec-roots.js";
 
 /** Debounce window before re-linting on every keystroke (AC-6). */
 const LINT_DEBOUNCE_MS = 200;
@@ -71,6 +69,9 @@ export class SpexrSpecLintWidget extends ReactWidget {
 
   private state: LintState | undefined;
   private knownSlugs: string[] = [];
+  /** Spec collection `knownSlugs` was read from, so a spec in another
+   * workspace folder is not linted against its neighbour's slugs. */
+  private knownSlugsDir: string | undefined;
   /** Editor currently linted, plus its content-change subscription. */
   private tracked: EditorWidget | undefined;
   private readonly trackedDisposables = new DisposableCollection();
@@ -138,7 +139,7 @@ export class SpexrSpecLintWidget extends ReactWidget {
     const widget = this.tracked;
     const uri = widget?.getResourceUri();
     if (!widget || !uri) return;
-    if (this.knownSlugs.length === 0) await this.refreshKnownSlugs();
+    await this.refreshKnownSlugs(uri);
     const raw = widget.editor.document.getText();
     const report = lintSpec(raw, { filename: uri.path.base, knownSlugs: this.knownSlugs });
     this.state = {
@@ -161,16 +162,27 @@ export class SpexrSpecLintWidget extends ReactWidget {
     this.update();
   }
 
-  private async refreshKnownSlugs(): Promise<void> {
-    const root = this.workspace.tryGetRoots()[0]?.resource;
-    if (!root) return;
+  /**
+   * Load the slugs a spec may cross-reference: those of its own collection.
+   *
+   * Cached per collection rather than once for the window — with several
+   * workspace folders the tracked spec can move between collections, and each
+   * has its own numbering.
+   */
+  private async refreshKnownSlugs(specUri: URI): Promise<void> {
+    const roots = this.workspace.tryGetRoots().map((root) => root.resource);
+    const dir = locateSpec(roots, specUri)?.specsDir;
+    if (!dir) return;
+    if (this.knownSlugsDir === dir.toString() && this.knownSlugs.length > 0) return;
     try {
-      const stat = await this.fileService.resolve(specsDir(root));
+      const stat = await this.fileService.resolve(dir);
       this.knownSlugs = (stat.children ?? [])
         .map((c) => c.name.match(SPEC_SLUG_RE)?.[1])
         .filter((s): s is string => !!s);
+      this.knownSlugsDir = dir.toString();
     } catch {
       this.knownSlugs = [];
+      this.knownSlugsDir = undefined;
     }
   }
 

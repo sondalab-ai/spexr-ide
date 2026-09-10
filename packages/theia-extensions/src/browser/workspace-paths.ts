@@ -79,14 +79,3 @@ export function allSpecsDirs(root: URI): URI[] {
 export function agentsDir(root: URI): URI {
   return root.resolve(DOCS_DIR).resolve(AGENTS_DIR);
 }
-
-/**
- * Resolves the `docs/specs/.context/<slug>/` directory URI for the given
- * workspace root and spec slug.
- *
- * Spec context files (reference material, links) live under this directory so
- * they remain co-located with their spec without polluting the specs listing.
- */
-export function specContextDir(root: URI, slug: string): URI {
-  return root.resolve(DOCS_DIR).resolve(SPECS_DIR).resolve(SPEC_CONTEXT_DIR).resolve(slug);
-}
