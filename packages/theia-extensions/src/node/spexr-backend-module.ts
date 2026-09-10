@@ -1,6 +1,8 @@
 import { ContainerModule } from "@theia/core/shared/inversify";
 import { ConnectionHandler, RpcConnectionHandler } from "@theia/core/lib/common/messaging";
 import { BackendApplicationContribution } from "@theia/core/lib/node/backend-application";
+import { WebsocketFrontendConnectionService } from "@theia/core/lib/node/messaging/websocket-frontend-connection-service";
+import { SpexrWebsocketFrontendConnectionService } from "./spexr-frontend-connection-service.js";
 import { SpexrParentWatchdog } from "./spexr-parent-watchdog.js";
 import { AGENT_SESSION_SERVICE_PATH } from "../common/agent-protocol.js";
 import { GIT_SERVICE_PATH, type SpexrGitClient } from "../common/git-protocol.js";
@@ -14,7 +16,13 @@ import { SpexrSearchBackendService } from "./search/spexr-search-backend-service
 import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryBackendService } from "./darkfactory/spexr-darkfactory-backend-service.js";
 
-export default new ContainerModule((bind) => {
+export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
+  // Guard Theia 1.75 against exiting on a double socket close; see the service doc.
+  // Unguarded on purpose: the generated backend loads `messagingBackendModule`
+  // before this one, so an upgrade that moves the binding should fail loudly
+  // rather than leave the crash guard silently uninstalled.
+  rebind(WebsocketFrontendConnectionService).to(SpexrWebsocketFrontendConnectionService).inSingletonScope();
+
   bind(SpexrParentWatchdog).toSelf().inSingletonScope();
   bind(BackendApplicationContribution).toService(SpexrParentWatchdog);
 
