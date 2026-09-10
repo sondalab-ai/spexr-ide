@@ -247,6 +247,19 @@ describe("resolveAccount", () => {
     expect(resolveAccount(DEFAULT_ACCOUNT_ID, [PERSO, WORK])).toEqual(DEFAULT_ACCOUNT);
   });
 
+  it("lets a profile the user labelled \"default\" win over the built-in account", () => {
+    const named: ClaudeLaunchProfile = {
+      label: "default",
+      command: "cld",
+      configDir: "~/.claude-work",
+    };
+
+    expect(resolveAccount(DEFAULT_ACCOUNT_ID, [named, WORK])).toEqual({
+      profile: named,
+      configDir: "~/.claude-work",
+    });
+  });
+
   it("re-asks when the chosen label no longer names a profile", () => {
     // A renamed or deleted profile leaves a dangling choice: falling through to
     // the quick-pick heals it, where honouring it silently would not.

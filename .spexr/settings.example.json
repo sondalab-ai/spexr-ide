@@ -1,5 +1,5 @@
 {
-    "spexr.claude.activeProfile": "default",
+    "spexr.claude.activeProfile": "",
     "spexr.claude.executablePath": "/usr/local/bin/claude",
     "spexr.experts.activeId": ""
 }

@@ -527,6 +527,10 @@ export class ClaudeTerminalManager {
    */
   async promptForAccount(): Promise<ResolvedAccount | undefined> {
     const profiles = this.launchProfiles();
+    // A profile the user labelled "default" claims that name: offering the
+    // built-in account under it too would give two items one stored value, and
+    // the profile is what `resolveAccount` would then start.
+    const claimed = profiles.some((p) => p.label.trim().toLowerCase() === DEFAULT_ACCOUNT_ID);
     const picked = await this.quickInput.pick(
       [
         ...profiles.map((p) => ({
@@ -534,11 +538,15 @@ export class ClaudeTerminalManager {
           label: p.label,
           description: `${p.command} — ${p.configDir}`,
         })),
-        {
-          id: DEFAULT_ACCOUNT_ID,
-          label: "Default account",
-          description: `claude — ${DEFAULT_CONFIG_DIR}, with CLAUDE_CONFIG_DIR unset`,
-        },
+        ...(claimed
+          ? []
+          : [
+              {
+                id: DEFAULT_ACCOUNT_ID,
+                label: "Default account",
+                description: `claude — ${DEFAULT_CONFIG_DIR}, with CLAUDE_CONFIG_DIR unset`,
+              },
+            ]),
       ],
       { placeHolder: "Which Claude account should SPEXR start?" },
     );

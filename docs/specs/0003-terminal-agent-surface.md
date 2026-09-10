@@ -20,11 +20,11 @@ Replace the headless SDK proxy with the real interactive `claude` CLI hosted ins
 
 ## Acceptance Criteria
 
-- **AC-1** On workspace open, `ClaudeTerminalManager.launch()` creates a `TerminalWidget` with `shellPath` = resolved `claude` executable, `cwd` = workspace root, `env.CLAUDE_CONFIG_DIR` = profile config dir (when set), and docks it in the left side panel at rank 1. Missing executable produces a blocking `MessageService.error` notification; no terminal is opened.
+- **AC-1** On workspace open, `ClaudeTerminalManager.launch()` creates a `TerminalWidget` with `shellPath` = resolved `claude` executable, `cwd` = workspace root, `env.CLAUDE_CONFIG_DIR` = the account's config dir, and empty when the account's command sets it itself, and docks it in the left side panel at rank 1. Missing executable produces a blocking `MessageService.error` notification; no terminal is opened.
 
 - **AC-2** Command `spexr.claude.toggleExpand` moves the single terminal widget between the left panel and the main area. Moving to main calls `ApplicationShell.addWidget(term, { area: "main" })` + `activateWidget`; moving back calls `addWidget(term, { area: "left", rank: 1 })` + `revealWidget`. The placement state is tracked on `ClaudeTerminalManager` so successive toggles alternate correctly.
 
-- **AC-3** Profile selection from `SpexrBootstrapContribution` feeds `CLAUDE_CONFIG_DIR` into `TerminalWidget.env`. When more than one profile is detected the user is prompted once per project and the choice is persisted in `spexr.claude.profileId` / `spexr.claude.configDir` folder-scoped preferences.
+- **AC-3** The account resolved by `resolveAccount` feeds `CLAUDE_CONFIG_DIR` into `TerminalWidget.env`. The account is the launch profile named by `spexr.claude.activeProfile`, or the only configured profile when there is one; when several are configured and none is chosen the user is prompted once per machine and the answer is persisted at user scope. Dismissing the prompt cancels the launch. `Spexr: Select Claude account` changes it later.
 
 - **AC-4** Spec hand-off (`spexr.spec.handoff`) and workflow step (`spexr.spec.workflow.action`) call `ClaudeTerminalManager.send(prompt + "\n")` then `reveal()`. No inbox or chat view is involved.
 

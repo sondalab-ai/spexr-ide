@@ -170,9 +170,13 @@ export function resolveAccount(
   profiles: readonly ClaudeLaunchProfile[],
 ): ResolvedAccount | typeof AMBIGUOUS_ACCOUNT {
   const chosen = activeProfile.trim().toLowerCase();
-  if (chosen === DEFAULT_ACCOUNT_ID) return DEFAULT_ACCOUNT;
+  // Profiles are matched first: a profile labelled "default" is the user's own,
+  // and reading it as the built-in account would start the wrong identity under
+  // a name they chose. `promptForAccount` stops offering the built-in item when
+  // a profile claims that name, so the two can never both be on offer.
   const match = profiles.find((p) => p.label.trim().toLowerCase() === chosen);
   if (match) return { profile: match, configDir: match.configDir };
+  if (chosen === DEFAULT_ACCOUNT_ID) return DEFAULT_ACCOUNT;
   if (profiles.length === 0) return DEFAULT_ACCOUNT;
   if (profiles.length === 1) return { profile: profiles[0]!, configDir: profiles[0]!.configDir };
   return AMBIGUOUS_ACCOUNT;
