@@ -132,8 +132,9 @@ export class ClaudeTerminalManager {
    * reusing the existing terminal slot if a different one is running.
    *
    * @param expert  Minimal expert info for title/icon, or undefined for base.
+   * @returns  Whether a session is running as that expert afterwards.
    */
-  async startWithExpert(expert: { id: string; name: string; icon: string }): Promise<void> {
+  async startWithExpert(expert: { id: string; name: string; icon: string }): Promise<boolean> {
     const firstRoot = this.workspace.tryGetRoots()[0];
     if (firstRoot) {
       await this.preferences.set(
@@ -145,10 +146,10 @@ export class ClaudeTerminalManager {
     }
     if (this.widget && isReusableTerminal(this.widget) && this.currentExpertId === expert.id) {
       await this.reveal();
-      return;
+      return true;
     }
     this.disposeCurrent();
-    await this.launchSession(expert);
+    return this.launchSession(expert);
   }
 
   /**
@@ -157,8 +158,10 @@ export class ClaudeTerminalManager {
    * The installed expert files under `docs/agents/` are left untouched; only
    * the active selection is reset. Relaunches the single terminal because the
    * persona is fixed at process start.
+   *
+   * @returns  Whether the base agent is running afterwards.
    */
-  async deactivateExpert(): Promise<void> {
+  async deactivateExpert(): Promise<boolean> {
     const firstRoot = this.workspace.tryGetRoots()[0];
     if (firstRoot) {
       await this.preferences.set(
@@ -169,7 +172,7 @@ export class ClaudeTerminalManager {
       );
     }
     this.disposeCurrent();
-    await this.launchSession(undefined);
+    return this.launchSession(undefined);
   }
 
   private activeExpertId(): string | undefined {
@@ -198,28 +201,37 @@ export class ClaudeTerminalManager {
     this.currentExpertId = undefined;
   }
 
+  /**
+   * Launch a session, or report that none was started.
+   *
+   * The return value is what stops a caller announcing a session that does not
+   * exist: no workspace, no backend, a dismissed account prompt and a failed
+   * launch all leave the terminal slot empty.
+   */
   private async launchSession(
     expert?: { id: string; name: string; icon: string },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const firstRoot = this.workspace.tryGetRoots()[0];
     if (!firstRoot) {
       void this.messages.info("SPEXR: open a workspace to start the Claude session.");
-      return;
+      return false;
     }
-    if (!this.agentService) return;
+    if (!this.agentService) return false;
 
     const workspaceRoot = firstRoot.resource.path.toString();
 
     try {
       const account = await this.chooseAccount();
-      if (!account) return; // the account prompt was dismissed
+      if (!account) return false; // the account prompt was dismissed
       await this.linkMemory(workspaceRoot, account.configDir.trim() || undefined);
       const shellArgs = await this.buildShellArgs(workspaceRoot, expert?.id);
       await this.launch(workspaceRoot, account, shellArgs, expert);
       this.currentExpertId = expert?.id;
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       void this.messages.error(`SPEXR: ${message}`);
+      return false;
     }
   }
 

@@ -1136,7 +1136,12 @@ export class SpexrCommandsContribution
       return;
     }
     try {
-      await this.claudeTerminal.startWithExpert({ id: raw.id, name: raw.name, icon: raw.icon });
+      const started = await this.claudeTerminal.startWithExpert({
+        id: raw.id,
+        name: raw.name,
+        icon: raw.icon,
+      });
+      if (!started) return; // no session to announce, and nothing to type into
       this.messages.info(`Started session as ${raw.name}.`);
       if (raw.kickoffPrompt) await this.sendKickoff(raw.kickoffPrompt);
     } catch (err) {
@@ -1185,7 +1190,8 @@ export class SpexrCommandsContribution
 
   private async deactivateExpert(): Promise<void> {
     try {
-      await this.claudeTerminal.deactivateExpert();
+      const started = await this.claudeTerminal.deactivateExpert();
+      if (!started) return;
       this.messages.info("Expert deactivated. Running the base agent.");
     } catch (err) {
       console.error("[spexr] deactivateExpert failed", err);
