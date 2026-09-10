@@ -27,6 +27,9 @@ export const SPEXR_CLAUDE_EXECUTABLE_PREFERENCE = "spexr.claude.executablePath";
  * or `"default"` for the account that runs with no `CLAUDE_CONFIG_DIR` at all.
  * Empty means the user has not chosen yet: with a single account SPEXR uses it,
  * with several it asks once and writes the answer here.
+ *
+ * Folder-scoped, like the active expert: which identity a project runs under is
+ * a property of the project, not of the machine.
  */
 export const SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE = "spexr.claude.activeProfile";
 
@@ -165,8 +168,10 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "Account SPEXR starts Claude under: the label of a spexr.claude.launchProfiles " +
         "entry, or \"default\" for the account that runs with no CLAUDE_CONFIG_DIR. " +
-        "Empty means not chosen yet — SPEXR asks once when more than one account " +
-        "exists. Change it with `Spexr: Select Claude account`.",
+        "Empty means not chosen yet — SPEXR asks once per project when the machine " +
+        "has more than one account. Folder-scoped, so personal and work projects " +
+        "can run under different identities. Change it with " +
+        "`Spexr: Select Claude account`.",
     },
     [SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE]: {
       type: "array",

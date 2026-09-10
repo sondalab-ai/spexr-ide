@@ -70,7 +70,7 @@ A running `claude` agent leaves no live handle on its transcript, so there is no
 
 - **Session state.** The v2 design's "working = transcript written within ~45s" was replaced by the turn-open model with a ~10 min dormancy cap (AC-3): the 45s window flipped busy agents to idle during long tools/inferences.
 - **Focus surface.** The design's separate `focus-pane.tsx` was replaced by the in-card `AgentPinnedCard` + `TerminalMount`; the standalone main-area follow pane was removed.
-- **Launch mechanism.** The `spexr.claude.launchCommand` preference was removed. Accounts are owned by the profile system (`spexr.claude.launchProfiles`, detected from the user's aliases; the active one named by `spexr.claude.activeProfile` at user scope); the binary is resolved login-shell-aware (`resolveClaudeExecutableViaShell`) so a config-pinning alias can no longer break resume. A wall session carries the config dir it was started or discovered under; with none it falls back to the active account.
+- **Launch mechanism.** The `spexr.claude.launchCommand` preference was removed. Accounts are owned by the profile system (`spexr.claude.launchProfiles`, detected from the user's aliases; the active one named by folder-scoped `spexr.claude.activeProfile`); the binary is resolved login-shell-aware (`resolveClaudeExecutableViaShell`) so a config-pinning alias can no longer break resume. A wall session carries the config dir it was started or discovered under; with none it falls back to the active account.
 
 ## Security
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   accountForConfigDir,
   AMBIGUOUS_ACCOUNT,
+  availableAccounts,
   DEFAULT_ACCOUNT,
   DEFAULT_ACCOUNT_ID,
   isValidLaunchCommand,
@@ -221,8 +222,14 @@ describe("resolveAccount", () => {
     expect(resolveAccount("", [])).toEqual(DEFAULT_ACCOUNT);
   });
 
-  it("uses the only configured profile without asking", () => {
-    expect(resolveAccount("", [PERSO])).toEqual({ profile: PERSO, configDir: "~/.claude-perso" });
+  it("asks even with a single profile: the default account is the other answer", () => {
+    expect(resolveAccount("", [PERSO])).toBe(AMBIGUOUS_ACCOUNT);
+  });
+
+  it("does not ask when the only profile is the default account with a wrapper", () => {
+    const home: ClaudeLaunchProfile = { label: "H", command: "cld", configDir: "~/.claude" };
+
+    expect(resolveAccount("", [home])).toEqual({ profile: home, configDir: "~/.claude" });
   });
 
   it("reports ambiguity when several profiles exist and none was chosen", () => {
@@ -266,11 +273,38 @@ describe("resolveAccount", () => {
     expect(resolveAccount("Gone", [PERSO, WORK])).toBe(AMBIGUOUS_ACCOUNT);
   });
 
-  it("still uses the single profile when the chosen label is stale", () => {
-    expect(resolveAccount("Gone", [PERSO])).toEqual({
-      profile: PERSO,
-      configDir: "~/.claude-perso",
-    });
+  it("re-asks when the chosen label is stale and a real choice remains", () => {
+    expect(resolveAccount("Gone", [PERSO])).toBe(AMBIGUOUS_ACCOUNT);
+  });
+});
+
+describe("availableAccounts", () => {
+  const WORK2: ClaudeLaunchProfile = { label: "W", command: "cld", configDir: "~/.claude-work" };
+
+  it("offers the default account beside the profiles", () => {
+    expect(availableAccounts([PERSO])).toEqual([
+      { profile: PERSO, configDir: "~/.claude-perso" },
+      DEFAULT_ACCOUNT,
+    ]);
+  });
+
+  it("counts the default account once when a profile already wraps it", () => {
+    const home: ClaudeLaunchProfile = { label: "H", command: "cld", configDir: "~/.claude" };
+
+    expect(availableAccounts([home, WORK2])).toEqual([
+      { profile: home, configDir: "~/.claude" },
+      { profile: WORK2, configDir: "~/.claude-work" },
+    ]);
+  });
+
+  it("drops the built-in account when a profile has taken its name", () => {
+    const named: ClaudeLaunchProfile = { ...WORK2, label: "Default" };
+
+    expect(availableAccounts([named])).toEqual([{ profile: named, configDir: "~/.claude-work" }]);
+  });
+
+  it("is the default account alone when nothing is configured", () => {
+    expect(availableAccounts([])).toEqual([DEFAULT_ACCOUNT]);
   });
 });
 

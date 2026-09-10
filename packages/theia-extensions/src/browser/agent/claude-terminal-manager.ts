@@ -24,6 +24,7 @@ import {
 } from "../preferences/spexr-preferences.js";
 import {
   AMBIGUOUS_ACCOUNT,
+  availableAccounts,
   DEFAULT_ACCOUNT_ID,
   DEFAULT_CONFIG_DIR,
   launchPlanFor,
@@ -520,43 +521,40 @@ export class ClaudeTerminalManager {
   /**
    * Ask which account to run Claude under and remember the answer.
    *
-   * Written at user scope: the account is a property of the machine the user is
-   * on, not of the project, and asking again in every new workspace is exactly
-   * the friction this replaces. A folder that genuinely needs another account
-   * can still override the preference in its own settings.
+   * Written folder-scoped, like the active expert: personal projects and work
+   * projects want different identities, so the question belongs to the project
+   * and each one is asked once. With no folder open there is nothing to scope
+   * it to, and the answer falls back to user scope.
    */
   async promptForAccount(): Promise<ResolvedAccount | undefined> {
     const profiles = this.launchProfiles();
-    // A profile the user labelled "default" claims that name: offering the
-    // built-in account under it too would give two items one stored value, and
-    // the profile is what `resolveAccount` would then start.
-    const claimed = profiles.some((p) => p.label.trim().toLowerCase() === DEFAULT_ACCOUNT_ID);
     const picked = await this.quickInput.pick(
-      [
-        ...profiles.map((p) => ({
-          id: p.label,
-          label: p.label,
-          description: `${p.command} — ${p.configDir}`,
-        })),
-        ...(claimed
-          ? []
-          : [
-              {
-                id: DEFAULT_ACCOUNT_ID,
-                label: "Default account",
-                description: `claude — ${DEFAULT_CONFIG_DIR}, with CLAUDE_CONFIG_DIR unset`,
-              },
-            ]),
-      ],
-      { placeHolder: "Which Claude account should SPEXR start?" },
+      availableAccounts(profiles).map((account) => ({
+        id: account.profile?.label ?? DEFAULT_ACCOUNT_ID,
+        label: account.profile?.label ?? "Default account",
+        description: account.profile
+          ? `${account.profile.command} — ${account.profile.configDir}`
+          : `claude — ${DEFAULT_CONFIG_DIR}, with CLAUDE_CONFIG_DIR unset`,
+      })),
+      { placeHolder: "Which Claude account should SPEXR start in this project?" },
     );
     if (!picked?.id) return undefined;
-    await this.preferences.set(
-      SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
-      picked.id,
-      PreferenceScope.User,
-    );
+    await this.storeAccount(picked.id);
     const account = resolveAccount(picked.id, profiles);
     return account === AMBIGUOUS_ACCOUNT ? undefined : account;
+  }
+
+  private async storeAccount(id: string): Promise<void> {
+    const firstRoot = this.workspace.tryGetRoots()[0];
+    if (!firstRoot) {
+      await this.preferences.set(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE, id, PreferenceScope.User);
+      return;
+    }
+    await this.preferences.set(
+      SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
+      id,
+      PreferenceScope.Folder,
+      firstRoot.resource.toString(),
+    );
   }
 }

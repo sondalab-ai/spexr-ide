@@ -153,8 +153,33 @@ export function accountForConfigDir(
 }
 
 /**
+ * Every account the user could pick between on this machine.
+ *
+ * The default account is one of them: a machine with a single wrapper alias has
+ * *two* identities, the alias and the one `claude` starts by hand, and treating
+ * the lone profile as the only answer would silently pick for the user. It is
+ * left out only when it cannot be offered as itself — a profile already bound
+ * to `~/.claude` *is* that account with a wrapper in front, and a profile
+ * labelled `default` has taken the name the stored choice would use.
+ */
+export function availableAccounts(
+  profiles: readonly ClaudeLaunchProfile[],
+): ResolvedAccount[] {
+  const accounts = profiles.map((profile) => ({ profile, configDir: profile.configDir }));
+  const covered = profiles.some(
+    (p) =>
+      sameConfigDir(p.configDir, DEFAULT_CONFIG_DIR) ||
+      p.label.trim().toLowerCase() === DEFAULT_ACCOUNT_ID,
+  );
+  return covered ? accounts : [...accounts, DEFAULT_ACCOUNT];
+}
+
+/**
  * The account SPEXR should run Claude under, or {@link AMBIGUOUS_ACCOUNT} when
  * only the user can say.
+ *
+ * There is nothing to ask when the machine holds a single account, and a lone
+ * launch profile is *not* that case — see {@link availableAccounts}.
  *
  * The stored choice names a profile by label, so the profile stays the single
  * source of truth for the command, the config dir, and who exports it. A label
@@ -177,9 +202,8 @@ export function resolveAccount(
   const match = profiles.find((p) => p.label.trim().toLowerCase() === chosen);
   if (match) return { profile: match, configDir: match.configDir };
   if (chosen === DEFAULT_ACCOUNT_ID) return DEFAULT_ACCOUNT;
-  if (profiles.length === 0) return DEFAULT_ACCOUNT;
-  if (profiles.length === 1) return { profile: profiles[0]!, configDir: profiles[0]!.configDir };
-  return AMBIGUOUS_ACCOUNT;
+  const accounts = availableAccounts(profiles);
+  return accounts.length > 1 ? AMBIGUOUS_ACCOUNT : (accounts[0] ?? DEFAULT_ACCOUNT);
 }
 
 /**
