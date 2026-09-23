@@ -19,7 +19,7 @@ import {
 } from "./darkfactory-format.js";
 import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
 import { cacheFreshness, expiryLabel, formatTokens } from "./cache-freshness.js";
-import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
+import { readPinnedHeight, startHeightDrag, writePinnedHeight } from "./pinned-card-height.js";
 import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.js";
 import type { WallLayout } from "./wall-layout.js";
 import { attachWidget, detachWidget } from "../terminal/terminal-attach.js";
@@ -586,24 +586,29 @@ function usePinnedHeight(layout: WallLayout): {
     if (!el) return;
     event.preventDefault();
     const handle = event.currentTarget;
-    const startY = event.clientY;
-    const startHeight = el.getBoundingClientRect().height;
-    let latest = startHeight;
+    // The card is border-box (see .spexr-df-pinned), so its rendered height is
+    // the same quantity the inline height sets.
+    const drag = startHeightDrag(el.getBoundingClientRect().height, event.clientY, window.innerHeight);
     const onMove = (e: PointerEvent): void => {
-      latest = clampPinnedHeight(startHeight + e.clientY - startY, window.innerHeight);
-      setHeight(latest);
+      setHeight(drag.move(e.clientY));
     };
     const onEnd = (e: PointerEvent): void => {
-      handle.releasePointerCapture(e.pointerId);
+      if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onEnd);
       handle.removeEventListener("pointercancel", onEnd);
-      writePinnedHeight(window.localStorage, latest, layout);
+      handle.removeEventListener("lostpointercapture", onEnd);
+      const final = drag.end();
+      if (final !== undefined) writePinnedHeight(window.localStorage, final, layout);
     };
     handle.setPointerCapture(event.pointerId);
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onEnd);
     handle.addEventListener("pointercancel", onEnd);
+    // Capture can be lost without an up or cancel (the window losing focus
+    // mid-drag); left listening, every later hover over the handle would
+    // resize the card from the old starting point.
+    handle.addEventListener("lostpointercapture", onEnd);
   };
   return { ref, height, onResizeStart };
 }

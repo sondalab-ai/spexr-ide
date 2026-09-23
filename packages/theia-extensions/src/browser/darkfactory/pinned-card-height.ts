@@ -62,3 +62,24 @@ export function writePinnedHeight(storage: HeightStorage, px: number, layout: Wa
     // ignore
   }
 }
+
+/**
+ * One drag of a card's resize handle, from the height the card rendered at when
+ * it started. `move` returns the height to show for a pointer position; `end`
+ * returns the height to store, or `undefined` when the pointer never moved, so
+ * a click on the handle leaves the stored height alone.
+ */
+export function startHeightDrag(
+  startHeight: number,
+  startY: number,
+  viewportHeight: number,
+): { move(clientY: number): number; end(): number | undefined } {
+  let latest: number | undefined;
+  return {
+    move(clientY) {
+      latest = clampPinnedHeight(startHeight + clientY - startY, viewportHeight);
+      return latest;
+    },
+    end: () => latest,
+  };
+}

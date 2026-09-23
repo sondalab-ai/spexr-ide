@@ -2655,6 +2655,9 @@ code {
 
 /* Pinned/highlight: one session lifted above the grid, expanded for a live view. */
 .spexr-df-pinned {
+  /* Border-box, so the height the resize drag measures is the height it sets;
+     content-box added the padding and border to it on every drag. */
+  box-sizing: border-box;
   display: flex; flex-direction: column; gap: var(--sl-space-3); min-width: 0;
   /* Bounded on purpose: without a ceiling the card grows with the transcript,
      `__scroll` never scrolls, and the grid below is pushed off-screen. */
@@ -2699,8 +2702,11 @@ code {
   background: color-mix(in srgb, var(--sl-status-danger, #e5484d) 14%, transparent);
   color: var(--sl-status-danger, #e5484d);
 }
+/* A zero basis keeps the streamed transcript from sizing the card: it fills
+   whatever height the card has and scrolls, instead of growing the card on its
+   own with every new event up to max-height. */
 .spexr-df-pinned__scroll {
-  flex: 1 1 auto; min-height: 0; margin: 0; overflow: auto;
+  flex: 1 1 0; min-height: 0; margin: 0; overflow: auto;
   padding: var(--sl-space-3);
   background: color-mix(in srgb, var(--sl-text-primary) 4%, transparent);
   border-radius: var(--sl-radius-sm, 6px);
