@@ -133,13 +133,11 @@ function CacheChip(props: {
   if (freshness?.kind !== "expiring") return null;
   const left = expiryLabel(freshness.remainingMs);
   const note = contextNote(tile);
+  const explanation = `Prompt cache expires in about ${left} — open the session to keep it, or the next turn re-sends ${note || "the whole conversation"}`;
   return (
-    <span
-      className={`spexr-df-${block}__cache`}
-      title={`Prompt cache expires in about ${left} — open the session to keep it, or the next turn re-sends ${note || "the whole conversation"}`}
-    >
-      <i className="codicon codicon-watch" />
-      {left}
+    <span className={`spexr-df-${block}__cache`} title={explanation} aria-label={explanation}>
+      <i className="codicon codicon-watch" aria-hidden="true" />
+      {`cache ${left}`}
     </span>
   );
 }
