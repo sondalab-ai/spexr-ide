@@ -1,7 +1,8 @@
 import * as React from "@theia/core/shared/react";
-import { Widget, UnsafeWidgetUtilities } from "@theia/core/lib/browser/widgets/widget";
+import { Widget } from "@theia/core/lib/browser/widgets/widget";
 import { MessageLoop } from "@theia/core/shared/@lumino/messaging";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
+import type { Terminal as XTerm } from "xterm";
 import type {
   AgentSummary,
   AgentTile,
@@ -21,6 +22,8 @@ import { cacheFreshness, expiryLabel, formatTokens } from "./cache-freshness.js"
 import { clampPinnedHeight, readPinnedHeight, writePinnedHeight } from "./pinned-card-height.js";
 import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.js";
 import type { WallLayout } from "./wall-layout.js";
+import { attachWidget, detachWidget } from "../terminal/terminal-attach.js";
+import { LUMINO_ATTACH_OPS } from "../terminal/lumino-attach-ops.js";
 import {
   launchOptionLabel,
   profileForConfigDir,
@@ -28,19 +31,41 @@ import {
 } from "../../common/claude-launch-profiles.js";
 
 /**
+ * Redraw a terminal from scratch as it is shown again: a glyph atlas built for
+ * another display's pixel ratio, or left stale while the card was closed, is
+ * what makes characters overlap until the terminal is recreated.
+ */
+function repaint(term: TerminalWidget): void {
+  try {
+    // getTerminal() is on Theia's TerminalWidgetImpl, not the abstract type.
+    const xterm = (term as { getTerminal?: () => XTerm }).getTerminal?.();
+    xterm?.clearTextureAtlas();
+    xterm?.refresh(0, xterm.rows - 1);
+  } catch {
+    /* terminal not opened yet */
+  }
+}
+
+/**
  * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
- * imperatively (UnsafeWidgetUtilities allows a non-body host), keep it fitted with
- * a ResizeObserver, and detach on unmount. React never reconciles the host's
- * children, so the terminal survives the widget's re-renders. Disposal of the
- * terminal itself stays with the manager that created it.
+ * imperatively (a non-body host), keep it fitted with a ResizeObserver, and
+ * detach on unmount. React never reconciles the host's children, so the terminal
+ * survives the widget's re-renders. Disposal of the terminal itself stays with
+ * the manager that created it.
+ *
+ * A layout effect, not a passive one: React runs layout cleanups of a removed
+ * card before taking its DOM out of the document, so the terminal is detached
+ * while still connected. A passive cleanup runs after the removal, the strict
+ * detach refuses the node, and the terminal is left flagged attached.
  */
 function TerminalMount(props: { term: TerminalWidget }): React.ReactElement {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const host = hostRef.current;
     const term = props.term;
     if (!host) return undefined;
-    UnsafeWidgetUtilities.attach(term, host);
+    attachWidget(term, host, LUMINO_ATTACH_OPS);
+    repaint(term);
     const fit = (): void => {
       try {
         MessageLoop.sendMessage(term, Widget.ResizeMessage.UnknownSize);
@@ -55,9 +80,9 @@ function TerminalMount(props: { term: TerminalWidget }): React.ReactElement {
     return () => {
       ro.disconnect();
       try {
-        Widget.detach(term);
+        detachWidget(term, LUMINO_ATTACH_OPS);
       } catch {
-        /* already detached or disposed */
+        /* disposed meanwhile */
       }
     };
   }, [props.term]);

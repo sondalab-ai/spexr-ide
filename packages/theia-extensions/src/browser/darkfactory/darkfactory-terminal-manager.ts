@@ -21,6 +21,7 @@ import type { ClaudeLaunchProfile } from "../../common/claude-launch-profiles.js
 import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.js";
 import { SESSION_TERMINAL_KIND } from "../terminal/terminal-style.js";
 import { evictOnAttachFailure, isReusableTerminal } from "../terminal/terminal-liveness.js";
+import { fallBackOnContextLoss } from "../terminal/terminal-attach.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -156,6 +157,7 @@ export class SpexrDarkfactoryTerminalManager {
     // death: a re-attach that found no process, typically after the frontend
     // reconnected to the backend on wake from standby.
     evictOnAttachFailure(term, () => this.evict(key));
+    fallBackOnContextLoss(term);
     return term;
   }
 
@@ -168,7 +170,12 @@ export class SpexrDarkfactoryTerminalManager {
   private evict(key: string): void {
     const term = this.widgets.get(key);
     this.widgets.delete(key);
-    if (term && !term.isDisposed) term.dispose();
+    if (!term || term.isDisposed) return;
+    // Lumino's dispose() detaches an attached widget strictly, and throws before
+    // the xterm and its connection are released if the node already left the
+    // document (the Darkfactory view was closed under it). Put it back first.
+    if (term.isAttached && !term.node.isConnected) document.body.appendChild(term.node);
+    term.dispose();
   }
 
   /**
