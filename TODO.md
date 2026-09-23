@@ -4,9 +4,9 @@
 - [ ] Aggiungi un browser per ogni pinned terminal, apribile da pulsante specifico, cosi' da poter controllare in tempo reale cosa fa la sessione (e.g. PR, o web preview)
 - [ ] Quando lanci un agente esperto in un workspace, chiedi su quale folder vuoi attivarlo
 - [ ] Tra i plugin ne vedo molti che non sembrano utilizzati (e.g. i temi)
-- [ ] Strano warning apparso a run-time nel log "2026-09-10T16:18:48.672Z root INFO WARN: Could not find the language 'bash', did you forget to load/include a language module?"
-- [ ] icona timeout non ha tooltip, descrizioni, e' poco intelligibile
-- [ ] from time to time it crashes with: 2026-09-13T03:19:28.855Z root ERROR [darkfactory] backend event loop blocked ~24253ms
+- [x] Strano warning apparso a run-time nel log "2026-09-10T16:18:48.672Z root INFO WARN: Could not find the language 'bash', did you forget to load/include a language module?"
+- [x] icona timeout non ha tooltip, descrizioni, e' poco intelligibile
+- [x] from time to time it crashes with: 2026-09-13T03:19:28.855Z root ERROR [darkfactory] backend event loop blocked ~24253ms
 2026-09-13T03:20:01.092Z root ERROR [darkfactory] backend event loop blocked ~24241ms
 2026-09-13T03:20:33.433Z root ERROR [darkfactory] backend event loop blocked ~24342ms
 2026-09-13T03:21:05.710Z root ERROR [darkfactory] backend event loop blocked ~24275ms
@@ -51,7 +51,7 @@
 2026-09-13T06:43:59.555Z root ERROR [darkfactory] backend event loop blocked ~24258ms
 2026-09-13T06:48:23.358Z root ERROR [darkfactory] backend event loop blocked ~255801ms
 2026-09-13T07:01:47.046Z root ERROR [darkfactory] backend event loop blocked ~792682ms
-- [ ] Spexr si era freezato dopo aver collegato un monitor esterno, non so se puo' centrare, comunque nel log c'era: 2026-09-15T07:05:44.746Z core:DefaultMessagingService INFO Closing channel on service path '/services/terminals/1444163418'.
+- [x] Spexr si era freezato dopo aver collegato un monitor esterno, non so se puo' centrare, comunque nel log c'era: 2026-09-15T07:05:44.746Z core:DefaultMessagingService INFO Closing channel on service path '/services/terminals/1444163418'.
 2026-09-15T07:05:44.746Z core:DefaultMessagingService INFO Closing channel on service path '/services/terminals/952047588'.
 2026-09-15T07:05:45.918Z core:WebsocketFrontendConnectionService INFO Reconnecting failed for 1
 2026-09-15T07:05:45.944Z core:WebsocketFrontendConnectionService INFO creating connection for 1
@@ -75,9 +75,9 @@
     at file:///Users/marcello.barile/src/mine/ai-tools/spexr/apps/desktop/lib/frontend/bundle.js:608771:42
     at Object.react_stack_bottom_frame (file:///Users/marcello.barile/src/mine/ai-tools/spexr/apps/desktop/lib/frontend/bundle.js:242433:23)
     at runWithFiberInDEV (file:///Users/marcello.barile/src/mine/ai-tools/spexr/apps/desktop/lib/frontend/bundle.js:224863:74)
-- [ ] In certain unclear cases the pinned terminals starts increasing their height autonomously (one time it happened after having resized a near one)
-- [ ] Sporadically, pinned sessions on darkfactory lost the pinned status (closing the pinned tile)
+- [x] In certain unclear cases the pinned terminals starts increasing their height autonomously (one time it happened after having resized a near one)
+- [x] Sporadically, pinned sessions on darkfactory lost the pinned status (closing the pinned tile)
 - [ ] How to treat hung or zombie claude sessions / processes
-- [ ] From time to time, the pinned terminal glitches (e.g. characters overlap, or the whole output goes full black except for few characters) there is no way to restore, not even closing and reopening the card
+- [x] From time to time, the pinned terminal glitches (e.g. characters overlap, or the whole output goes full black except for few characters) there is no way to restore, not even closing and reopening the card
 - [ ] Integrate MxM into SPEXR (optional)
 - [ ] Add a TODO view in SPEXR (based on a TODO.md file)
