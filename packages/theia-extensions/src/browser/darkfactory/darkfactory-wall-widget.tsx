@@ -47,6 +47,7 @@ import {
 } from "./agent-tile.js";
 import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
 import { matchLaunchedSession } from "./new-session-match.js";
+import { keepPinnedTiles } from "./pinned-tiles.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
 import { mosaicColumns, readWallLayout, writeWallLayout, type WallLayout } from "./wall-layout.js";
 import { shouldRefresh, type SummaryState } from "./summary-refresh.js";
@@ -562,7 +563,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     });
   }
 
-  private setTiles(tiles: AgentTile[]): void {
+  private setTiles(scanned: AgentTile[]): void {
+    const tiles = keepPinnedTiles(scanned, this.tiles, this.pinned);
     this.tiles = tiles;
     this.loaded = true;
     // Once the last expiring session has been dealt with, the narrowed wall has
@@ -583,7 +585,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // RECENT_LIMIT means a trashed session slides off the wall, and dropping its
     // id here would bring it back untrashed the next time it does surface.
     // TRASH_CAP is what bounds the list instead.
-    // Drop expanded cards whose session is gone (stops the orphaned follow).
+    // Pinned sessions a scan left out were carried over above, so this only
+    // drops a card pinned from something never on the wall.
     for (const id of this.pinned) {
       if (!live.has(id)) this.unpin(id);
     }
@@ -596,7 +599,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // ignored. Trashing a session also unpins it, so `pinned` holds none.
     const { kept } = partitionTrashed(tiles, this.trashedIds());
     const byId = new Map(kept.map((t) => [t.sessionId, t]));
-    // `this.pinned` is already pruned of departed sessions above, and is
+    // `this.pinned` holds only sessions on the wall (see above), and is
     // newest-first — which, since the queue drains in target order, is also the
     // order the user most wants the inferences in.
     const targets = summaryTargets(

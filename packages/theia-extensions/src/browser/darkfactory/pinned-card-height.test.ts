@@ -4,6 +4,7 @@ import {
   readPinnedHeight,
   writePinnedHeight,
   pinnedHeightKey,
+  startHeightDrag,
   PINNED_HEIGHT_KEY,
   type HeightStorage,
 } from "./pinned-card-height.js";
@@ -111,5 +112,26 @@ describe("writePinnedHeight", () => {
       },
     };
     expect(() => writePinnedHeight(throwing, 400, "stack")).not.toThrow();
+  });
+});
+
+describe("startHeightDrag", () => {
+  it("follows the pointer from the card's rendered height", () => {
+    const drag = startHeightDrag(400, 100, VIEWPORT);
+    expect(drag.move(150)).toBe(450);
+    expect(drag.move(80)).toBe(380);
+    expect(drag.end()).toBe(380);
+  });
+
+  it("keeps the card inside the viewport bounds", () => {
+    const drag = startHeightDrag(400, 0, VIEWPORT);
+    expect(drag.move(5000)).toBe(900);
+    expect(drag.move(-5000)).toBe(200);
+  });
+
+  it("stores nothing for a press on the handle that never moved", () => {
+    // Re-saving the measured height on a plain click is how a stored height
+    // used to creep up by the card's padding on every touch of the handle.
+    expect(startHeightDrag(400, 100, VIEWPORT).end()).toBeUndefined();
   });
 });

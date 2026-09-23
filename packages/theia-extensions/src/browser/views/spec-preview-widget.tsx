@@ -6,33 +6,7 @@ import { DisposableCollection } from "@theia/core/lib/common/disposable";
 import { EditorManager, type EditorWidget } from "@theia/editor/lib/browser";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import hljs from "highlight.js/lib/core";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import json from "highlight.js/lib/languages/json";
-import xml from "highlight.js/lib/languages/xml";
-import c from "highlight.js/lib/languages/c";
-import cpp from "highlight.js/lib/languages/cpp";
-import java from "highlight.js/lib/languages/java";
-import python from "highlight.js/lib/languages/python";
-import rust from "highlight.js/lib/languages/rust";
-import go from "highlight.js/lib/languages/go";
-
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("js", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("ts", typescript);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("html", xml);
-hljs.registerLanguage("c", c);
-hljs.registerLanguage("cpp", cpp);
-hljs.registerLanguage("java", java);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("py", python);
-hljs.registerLanguage("rust", rust);
-hljs.registerLanguage("go", go);
-
+import { highlightCodeBlocks } from "./code-highlight.js";
 import { isMarkdownUri } from "./markdown-uri.js";
 
 export const SPEC_PREVIEW_VIEW_ID = "spexr.view.spec-preview";
@@ -49,7 +23,7 @@ interface PreviewState {
  *
  * Syntax highlighting: `onUpdateRequest` wraps the parent React render in
  * `flushSync` so the DOM is guaranteed to be committed before we call
- * `hljs.highlightElement()` on each code block.
+ * highlight.js on each code block.
  */
 @injectable()
 export class SpexrSpecPreviewWidget extends ReactWidget {
@@ -105,9 +79,7 @@ export class SpexrSpecPreviewWidget extends ReactWidget {
    */
   protected override onUpdateRequest(msg: Message): void {
     flushSync(() => super.onUpdateRequest(msg));
-    this.node
-      .querySelectorAll(".spexr-spec-preview__body pre code:not(.hljs)")
-      .forEach((el) => hljs.highlightElement(el as HTMLElement));
+    highlightCodeBlocks(this.node, ".spexr-spec-preview__body pre code:not(.hljs)");
   }
 
   /**

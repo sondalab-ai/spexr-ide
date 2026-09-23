@@ -1,7 +1,7 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { execFile } from "node:child_process";
 import { Session as InspectorSession } from "node:inspector";
@@ -24,6 +24,8 @@ import { installedHarnesses, type DetectFn } from "../../common/harness/harness-
 import { once } from "../../common/harness/once.js";
 import type { HarnessAdapter, HarnessSessionRef } from "../../common/harness/harness-types.js";
 import { readBoundedLines } from "./bounded-read.js";
+import { readFollowChunk, type FollowCursor } from "./follow-reader.js";
+import { createLagProbe } from "./loop-lag.js";
 import { buildTile } from "./tile-builder.js";
 import { forEachConcurrent as fanOut } from "./concurrency.js";
 import { loadSessionIndex, saveSessionIndex } from "./session-index-store.js";
@@ -66,6 +68,8 @@ const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 
 /** Follow backfill cap: how many recent events the read-only view seeds with. */
 const FOLLOW_EVENTS = 40;
+/** How far back from the end a follow starts reading: ample for FOLLOW_EVENTS events. */
+const FOLLOW_TAIL_BYTES = 262_144;
 /** How many recent assistant prose segments feed the now/overview summary model. */
 const SUMMARY_PROSE_TURNS = 4;
 /**
@@ -305,8 +309,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private missingSessionNames = new Set<string>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
-  /** sessionId → { watcher, offset } for active read-only follows. */
-  private readonly follows = new Map<string, { watcher: FSWatcher; offset: number }>();
+  /** sessionId → { watcher, cursor } for active read-only follows. */
+  private readonly follows = new Map<string, { watcher: FSWatcher; cursor: FollowCursor | undefined }>();
 
   // @unmanaged(): inversify must not manage this optional test seam.
   constructor(@unmanaged() deps?: DarkfactoryDeps) {
@@ -457,20 +461,20 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /**
    * Diagnostic: log when the backend event loop was blocked well past the tick
    * interval, so a real main-thread stall (vs. a mere websocket drop) is visible
-   * and attributable in time. With SPEXR_LOOP_PROFILE=1 each stall also dumps a
+   * and attributable in time. Time asleep is not counted (see
+   * {@link createLagProbe}). With SPEXR_LOOP_PROFILE=1 each stall also dumps a
    * .cpuprofile (see {@link stallProfiler}) to attribute the block to a hotspot.
    */
   private startLoopMonitor(): void {
     if (this.loopMonitor) return;
-    let last = Date.now();
+    const lagOf = createLagProbe(1000);
     const dumpProfile = process.env.SPEXR_LOOP_PROFILE ? stallProfiler() : undefined;
     this.loopMonitor = setInterval(() => {
-      const lag = Date.now() - last - 1000;
+      const lag = lagOf();
       if (lag > 750) {
         console.error(`[darkfactory] backend event loop blocked ~${lag}ms`);
         dumpProfile?.(lag);
       }
-      last = Date.now();
     }, 1000);
     this.loopMonitor.unref?.();
   }
@@ -891,9 +895,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const emit = async (): Promise<void> => {
       const entry = this.follows.get(sessionId);
       if (!entry) return;
-      const lines = await readFileLines(meta.transcriptPath);
-      const fresh = lines.slice(entry.offset);
-      entry.offset = lines.length;
+      const { lines: fresh, cursor } = await readFollowChunk(meta.transcriptPath, entry.cursor, FOLLOW_TAIL_BYTES);
+      entry.cursor = cursor;
       if (fresh.length === 0) return;
       const entries = fresh.map(parseLine).filter((e): e is TurnEntry => !!e);
       const events = buildFollowEvents(entries, FOLLOW_EVENTS);
@@ -914,7 +917,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     watcher.on("error", () => {
       void this.stopFollow(sessionId);
     });
-    this.follows.set(sessionId, { watcher, offset: 0 });
+    this.follows.set(sessionId, { watcher, cursor: undefined });
     await emit(); // send the current tail immediately
   }
 
@@ -1156,14 +1159,6 @@ function stallProfiler(): ((lagMs: number) => void) | undefined {
     };
   } catch {
     return undefined; // inspector unavailable → watchdog keeps logging only
-  }
-}
-
-async function readFileLines(path: string): Promise<string[]> {
-  try {
-    return (await readFile(path, "utf8")).split("\n");
-  } catch {
-    return [];
   }
 }
 

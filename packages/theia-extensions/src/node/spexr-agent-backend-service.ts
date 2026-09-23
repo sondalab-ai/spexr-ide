@@ -19,6 +19,7 @@ import {
   StructuralDriftDetector,
 } from "@spexr/spec";
 import { SpexrGitBackendService } from "./spexr-git-backend-service.js";
+import { runWithInput } from "./run-with-input.js";
 import type { GitStatusDto } from "../common/git-protocol.js";
 import type {
   SpexrAgentService,
@@ -542,24 +543,15 @@ async function checkDriftImpl(
     return dto;
   }
 
+  const runOpts = { cwd: workspaceRoot, input: prompt, timeoutMs: 120_000 };
   const claudeResult = viaShell
-    ? child_process.spawnSync(process.env["SHELL"] || "/bin/zsh", loginShellArgs(launch!, printArgs), {
-        cwd: workspaceRoot,
-        encoding: "utf8",
-        input: prompt,
-        timeout: 120_000,
-      })
-    : child_process.spawnSync(claudeExec as string, printArgs, {
-        cwd: workspaceRoot,
-        encoding: "utf8",
-        input: prompt,
-        timeout: 120_000,
-      });
+    ? await runWithInput(process.env["SHELL"] || "/bin/zsh", loginShellArgs(launch!, printArgs), runOpts)
+    : await runWithInput(claudeExec as string, printArgs, runOpts);
 
   let agentFindings: DriftFindingDto[] = [];
   if (claudeResult.status === 0 && claudeResult.stdout) {
     try {
-      const envelope = JSON.parse(claudeResult.stdout as string) as {
+      const envelope = JSON.parse(claudeResult.stdout) as {
         result?: string;
         is_error?: boolean;
       };
@@ -571,7 +563,7 @@ async function checkDriftImpl(
       ];
     }
   } else {
-    const stderr = ((claudeResult.stderr as string) ?? "").trim();
+    const stderr = claudeResult.stderr.trim();
     agentFindings = [
       {
         criterionId: "agent",
