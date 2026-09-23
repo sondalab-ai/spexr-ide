@@ -68,3 +68,26 @@ export function parseExpertFrontmatter(
     ...(fields["model"] ? { model: fields["model"] } : {}),
   };
 }
+
+/** An installed expert and the workspace folders (labels) that have it. */
+export interface InstalledExpert extends InstalledExpertMeta {
+  readonly folders: readonly string[];
+}
+
+/**
+ * Merge the experts found in each workspace folder into one list, one entry
+ * per expert id, remembering which folders have it. The first folder's
+ * metadata wins when two folders disagree. Sorted by name.
+ */
+export function mergeInstalled(
+  perFolder: readonly { readonly folder: string; readonly experts: readonly InstalledExpertMeta[] }[],
+): InstalledExpert[] {
+  const byId = new Map<string, InstalledExpert>();
+  for (const { folder, experts } of perFolder) {
+    for (const e of experts) {
+      const seen = byId.get(e.id);
+      byId.set(e.id, seen ? { ...seen, folders: [...seen.folders, folder] } : { ...e, folders: [folder] });
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
