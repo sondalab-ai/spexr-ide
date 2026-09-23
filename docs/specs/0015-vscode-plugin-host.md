@@ -119,6 +119,21 @@ Everything in this spec is `Planned` until its slice merges.
   The excluded ids are verified against the tarball's own manifests, not
   assumed from VS Code convention.
 
+- **AC-3a Builtins with no place in SPEXR excluded.** Also excluded, because the
+  product has no use for them: the nine extra colour themes and the Seti icon
+  theme (SPEXR's design tokens map only Theia's own light, dark and
+  high-contrast themes, so any other theme leaves the UI half restyled;
+  `vscode.theme-defaults` stays, as marketplace themes build on it); the
+  JavaScript debugger and its companions (`ms-vscode.js-debug`,
+  `ms-vscode.vscode-js-profile-table`, `vscode.debug-auto-launch`, which
+  activated on every startup, `vscode.debug-server-ready`); the grunt, gulp and
+  jake task providers; `vscode.tunnel-forwarding`; and the notebook and
+  Copilot-chat plugins (`vscode.ipynb`, `vscode.builtin-notebook-renderers`,
+  `vscode.mermaid-chat-features`). A user who had picked one of the removed
+  themes falls back to Theia's default. Since `download:plugins` skips files
+  already present, a development checkout drops them only after its `plugins/`
+  directory is deleted and downloaded again.
+
 - **AC-4 Language intelligence in development.** With `pnpm dev`, opening a
   `.ts` file in this repository and invoking go-to-definition on an imported
   symbol navigates to its declaration; hover shows the inferred type; a
