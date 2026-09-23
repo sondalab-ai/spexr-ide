@@ -3,10 +3,10 @@ slug: 0015-session-smart-search
 title: Session smart search — natural-language recall of past sessions
 status: draft
 createdAt: 2026-09-08
-workflowStep: specify
-updatedAt: 2026-09-08
+workflowStep: ship
+updatedAt: 2026-09-11
+forcedSteps: [specify, context, clarify, plan, implement, validate, ship]
 ---
-
 > **What is this file.** Implementation contract for natural-language search over
 > every agent session Darkfactory knows about, surfaced as a query bar on the
 > wall. Audience: SPEXR contributors. Owner: marcello.barile. Companion files:

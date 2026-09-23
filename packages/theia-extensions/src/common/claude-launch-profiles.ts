@@ -81,6 +81,49 @@ export function parseLaunchProfiles(raw: unknown): ClaudeLaunchProfile[] {
   return profiles;
 }
 
+/**
+ * What one preference holds at each scope, innermost first.
+ *
+ * Mirrors the fields of Theia's `PreferenceInspection` that matter here, so the
+ * precedence rule below can be tested without a preference service.
+ */
+export interface ScopedProfileValues {
+  readonly session?: unknown;
+  readonly folder?: unknown;
+  readonly workspace?: unknown;
+  readonly user?: unknown;
+  readonly fallback?: unknown;
+}
+
+/**
+ * Launch profiles from the innermost scope that actually configures any.
+ *
+ * Theia merges a top-level array by *replacement*, not by concatenation
+ * (`PreferenceUtils.merge` copies the target when the source is not an object),
+ * so an empty array at an outer scope silently erases every account configured
+ * further in. That is not a hypothetical: the settings UI writes to the
+ * workspace file whenever a workspace is open, and a `"launchProfiles": []`
+ * left there takes away the profiles the user has at user level — leaving SPEXR
+ * with one apparent account and no reason to ask which one to use.
+ *
+ * An empty list therefore means "nothing configured at this scope" and the
+ * search continues outward, which is the only reading under which a scope can
+ * add accounts without being able to destroy them.
+ */
+export function profilesFromScopes(scopes: ScopedProfileValues): ClaudeLaunchProfile[] {
+  for (const raw of [
+    scopes.session,
+    scopes.folder,
+    scopes.workspace,
+    scopes.user,
+    scopes.fallback,
+  ]) {
+    const profiles = parseLaunchProfiles(raw);
+    if (profiles.length > 0) return profiles;
+  }
+  return [];
+}
+
 /** The profile that owns a config dir, if one is configured for it. */
 export function profileForConfigDir(
   profiles: readonly ClaudeLaunchProfile[],
@@ -250,6 +293,33 @@ export function launchOptionLabel(
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Quote a config dir for a shell assignment, keeping `~` meaningful.
+ *
+ * Profiles are written by hand and say `~/.claude-perso`, but single quotes are
+ * exactly what stops the shell expanding a tilde — the variable would reach the
+ * CLI with a literal `~` in it, naming a directory relative to wherever the
+ * process happens to run. The home part becomes `"$HOME"`, which the shell does
+ * expand, and the rest stays single-quoted so nothing else is interpreted.
+ */
+export function shellQuoteConfigDir(dir: string): string {
+  if (dir === "~" || dir === "$HOME") return `"$HOME"`;
+  if (dir.startsWith("~/")) return `"$HOME"${shellQuote(dir.slice(1))}`;
+  if (dir.startsWith("$HOME/")) return `"$HOME"${shellQuote(dir.slice("$HOME".length))}`;
+  return shellQuote(dir);
+}
+
+/**
+ * Whether a config dir is written relative to the home directory.
+ *
+ * The frontend cannot expand it — it has no home directory to expand against —
+ * so such a value must not be handed to anything that treats it as a path. The
+ * shell line resolves it instead, via {@link shellQuoteConfigDir}.
+ */
+export function isHomeRelative(dir: string): boolean {
+  return dir === "~" || dir === "$HOME" || dir.startsWith("~/") || dir.startsWith("$HOME/");
 }
 
 /**

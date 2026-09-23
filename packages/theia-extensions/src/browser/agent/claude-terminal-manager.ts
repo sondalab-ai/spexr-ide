@@ -18,18 +18,19 @@ import { isClaudeReady } from "./claude-readiness.js";
 import { expandLeftPanelWithMinWidth } from "../shell/side-panel.js";
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
-  SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
   SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
+import { readLaunchProfiles } from "../preferences/launch-profiles.js";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
   DEFAULT_ACCOUNT_ID,
   DEFAULT_CONFIG_DIR,
+  isHomeRelative,
   launchPlanFor,
-  parseLaunchProfiles,
   resolveAccount,
+  shellQuoteConfigDir,
   type ClaudeLaunchProfile,
   type LaunchPlan,
   type ResolvedAccount,
@@ -177,8 +178,21 @@ export class ClaudeTerminalManager {
   }
 
   private activeExpertId(): string | undefined {
-    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE) ?? "";
+    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE, "", this.rootUri()) ?? "";
     return stored.trim() || undefined;
+  }
+
+  /**
+   * Resource the folder-scoped preferences are read against.
+   *
+   * Theia's folder provider returns nothing at all when `get` is called without
+   * a resource (`getFolderProviders` bails on an undefined uri), so a value
+   * written at folder scope is invisible unless the read names a folder. The
+   * side agent is one terminal for the whole window, opened in the first root,
+   * so that root is the resource its settings belong to.
+   */
+  private rootUri(): string | undefined {
+    return this.workspace.tryGetRoots()[0]?.resource.toString();
   }
 
   private async resolveExpert(
@@ -254,7 +268,7 @@ export class ClaudeTerminalManager {
   private resolveShell(plan: LaunchPlan, shellArgs: string[]): { shellArgs: string[] } {
     const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
     const account = plan.exportConfigDir
-      ? `export CLAUDE_CONFIG_DIR=${shellQuote(plan.exportConfigDir)}`
+      ? `export CLAUDE_CONFIG_DIR=${shellQuoteConfigDir(plan.exportConfigDir)}`
       : "unset CLAUDE_CONFIG_DIR";
     const line = `${account}; ${[bin, ...shellArgs.map(shellQuote)].join(" ")}`;
     return { shellArgs: ["-i", "-l", "-c", line] };
@@ -364,10 +378,13 @@ export class ClaudeTerminalManager {
   ): Promise<void> {
     const plan = launchPlanFor(account, this.executablePath());
     // Only what the plan says to export: a wrapper that owns the account must
-    // not be handed a second, possibly divergent, value through the env.
-    const env: { [k: string]: string | null } = plan.exportConfigDir
-      ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir }
-      : {};
+    // not be handed a second, possibly divergent, value through the env. A
+    // home-relative dir is left out entirely — the env is not a shell, so `~`
+    // would arrive literal; the `-c` line exports the expanded value anyway.
+    const env: { [k: string]: string | null } =
+      plan.exportConfigDir && !isHomeRelative(plan.exportConfigDir)
+        ? { CLAUDE_CONFIG_DIR: plan.exportConfigDir }
+        : {};
 
     const term = await this.terminalService.newTerminal({
       id: CLAUDE_TERMINAL_ID,
@@ -495,17 +512,17 @@ export class ClaudeTerminalManager {
   }
 
   private storedAccount(): string {
-    return this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE) ?? "";
-  }
-
-  private launchProfiles(): ClaudeLaunchProfile[] {
-    return parseLaunchProfiles(
-      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+    return (
+      this.preferences.get<string>(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE, "", this.rootUri()) ?? ""
     );
   }
 
+  private launchProfiles(): ClaudeLaunchProfile[] {
+    return readLaunchProfiles(this.preferences, this.rootUri());
+  }
+
   private executablePath(): string {
-    return this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE) ?? "";
+    return this.preferences.get<string>(SPEXR_CLAUDE_EXECUTABLE_PREFERENCE, "", this.rootUri()) ?? "";
   }
 
   /**
@@ -521,10 +538,12 @@ export class ClaudeTerminalManager {
   /**
    * Ask which account to run Claude under and remember the answer.
    *
-   * Written folder-scoped, like the active expert: personal projects and work
-   * projects want different identities, so the question belongs to the project
-   * and each one is asked once. With no folder open there is nothing to scope
-   * it to, and the answer falls back to user scope.
+   * Written folder-scoped, like the active expert: personal and work projects
+   * want different identities, so the question belongs to the project and each
+   * one is asked once. The folder is the first workspace root, the one this
+   * terminal runs in — the other roots of a multi-root workspace share its
+   * account, because there is one side agent per window. With no folder open
+   * there is nothing to scope it to, and the answer falls back to user scope.
    */
   async promptForAccount(): Promise<ResolvedAccount | undefined> {
     const profiles = this.launchProfiles();

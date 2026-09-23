@@ -42,7 +42,6 @@ import {
 } from "@spexr/spec";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import {
-  parseLaunchProfiles,
   profileForConfigDir,
   describeAddedProfiles,
   DEFAULT_CONFIG_DIR,
@@ -64,13 +63,13 @@ import {
   type SpecLintFixFinding,
 } from "@spexr/agent";
 import { serializeExpertFile } from "../views/experts-format.js";
+import { readLaunchProfiles } from "../preferences/launch-profiles.js";
 import { SpexrAgentServiceProxy } from "../agent/agent-service-proxy.js";
 import type { SpexrAgentService, ExpertAgentDto, DriftReportDto } from "../../common/agent-protocol.js";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { PreferenceScope } from "@theia/core/lib/common/preferences/preference-scope";
 import {
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
-  SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 
@@ -645,9 +644,7 @@ export class SpexrCommandsContribution
    * terminals do — a wrapper that a bare `claude` would bypass.
    */
   private launchCommand(): string | undefined {
-    const profiles = parseLaunchProfiles(
-      this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
-    );
+    const profiles = readLaunchProfiles(this.preferences, this.workspaceRoot()?.toString());
     const configDir = this.claudeTerminal.currentConfigDir() ?? DEFAULT_CONFIG_DIR;
     return profileForConfigDir(profiles, configDir)?.command;
   }
@@ -1034,7 +1031,12 @@ export class SpexrCommandsContribution
   }
 
   private activeExpertId(): string | undefined {
-    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE) ?? "";
+    const stored =
+      this.preferences.get<string>(
+        SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
+        "",
+        this.workspaceRoot()?.toString(),
+      ) ?? "";
     return stored.trim() || undefined;
   }
 
@@ -1112,7 +1114,12 @@ export class SpexrCommandsContribution
     if (!confirmed) return;
     try {
       await this.fileService.delete(fileUri, { useTrash: false, recursive: false });
-      const active = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE) ?? "";
+      const active =
+        this.preferences.get<string>(
+          SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
+          "",
+          root.toString(),
+        ) ?? "";
       if (active === id) {
         await this.preferences.set(
           SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,

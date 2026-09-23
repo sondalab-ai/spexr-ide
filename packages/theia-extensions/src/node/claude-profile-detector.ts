@@ -342,7 +342,15 @@ function extractConfigDir(body: string): string | undefined {
   return match?.[1];
 }
 
-function expandHome(value: string): string {
+/**
+ * Resolve a `~`- or `$HOME`-relative reference to an absolute path.
+ *
+ * Exported because a config dir travels as the user wrote it — a profile says
+ * `~/.claude-perso` — and anything that turns one into a filesystem path has to
+ * expand it first, or `fs` resolves it against the process cwd and creates a
+ * literal `~` directory there.
+ */
+export function expandHome(value: string): string {
   if (value.startsWith("~/") || value === "~") {
     return path.join(os.homedir(), value.slice(1));
   }
