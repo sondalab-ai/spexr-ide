@@ -207,13 +207,15 @@ const PlanChecklist: React.FC<{
       <ul className="spexr-plan-checklist__list" role="list">
         {tasks.map((task) => (
           <li key={task.id} className="spexr-plan-checklist__item">
-            <label className="spexr-plan-checklist__label">
+            <label className="sl-check spexr-plan-checklist__label">
               <input
                 type="checkbox"
+                className="sl-check__input"
                 checked={task.done}
                 onChange={() => onToggle?.(task.id)}
                 aria-label={`${task.id} (${task.acRef}): ${task.description}`}
               />
+              <span className="sl-check__box" aria-hidden="true" />
               <span className={`spexr-plan-checklist__text${task.done ? " spexr-plan-checklist__text--done" : ""}`}>
                 <span className="spexr-plan-checklist__ac-ref">{task.acRef}</span>
                 {task.description}

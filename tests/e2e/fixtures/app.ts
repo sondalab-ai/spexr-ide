@@ -98,7 +98,7 @@ export const sel = {
   planHeader: ".spexr-plan-checklist__header",
   planItem: ".spexr-plan-checklist__item",
   planCheckbox: (id: string) =>
-    `.spexr-plan-checklist__item:has(.spexr-plan-checklist__ac-ref:text("${id}")) input[type="checkbox"]`,
+    `.spexr-plan-checklist__item:has(.spexr-plan-checklist__ac-ref:text("${id}")) .sl-check__box`,
 
   // Spec lint (bottom panel)
   lintWidget: ".spexr-spec-lint-widget",

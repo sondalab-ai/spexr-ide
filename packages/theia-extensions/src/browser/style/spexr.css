@@ -28,43 +28,46 @@ body {
   border-radius: var(--sl-radius-sm);
 }
 
-.spexr-button {
-  --bg: var(--sl-bg-surface-raised);
-  --fg: var(--sl-text-primary);
-  --border: var(--sl-border-default);
-
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: var(--sl-radius-md);
+/* Kit components adapted to the IDE substrate. Each rule below stands in for
+   something the kit does not ship yet (density, danger, pressed segments,
+   accent eyebrow): https://github.com/sondalab-ai/sondalab-ui/issues/33 */
+.sl-btn {
   padding: var(--sl-space-2) var(--sl-space-4);
-  font: inherit;
-  cursor: pointer;
-  /* Icon and label centred against each other: as inline content a codicon
-     sits on the text baseline, which leaves it visibly low beside its label. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sl-space-2);
-  transition:
-    background var(--sl-motion-fast) var(--sl-motion-ease),
-    border-color var(--sl-motion-fast) var(--sl-motion-ease);
+  border-radius: var(--sl-radius-md);
 }
 
-.spexr-button:hover {
-  background: var(--sl-accent-subtle);
-  border-color: var(--sl-accent-default);
+.sl-btn--sm {
+  padding: var(--sl-space-1) var(--sl-space-3);
+  font-size: var(--sl-text-sm);
 }
 
-.spexr-button--primary {
-  --bg: var(--sl-accent-default);
-  --fg: var(--sl-text-on-accent);
-  --border: var(--sl-accent-default);
+.sl-btn--danger {
+  color: var(--slc-danger);
+  border-color: var(--slc-border-subtle);
 }
 
-.spexr-button--primary:hover {
-  background: var(--sl-accent-hover);
-  border-color: var(--sl-accent-hover);
+.sl-btn--danger:hover:not(:disabled) {
+  background: var(--slc-danger);
+  color: var(--slc-on-accent);
+  border-color: var(--slc-danger);
+}
+
+/* A panel is narrower than a page: the kit's empty-state padding would push
+   the message below the fold of a short side panel. */
+.sl-empty {
+  padding: var(--sl-space-4);
+}
+
+/* A group of pressed buttons (not a tablist) keeps aria-pressed; the kit only
+   paints aria-selected. */
+.sl-segmented__item[aria-pressed="true"] {
+  background: var(--slc-raised);
+  color: var(--slc-text);
+}
+
+/* spexr's eyebrows carry the accent; the kit's are muted. */
+.sl-eyebrow--accent {
+  color: var(--slc-accent);
 }
 
 /* Theia's activity-bar/tab badge (e.g. SCM changed-file count) is a fixed
@@ -87,142 +90,6 @@ body {
  */
 #theia-statusBar .area .element.hasCommand:hover {
   color: var(--sl-text-primary);
-}
-
-/* Agent chat */
-.spexr-agent-widget {
-  background: var(--sl-agent-bg);
-}
-
-.spexr-agent-chat {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: var(--sl-space-4);
-  gap: var(--sl-space-3);
-  border-left: 3px solid var(--sl-agent-rail);
-}
-
-.spexr-agent-chat__header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.spexr-agent-chat__title {
-  margin: 0;
-  font-size: var(--sl-text-md);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.spexr-agent-chat__status {
-  font-size: var(--sl-text-xs);
-  color: var(--sl-text-muted);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sl-space-1);
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-weight: 600;
-}
-
-.spexr-agent-chat__status-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--sl-text-muted);
-}
-
-.spexr-agent-chat__status--ready .spexr-agent-chat__status-dot,
-.spexr-agent-chat__status--responding .spexr-agent-chat__status-dot {
-  background: var(--sl-accent-default);
-}
-
-.spexr-agent-chat__status--error .spexr-agent-chat__status-dot {
-  background: var(--sl-status-danger);
-}
-
-.spexr-agent-chat__messages {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sl-space-2);
-}
-
-.spexr-agent-chat__message {
-  background: var(--sl-agent-bubble-assistant);
-  border: 1px solid var(--sl-border-subtle);
-  border-radius: var(--sl-radius-md);
-  padding: var(--sl-space-3);
-}
-
-.spexr-agent-chat__message--user {
-  background: var(--sl-agent-bubble-user);
-  align-self: flex-end;
-  max-width: 85%;
-}
-
-.spexr-agent-chat__message--system {
-  background: transparent;
-  border-style: dashed;
-  color: var(--sl-text-secondary);
-  font-size: var(--sl-text-sm);
-}
-
-.spexr-agent-chat__composer {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sl-space-2);
-}
-
-/* Sondalab L3: field label reads as a mono structural eyebrow.
-   See canonical recipe in sondalab-ui/docs/design-language.md (L3). */
-.spexr-agent-chat__label {
-  font-family: var(--sl-font-mono);
-  font-size: var(--sl-text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--sl-text-muted);
-}
-
-.spexr-agent-chat__input {
-  resize: vertical;
-  min-height: 4rem;
-  border: 1px solid var(--sl-border-default);
-  border-radius: var(--sl-radius-md);
-  padding: var(--sl-space-2);
-  background: var(--sl-bg-surface);
-  color: var(--sl-text-primary);
-  font-family: var(--sl-font-code);
-  font-size: var(--sl-text-sm);
-}
-
-.spexr-agent-chat__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sl-space-2);
-}
-
-.spexr-agent-chat__hint {
-  font-size: var(--sl-text-xs);
-  color: var(--sl-text-muted);
-}
-
-.spexr-agent-chat__input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.spexr-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Spec + memory panels */
@@ -266,8 +133,6 @@ body {
 
 .spexr-memory-panel__empty {
   margin-top: var(--sl-space-4);
-  color: var(--sl-text-secondary);
-  font-size: var(--sl-text-sm);
 }
 
 .spexr-memory-list {
@@ -348,38 +213,7 @@ body {
 }
 
 .spexr-memory-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px var(--sl-space-2);
-  border-radius: var(--sl-radius-sm);
-  font-size: var(--sl-text-xs);
-  font-weight: 600;
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  background: var(--sl-bg-surface);
-  border: 1px solid var(--sl-border-subtle);
-  color: var(--sl-text-secondary);
   flex-shrink: 0;
-}
-
-.spexr-memory-pill--user {
-  color: var(--sl-accent-default);
-  border-color: var(--sl-accent-default);
-}
-
-.spexr-memory-pill--feedback {
-  color: var(--sl-status-warning, var(--sl-accent-default));
-  border-color: currentColor;
-}
-
-.spexr-memory-pill--project {
-  color: var(--sl-status-success, var(--sl-accent-default));
-  border-color: currentColor;
-}
-
-.spexr-memory-pill--reference {
-  color: var(--sl-text-muted);
 }
 
 .spexr-memory-panel__section {
@@ -462,8 +296,6 @@ body {
 
 .spexr-spec-panel__empty {
   margin-top: var(--sl-space-4);
-  color: var(--sl-text-secondary);
-  font-size: var(--sl-text-sm);
 }
 
 /* One workspace folder's specs. The folder's progress bar doubles as the
@@ -528,27 +360,6 @@ body {
   color: var(--sl-text-secondary);
   font-size: var(--sl-text-xs);
   font-family: var(--sl-font-code);
-}
-
-.spexr-button--ghost {
-  background: transparent;
-  border: 1px solid var(--sl-border);
-}
-
-.spexr-button--compact {
-  padding: var(--sl-space-1) var(--sl-space-3);
-  font-size: var(--sl-text-sm);
-}
-
-.spexr-button--danger {
-  color: var(--sl-status-danger);
-  border-color: var(--sl-border-subtle);
-}
-
-.spexr-button--danger:hover {
-  background: var(--sl-status-danger);
-  color: var(--sl-text-on-accent);
-  border-color: var(--sl-status-danger);
 }
 
 .spexr-spec-list__actions {
@@ -618,15 +429,6 @@ body {
 
 .spexr-spec-resources__badge {
   flex-shrink: 0;
-  font-size: 10px;
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-weight: 600;
-  color: var(--sl-text-muted);
-  border: 1px solid var(--sl-border-subtle);
-  border-radius: var(--sl-radius-sm);
-  padding: 0 var(--sl-space-1);
 }
 
 .spexr-spec-resources__item a {
@@ -953,12 +755,6 @@ code {
 
 .spexr-welcome__eyebrow {
   margin: 0;
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: var(--sl-text-xs);
-  color: var(--sl-accent-default);
-  font-weight: 600;
 }
 
 .spexr-welcome__title {
@@ -1032,13 +828,6 @@ code {
   position: absolute;
   top: var(--sl-space-3);
   right: var(--sl-space-3);
-  font-family: var(--sl-font-code);
-  font-size: var(--sl-text-xs);
-  color: var(--sl-text-muted);
-  border: 1px solid var(--sl-border-subtle);
-  border-radius: var(--sl-radius-sm);
-  padding: 2px var(--sl-space-1);
-  background: var(--sl-bg-canvas);
 }
 
 .spexr-welcome__section-head {
@@ -1143,12 +932,6 @@ code {
 
 .spexr-whats-new__eyebrow {
   margin: 0 0 var(--sl-space-1);
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: var(--sl-text-xs);
-  color: var(--sl-accent-default);
-  font-weight: 600;
 }
 
 .spexr-whats-new__title {
@@ -1242,15 +1025,6 @@ code {
 .spexr-tip__label-icon {
   font-size: var(--sl-text-md);
   line-height: 1;
-}
-
-.spexr-tip__category {
-  font-size: var(--sl-text-xs);
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--sl-accent-default);
-  font-weight: 600;
 }
 
 .spexr-tip__shuffle {
@@ -1624,26 +1398,8 @@ code {
 
 /* Memory link status badge (Agent connection section). */
 .spexr-link-badge {
-  display: inline-block;
   margin-left: var(--sl-space-2);
-  padding: 0 var(--sl-space-2);
-  border: 1px solid currentColor;
-  border-radius: var(--sl-radius-sm);
-  font-size: var(--sl-text-xs);
-  font-weight: 500;
   vertical-align: middle;
-}
-
-.spexr-link-badge--ok {
-  color: var(--sl-status-success);
-}
-
-.spexr-link-badge--muted {
-  color: var(--sl-text-muted);
-}
-
-.spexr-link-badge--danger {
-  color: var(--sl-status-danger);
 }
 
 .spexr-experts-panel {
@@ -1672,11 +1428,6 @@ code {
   letter-spacing: 0.14em;
   color: var(--sl-text-secondary);
   margin: 0;
-}
-
-.spexr-experts-panel__empty {
-  color: var(--sl-text-secondary);
-  font-size: var(--sl-text-sm);
 }
 
 .spexr-experts-list {
@@ -1786,9 +1537,7 @@ code {
 }
 
 .spexr-spec-preview__empty {
-  color: var(--sl-text-secondary);
-  font-size: var(--sl-text-sm);
-  padding: var(--sl-space-4);
+  margin: var(--sl-space-4);
 }
 
 .spexr-spec-preview__body {
@@ -1992,18 +1741,14 @@ code {
 }
 
 .spexr-plan-checklist__label {
-  display: flex;
   align-items: flex-start;
   gap: var(--sl-space-2);
-  cursor: pointer;
   font-size: var(--sl-text-sm);
   line-height: var(--sl-line-normal);
 }
 
-.spexr-plan-checklist__label input[type="checkbox"] {
-  flex-shrink: 0;
+.spexr-plan-checklist__label .sl-check__box {
   margin-top: 3px;
-  accent-color: var(--sl-accent-default);
 }
 
 .spexr-plan-checklist__text {
@@ -2234,7 +1979,7 @@ code {
   align-items: flex-start;
   margin-top: 2px;
   padding-left: 6px;
-  border-left: 2px solid var(--sl-accent-default, #5b6cff);
+  border-left: 2px solid var(--sl-accent-default);
   line-height: 1.4;
 }
 /* No clamp/ellipsis: descriptions are short (model-capped) — show them in full. */
@@ -2251,9 +1996,9 @@ code {
   border-radius: 3px;
   background: linear-gradient(
     90deg,
-    var(--sl-accent-subtle, #eef0ff) 25%,
+    var(--sl-accent-subtle) 25%,
     color-mix(in srgb, var(--sl-accent-default) 30%, transparent) 37%,
-    var(--sl-accent-subtle, #eef0ff) 63%
+    var(--sl-accent-subtle) 63%
   );
   background-size: 400% 100%;
   animation: spexr-skeleton-shimmer 1.4s ease infinite;
@@ -2454,7 +2199,6 @@ code {
   }
 }
 
-
 /* --- Darkfactory: agent monitoring wall --- */
 .spexr-darkfactory {
   /* Categorical wall — adopt the shared DS data-viz ramp (--sl-viz-0..7). */
@@ -2501,13 +2245,9 @@ code {
   --df-control-height: 2rem;
   display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sl-space-3);
 }
-.spexr-df-launcher__field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.spexr-df-launcher__label { font-size: 11px; letter-spacing: 0.04em; color: var(--sl-text-muted); }
-.spexr-df-launcher__select {
-  height: var(--df-control-height); max-width: 22rem; padding: 0 8px;
-  background: var(--sl-bg-surface); color: var(--sl-text-primary);
-  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
-}
+.spexr-df-launcher__field { gap: 4px; min-width: 0; }
+.spexr-df-launcher__select { flex: 0 1 auto; min-width: 0; max-width: 22rem; }
+.spexr-df-launcher__select > .sl-field__input { height: var(--df-control-height); padding-top: 0; padding-bottom: 0; }
 /* Select and Browse read as one control: the button is the select's overflow,
    for a project neither the wall nor the recents know about. */
 .spexr-df-launcher__project { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
@@ -2531,23 +2271,8 @@ code {
 
 /* Segmented control: how the running terminals are arranged. Sits opposite the
    launcher title, where it reads as a wall-level setting rather than a launch option. */
-.spexr-df-layout {
-  display: flex; margin-left: auto; padding: 2px; gap: 2px;
-  border: 1px solid var(--sl-border-subtle); border-radius: 999px;
-  background: var(--sl-bg-surface);
-}
-.spexr-df-layout__option {
-  padding: 2px 10px; border: none; border-radius: 999px; cursor: pointer;
-  background: transparent; color: var(--sl-text-muted);
-  font-size: 11px; letter-spacing: 0.14em; font-family: var(--sl-font-mono); text-transform: uppercase;
-  transition: background 120ms ease, color 120ms ease;
-}
-.spexr-df-layout__option:hover { color: var(--sl-text-primary); }
-.spexr-df-layout__option[data-active="true"] {
-  background: color-mix(in srgb, var(--sl-text-primary) 10%, transparent);
-  color: var(--sl-text-primary);
-}
-
+.spexr-df-layout { margin-left: auto; }
+.spexr-df-layout .sl-segmented__item { padding: 2px 10px; }
 /* Rescan, sitting after the arrangement toggle: same wall-level register, and
    the only control that answers "a session started elsewhere is missing". */
 .spexr-df-refresh {
@@ -2887,30 +2612,14 @@ code {
 }
 .spexr-df-pinned__tag .codicon { font-size: 0.9em; }
 /* Only the first button takes the free space: several autos would spread them apart. */
-.spexr-df-pinned__actions .spexr-button:first-of-type { margin-left: auto; }
+.spexr-df-pinned__actions .sl-btn:first-of-type { margin-left: auto; }
 
-/* On/off switch for a card's browser: the thumb slides and the track takes the accent when open. */
-.spexr-df-switch {
-  display: inline-flex; align-items: center; gap: var(--sl-space-2);
-  padding: 2px var(--sl-space-1); border: 0; border-radius: var(--sl-radius-sm);
-  background: none; color: var(--sl-text-secondary); font: inherit; font-size: var(--sl-text-sm);
-  cursor: pointer;
-  transition: color var(--sl-motion-fast) var(--sl-motion-ease);
-}
-.spexr-df-switch:hover, .spexr-df-switch[aria-checked="true"] { color: var(--sl-text-primary); }
-.spexr-df-switch:focus-visible { outline: 1px solid var(--sl-accent-default); outline-offset: 2px; }
-.spexr-df-switch__track {
-  position: relative; flex: none; width: 26px; height: 14px; border-radius: 7px;
-  background: var(--sl-border-default);
-  transition: background var(--sl-motion-fast) var(--sl-motion-ease);
-}
-.spexr-df-switch__thumb {
-  position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%;
-  background: var(--sl-bg-canvas);
-  transition: transform var(--sl-motion-fast) var(--sl-motion-ease);
-}
-.spexr-df-switch[aria-checked="true"] .spexr-df-switch__track { background: var(--sl-accent-default); }
-.spexr-df-switch[aria-checked="true"] .spexr-df-switch__thumb { transform: translateX(12px); }
+/* The card's browser switch sits in a dense action row: a smaller track than the kit's. */
+.spexr-df-switch { gap: var(--sl-space-2); }
+.spexr-df-switch .sl-switch__track { width: 26px; height: 14px; }
+.spexr-df-switch .sl-switch__track::after { width: 10px; height: 10px; }
+.spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(12px); }
+.spexr-df-switch .sl-switch__label { display: inline-flex; align-items: center; gap: var(--sl-space-1); color: var(--sl-text-secondary); }
 
 /*
  * One project's sessions, under a header that carries the identity every member
@@ -3208,11 +2917,6 @@ code {
 .spexr-df-card__perm { white-space: nowrap; }
 .spexr-df-card__turns { font-variant-numeric: tabular-nums; }
 
-/* Status pills */
-.spexr-df-pill { flex: none; padding: 0 var(--sl-space-1); border-radius: var(--sl-radius-sm); font-size: var(--sl-text-xs); font-weight: 600; }
-.spexr-df-pill--attn { color: var(--sl-text-on-accent, #fff); background: var(--tile-accent); }
-.spexr-df-pill--error { color: #fff; background: var(--sl-status-danger, #e5484d); }
-
 /* Status word (right of the project name) — a UI label, so it takes the design
    mono --sl-font-code (like the other L3 eyebrows), intentionally distinct from
    this card's code-content runs (__branch/__trail mirror the editor font). */
@@ -3285,7 +2989,7 @@ code {
   align-items: start; padding: var(--sl-space-2) 0;
   border-bottom: 1px solid var(--sl-border-subtle);
 }
-.spexr-todo__check { margin: 3px 0 0; accent-color: var(--sl-accent-default); }
+.spexr-todo__check { margin-top: 3px; }
 .spexr-todo__body { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sl-space-1); }
 .spexr-todo__title {
   padding: 0; border: none; background: none; text-align: left; cursor: pointer;

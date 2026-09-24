@@ -292,7 +292,7 @@ const SpecResourcesPanel: React.FC<SpecResourcesPanelProps> = ({ state, onAdd, o
         </span>
         <button
           type="button"
-          className="spexr-button spexr-button--primary spexr-button--compact"
+          className="sl-btn sl-btn--primary sl-btn--sm"
           onClick={onAdd}
           aria-label={`Add a resource to ${state.title}`}
         >
@@ -307,7 +307,7 @@ const SpecResourcesPanel: React.FC<SpecResourcesPanelProps> = ({ state, onAdd, o
         <ul className="spexr-spec-resources__list" role="list">
           {state.resources.map((r) => (
             <li key={`${r.kind}:${r.storedAt}:${r.label}`} className="spexr-spec-resources__item">
-              <span className="spexr-spec-resources__badge">{r.kind === "link" ? "Link" : "File"}</span>
+              <span className="sl-tag sl-tag--plain spexr-spec-resources__badge">{r.kind === "link" ? "Link" : "File"}</span>
               {r.href ? (
                 <a href={r.href} target="_blank" rel="noreferrer" title={r.href}>
                   {r.label}
@@ -322,7 +322,7 @@ const SpecResourcesPanel: React.FC<SpecResourcesPanelProps> = ({ state, onAdd, o
                 {r.kind === "file" ? (
                   <button
                     type="button"
-                    className="spexr-button spexr-button--ghost spexr-button--compact"
+                    className="sl-btn sl-btn--ghost sl-btn--sm"
                     onClick={() => onOpen(r)}
                     aria-label={`Open ${r.label}`}
                   >
@@ -331,7 +331,7 @@ const SpecResourcesPanel: React.FC<SpecResourcesPanelProps> = ({ state, onAdd, o
                 ) : null}
                 <button
                   type="button"
-                  className="spexr-button spexr-button--ghost spexr-button--compact spexr-button--danger"
+                  className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
                   onClick={() => onRemove(r)}
                   aria-label={`Remove ${r.label}`}
                 >

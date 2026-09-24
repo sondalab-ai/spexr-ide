@@ -705,24 +705,27 @@ function BrowserToggle(props: { browser: CardBrowserProps | undefined }): React.
   const { browser } = props;
   if (!browser) return null;
   return (
-    <button
-      type="button"
-      className="spexr-df-switch"
-      role="switch"
-      aria-checked={browser.state.open}
-      onClick={browser.onToggle}
+    <label
+      className="sl-switch spexr-df-switch"
       title={
         browser.state.open
           ? "Close the browser"
           : "Open a browser under the terminal, on the pages this session produces (a pull request, a local server)"
       }
     >
-      <span className="spexr-df-switch__track" aria-hidden="true">
-        <span className="spexr-df-switch__thumb" />
+      <input
+        type="checkbox"
+        role="switch"
+        className="sl-switch__input"
+        checked={browser.state.open}
+        onChange={browser.onToggle}
+      />
+      <span className="sl-switch__track" aria-hidden="true" />
+      <span className="sl-switch__label">
+        <i className="codicon codicon-globe" />
+        Browser
       </span>
-      <i className="codicon codicon-globe" />
-      Browser
-    </button>
+    </label>
   );
 }
 
@@ -837,13 +840,13 @@ export function AgentPinnedCard(props: {
             )}
           </span>
           {!isCurrent && (
-            <button className="spexr-button" onClick={() => onOpenProject(tile)} title={tile.projectPath}>
+            <button className="sl-btn sl-btn--ghost" onClick={() => onOpenProject(tile)} title={tile.projectPath}>
               <i className="codicon codicon-folder-opened" />
               Open project
             </button>
           )}
           <button
-            className="spexr-button"
+            className="sl-btn sl-btn--ghost"
             onClick={() => onOpenTerminal(tile)}
             title={`Open a shell in the bottom panel at ${tile.projectPath}`}
           >
@@ -852,7 +855,7 @@ export function AgentPinnedCard(props: {
           </button>
           <BrowserToggle browser={browser} />
           {!terminal && (
-            <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
+            <button className="sl-btn sl-btn--primary" onClick={() => onFork(tile)}>
               Fork &amp; continue
             </button>
           )}
@@ -901,12 +904,11 @@ function WallLayoutToggle(props: {
 }): React.ReactElement {
   const { layout, onChange } = props;
   return (
-    <div className="spexr-df-layout" role="group" aria-label="Arrangement of running terminals">
+    <div className="sl-segmented spexr-df-layout" role="group" aria-label="Arrangement of running terminals">
       {LAYOUTS.map((l) => (
         <button
           key={l.id}
-          className="spexr-df-layout__option"
-          data-active={l.id === layout}
+          className="sl-segmented__item"
           aria-pressed={l.id === layout}
           title={l.title}
           onClick={() => onChange(l.id)}
@@ -1027,28 +1029,30 @@ export function NewSessionLauncher(props: {
         </button>
       </div>
       <div className="spexr-df-launcher__controls">
-        <label className="spexr-df-launcher__field">
-          <span className="spexr-df-launcher__label">Project</span>
+        <label className="sl-field spexr-df-launcher__field">
+          <span className="sl-field__label">Project</span>
           <div className="spexr-df-launcher__project">
-            <select
-              className="spexr-df-launcher__select"
-              value={path}
-              title={path}
-              onChange={(e) => setPath(e.target.value)}
-            >
-              {TARGET_GROUPS.map(({ kind, label }) => {
-                const group = all.filter((t) => t.kind === kind);
-                return group.length === 0 ? null : (
-                  <optgroup key={kind} label={label}>
-                    {group.map((t) => (
-                      <option key={t.path} value={t.path} title={t.path}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                );
-              })}
-            </select>
+            <span className="sl-field__control sl-select spexr-df-launcher__select">
+              <select
+                className="sl-field__input"
+                value={path}
+                title={path}
+                onChange={(e) => setPath(e.target.value)}
+              >
+                {TARGET_GROUPS.map(({ kind, label }) => {
+                  const group = all.filter((t) => t.kind === kind);
+                  return group.length === 0 ? null : (
+                    <optgroup key={kind} label={label}>
+                      {group.map((t) => (
+                        <option key={t.path} value={t.path} title={t.path}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </select>
+            </span>
             <button
               className="spexr-df-launcher__browse"
               title="Start in a folder that is not listed"
@@ -1058,36 +1062,40 @@ export function NewSessionLauncher(props: {
             </button>
           </div>
         </label>
-        <label className="spexr-df-launcher__field">
-          <span className="spexr-df-launcher__label">Harness</span>
-          <select
-            className="spexr-df-launcher__select"
-            value={harness}
-            onChange={(e) => setHarness(e.target.value as HarnessId)}
-          >
-            <option value="claude">claude</option>
-            <option value="opencode">opencode</option>
-          </select>
+        <label className="sl-field spexr-df-launcher__field">
+          <span className="sl-field__label">Harness</span>
+          <span className="sl-field__control sl-select spexr-df-launcher__select">
+            <select
+              className="sl-field__input"
+              value={harness}
+              onChange={(e) => setHarness(e.target.value as HarnessId)}
+            >
+              <option value="claude">claude</option>
+              <option value="opencode">opencode</option>
+            </select>
+          </span>
         </label>
         {pickableConfigs && (
-          <label className="spexr-df-launcher__field">
-            <span className="spexr-df-launcher__label">Config</span>
-            <select
-              className="spexr-df-launcher__select"
-              value={configDir}
-              title={configDir}
-              onChange={(e) => setConfigDir(e.target.value)}
-            >
-              {configs.map((c) => (
-                <option key={c.path} value={c.path}>
-                  {launchOptionLabel(c.label, c.isDefault, profileForConfigDir(profiles, c.path))}
-                </option>
-              ))}
-            </select>
+          <label className="sl-field spexr-df-launcher__field">
+            <span className="sl-field__label">Config</span>
+            <span className="sl-field__control sl-select spexr-df-launcher__select">
+              <select
+                className="sl-field__input"
+                value={configDir}
+                title={configDir}
+                onChange={(e) => setConfigDir(e.target.value)}
+              >
+                {configs.map((c) => (
+                  <option key={c.path} value={c.path}>
+                    {launchOptionLabel(c.label, c.isDefault, profileForConfigDir(profiles, c.path))}
+                  </option>
+                ))}
+              </select>
+            </span>
           </label>
         )}
         <button
-          className="spexr-button spexr-button--primary spexr-df-launcher__start"
+          className="sl-btn sl-btn--primary spexr-df-launcher__start"
           disabled={!path}
           onClick={start}
         >
@@ -1165,12 +1173,12 @@ export function LaunchedSessionCard(props: {
           {isCurrent ? (
             <CurrentProjectChip />
           ) : (
-            <button className="spexr-button" onClick={onOpenProject} title={projectPath}>
+            <button className="sl-btn sl-btn--ghost" onClick={onOpenProject} title={projectPath}>
               Open project
             </button>
           )}
           <button
-            className="spexr-button"
+            className="sl-btn sl-btn--ghost"
             onClick={onOpenTerminal}
             title={`Open a shell in the bottom panel at ${projectPath}`}
           >
