@@ -18,12 +18,22 @@ export class SpexrDecisionModelStatusBar {
   @inject(SpexrDecisionServiceProxy) private readonly service!: SpexrDecisionService;
   private polling = false;
 
+  /**
+   * Starts following the backend's download state, unless already following
+   * it. Called after every model push, so a model change that starts a new
+   * download is picked up.
+   */
   watch(): void {
     if (this.polling) return;
     this.polling = true;
     void this.poll();
   }
 
+  /**
+   * Renders the current state, and asks again in a few seconds while a
+   * download is waiting or running. Stops once it is ready, failed, off or
+   * missing; the entry then shows the failure or disappears.
+   */
   private async poll(): Promise<void> {
     const status = await this.service.status().catch(() => undefined);
     if (status) this.render(status);

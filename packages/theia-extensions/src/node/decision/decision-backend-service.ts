@@ -230,7 +230,12 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
     this.settleAll();
   }
 
-  /** Schedules the current model's download when its weights are missing; cancels one no longer needed. */
+  /**
+   * Schedules the current model's download when its weights are missing, after
+   * a delay so it does not compete with startup. A download already scheduled,
+   * running or failed for the same repo is kept as is (no retry loop); one for
+   * a model no longer selected is cancelled.
+   */
   private ensureWeights(): void {
     const model = this.model;
     const repo = model === "off" ? undefined : DECISION_MODEL_REPOS[model];
@@ -246,6 +251,12 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
     job.abort.signal.addEventListener("abort", () => clearTimeout(timer));
   }
 
+  /**
+   * Runs one download, recording its progress on the job for status(). On
+   * success the job is dropped and locate() finds the weights; on failure it
+   * stays as `failed` until the next start or model change. A cancelled job
+   * ends silently.
+   */
   private async runDownload(job: DownloadJob): Promise<void> {
     job.state = "downloading";
     console.info(`[spexr decisions] downloading ${job.repo}`);

@@ -58,11 +58,21 @@ describe("downloadModel", () => {
     expect(await readdir(join(root, "onnx-community"))).toEqual([]);
   });
 
-  it("starts over from a download interrupted in an earlier run", async () => {
-    await mkdir(join(root, `${REPO}.partial`), { recursive: true });
-    await writeFile(join(root, `${REPO}.partial`, "stale.bin"), "x");
+  it("clears a download left by a process that died, but not one still running", async () => {
+    const dead = join(root, `${REPO}.partial-999999999-dead`);
+    const live = join(root, `${REPO}.partial-${process.pid}-live`);
+    for (const dir of [dead, live]) {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "stale.bin"), "x");
+    }
     await downloadModel(REPO, root, { fetch: fakeHub() });
+    expect((await readdir(join(root, "onnx-community"))).sort()).toEqual(["kev-0.6b-ONNX", "kev-0.6b-ONNX.partial-" + process.pid + "-live"]);
+  });
+
+  it("lets two downloads of the same model run at once: one lands, the other steps aside", async () => {
+    await Promise.all([downloadModel(REPO, root, { fetch: fakeHub() }), downloadModel(REPO, root, { fetch: fakeHub() })]);
     expect(await readdir(join(root, "onnx-community"))).toEqual(["kev-0.6b-ONNX"]);
+    expect(await readFile(join(root, REPO, "onnx/model_q4.onnx_data"), "utf8")).toBe("onnx/model_q4.onnx_data");
   });
 
   it("stops and cleans up when aborted", async () => {

@@ -1,7 +1,8 @@
-import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { createWriteStream, existsSync } from "node:fs";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
@@ -37,18 +38,46 @@ export interface DownloadDeps {
   readonly signal?: AbortSignal;
 }
 
+/** Whether a process is still running; used to spare the partial folder of a live download. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Removes partial folders left by downloads whose process has died (a quit or
+ * a crash mid-download). Folders of a download still running in another
+ * SPEXR instance, e.g. the installed app next to a dev build, are left alone.
+ */
+async function removeStalePartials(target: string): Promise<void> {
+  const prefix = `${basename(target)}.partial-`;
+  const entries = await readdir(dirname(target)).catch(() => [] as string[]);
+  for (const name of entries) {
+    if (!name.startsWith(prefix)) continue;
+    const pid = Number(name.slice(prefix.length).split("-")[0]);
+    if (!Number.isInteger(pid) || !alive(pid)) await rm(join(dirname(target), name), { recursive: true, force: true });
+  }
+}
+
 /**
  * Downloads a model repo's q4 files into <root>/<repo>. Files land in a
- * sibling `.partial` folder that is renamed into place only once complete,
- * so an interrupted or failed download never leaves a model the worker would
- * try to load; the next attempt starts over.
+ * sibling partial folder of this download's own, renamed into place only once
+ * complete, so an interrupted or failed download never leaves a model the
+ * worker would try to load, and two SPEXR instances downloading at once do
+ * not touch each other's files: the first to finish wins, the other discards
+ * its copy. An interrupted download starts over on the next attempt.
  */
 export async function downloadModel(repo: string, root: string, deps: DownloadDeps = {}): Promise<void> {
   const get = deps.fetch ?? fetch;
   const target = join(root, repo);
-  const partial = `${target}.partial`;
+  const partial = `${target}.partial-${process.pid}-${randomBytes(4).toString("hex")}`;
   const opts = deps.signal ? { signal: deps.signal } : {};
-  await rm(partial, { recursive: true, force: true });
+  const complete = () => existsSync(join(target, "config.json"));
+  await removeStalePartials(target);
   try {
     const listing = await get(`${HUB}/api/models/${repo}/tree/main?recursive=true`, opts);
     if (!listing.ok) throw new Error(`listing ${repo}: HTTP ${listing.status}`);
@@ -71,8 +100,18 @@ export async function downloadModel(repo: string, root: string, deps: DownloadDe
       });
       await pipeline(Readable.fromWeb(res.body as WebReadableStream), count, createWriteStream(out), opts);
     }
-    await rm(target, { recursive: true, force: true });
-    await rename(partial, target);
+    if (complete()) {
+      await rm(partial, { recursive: true, force: true });
+      return;
+    }
+    // A rename never replaces a non-empty folder: if another instance landed
+    // first, keep its copy; only a folder without a config is ours to replace.
+    await rename(partial, target).catch(async () => {
+      if (complete()) return;
+      await rm(target, { recursive: true, force: true });
+      await rename(partial, target);
+    });
+    await rm(partial, { recursive: true, force: true });
   } catch (err) {
     await rm(partial, { recursive: true, force: true });
     throw err;
