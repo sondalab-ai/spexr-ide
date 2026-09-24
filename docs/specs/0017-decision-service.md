@@ -89,6 +89,34 @@ kev-4b at 0.7 decides six items in ten on its own and is almost always right;
 kev-0.6b never reaches that: at any threshold it still gets about one in
 eight or more of its own decisions wrong.
 
+### What ships, and two things the first measurement missed
+
+The tables above asked each question once, with expert descriptions written
+for the evaluation. Building the service showed that neither holds for the
+app, and both matter:
+
+- **Option order.** kev's choice head favours options by position. The same
+  three experts listed in another order turned a 0.84 "review" into a 0.78
+  "software engineering", and the TODO view lists experts alphabetically. The
+  service therefore asks every choice question in three rotations of its
+  options and averages the probabilities.
+- **Descriptions.** The catalog's descriptions are written for people. With
+  them kev-4b routed 75% right and was 89% right when confident; with a
+  description naming the kinds of work each expert takes, 83% and 97%. Each
+  catalog expert now carries that `routingDescription`, and the service sends
+  it.
+
+The harness (below) measures the shipped configuration — the app's service,
+the catalog's routing descriptions, three rotations — on the same set:
+
+| Model | Accuracy | EN / IT | Right / decides alone at ≥0.6, 0.7, 0.8 | Latency (loaded) |
+|---|---|---|---|---|
+| **kev-4b** | **86%** | 86% / 88% | 95% / 71%, **97% / 56%**, 100% / 36% | ~2.4 s (three passes) |
+| kev-0.6b | 68% | 67% / 69% | 72% / 90%, 71% / 76%, 74% / 53% | ~0.4 s |
+
+kev-4b acts alone at 0.7. kev-0.6b is never right often enough to act alone
+(79% even at 0.9), so it only ranks the options and the user always confirms.
+
 ## Design
 
 ### Service
@@ -116,10 +144,10 @@ which in the backend process would stall every RPC and the wall.
 A preference `spexr.decisions.model`: `kev-4b` (default), `kev-0.6b`, or `off`.
 
 - `kev-4b` by default: its high-confidence answers are dependable, which is
-  what lets SPEXR act without asking (see the threshold table). It costs a
-  ~2.3 GB download and about a second per decision.
-- `kev-0.6b` as the light option: ~0.4 GB and 0.12 s per decision, but less
-  accurate and poorly calibrated, so more decisions go back to the user.
+  what lets SPEXR act without asking (see the Evidence). It costs a ~2.5 GB
+  download and a couple of seconds per decision.
+- `kev-0.6b` as the light option: ~0.4 GB and well under a second, but not
+  reliable enough to act alone: it ranks the options and the user confirms.
 - Weights are fetched into `resources/models` by
   `scripts/fetch-search-model.mjs`, like the embedding and generation models,
   so a packaged app decides offline. `kev-0.6b` is fetched only when selected.
@@ -130,8 +158,9 @@ A preference `spexr.decisions.model`: `kev-4b` (default), `kev-0.6b`, or `off`.
 installedExperts, descriptions))`, then:
 
 - **Confident** — the chosen expert's probability is at or above the model's
-  threshold (0.7 for kev-4b, 0.8 for kev-0.6b): the item goes to that expert
-  without a question, and the notification names the expert and its confidence.
+  threshold (0.7 for kev-4b; kev-0.6b has none, it never acts alone): the item
+  goes to that expert without a question, and the notification names the
+  expert and its confidence.
 - **Unsure** — below the threshold: a picker, "Which expert should take this
   item?", lists the installed experts ordered by probability, each with its
   percentage and description, the model's pick first and selected, plus "Keep
@@ -151,10 +180,13 @@ https://github.com/sondalab-ai/spexr-ide/pull/48 are removed.
 ### Evaluation harness
 
 The dataset and a script (`pnpm --filter @spexr/theia-extensions eval:decisions`)
-ship in `packages/theia-extensions/eval/decisions/`. It prints accuracy, per
-language and per source, calibration at 0.5/0.7, and latency for the configured
-models. It downloads models, so it is not part of CI; it is run whenever the
-model, the prompts or the options change, and its output is pasted into the PR.
+ship in `packages/theia-extensions/eval/decisions/`. The script routes every
+task through the app's own decision service (the built lib, the catalog's
+routing descriptions, the same rotations), so it measures what ships. It
+prints accuracy per language and per source, how often the model is right
+when it acts alone at thresholds 0.5–0.9, and latency. It needs the vendored
+weights, so it is not part of CI; it is run whenever the model, the
+descriptions or the service change, and its output is pasted into the PR.
 
 ## Acceptance criteria
 
@@ -187,9 +219,10 @@ model, the prompts or the options change, and its output is pasted into the PR.
 
 ### Slice 3 — Evaluation harness in the repo
 
-- **AC-7** The dataset (with owner-confirmed labels) and the eval script live in
-  the repo, and the script reproduces the Evidence table for the configured
-  models.
+- **AC-7** The dataset and the eval script live in the repo, and the script
+  reproduces the shipped-configuration table in the Evidence. Labels as
+  written by the implementing agent (assumption — accepted when the owner
+  approved the spec, 2026-09-24).
 
 ## Non-goals
 
@@ -209,10 +242,15 @@ model, the prompts or the options change, and its output is pasted into the PR.
 - **Small, partly synthetic evidence.** 59 items, 31 synthetic, labelled by the
   implementing agent. The owner confirms the labels before AC-7; the harness is
   there so the numbers are re-measured as real items accumulate.
-- **Download size.** The default, kev-4b, is ~2.3 GB and loads from disk in
-  about 8.5 s (kev-0.6b: 1.6 s), measured on the owner's machine; it is loaded
-  once, on the first decision. Until its weights are present, decisions return
+- **Download size.** The default, kev-4b, is ~2.5 GB and loads from disk in
+  about 9–11 s (kev-0.6b: about 2 s), measured on the owner's machine; it is
+  loaded once, on the first decision. Until its weights are present, decisions return
   `undefined` and routing falls back to the picker, so nothing blocks on it.
 - **Asking too often.** Around four items in ten go to the picker with kev-4b,
-  more with kev-0.6b. That is the price of never auto-picking wrongly; the
-  thresholds are re-measured with the harness as real items accumulate.
+  and every item with kev-0.6b. That is the price of never auto-picking
+  wrongly; the thresholds are re-measured with the harness as real items
+  accumulate.
+- **Latency.** Three rotations make a kev-4b decision about 2.4 s once
+  loaded. Acceptable behind a "Choosing an expert…" progress on an explicit
+  click; a consumer that decides on its own, without a click, should measure
+  whether fewer rotations keep the accuracy.
