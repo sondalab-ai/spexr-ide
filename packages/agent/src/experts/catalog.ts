@@ -8,6 +8,7 @@ import type { ExpertAgent } from "./types.js";
 export const EXPERT_CATALOG: readonly ExpertAgent[] = [
   {
     id: "brainstorming",
+    routingDescription: "Brainstorming: explores the problem space, analyses options, shapes ideas into directions.",
     name: "Brainstorming",
     icon: "codicon-lightbulb",
     color: "#f5a623",
@@ -22,6 +23,7 @@ export const EXPERT_CATALOG: readonly ExpertAgent[] = [
   },
   {
     id: "design",
+    routingDescription: "Design: designs architectures and interfaces grounded in the existing codebase.",
     name: "Design",
     icon: "codicon-symbol-structure",
     color: "#4a90d9",
@@ -36,6 +38,7 @@ export const EXPERT_CATALOG: readonly ExpertAgent[] = [
   },
   {
     id: "review",
+    routingDescription: "Review: reviews diffs for bugs, design issues and missing tests.",
     name: "Review",
     icon: "codicon-search",
     color: "#7c5cff",
@@ -49,6 +52,7 @@ export const EXPERT_CATALOG: readonly ExpertAgent[] = [
   },
   {
     id: "marketing",
+    routingDescription: "Marketing: turns product work into positioning, copy and launch material.",
     name: "Marketing",
     icon: "codicon-megaphone",
     color: "#e0518a",
@@ -62,6 +66,7 @@ export const EXPERT_CATALOG: readonly ExpertAgent[] = [
   },
   {
     id: "software-engineering",
+    routingDescription: "Software Engineering: implements the plan, writes production code and tests, fixes bugs.",
     name: "Software Engineering",
     icon: "codicon-code",
     color: "#39c5cf",
@@ -77,6 +82,7 @@ export const EXPERT_CATALOG: readonly ExpertAgent[] = [
   },
   {
     id: "dri",
+    routingDescription: "DRI: tracks implementation progress against specs and reports status.",
     name: "DRI",
     icon: "codicon-pulse",
     color: "#2ea043",
@@ -99,6 +105,7 @@ export const EXPERT_CATALOG: readonly ExpertAgent[] = [
   },
   {
     id: "changelog-writer",
+    routingDescription: "Changelog Writer: writes release notes.",
     name: "Changelog Writer",
     icon: "codicon-note",
     color: "#e8c842",

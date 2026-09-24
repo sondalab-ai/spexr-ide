@@ -23,8 +23,6 @@ import {
   OVERVIEW_SYSTEM_PROMPT,
   COMMIT_MAX_NEW_TOKENS,
   COMMIT_SYSTEM_PROMPT,
-  ROUTE_MAX_NEW_TOKENS,
-  ROUTE_SYSTEM_PROMPT,
   buildPrompt,
   cleanGenerated,
   type GenerationKind,
@@ -127,7 +125,6 @@ const SYSTEM_BY_KIND = {
   now: NOW_SYSTEM_PROMPT,
   overview: OVERVIEW_SYSTEM_PROMPT,
   commit: COMMIT_SYSTEM_PROMPT,
-  route: ROUTE_SYSTEM_PROMPT,
 } satisfies Record<GenerationKind, string>;
 
 const MAX_TOKENS_BY_KIND = {
@@ -135,7 +132,6 @@ const MAX_TOKENS_BY_KIND = {
   now: SUMMARY_MAX_NEW_TOKENS,
   overview: SUMMARY_MAX_NEW_TOKENS,
   commit: COMMIT_MAX_NEW_TOKENS,
-  route: ROUTE_MAX_NEW_TOKENS,
 } satisfies Record<GenerationKind, number>;
 
 async function handle(req: WorkerRequest): Promise<void> {

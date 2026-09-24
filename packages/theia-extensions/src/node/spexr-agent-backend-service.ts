@@ -1,4 +1,4 @@
-import { injectable, inject, optional } from "@theia/core/shared/inversify";
+import { injectable, inject } from "@theia/core/shared/inversify";
 import * as child_process from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -10,8 +10,6 @@ import { resolveSpexrPaths } from "@spexr/core";
 // bundle. The package exposes it via the `./registry` export; tsc resolves the
 // types through the `paths` mapping in this package's tsconfig.
 import { FilesystemSpecRegistry } from "@spexr/spec/registry";
-import { DescriptionGeneratorToken, type DescriptionGenerator } from "./search/description-format.js";
-import { buildRoutePrompt, parseRouteAnswer } from "./expert-routing.js";
 import {
   buildShipCommitMessage,
   buildShipPrBody,
@@ -52,17 +50,10 @@ import {
  * owns the CLI process directly via node-pty. This service stays in the backend
  * only for node-only operations (filesystem scanning, temp-file writing).
  */
-/** How long an expert suggestion may take before the task goes to the base agent. */
-const SUGGEST_EXPERT_TIMEOUT_MS = 20_000;
-
 @injectable()
 export class SpexrAgentBackendService implements SpexrAgentService {
   @inject(SpexrGitBackendService)
   private readonly gitService!: SpexrGitBackendService;
-
-  @optional()
-  @inject(DescriptionGeneratorToken)
-  private readonly generator: DescriptionGenerator | undefined;
 
   async detectLaunchProfiles(): Promise<ClaudeLaunchProfile[]> {
     return detectLaunchProfiles();
@@ -70,26 +61,6 @@ export class SpexrAgentBackendService implements SpexrAgentService {
 
   async listMarketplaceExperts(): Promise<ExpertAgentDto[]> {
     return EXPERT_CATALOG.map((e) => ({ ...e }));
-  }
-
-  async suggestExpert(task: string, candidates: string[]): Promise<string | undefined> {
-    const known = candidates.filter((id) => EXPERT_CATALOG.some((e) => e.id === id));
-    if (known.length === 0 || !this.generator?.isAvailable()) return undefined;
-    const prompt = buildRoutePrompt(task);
-    // The model worker is shared with the wall's session summaries and runs one
-    // request at a time: an answer stuck behind them must not hold the task up.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<null>((resolve) => {
-      timer = setTimeout(() => resolve(null), SUGGEST_EXPERT_TIMEOUT_MS);
-    });
-    try {
-      const answer = await Promise.race([this.generator.summarize(prompt, "route"), late]);
-      return parseRouteAnswer(answer, known);
-    } catch {
-      return undefined;
-    } finally {
-      clearTimeout(timer);
-    }
   }
 
   async buildLaunchContext(workspaceRoot: string, expertId?: string): Promise<LaunchContextDto> {

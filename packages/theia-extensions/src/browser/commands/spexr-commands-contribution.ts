@@ -56,6 +56,9 @@ import { memoryDir, specsDir, agentsDir, SPEC_CONTEXT_DIR } from "../workspace-p
 import { locateSpec, rootContaining, specContextDirFor } from "../spec/spec-roots.js";
 import { chooseAgentRoot, movesAgent } from "../agent/agent-root.js";
 import { buildTodoHandoff, type TodoHandoff } from "../todo/todo-handoff.js";
+import { routeTodo } from "../todo/todo-routing.js";
+import { SpexrDecisionServiceProxy } from "../decision/decision-service-proxy.js";
+import type { Decision, SpexrDecisionService } from "../../common/decision-protocol.js";
 import {
   buildSpecHandoff,
   buildSpecLintFixPrompt,
@@ -353,6 +356,10 @@ export class SpexrCommandsContribution
 
   @inject(SpexrSpecResourcesViewContribution)
   private readonly specResourcesView!: SpexrSpecResourcesViewContribution;
+
+  @optional()
+  @inject(SpexrDecisionServiceProxy)
+  private readonly decisions: SpexrDecisionService | undefined;
 
   @optional()
   @inject(SpexrAgentServiceProxy)
@@ -1125,16 +1132,28 @@ export class SpexrCommandsContribution
   }
 
   /**
-   * Hand a TODO item to the agent, in the folder its TODO.md belongs to. When
-   * experts are installed there, the local model picks the one best suited to
-   * the item; with no pick (no model, no fit, no answer in time) the agent
-   * keeps whatever it runs as in that folder.
+   * Hand a TODO item to the agent, in the folder its TODO.md belongs to
+   * (spec 0017). With experts installed there, the local decision model picks
+   * one: a confident pick is used as is; otherwise the user chooses from the
+   * experts ranked by the model, keeps the agent as it is, or cancels.
    */
   private async workOnTodo(rootUri: string, item: TodoHandoff): Promise<void> {
     try {
       const folder = await this.agentFolderFor(rootUri, "this TODO item");
       if (!folder) return;
-      const expert = await this.suggestExpertFor(new URI(rootUri), [item.title, item.details].join("\n"));
+      const experts = await this.installedExperts(new URI(rootUri));
+      const decision = await this.decideExpert([item.title, item.details].join("\n"), experts);
+      const route = routeTodo(decision, experts.map((e) => e.id));
+      let expert: ExpertAgentDto | undefined;
+      let note = "";
+      if (route.kind === "auto") {
+        expert = experts.find((e) => e.id === route.expertId);
+        note = ` (${Math.round(route.confidence * 100)}% sure)`;
+      } else if (route.kind === "ask") {
+        const picked = await this.pickExpert(route, experts);
+        if (picked === "cancel") return;
+        expert = picked === "keep" ? undefined : picked;
+      }
       if (expert) {
         const started = await this.claudeTerminal.startWithExpert(
           { id: expert.id, name: expert.name, icon: expert.icon },
@@ -1146,26 +1165,70 @@ export class SpexrCommandsContribution
       }
       await this.sendAndSubmit(buildTodoHandoff(item));
       await this.claudeTerminal.reveal();
-      this.messages.info(
-        expert ? `Sent to ${expert.name}, the expert the local model picked.` : "Sent to the agent.",
-      );
+      this.messages.info(expert ? `Sent to ${expert.name}${note}.` : "Sent to the agent.");
     } catch (err) {
       console.error("[spexr] workOnTodo failed", err);
       this.messages.error(`Work on this failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  /** The installed expert the local model suggests for a task, if any. */
-  private async suggestExpertFor(root: URI, task: string): Promise<ExpertAgentDto | undefined> {
-    if (!this.agentService) return undefined;
-    const installed = await this.installedExpertIds(root);
-    if (installed.length === 0) return undefined;
+  /** Ask the decision model which installed expert fits a task; undefined when it cannot say. */
+  private async decideExpert(task: string, experts: readonly ExpertAgentDto[]): Promise<Decision | undefined> {
+    if (!this.decisions || experts.length === 0) return undefined;
     const progress = await this.messages.showProgress({ text: "Choosing an expert for this item…" });
     try {
-      const id = await this.agentService.suggestExpert(task, installed);
-      return id ? await this.findMarketplaceExpert(id) : undefined;
+      return await this.decisions.decide(task, {
+        type: "choice",
+        instructions: "Which expert should take this task?",
+        options: experts.map((e) => e.id),
+        descriptions: Object.fromEntries(
+          experts.map((e) => [e.id, e.routingDescription ?? `${e.name}: ${e.description}`]),
+        ),
+      });
+    } catch {
+      return undefined;
     } finally {
       progress.cancel();
+    }
+  }
+
+  /**
+   * The picker shown when the model is unsure or could not decide: experts in
+   * the route's order (the model's pick first), with their probability when
+   * there is one, and a way to keep the agent as it is. Escape cancels.
+   */
+  private async pickExpert(
+    route: Extract<ReturnType<typeof routeTodo>, { kind: "ask" }>,
+    experts: readonly ExpertAgentDto[],
+  ): Promise<ExpertAgentDto | "keep" | "cancel"> {
+    type Pick = QuickPickItem & { readonly expert?: ExpertAgentDto };
+    const items: Pick[] = [];
+    for (const option of route.options) {
+      const expert = experts.find((e) => e.id === option.id);
+      if (!expert) continue;
+      const share = option.probability === undefined ? "" : `${Math.round(option.probability * 100)}% · `;
+      items.push({ label: expert.name, description: `${share}${expert.description}`, expert });
+    }
+    items.push({ label: "Keep the agent as it is" });
+    const picked = await this.quickInput.pick<Pick>(items, {
+      placeHolder:
+        route.preselect === undefined
+          ? "Which expert should take this item?"
+          : "Which expert should take this item? The local model was not sure.",
+    });
+    if (!picked) return "cancel";
+    return picked.expert ?? "keep";
+  }
+
+  /** The experts installed in a folder (its docs/agents/*.md), as catalog entries. */
+  private async installedExperts(root: URI): Promise<ExpertAgentDto[]> {
+    const ids = await this.installedExpertIds(root);
+    if (ids.length === 0 || !this.agentService) return [];
+    try {
+      const catalog = await this.agentService.listMarketplaceExperts();
+      return ids.map((id) => catalog.find((e) => e.id === id)).filter((e): e is ExpertAgentDto => !!e);
+    } catch {
+      return [];
     }
   }
 

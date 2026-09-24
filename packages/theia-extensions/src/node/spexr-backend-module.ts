@@ -1,5 +1,7 @@
 import { ContainerModule } from "@theia/core/shared/inversify";
 import { ConnectionHandler, RpcConnectionHandler } from "@theia/core/lib/common/messaging";
+import { SpexrDecisionBackendService } from "./decision/decision-backend-service.js";
+import { DECISION_SERVICE_PATH } from "../common/decision-protocol.js";
 import { BackendApplicationContribution } from "@theia/core/lib/node/backend-application";
 import { WebsocketFrontendConnectionService } from "@theia/core/lib/node/messaging/websocket-frontend-connection-service";
 import { SpexrWebsocketFrontendConnectionService } from "./spexr-frontend-connection-service.js";
@@ -55,6 +57,12 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(EmbedderToken).to(TransformersEmbedder).inSingletonScope();
   bind(DescriptionGeneratorToken).to(WorkerDescriptionGenerator).inSingletonScope();
   bind(SpexrSearchBackendService).toSelf().inSingletonScope();
+  bind(SpexrDecisionBackendService).toSelf().inSingletonScope();
+  bind(ConnectionHandler)
+    .toDynamicValue(
+      (ctx) => new RpcConnectionHandler(DECISION_SERVICE_PATH, () => ctx.container.get(SpexrDecisionBackendService)),
+    )
+    .inSingletonScope();
   bind(ConnectionHandler)
     .toDynamicValue((ctx) => {
       const service = ctx.container.get(SpexrSearchBackendService);

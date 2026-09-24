@@ -34,7 +34,7 @@ let cachedNode: string | null | undefined; // undefined=unresolved, null=none fo
  * from a shell), and fall back to Electron-as-Node only when it is not (a packaged
  * app), where the worker may fail and degrade to no summaries.
  */
-function resolveNodeBinary(): string | undefined {
+export function resolveNodeBinary(): string | undefined {
   if (cachedNode !== undefined) return cachedNode ?? undefined;
   try {
     cachedNode = execFileSync("node", ["-p", "process.execPath"], { encoding: "utf8", timeout: 5000 }).trim() || null;

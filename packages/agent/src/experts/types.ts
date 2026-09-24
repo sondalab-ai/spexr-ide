@@ -20,4 +20,12 @@ export interface ExpertAgent {
    * off its work (e.g. produce a report) without the user typing anything.
    */
   readonly kickoffPrompt?: string;
+  /**
+   * How the local decision model tells this expert apart when routing a task
+   * (spec 0017). Written for the model, naming the kinds of work the expert
+   * takes, and measured: kev-4b routed 83% of the evaluation set right with
+   * these, 75% with the user-facing `description`. Change it only with the
+   * evaluation harness re-run.
+   */
+  readonly routingDescription?: string;
 }
