@@ -92,6 +92,7 @@ import { SpexrSearchServiceProxy, SEARCH_SERVICE_PATH } from "./search/smart-sea
 import { SpexrGenerationModelContribution } from "./search/generation-model-contribution.js";
 import { SpexrDecisionServiceProxy } from "./decision/decision-service-proxy.js";
 import { SpexrDecisionModelContribution } from "./decision/decision-model-contribution.js";
+import { SpexrDecisionModelStatusBar } from "./decision/decision-model-status-bar.js";
 import { DECISION_SERVICE_PATH } from "../common/decision-protocol.js";
 import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/smart-search-client.js";
 import { DescriptionJobStatusBarContribution } from "./search/description-job-status-bar-contribution.js";
@@ -330,6 +331,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       return connection.createProxy(DECISION_SERVICE_PATH);
     })
     .inSingletonScope();
+  bind(SpexrDecisionModelStatusBar).toSelf().inSingletonScope();
   bind(SpexrDecisionModelContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrDecisionModelContribution);
   bindSmartSearchWidgetFactory(bind);

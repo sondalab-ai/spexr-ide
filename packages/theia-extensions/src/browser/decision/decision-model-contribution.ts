@@ -7,17 +7,20 @@ import {
   type SpexrDecisionService,
 } from "../../common/decision-protocol.js";
 import { SPEXR_DECISIONS_MODEL_PREFERENCE } from "../preferences/spexr-preferences.js";
+import { SpexrDecisionModelStatusBar } from "./decision-model-status-bar.js";
 import { SpexrDecisionServiceProxy } from "./decision-service-proxy.js";
 
 /**
  * Carries the decision-model preference to the backend, which owns the model
  * process and cannot read preferences itself. Pushed on start and on change;
- * the backend ignores a push that changes nothing.
+ * each push also lets the backend start downloading missing weights, which
+ * the status bar then follows.
  */
 @injectable()
 export class SpexrDecisionModelContribution implements FrontendApplicationContribution {
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
   @inject(SpexrDecisionServiceProxy) private readonly service!: SpexrDecisionService;
+  @inject(SpexrDecisionModelStatusBar) private readonly statusBar!: SpexrDecisionModelStatusBar;
 
   onStart(): void {
     void this.preferences.ready.then(() => {
@@ -31,8 +34,9 @@ export class SpexrDecisionModelContribution implements FrontendApplicationContri
   private push(): void {
     const value = this.preferences.get<string>(SPEXR_DECISIONS_MODEL_PREFERENCE);
     const model = isDecisionModel(value) ? value : DEFAULT_DECISION_MODEL;
-    void this.service.setModel(model).catch((err) => {
-      console.error("[spexr] could not apply the decision model preference", err);
-    });
+    void this.service.setModel(model).then(
+      () => this.statusBar.watch(),
+      (err) => console.error("[spexr] could not apply the decision model preference", err),
+    );
   }
 }

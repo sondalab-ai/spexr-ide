@@ -8,11 +8,13 @@ import {
   type Decision,
   type DecisionAnswer,
   type DecisionModel,
+  type DecisionModelStatus,
   type DecisionQuestion,
   type SpexrDecisionService,
 } from "../../common/decision-protocol.js";
 import { resolveDecisionWorkerPath, resolveModelsDir } from "../search/models-dir.js";
 import { resolveNodeBinary } from "../search/worker-description-generator.js";
+import { downloadModel, userModelsDir } from "./model-download.js";
 import { averageChoices, CHOICE_ROTATIONS, rotations } from "./option-order.js";
 
 /** host → worker */
@@ -41,12 +43,18 @@ export interface DecisionWorkerLike {
  */
 const DECIDE_TIMEOUT_MS = 30_000;
 
+/** Wait after start before downloading missing weights, so startup is not contended. */
+const DOWNLOAD_DELAY_MS = 20_000;
+
 /** Env var naming the repo the worker loads. */
 export const DECISION_REPO_ENV = "SPEXR_DECISION_REPO";
 
-function defaultWorkerFactory(repo: string): DecisionWorkerLike {
+/** Env var that, set to `off`, disables downloading missing weights (E2E runs, offline setups). */
+export const MODEL_DOWNLOAD_ENV = "SPEXR_MODEL_DOWNLOAD";
+
+function defaultWorkerFactory(repo: string, modelsDir: string): DecisionWorkerLike {
   const node = resolveNodeBinary();
-  const env: NodeJS.ProcessEnv = { ...process.env, SPEXR_MODELS_DIR: resolveModelsDir(), [DECISION_REPO_ENV]: repo };
+  const env: NodeJS.ProcessEnv = { ...process.env, SPEXR_MODELS_DIR: modelsDir, [DECISION_REPO_ENV]: repo };
   if (node) delete env.ELECTRON_RUN_AS_NODE;
   else env.ELECTRON_RUN_AS_NODE = "1";
   const child = fork(resolveDecisionWorkerPath(), [], {
@@ -62,9 +70,44 @@ function defaultWorkerFactory(repo: string): DecisionWorkerLike {
   } as DecisionWorkerLike;
 }
 
-/** Whether a model's weights were vendored into the models directory. */
-function weightsPresent(repo: string): boolean {
-  return existsSync(join(resolveModelsDir(), repo, "config.json"));
+/**
+ * The models directory holding a repo's weights: the ones vendored with the
+ * app first, then the ones downloaded on first run. Undefined when neither
+ * has them. SPEXR_MODELS_DIR, when set, is the only place looked at.
+ */
+function locateWeights(repo: string): string | undefined {
+  const dirs = process.env.SPEXR_MODELS_DIR ? [resolveModelsDir()] : [resolveModelsDir(), userModelsDir()];
+  return dirs.find((dir) => existsSync(join(dir, repo, "config.json")));
+}
+
+export interface DecisionServiceDeps {
+  readonly factory: (repo: string, modelsDir: string) => DecisionWorkerLike;
+  readonly locate: (repo: string) => string | undefined;
+  readonly download: (
+    repo: string,
+    onProgress: (received: number, total: number) => void,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly downloads: boolean;
+  readonly downloadDelayMs: number;
+  readonly timeoutMs: number;
+}
+
+const DEFAULT_DEPS: DecisionServiceDeps = {
+  factory: defaultWorkerFactory,
+  locate: locateWeights,
+  download: (repo, onProgress, signal) => downloadModel(repo, userModelsDir(), { onProgress, signal }),
+  downloads: process.env[MODEL_DOWNLOAD_ENV] !== "off",
+  downloadDelayMs: DOWNLOAD_DELAY_MS,
+  timeoutMs: DECIDE_TIMEOUT_MS,
+};
+
+interface DownloadJob {
+  readonly repo: string;
+  readonly abort: AbortController;
+  state: "waiting" | "downloading" | "failed";
+  received: number;
+  total: number;
 }
 
 /**
@@ -73,6 +116,11 @@ function weightsPresent(repo: string): boolean {
  * synchronous native call of up to a second, which in the backend would stall
  * every RPC and the wall. The process is started on the first decision and
  * restarted when the model preference changes.
+ *
+ * Weights missing on disk are downloaded in the background shortly after the
+ * frontend first reports the model, so a release needs no multi-GB installer.
+ * Until they land, decide() returns undefined. A failed download is retried
+ * on the next start or model change, never in a loop.
  */
 @injectable()
 export class SpexrDecisionBackendService implements SpexrDecisionService {
@@ -80,18 +128,31 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
   private worker: DecisionWorkerLike | undefined;
   private seq = 0;
   private readonly pending = new Map<number, (d: DecisionAnswer | undefined) => void>();
+  private download: DownloadJob | undefined;
+  private readonly deps: DecisionServiceDeps;
 
-  // @unmanaged(): inversify must not try to inject these test seams.
-  constructor(
-    @unmanaged() private readonly factory: (repo: string) => DecisionWorkerLike = defaultWorkerFactory,
-    @unmanaged() private readonly available: (repo: string) => boolean = weightsPresent,
-    @unmanaged() private readonly timeoutMs: number = DECIDE_TIMEOUT_MS,
-  ) {}
+  // @unmanaged(): inversify must not try to inject this test seam.
+  constructor(@unmanaged() deps: Partial<DecisionServiceDeps> = {}) {
+    this.deps = { ...DEFAULT_DEPS, ...deps };
+  }
 
+  /** Also the frontend's call on start: it schedules the download of missing weights. */
   async setModel(model: DecisionModel): Promise<void> {
-    if (model === this.model) return;
-    this.model = model;
-    this.stop();
+    if (model !== this.model) {
+      this.model = model;
+      this.stop();
+    }
+    this.ensureWeights();
+  }
+
+  async status(): Promise<DecisionModelStatus> {
+    const model = this.model;
+    if (model === "off") return { model, state: "off" };
+    const repo = DECISION_MODEL_REPOS[model];
+    if (this.deps.locate(repo)) return { model, state: "ready" };
+    const job = this.download?.repo === repo ? this.download : undefined;
+    if (!job) return { model, state: "missing" };
+    return { model, state: job.state, received: job.received, total: job.total };
   }
 
   /**
@@ -104,15 +165,16 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
     const model = this.model;
     if (model === "off") return undefined;
     const repo = DECISION_MODEL_REPOS[model];
-    if (!this.available(repo)) return undefined;
+    const dir = this.deps.locate(repo);
+    if (!dir) return undefined;
     const text = state.trim();
     if (question.type !== "choice" || question.options.length < 2) {
-      const answer = await this.ask(repo, text, question);
+      const answer = await this.ask(repo, dir, text, question);
       return answer ? ({ ...answer, model } as Decision) : undefined;
     }
     const distributions: Readonly<Record<string, number>>[] = [];
     for (const order of rotations(question.options, CHOICE_ROTATIONS)) {
-      const answer = await this.ask(repo, text, { ...question, options: order });
+      const answer = await this.ask(repo, dir, text, { ...question, options: order });
       if (answer?.type !== "choice") return undefined;
       distributions.push(answer.probabilities);
     }
@@ -122,16 +184,17 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
   /** One round trip to the worker; undefined on error, crash or timeout. */
   private async ask(
     repo: string,
+    dir: string,
     state: string,
     question: DecisionQuestion,
   ): Promise<DecisionAnswer | undefined> {
-    const worker = (this.worker ??= this.start(repo));
+    const worker = (this.worker ??= this.start(repo, dir));
     const id = ++this.seq;
     const answer = await new Promise<DecisionAnswer | undefined>((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         resolve(undefined);
-      }, this.timeoutMs);
+      }, this.deps.timeoutMs);
       this.pending.set(id, (d) => {
         clearTimeout(timer);
         resolve(d);
@@ -141,8 +204,8 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
     return answer;
   }
 
-  private start(repo: string): DecisionWorkerLike {
-    const worker = this.factory(repo);
+  private start(repo: string, dir: string): DecisionWorkerLike {
+    const worker = this.deps.factory(repo, dir);
     worker.on("message", (msg) => {
       const settle = this.pending.get(msg.id);
       if (!settle) return;
@@ -165,6 +228,56 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
     this.worker = undefined;
     worker?.terminate();
     this.settleAll();
+  }
+
+  /**
+   * Schedules the current model's download when its weights are missing, after
+   * a delay so it does not compete with startup. A download already scheduled,
+   * running or failed for the same repo is kept as is (no retry loop); one for
+   * a model no longer selected is cancelled.
+   */
+  private ensureWeights(): void {
+    const model = this.model;
+    const repo = model === "off" ? undefined : DECISION_MODEL_REPOS[model];
+    const needed = repo !== undefined && !this.deps.locate(repo);
+    if (needed && this.download?.repo === repo) return;
+    this.download?.abort.abort();
+    this.download = undefined;
+    if (!needed || !this.deps.downloads) return;
+    const job: DownloadJob = { repo, abort: new AbortController(), state: "waiting", received: 0, total: 0 };
+    this.download = job;
+    const timer = setTimeout(() => void this.runDownload(job), this.deps.downloadDelayMs);
+    timer.unref?.();
+    job.abort.signal.addEventListener("abort", () => clearTimeout(timer));
+  }
+
+  /**
+   * Runs one download, recording its progress on the job for status(). On
+   * success the job is dropped and locate() finds the weights; on failure it
+   * stays as `failed` until the next start or model change. A cancelled job
+   * ends silently.
+   */
+  private async runDownload(job: DownloadJob): Promise<void> {
+    job.state = "downloading";
+    console.info(`[spexr decisions] downloading ${job.repo}`);
+    try {
+      await this.deps.download(
+        job.repo,
+        (received, total) => {
+          job.received = received;
+          job.total = total;
+        },
+        job.abort.signal,
+      );
+      if (this.download === job) this.download = undefined;
+      console.info(`[spexr decisions] ${job.repo} downloaded`);
+    } catch (err) {
+      if (job.abort.signal.aborted) return;
+      job.state = "failed";
+      console.error(
+        `[spexr decisions] could not download ${job.repo}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private settleAll(): void {

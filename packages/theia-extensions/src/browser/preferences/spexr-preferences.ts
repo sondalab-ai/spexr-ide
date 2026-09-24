@@ -293,8 +293,8 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       ],
       description:
         "Small local model SPEXR uses for closed decisions, such as which expert takes a TODO item. " +
-        "Its weights must sit in the app's models directory (`pnpm fetch-model`; add " +
-        "`SPEXR_DECISION_MODELS=kev-4b,kev-0.6b` to fetch both). Until they are there, SPEXR asks. User-scoped.",
+        "If its weights are not on this machine, SPEXR downloads them in the background shortly after it opens, " +
+        "into `~/.spexr/models`, and shows the progress in the status bar. Until they are there, SPEXR asks. User-scoped.",
     },
     [SPEXR_SEARCH_GEN_MODEL_PREFERENCE]: {
       type: "string",
