@@ -65,6 +65,22 @@ export function buildOverviewPrompt(goal: string, progress: string): string {
 // ≈ 24 tokens; the cap leaves a little headroom.
 export const COMMIT_MAX_NEW_TOKENS = 30;
 
+export const ROUTE_MAX_NEW_TOKENS = 12;
+
+// Labels, not expert ids: the small model routes poorly when it must choose
+// among expert descriptions, and well when it only names the kind of work
+// (see expert-routing.ts, which maps the label to an expert).
+export const ROUTE_SYSTEM_PROMPT =
+  "Label the task with the kind of work it asks for. Reply with exactly one label and nothing else.\n" +
+  "bug: something is broken, crashes, freezes or misbehaves and must be fixed.\n" +
+  "code: add, change, rename or remove something in the software.\n" +
+  "review: read changes someone already made and look for problems.\n" +
+  "design: work out the architecture of something new before anyone builds it.\n" +
+  "explore: the task is a question or asks to weigh options, ideas or approaches.\n" +
+  "marketing: announcements, posts, landing pages, positioning, copy.\n" +
+  "release-notes: write the changelog or release notes.\n" +
+  "status: report how far the implementation is against a spec or plan.";
+
 export const COMMIT_SYSTEM_PROMPT =
   "You are given the list of files staged for a git commit, each with its status letter " +
   "(A added, M modified, D deleted, R renamed). Write ONE line, max 12 words, in the imperative " +
@@ -116,7 +132,7 @@ export const DescriptionGeneratorToken = Symbol("DescriptionGenerator");
  * fully-built user prompt in `content`; `description` composes its own from the
  * path and file content.
  */
-export type GenerationKind = "description" | "now" | "overview" | "commit";
+export type GenerationKind = "description" | "now" | "overview" | "commit" | "route";
 
 /** The kinds whose prompt the caller builds. */
 export type PromptedKind = Exclude<GenerationKind, "description">;

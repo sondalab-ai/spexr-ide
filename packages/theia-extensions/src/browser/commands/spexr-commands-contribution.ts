@@ -55,6 +55,7 @@ import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view
 import { memoryDir, specsDir, agentsDir, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
 import { locateSpec, rootContaining, specContextDirFor } from "../spec/spec-roots.js";
 import { chooseAgentRoot, movesAgent } from "../agent/agent-root.js";
+import { buildTodoHandoff, type TodoHandoff } from "../todo/todo-handoff.js";
 import {
   buildSpecHandoff,
   buildSpecLintFixPrompt,
@@ -165,6 +166,10 @@ export const SpexrCommands = {
   EXPERT_START: {
     id: "spexr.experts.start",
     label: "Spexr: Start session with expert",
+  } satisfies Command,
+  TODO_WORK_ON: {
+    id: "spexr.todo.workOn",
+    label: "Spexr: Work on this TODO item",
   } satisfies Command,
   EXPERT_DEACTIVATE: {
     id: "spexr.experts.deactivate",
@@ -433,6 +438,12 @@ export class SpexrCommandsContribution
     });
     commands.registerCommand(SpexrCommands.EXPERT_REMOVE, {
       execute: (raw: unknown) => this.removeExpert(typeof raw === "string" ? raw : undefined),
+    });
+    commands.registerCommand(SpexrCommands.TODO_WORK_ON, {
+      // Only from the TODO view, which passes the item; hidden from the palette.
+      isEnabled: (rootUri?: unknown, item?: unknown) => typeof rootUri === "string" && !!item,
+      isVisible: (rootUri?: unknown, item?: unknown) => typeof rootUri === "string" && !!item,
+      execute: (rootUri: string, item: TodoHandoff) => this.workOnTodo(rootUri, item),
     });
     commands.registerCommand(SpexrCommands.EXPERT_START, {
       execute: (raw: unknown) => this.startExpert(raw),
@@ -1091,19 +1102,83 @@ export class SpexrCommandsContribution
    * first; `undefined` means they cancelled and the action should stop.
    */
   private async agentFolderForSpec(uri: URI): Promise<{ root: string | undefined } | undefined> {
-    const target = this.specRootUri(uri);
+    return this.agentFolderFor(this.specRootUri(uri), "this spec");
+  }
+
+  /** {@link agentFolderForSpec} for any folder: `what` names the work in the question. */
+  private async agentFolderFor(
+    target: string | undefined,
+    what: string,
+  ): Promise<{ root: string | undefined } | undefined> {
     const running = this.claudeTerminal.runningRootUri();
     if (!movesAgent(running, target)) return { root: target };
     const from = new URI(running!).path.base;
     const to = new URI(target!).path.base;
     const confirmed = await new ConfirmDialog({
       title: "Restart the agent in another folder?",
-      msg: `The agent is running in ${from}. Restart it in ${to} for this spec?`,
+      msg: `The agent is running in ${from}. Restart it in ${to} for ${what}?`,
       ok: `Restart in ${to}`,
       cancel: "Cancel",
       maxWidth: 480,
     }).open();
     return confirmed ? { root: target } : undefined;
+  }
+
+  /**
+   * Hand a TODO item to the agent, in the folder its TODO.md belongs to. When
+   * experts are installed there, the local model picks the one best suited to
+   * the item; with no pick (no model, no fit, no answer in time) the agent
+   * keeps whatever it runs as in that folder.
+   */
+  private async workOnTodo(rootUri: string, item: TodoHandoff): Promise<void> {
+    try {
+      const folder = await this.agentFolderFor(rootUri, "this TODO item");
+      if (!folder) return;
+      const expert = await this.suggestExpertFor(new URI(rootUri), [item.title, item.details].join("\n"));
+      if (expert) {
+        const started = await this.claudeTerminal.startWithExpert(
+          { id: expert.id, name: expert.name, icon: expert.icon },
+          rootUri,
+        );
+        if (!started) return;
+      } else {
+        await this.claudeTerminal.ensureStarted(rootUri);
+      }
+      await this.sendAndSubmit(buildTodoHandoff(item));
+      await this.claudeTerminal.reveal();
+      this.messages.info(
+        expert ? `Sent to ${expert.name}, the expert the local model picked.` : "Sent to the agent.",
+      );
+    } catch (err) {
+      console.error("[spexr] workOnTodo failed", err);
+      this.messages.error(`Work on this failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** The installed expert the local model suggests for a task, if any. */
+  private async suggestExpertFor(root: URI, task: string): Promise<ExpertAgentDto | undefined> {
+    if (!this.agentService) return undefined;
+    const installed = await this.installedExpertIds(root);
+    if (installed.length === 0) return undefined;
+    const progress = await this.messages.showProgress({ text: "Choosing an expert for this item…" });
+    try {
+      const id = await this.agentService.suggestExpert(task, installed);
+      return id ? await this.findMarketplaceExpert(id) : undefined;
+    } finally {
+      progress.cancel();
+    }
+  }
+
+  /** Ids of the experts installed in a folder (its docs/agents/*.md). */
+  private async installedExpertIds(root: URI): Promise<string[]> {
+    try {
+      const stat = await this.fileService.resolve(agentsDir(root));
+      return (stat.children ?? [])
+        .filter((c) => c.isFile && c.name.endsWith(".md"))
+        .map((c) => c.name.replace(/\.md$/, ""));
+    } catch {
+      return [];
+    }
   }
 
   /** The workspace folder (URI string) holding a spec. */
