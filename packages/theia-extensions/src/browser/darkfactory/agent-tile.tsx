@@ -706,8 +706,10 @@ function BrowserToggle(props: { browser: CardBrowserProps | undefined }): React.
   if (!browser) return null;
   return (
     <button
-      className="spexr-button"
-      aria-pressed={browser.state.open}
+      type="button"
+      className="spexr-df-switch"
+      role="switch"
+      aria-checked={browser.state.open}
       onClick={browser.onToggle}
       title={
         browser.state.open
@@ -715,6 +717,9 @@ function BrowserToggle(props: { browser: CardBrowserProps | undefined }): React.
           : "Open a browser under the terminal, on the pages this session produces (a pull request, a local server)"
       }
     >
+      <span className="spexr-df-switch__track" aria-hidden="true">
+        <span className="spexr-df-switch__thumb" />
+      </span>
       <i className="codicon codicon-globe" />
       Browser
     </button>
