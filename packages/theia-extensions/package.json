@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf lib .turbo *.tsbuildinfo",
-    "fetch-model": "node scripts/fetch-search-model.mjs"
+    "fetch-model": "node scripts/fetch-search-model.mjs",
+    "eval:decisions": "node eval/decisions/eval.mjs"
   },
   "theiaExtensions": [
     {
