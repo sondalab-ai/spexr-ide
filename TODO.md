@@ -1,9 +1,9 @@
 - [x] Consenti di rinominare sessioni su darkfactory, usando come valore di default una descrizione brevissima e precomputata
 - [x] verifica se la folder 'plugins' debba essere aggiunta a gitignore
 - [ ] Raggruppa le sotto-sessioni (subagent) sotto la sessione padre nella wall di darkfactory. I transcript vivono in `~/.claude/projects/<progetto>/<parentSessionId>/subagents/agent-<id>.jsonl` (la directory contenitrice è l'id del padre; ogni riga ha `isSidechain: true`). Oggi non arrivano nemmeno alla wall: `scanClaudeTranscripts` (claude-harness.ts) fa una readdir non ricorsiva e ignora la sottocartella, quindi è un'aggiunta e non un allentamento del filtro `!p.interactive`. Da decidere: presentazione (riga espandibile sotto la card padre vs solo nella pinned card), se indicizzarli per la ricerca (no in prima battuta: raddoppia l'indice e riempie i risultati di frammenti senza contesto), e come dire che non sono riprendibili (`claude --resume` non li accetta, al massimo follow read-only). Solo Claude: opencode non ha file di transcript.
-- [ ] Aggiungi un browser per ogni pinned terminal, apribile da pulsante specifico, cosi' da poter controllare in tempo reale cosa fa la sessione (e.g. PR, o web preview)
-- [ ] Quando lanci un agente esperto in un workspace, chiedi su quale folder vuoi attivarlo
-- [ ] Tra i plugin ne vedo molti che non sembrano utilizzati (e.g. i temi)
+- [x] Aggiungi un browser per ogni pinned terminal, apribile da pulsante specifico, cosi' da poter controllare in tempo reale cosa fa la sessione (e.g. PR, o web preview)
+- [x] Quando lanci un agente esperto in un workspace, chiedi su quale folder vuoi attivarlo
+- [x] Tra i plugin ne vedo molti che non sembrano utilizzati (e.g. i temi)
 - [x] Strano warning apparso a run-time nel log "2026-09-10T16:18:48.672Z root INFO WARN: Could not find the language 'bash', did you forget to load/include a language module?"
 - [x] icona timeout non ha tooltip, descrizioni, e' poco intelligibile
 - [x] from time to time it crashes with: 2026-09-13T03:19:28.855Z root ERROR [darkfactory] backend event loop blocked ~24253ms
