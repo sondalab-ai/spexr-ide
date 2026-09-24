@@ -1714,6 +1714,9 @@ code {
 }
 
 .spexr-experts-list__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sl-space-2);
   font-weight: 600;
 }
 
@@ -1723,9 +1726,24 @@ code {
   overflow-wrap: anywhere;
 }
 
-.spexr-experts-list__active {
-  font-size: var(--sl-text-xs);
-  color: var(--sl-text-secondary);
+.spexr-experts-list__status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--sl-status-success);
+  box-shadow: 0 0 0 0 var(--sl-status-success);
+  animation: spexr-expert-live 2s ease-out infinite;
+  cursor: help;
+}
+
+@keyframes spexr-expert-live {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sl-status-success) 60%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 6px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spexr-experts-list__status { animation: none; }
 }
 
 .spexr-experts-list__buttons {

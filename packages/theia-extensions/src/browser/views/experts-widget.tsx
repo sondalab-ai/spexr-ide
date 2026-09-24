@@ -260,7 +260,17 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                 >
                   <span className={`codicon ${e.icon} spexr-experts-list__icon`} style={{ color: e.color }} />
                   <span className="spexr-experts-list__meta">
-                    <span className="spexr-experts-list__name">{e.name}</span>
+                    <span className="spexr-experts-list__name">
+                      {e.name}
+                      {isActive ? (
+                        <span
+                          className="spexr-experts-list__status"
+                          role="img"
+                          aria-label={nls.localize("spexr/experts/activeStatus", "Active: the agent runs as this expert")}
+                          title={nls.localize("spexr/experts/activeStatus", "Active: the agent runs as this expert")}
+                        />
+                      ) : null}
+                    </span>
                     {dto?.description ? (
                       <span className="spexr-experts-list__desc">{dto.description}</span>
                     ) : null}
@@ -268,11 +278,6 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                       <span className="spexr-experts-list__desc">in {e.folders.join(", ")}</span>
                     ) : null}
                   </span>
-                  {isActive ? (
-                    <span className="spexr-experts-list__active">
-                      {nls.localize("spexr/experts/active", "● active")}
-                    </span>
-                  ) : null}
                   <span className="spexr-experts-list__buttons">
                     {dto && !isActive ? (
                       <button
