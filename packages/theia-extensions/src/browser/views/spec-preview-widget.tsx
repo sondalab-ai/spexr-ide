@@ -126,7 +126,9 @@ export class SpexrSpecPreviewWidget extends ReactWidget {
     if (!this.state) {
       return (
         <div className="spexr-spec-preview" aria-label="Markdown preview">
-          <p className="spexr-spec-preview__empty">Open a markdown file to preview it.</p>
+          <div className="sl-empty spexr-spec-preview__empty">
+            <p className="sl-empty__body">Open a markdown file to preview it.</p>
+          </div>
         </div>
       );
     }

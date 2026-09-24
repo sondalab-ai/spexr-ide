@@ -11,7 +11,7 @@
     "copy-assets": "node -e \"const{mkdirSync,readdirSync,copyFileSync}=require('fs');mkdirSync('lib/browser/style',{recursive:true});readdirSync('src/browser/style').filter(f=>f.endsWith('.css')).forEach(f=>copyFileSync('src/browser/style/'+f,'lib/browser/style/'+f))\"",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=2",
     "clean": "rm -rf lib .turbo *.tsbuildinfo",
     "fetch-model": "node scripts/fetch-search-model.mjs",
     "eval:decisions": "node eval/decisions/eval.mjs"

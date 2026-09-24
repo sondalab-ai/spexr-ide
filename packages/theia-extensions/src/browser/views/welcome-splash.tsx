@@ -121,7 +121,7 @@ const WhatsNewPanel: React.FC<{ note: ReleaseNote }> = ({ note }) => {
     <section className="spexr-whats-new" aria-labelledby="spexr-whats-new-title">
       <div className="spexr-whats-new__head">
         <div>
-          <p className="spexr-whats-new__eyebrow">What&rsquo;s new &mdash; v{note.version}</p>
+          <p className="sl-eyebrow sl-eyebrow--accent spexr-whats-new__eyebrow">What&rsquo;s new &mdash; v{note.version}</p>
           {note.tagline && (
             <h2 id="spexr-whats-new-title" className="spexr-whats-new__title">
               {note.tagline}
@@ -192,7 +192,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
   return (
     <div className="spexr-welcome">
       <header className="spexr-welcome__header">
-        <p className="spexr-welcome__eyebrow">SPEXR</p>
+        <p className="sl-eyebrow sl-eyebrow--accent spexr-welcome__eyebrow">SPEXR</p>
         <h1 className="spexr-welcome__title">Spec-based development, agent-first.</h1>
         <p className="spexr-welcome__subtitle">
           Author a spec, let the agent draft a plan, review the diff, ship the PR. Memory persists
@@ -211,7 +211,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
             <span className="spexr-welcome-card__title">{card.title}</span>
             <span className="spexr-welcome-card__desc">{card.description}</span>
             {card.shortcut ? (
-              <span className="spexr-welcome-card__kbd" aria-hidden>
+              <span className="sl-kbd spexr-welcome-card__kbd" aria-hidden>
                 {card.shortcut}
               </span>
             ) : null}

@@ -36,14 +36,14 @@ interface MemoryPanelProps {
   readonly onResolveConflict: () => void;
 }
 
-const LINK_BADGE: Record<MemoryLinkStatus, { label: string; tone: "ok" | "muted" | "danger" }> = {
-  linked: { label: "Linked", tone: "ok" },
-  "already-linked": { label: "Linked", tone: "ok" },
-  unlinked: { label: "Not linked", tone: "muted" },
-  "not-linked": { label: "Not linked", tone: "muted" },
-  blocked: { label: "Conflict", tone: "danger" },
-  error: { label: "Error", tone: "danger" },
-  unknown: { label: "Unknown", tone: "muted" },
+const LINK_BADGE: Record<MemoryLinkStatus, { label: string; className: string }> = {
+  linked: { label: "Linked", className: "sl-badge sl-badge--success" },
+  "already-linked": { label: "Linked", className: "sl-badge sl-badge--success" },
+  unlinked: { label: "Not linked", className: "sl-tag sl-tag--plain" },
+  "not-linked": { label: "Not linked", className: "sl-tag sl-tag--plain" },
+  blocked: { label: "Conflict", className: "sl-badge sl-badge--danger" },
+  error: { label: "Error", className: "sl-badge sl-badge--danger" },
+  unknown: { label: "Unknown", className: "sl-tag sl-tag--plain" },
 };
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
@@ -261,7 +261,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
     <div className="spexr-memory-panel__actions">
       <button
         type="button"
-        className="spexr-button spexr-button--primary"
+        className="sl-btn sl-btn--primary"
         onClick={onAdd}
         disabled={!hasWorkspace}
       >
@@ -269,7 +269,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
       </button>
       <button
         type="button"
-        className="spexr-button"
+        className="sl-btn sl-btn--ghost"
         onClick={onRefresh}
         disabled={!hasWorkspace}
       >
@@ -284,7 +284,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
             <div className="spexr-memory-list__meta">
               <div className="spexr-memory-list__head">
                 <span
-                  className={`spexr-memory-pill spexr-memory-pill--${entry.type}`}
+                  className={`${entry.type === "user" ? "sl-tag" : "sl-tag sl-tag--plain"} spexr-memory-pill`}
                   aria-label={`Type ${entry.type}`}
                 >
                   {entry.type}
@@ -299,7 +299,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
             <div className="spexr-memory-list__buttons">
               <button
                 type="button"
-                className="spexr-button spexr-button--ghost spexr-button--compact"
+                className="sl-btn sl-btn--ghost sl-btn--sm"
                 onClick={() => onOpen(entry.uri)}
                 aria-label={`Open ${entry.name}`}
               >
@@ -307,7 +307,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
               </button>
               <button
                 type="button"
-                className="spexr-button spexr-button--ghost spexr-button--compact spexr-button--danger"
+                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
                 onClick={() => onDelete(entry.uri)}
                 aria-label={`Delete ${entry.name}`}
               >
@@ -320,22 +320,26 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
     ) : null}
 
     {hasWorkspace && entries.length === 0 ? (
-      <p className="spexr-memory-panel__empty">
-        No project memories yet. Use <strong>+ New memory</strong> to add one.
-      </p>
+      <div className="sl-empty spexr-memory-panel__empty">
+        <p className="sl-empty__body">
+          No project memories yet. Use <strong>+ New memory</strong> to add one.
+        </p>
+      </div>
     ) : null}
 
     {!hasWorkspace ? (
-      <p className="spexr-memory-panel__empty">
-        Open a workspace to manage its project memory.
-      </p>
+      <div className="sl-empty spexr-memory-panel__empty">
+        <p className="sl-empty__body">
+          Open a workspace to manage its project memory.
+        </p>
+      </div>
     ) : null}
 
     <div className="spexr-memory-panel__section">
       <h3 className="spexr-memory-panel__subtitle">
         Agent connection{" "}
         <span
-          className={`spexr-link-badge spexr-link-badge--${LINK_BADGE[linkStatus].tone}`}
+          className={`${LINK_BADGE[linkStatus].className} spexr-link-badge`}
           aria-label={`Memory link status: ${LINK_BADGE[linkStatus].label}`}
         >
           {LINK_BADGE[linkStatus].label}
@@ -351,7 +355,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
           <div className="spexr-memory-panel__actions">
             <button
               type="button"
-              className="spexr-button spexr-button--danger"
+              className="sl-btn sl-btn--ghost sl-btn--danger"
               onClick={onResolveConflict}
             >
               Resolve conflict…
@@ -367,7 +371,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
           <div className="spexr-memory-panel__actions">
             <button
               type="button"
-              className="spexr-button"
+              className="sl-btn sl-btn--ghost"
               onClick={onLink}
               disabled={linkDisabled}
             >
@@ -375,7 +379,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
             </button>
             <button
               type="button"
-              className="spexr-button spexr-button--danger"
+              className="sl-btn sl-btn--ghost sl-btn--danger"
               onClick={onUnlink}
               disabled={unlinkDisabled}
             >

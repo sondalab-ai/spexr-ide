@@ -260,7 +260,7 @@ const SpecLintPanel: React.FC<SpecLintPanelProps> = ({ state, onSelect, onFix })
         {total > 0 ? (
           <button
             type="button"
-            className="spexr-button spexr-button--compact spexr-spec-lint__fix"
+            className="sl-btn sl-btn--ghost sl-btn--sm spexr-spec-lint__fix"
             onClick={onFix}
             title="Send these findings to the agent and let it correct the spec"
           >

@@ -46,7 +46,7 @@ export const Tip: React.FC<TipProps> = ({ tip, onShuffle, className }) => {
             💡
           </span>
           Tip
-          <span className="spexr-tip__category">{current.category}</span>
+          <span className="sl-eyebrow sl-eyebrow--accent">{current.category}</span>
         </span>
         <button
           type="button"
