@@ -1,19 +1,23 @@
 import * as React from "@theia/core/shared/react";
 import { LifeGrid } from "./life-grid.js";
+import { advanceTrail } from "./life-trail.js";
 
-/** Cell pitch and generation period: coarse and slow, so it reads as texture. */
-const CELL_PX = 8;
-const TICK_MS = 1100;
+/** Cell pitch, generation period, and the share of brightness a dead cell keeps per generation. */
+const CELL_PX = 4;
+const TICK_MS = 120;
+const FADE = 0.72;
 
 /**
- * A slow Game of Life drawn behind a panel's content, pinned to its viewport.
+ * A fine-grained Game of Life drawn behind a panel's content, pinned to its viewport.
  *
  * It exists to give the glass surfaces above it something to bend. Mount it
  * as the first child of the widget's scrolling node, with the content after
  * it. The canvas is sized to that node, so it covers the visible area whatever
- * the scroll offset. Generations cut rather than fade, which keeps the lensed
- * panes re-filtering once per tick instead of every frame. It pauses while the
- * window or the panel is hidden, draws a single still frame under reduced
+ * the scroll offset. Dying cells leave a short fading trail. Each generation is
+ * written one pixel per cell into a small offscreen canvas and scaled up with
+ * smoothing off, so drawing costs the same however many cells are lit, and the
+ * lensed panes re-filter once per tick rather than every frame. It pauses while
+ * the window or the panel is hidden, draws a single still frame under reduced
  * motion, and draws nothing in high contrast. Colour and strength come from CSS.
  */
 export const LifeBackground = React.memo(function LifeBackground(): React.ReactElement {
@@ -27,25 +31,47 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const root = document.documentElement;
+    const cellCanvas = document.createElement("canvas");
+    const cellCtx = cellCanvas.getContext("2d");
+    if (!cellCtx) return undefined;
     let grid: LifeGrid | undefined;
+    let trail = new Uint8Array(0);
+    let image: ImageData | undefined;
     let timer: ReturnType<typeof setInterval> | undefined;
     let onScreen = true;
 
     const highContrast = (): boolean => root.getAttribute("data-sl-theme") === "high-contrast";
 
-    const draw = (): void => {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (!grid || highContrast()) return;
-      const dpr = window.devicePixelRatio || 1;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = getComputedStyle(canvas).color;
-      const size = CELL_PX - 1;
-      for (let y = 0; y < grid.rows; y++) {
-        for (let x = 0; x < grid.cols; x++) {
-          if (grid.get(x, y)) ctx.fillRect(x * CELL_PX, y * CELL_PX, size, size);
-        }
+    /** The CSS colour as RGB bytes, resolved by painting it: tokens may be oklch(). */
+    const cellRgb = (): [number, number, number] => {
+      cellCtx.clearRect(0, 0, 1, 1);
+      cellCtx.fillStyle = getComputedStyle(canvas).color;
+      cellCtx.fillRect(0, 0, 1, 1);
+      const [r, g, b] = cellCtx.getImageData(0, 0, 1, 1).data;
+      return [r!, g!, b!];
+    };
+
+    /** Refill the image's colour channels, keeping each cell's alpha. */
+    const paintRgb = (): void => {
+      if (!image) return;
+      const [r, g, b] = cellRgb();
+      const px = image.data;
+      for (let i = 0; i < px.length; i += 4) {
+        px[i] = r;
+        px[i + 1] = g;
+        px[i + 2] = b;
       }
+    };
+
+    const draw = (): void => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!grid || !image || highContrast()) return;
+      const px = image.data;
+      for (let i = 0; i < trail.length; i++) px[i * 4 + 3] = trail[i]!;
+      cellCtx.putImageData(image, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      const dpr = window.devicePixelRatio || 1;
+      ctx.drawImage(cellCanvas, 0, 0, grid.cols, grid.rows, 0, 0, grid.cols * CELL_PX * dpr, grid.rows * CELL_PX * dpr);
     };
 
     const resize = (): void => {
@@ -58,7 +84,15 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
       canvas.height = Math.max(1, Math.round(height * dpr));
       const cols = Math.ceil(width / CELL_PX);
       const rows = Math.ceil(height / CELL_PX);
-      if (!grid || grid.cols !== cols || grid.rows !== rows) grid = new LifeGrid(cols, rows);
+      if (!grid || grid.cols !== cols || grid.rows !== rows) {
+        grid = new LifeGrid(cols, rows);
+        trail = new Uint8Array(cols * rows);
+        advanceTrail(trail, grid, FADE);
+        cellCanvas.width = cols;
+        cellCanvas.height = rows;
+        image = cellCtx.createImageData(cols, rows);
+        paintRgb();
+      }
       draw();
     };
 
@@ -66,7 +100,9 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
     const sync = (): void => {
       if (running() && timer === undefined) {
         timer = setInterval(() => {
-          grid?.step();
+          if (!grid) return;
+          grid.step();
+          advanceTrail(trail, grid, FADE);
           draw();
         }, TICK_MS);
       } else if (!running() && timer !== undefined) {
@@ -75,6 +111,7 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
       }
     };
     const restyle = (): void => {
+      paintRgb();
       draw();
       sync();
     };
