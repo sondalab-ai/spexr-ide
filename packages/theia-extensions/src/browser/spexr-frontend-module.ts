@@ -26,6 +26,8 @@ import {
   EXPERTS_VIEW_ID,
 } from "./views/experts-view-contribution.js";
 import { SpexrExpertsWidget } from "./views/experts-widget.js";
+import { SpexrTodoViewContribution, TODO_VIEW_ID } from "./todo/todo-view-contribution.js";
+import { SpexrTodoWidget } from "./todo/todo-widget.js";
 import {
   SpexrSpecResourcesViewContribution,
   SPEC_RESOURCES_VIEW_ID,
@@ -182,6 +184,15 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   // (see reveal-on-restore.ts). Add future default-visible views here, not by
   // special-casing SpexrShellLayoutContribution.
   bind(SpexrRevealOnRestore).toService(SpexrExpertsViewContribution);
+  bindViewContribution(bind, SpexrTodoViewContribution);
+  bind(SpexrTodoWidget).toSelf();
+  bind(WidgetFactory)
+    .toDynamicValue((ctx) => ({
+      id: TODO_VIEW_ID,
+      createWidget: () => ctx.container.get(SpexrTodoWidget),
+    }))
+    .inSingletonScope();
+  bind(SpexrRevealOnRestore).toService(SpexrTodoViewContribution);
   bind(SpexrRevealOnRestore).toService(ScmContribution);
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
