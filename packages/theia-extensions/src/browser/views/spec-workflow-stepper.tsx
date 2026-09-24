@@ -138,7 +138,7 @@ const StepButton: React.FC<{
         ? createPortal(
             <div
               role="tooltip"
-              className={`spexr-stepper__tooltip spexr-stepper__tooltip--${pos.placement}`}
+              className={`spexr-stepper__tooltip spexr-stepper__tooltip--${pos.placement} sl-fx-glass sl-fx-glass--pane`}
               style={{
                 top: pos.top,
                 left: pos.left,
@@ -200,7 +200,7 @@ const PlanChecklist: React.FC<{
 }> = ({ tasks, onToggle }) => {
   const doneCount = tasks.filter((t) => t.done).length;
   return (
-    <div className="spexr-plan-checklist" aria-label="Implementation tasks">
+    <div className="spexr-plan-checklist sl-fx-glass sl-fx-glass--pane" aria-label="Implementation tasks">
       <div className="spexr-plan-checklist__header">
         Tasks — {doneCount}/{tasks.length}
       </div>

@@ -99,6 +99,37 @@ body {
   background-attachment: local;
 }
 
+/* Glass cards. The kit clears a glass host's background-color, but these
+   cards' own `background:` rules come later at the same specificity and would
+   keep them opaque. The fill moves into the kit's tint instead, rebound per
+   state, so a hovered card still lifts. Only leaf cards take glass: a lensed
+   pane is a backdrop root, and a glass button inside one loses its lens. */
+@supports (backdrop-filter: blur(1px)) {
+  :is(.spexr-df-card, .spexr-welcome-card, .spexr-plan-checklist, .spexr-stepper__tooltip).sl-fx-glass,
+  :is(.spexr-df-card, .spexr-welcome-card).sl-fx-glass:hover {
+    background: transparent;
+  }
+}
+
+/* The cards' own `transition` shorthands would drop the kit's swell easing. */
+:is(.spexr-df-card, .spexr-welcome-card).sl-fx-glass {
+  transition:
+    transform 420ms cubic-bezier(0.22, 0.61, 0.28, 1),
+    border-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+.spexr-stepper__tooltip.sl-fx-glass,
+:is(.spexr-df-card, .spexr-welcome-card).sl-fx-glass:hover {
+  --slfx-fill: var(--sl-bg-surface-raised);
+  --slg-tint-color: var(--sl-bg-surface-raised);
+}
+
+.spexr-welcome-card--primary.sl-fx-glass,
+.spexr-welcome-card--primary.sl-fx-glass:hover {
+  --slfx-fill: var(--sl-accent-subtle);
+  --slg-tint-color: var(--sl-accent-subtle);
+}
+
 /* spexr's eyebrows carry the accent; the kit's are muted. */
 .sl-eyebrow--accent {
   color: var(--slc-accent);
@@ -827,7 +858,6 @@ code {
   cursor: pointer;
   font: inherit;
   transition:
-    transform var(--sl-motion-fast) var(--sl-motion-ease),
     border-color var(--sl-motion-fast) var(--sl-motion-ease),
     background var(--sl-motion-fast) var(--sl-motion-ease);
 }
@@ -835,7 +865,6 @@ code {
 .spexr-welcome-card:hover {
   border-color: var(--sl-accent-default);
   background: var(--sl-accent-subtle);
-  transform: translateY(-1px);
 }
 
 .spexr-welcome-card--primary {

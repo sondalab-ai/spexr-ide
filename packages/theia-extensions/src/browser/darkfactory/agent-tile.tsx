@@ -473,7 +473,7 @@ export function AgentTileCard(props: {
 
   return (
     <button
-      className="spexr-df-card"
+      className="spexr-df-card sl-fx-glass sl-fx-glass--pane"
       data-state={tile.state}
       data-status={status.kind}
       style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}

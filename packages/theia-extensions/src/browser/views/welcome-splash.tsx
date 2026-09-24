@@ -200,12 +200,19 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
         </p>
       </header>
 
-      <section className="spexr-welcome__actions" aria-label="Get started">
+      {/* Keyed on the card set: the kit dresses glass and curtains only when a
+          card is inserted, so a changed set remounts the row rather than patch it. */}
+      <section
+        key={cards.map((c) => `${c.id}${c.primary ? "*" : ""}`).join("|")}
+        className="spexr-welcome__actions"
+        aria-label="Get started"
+      >
         {cards.map((card) => (
           <button
             key={card.id}
             type="button"
-            className={`spexr-welcome-card ${card.primary ? "spexr-welcome-card--primary" : ""}`}
+            className={`spexr-welcome-card sl-fx-glass sl-fx-glass--pane sl-fx-aurora sl-fx-aurora--pillars${card.primary ? " spexr-welcome-card--primary" : ""}`}
+            {...(card.primary ? { "data-sl-fx-live": "on" } : {})}
             onClick={card.onClick}
           >
             <span className="spexr-welcome-card__title">{card.title}</span>
