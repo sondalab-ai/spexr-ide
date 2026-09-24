@@ -1,0 +1,4 @@
+/* Re-exports the Sondalab typefaces (Instrument Sans, Martian Mono, Fraunces)
+   that tokens.css names. Without it every --sl-font-* falls back to the
+   system stack. */
+@import "@sondalab/ui-kit/fonts.css";
