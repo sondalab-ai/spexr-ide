@@ -20,7 +20,7 @@ A pinned card shows what a session types and prints, but not what it does on
 the web. When an agent opens a pull request or starts a dev server, the user
 leaves SPEXR to look at it, and has to find the URL in the scrollback first.
 
-The card gets a **Browser** button. It splits the card body: the terminal (or
+The card gets a **Browser** switch. It splits the card body: the terminal (or
 the read-only live view) stays on top, a browser opens below. The browser
 starts on the newest link the session produced and follows the session as new
 ones appear; the user can pick another link the session produced, type an

@@ -2889,6 +2889,29 @@ code {
 /* Only the first button takes the free space: several autos would spread them apart. */
 .spexr-df-pinned__actions .spexr-button:first-of-type { margin-left: auto; }
 
+/* On/off switch for a card's browser: the thumb slides and the track takes the accent when open. */
+.spexr-df-switch {
+  display: inline-flex; align-items: center; gap: var(--sl-space-2);
+  padding: 2px var(--sl-space-1); border: 0; border-radius: var(--sl-radius-sm);
+  background: none; color: var(--sl-text-secondary); font: inherit; font-size: var(--sl-text-sm);
+  cursor: pointer;
+  transition: color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-df-switch:hover, .spexr-df-switch[aria-checked="true"] { color: var(--sl-text-primary); }
+.spexr-df-switch:focus-visible { outline: 1px solid var(--sl-accent-default); outline-offset: 2px; }
+.spexr-df-switch__track {
+  position: relative; flex: none; width: 26px; height: 14px; border-radius: 7px;
+  background: var(--sl-border-default);
+  transition: background var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-df-switch__thumb {
+  position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--sl-bg-canvas);
+  transition: transform var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-df-switch[aria-checked="true"] .spexr-df-switch__track { background: var(--sl-accent-default); }
+.spexr-df-switch[aria-checked="true"] .spexr-df-switch__thumb { transform: translateX(12px); }
+
 /*
  * One project's sessions, under a header that carries the identity every member
  * would otherwise repeat. The accent is the project's, so the whole group reads
