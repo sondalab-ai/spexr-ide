@@ -105,7 +105,7 @@ body {
    state, so a hovered card still lifts. Only leaf cards take glass: a lensed
    pane is a backdrop root, and a glass button inside one loses its lens. */
 @supports (backdrop-filter: blur(1px)) {
-  :is(.spexr-df-card, .spexr-welcome-card, .spexr-plan-checklist, .spexr-stepper__tooltip).sl-fx-glass,
+  :is(.spexr-df-card, .spexr-welcome-card, .spexr-workflow__item, .spexr-whats-new, .spexr-tip, .spexr-plan-checklist, .spexr-stepper__tooltip).sl-fx-glass,
   :is(.spexr-df-card, .spexr-welcome-card).sl-fx-glass:hover {
     background: transparent;
   }
@@ -128,6 +128,27 @@ body {
 .spexr-welcome-card--primary.sl-fx-glass:hover {
   --slfx-fill: var(--sl-accent-subtle);
   --slg-tint-color: var(--sl-accent-subtle);
+}
+
+/* The welcome page's other sections keep a shade of their own under the same
+   curtains: the workflow steps and the tip a step lighter than the action
+   cards, "What's new" its accent wash. None of them is clickable, so they do
+   not swell under the pointer the way the action cards do. */
+:is(.spexr-workflow__item, .spexr-tip).sl-fx-glass {
+  --slfx-fill: var(--sl-bg-surface-raised);
+  --slg-tint-color: var(--sl-bg-surface-raised);
+}
+
+.spexr-whats-new.sl-fx-glass {
+  --slfx-fill: var(--sl-accent-subtle);
+  --slg-tint-color: var(--sl-accent-subtle);
+}
+
+/* The kit scales the curtains' glow with the pane, and the glow is the
+   card's preceding sibling, so both need the swell turned off. */
+:is(.spexr-workflow__item, .spexr-whats-new, .spexr-tip).sl-fx-glass,
+.sl-fx-aurora__glow:has(+ :is(.spexr-workflow__item, .spexr-whats-new, .spexr-tip)) {
+  --slfx-pane-swell: 1;
 }
 
 /* The Game of Life under the Spec and Darkfactory panels: a zero-height

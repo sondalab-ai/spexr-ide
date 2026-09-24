@@ -5,6 +5,8 @@ export interface TipProps {
   readonly tip?: SpexrTip;
   readonly onShuffle?: () => void;
   readonly className?: string;
+  /** Marks the tip as ambiently live (`data-sl-fx-live="on"`), which animates an aurora host. */
+  readonly live?: boolean;
 }
 
 export function pickRandomTip(seed?: number): SpexrTip {
@@ -15,7 +17,7 @@ export function pickRandomTip(seed?: number): SpexrTip {
   return SPEXR_TIPS[index]!;
 }
 
-export const Tip: React.FC<TipProps> = ({ tip, onShuffle, className }) => {
+export const Tip: React.FC<TipProps> = ({ tip, onShuffle, className, live }) => {
   const [current, setCurrent] = React.useState<SpexrTip>(() => tip ?? pickRandomTip());
 
   React.useEffect(() => {
@@ -36,6 +38,7 @@ export const Tip: React.FC<TipProps> = ({ tip, onShuffle, className }) => {
   return (
     <aside
       className={`spexr-tip ${className ?? ""}`.trim()}
+      {...(live ? { "data-sl-fx-live": "on" } : {})}
       role="region"
       aria-label="Tip"
       aria-live="polite"

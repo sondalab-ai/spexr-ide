@@ -3,6 +3,13 @@ import { Tip } from "@spexr/ui-kit";
 import type { ReleaseNote } from "../../common/changelog.js";
 import { httpsHref } from "./external-link.js";
 
+/**
+ * Every welcome card is a glass pane with the kit's aurora curtains, marked
+ * ambiently live so the curtains keep drifting rather than lighting on focus
+ * only. Static on purpose: the kit dresses a host once, when it is inserted.
+ */
+const CURTAIN_CARD = "sl-fx-glass sl-fx-glass--pane sl-fx-aurora sl-fx-aurora--pillars";
+
 export interface WelcomeSplashProps {
   readonly onNewProject: () => void;
   readonly onOpenFolder: () => void;
@@ -118,7 +125,11 @@ const WhatsNewPanel: React.FC<{ note: ReleaseNote }> = ({ note }) => {
   if (dismissed) return null;
 
   return (
-    <section className="spexr-whats-new" aria-labelledby="spexr-whats-new-title">
+    <section
+      className={`spexr-whats-new ${CURTAIN_CARD}`}
+      data-sl-fx-live="on"
+      aria-labelledby="spexr-whats-new-title"
+    >
       <div className="spexr-whats-new__head">
         <div>
           <p className="sl-eyebrow sl-eyebrow--accent spexr-whats-new__eyebrow">What&rsquo;s new &mdash; v{note.version}</p>
@@ -211,8 +222,8 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
           <button
             key={card.id}
             type="button"
-            className={`spexr-welcome-card sl-fx-glass sl-fx-glass--pane sl-fx-aurora sl-fx-aurora--pillars${card.primary ? " spexr-welcome-card--primary" : ""}`}
-            {...(card.primary ? { "data-sl-fx-live": "on" } : {})}
+            className={`spexr-welcome-card ${CURTAIN_CARD}${card.primary ? " spexr-welcome-card--primary" : ""}`}
+            data-sl-fx-live="on"
             onClick={card.onClick}
           >
             <span className="spexr-welcome-card__title">{card.title}</span>
@@ -238,7 +249,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
         </header>
         <ol className="spexr-workflow">
           {WORKFLOW_STEPS.map((step, index) => (
-            <li key={step.id} className="spexr-workflow__item">
+            <li key={step.id} className={`spexr-workflow__item ${CURTAIN_CARD}`} data-sl-fx-live="on">
               <span className="spexr-workflow__index" aria-hidden>
                 {String(index + 1).padStart(2, "0")}
               </span>
@@ -254,7 +265,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
       {releaseNote ? <WhatsNewPanel note={releaseNote} /> : null}
 
       <footer className="spexr-welcome__footer">
-        <Tip />
+        <Tip className={CURTAIN_CARD} live />
       </footer>
     </div>
   );
