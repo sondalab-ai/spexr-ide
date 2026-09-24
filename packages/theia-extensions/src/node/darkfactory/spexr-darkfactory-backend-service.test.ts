@@ -1338,3 +1338,69 @@ describe("renameSession and the search index", () => {
     }
   });
 });
+
+describe("listSessionLinks", () => {
+  const line = (o: unknown): string => JSON.stringify(o);
+  const prResult = (n: number): string =>
+    line({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", content: `https://github.com/o/r/pull/${n}\n` }],
+      },
+    });
+
+  async function withTranscript(lines: string[]) {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-links-"));
+    const file = join(dir, "s1.jsonl");
+    await writeFile(file, lines.join("\n") + "\n");
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: claudeHarness,
+            ref: {
+              sessionId: "s1",
+              projectPath: "",
+              mtimeMs: NOW - 5_000,
+              loadEntries: async () => [
+                { type: "mode", mode: "normal" },
+                { cwd: "/Users/x/src/proj", type: "user", message: { role: "user", content: "go" } },
+              ],
+            },
+            claude: {
+              sessionId: "s1",
+              transcriptPath: file,
+              configDir: "/Users/x/.claude",
+              mtimeMs: NOW - 5_000,
+              readLines: () =>
+                Promise.resolve([
+                  line({ type: "mode", mode: "normal" }),
+                  line({ cwd: "/Users/x/src/proj", type: "user", message: { role: "user", content: "go" } }),
+                ]),
+            },
+          },
+        ]),
+    });
+    await s.listTiles();
+    return { s, file, dir };
+  }
+
+  it("returns the links a transcript printed, then only picks up what was appended", async () => {
+    const { s, file, dir } = await withTranscript([prResult(1)]);
+    try {
+      expect((await s.listSessionLinks("s1")).map((l) => l.url)).toEqual(["https://github.com/o/r/pull/1"]);
+      await writeFile(file, prResult(2) + "\n", { flag: "a" });
+      expect((await s.listSessionLinks("s1")).map((l) => l.url)).toEqual([
+        "https://github.com/o/r/pull/2",
+        "https://github.com/o/r/pull/1",
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns nothing for a session it does not know", async () => {
+    expect(await svc().listSessionLinks("nope")).toEqual([]);
+  });
+});

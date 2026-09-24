@@ -54,6 +54,7 @@ import { SpexrShellLayoutContribution } from "../shell/spexr-shell-layout-contri
 import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view-contribution.js";
 import { memoryDir, specsDir, agentsDir, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
 import { locateSpec, rootContaining, specContextDirFor } from "../spec/spec-roots.js";
+import { chooseAgentRoot, movesAgent } from "../agent/agent-root.js";
 import {
   buildSpecHandoff,
   buildSpecLintFixPrompt,
@@ -523,8 +524,10 @@ export class SpexrCommandsContribution
       }
 
       const prompt = this.buildWorkflowPrompt(step, spec.frontmatter.slug, spec.raw);
-      await this.applyStepExpert(step);
-      await this.claudeTerminal.ensureStarted();
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
+      await this.applyStepExpert(step, uri);
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(prompt.body);
       await this.claudeTerminal.reveal();
       await this.persistStep(uri, step);
@@ -644,7 +647,7 @@ export class SpexrCommandsContribution
    * terminals do — a wrapper that a bare `claude` would bypass.
    */
   private launchCommand(): string | undefined {
-    const profiles = readLaunchProfiles(this.preferences, this.workspaceRoot()?.toString());
+    const profiles = readLaunchProfiles(this.preferences, this.claudeTerminal.agentRootUri());
     const configDir = this.claudeTerminal.currentConfigDir() ?? DEFAULT_CONFIG_DIR;
     return profileForConfigDir(profiles, configDir)?.command;
   }
@@ -945,7 +948,7 @@ export class SpexrCommandsContribution
   }
 
   private async linkMemory(): Promise<void> {
-    const root = this.workspaceRoot();
+    const root = this.agentRoot();
     if (!root) {
       this.messages.warn("Open a workspace before linking project memory.");
       return;
@@ -956,7 +959,7 @@ export class SpexrCommandsContribution
   }
 
   private async unlinkMemory(): Promise<void> {
-    const root = this.workspaceRoot();
+    const root = this.agentRoot();
     if (!root) {
       this.messages.warn("Open a workspace before unlinking project memory.");
       return;
@@ -984,7 +987,7 @@ export class SpexrCommandsContribution
   }
 
   private async resolveMemoryConflict(): Promise<void> {
-    const root = this.workspaceRoot();
+    const root = this.agentRoot();
     if (!root) {
       this.messages.warn("Open a workspace before resolving a memory conflict.");
       return;
@@ -1015,35 +1018,97 @@ export class SpexrCommandsContribution
    * Activate the expert mapped to a workflow step before handing off to the
    * agent. Falls back to the base agent when the mapped expert is not installed
    * or the step maps to no expert. No-ops when the desired persona is already
-   * active so an in-flight session is not needlessly relaunched.
+   * active so an in-flight session is not needlessly relaunched. Everything is
+   * decided in the spec's own folder, which is where the step then runs.
    */
-  private async applyStepExpert(step: WorkflowStep): Promise<void> {
+  private async applyStepExpert(step: WorkflowStep, specUri: URI): Promise<void> {
+    const rootUri = this.specRootUri(specUri);
+    const root = rootUri ? new URI(rootUri) : undefined;
     const mapped = WORKFLOW_STEP_EXPERT[step];
-    const desired = mapped && (await this.isExpertInstalled(mapped)) ? mapped : undefined;
-    if (desired === this.activeExpertId()) return;
+    const desired = mapped && root && (await this.isExpertInstalled(mapped, root)) ? mapped : undefined;
+    if (desired === this.claudeTerminal.activeExpertId(rootUri)) return;
     if (!desired) {
-      await this.claudeTerminal.deactivateExpert();
+      await this.claudeTerminal.deactivateExpert(rootUri);
       return;
     }
     const dto = await this.findMarketplaceExpert(desired);
     if (!dto) return;
-    await this.claudeTerminal.startWithExpert({ id: dto.id, name: dto.name, icon: dto.icon });
+    await this.claudeTerminal.startWithExpert({ id: dto.id, name: dto.name, icon: dto.icon }, rootUri);
   }
 
-  private activeExpertId(): string | undefined {
-    const stored =
-      this.preferences.get<string>(
-        SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
-        "",
-        this.workspaceRoot()?.toString(),
-      ) ?? "";
-    return stored.trim() || undefined;
-  }
-
-  private async isExpertInstalled(id: string): Promise<boolean> {
-    const root = this.workspaceRoot();
-    if (!root) return false;
+  private async isExpertInstalled(id: string, root: URI): Promise<boolean> {
     return this.exists(agentsDir(root).resolve(`${id}.md`));
+  }
+
+  /** The workspace folders an expert's persona file is installed in. */
+  private async foldersWithExpert(id: string): Promise<URI[]> {
+    const roots = this.workspaceRoots();
+    const installed = await Promise.all(roots.map((root) => this.isExpertInstalled(id, root)));
+    return roots.filter((_, i) => installed[i]);
+  }
+
+  /**
+   * The folder the agent (or an expert file) should use, asking only when the
+   * workspace has several candidates. `among` narrows the choice to folders
+   * that have the expert installed; the folder of the file being edited is
+   * offered first. `undefined` means no folder is open or the pick was
+   * dismissed.
+   */
+  private async pickAgentFolder(placeHolder: string, among?: readonly URI[]): Promise<URI | undefined> {
+    const roots = this.workspaceRoots();
+    const hint = rootContaining(roots, this.editorManager.currentEditor?.editor.uri);
+    const choice = chooseAgentRoot({
+      roots: roots.map((r) => r.toString()),
+      ...(among ? { among: among.map((r) => r.toString()) } : {}),
+      ...(hint ? { hint: hint.toString() } : {}),
+    });
+    if (choice.kind === "none") return undefined;
+    if (choice.kind === "root") return new URI(choice.root);
+    const ordered = choice.preselect
+      ? [choice.preselect, ...choice.candidates.filter((c) => c !== choice.preselect)]
+      : choice.candidates;
+    const items: RootPick[] = ordered.map((c) => {
+      const root = new URI(c);
+      return {
+        label: root.path.base,
+        description: c === choice.preselect ? `${root.path.toString()} — current file` : root.path.toString(),
+        root,
+      };
+    });
+    const picked = await this.quickInput.pick<RootPick>(items, { placeHolder });
+    return picked?.root;
+  }
+
+  /** The folder the side agent runs in (or would, if started now). */
+  private agentRoot(): URI | undefined {
+    const uri = this.claudeTerminal.agentRootUri();
+    return uri ? new URI(uri) : undefined;
+  }
+
+  /**
+   * The folder a spec action runs the agent in: the spec's own. When that
+   * means restarting an agent running in another folder, the user confirms
+   * first; `undefined` means they cancelled and the action should stop.
+   */
+  private async agentFolderForSpec(uri: URI): Promise<{ root: string | undefined } | undefined> {
+    const target = this.specRootUri(uri);
+    const running = this.claudeTerminal.runningRootUri();
+    if (!movesAgent(running, target)) return { root: target };
+    const from = new URI(running!).path.base;
+    const to = new URI(target!).path.base;
+    const confirmed = await new ConfirmDialog({
+      title: "Restart the agent in another folder?",
+      msg: `The agent is running in ${from}. Restart it in ${to} for this spec?`,
+      ok: `Restart in ${to}`,
+      cancel: "Cancel",
+      maxWidth: 480,
+    }).open();
+    return confirmed ? { root: target } : undefined;
+  }
+
+  /** The workspace folder (URI string) holding a spec. */
+  private specRootUri(uri: URI): string | undefined {
+    return rootContaining(this.workspaceRoots(), uri)?.toString();
   }
 
   private async findMarketplaceExpert(id: string): Promise<ExpertAgentDto | undefined> {
@@ -1066,8 +1131,7 @@ export class SpexrCommandsContribution
   }
 
   private async addExpert(raw: unknown): Promise<void> {
-    const root = this.workspaceRoot();
-    if (!root) {
+    if (this.workspaceRoots().length === 0) {
       this.messages.warn("Open a workspace before adding an expert.");
       return;
     }
@@ -1075,6 +1139,8 @@ export class SpexrCommandsContribution
       this.messages.warn("Add expert requires an expert definition.");
       return;
     }
+    const root = await this.pickAgentFolder(`Workspace folder to add ${raw.name} to`);
+    if (!root) return;
     try {
       const dir = agentsDir(root);
       await this.ensureDir(dir);
@@ -1088,7 +1154,7 @@ export class SpexrCommandsContribution
         ...(raw.model ? { model: raw.model } : {}),
       });
       await this.fileService.create(fileUri, content, { overwrite: true });
-      this.messages.info(`Added expert ${raw.name} to the project.`);
+      this.messages.info(`Added expert ${raw.name} to ${root.path.base}.`);
     } catch (err) {
       console.error("[spexr] addExpert failed", err);
       this.messages.error(
@@ -1098,11 +1164,12 @@ export class SpexrCommandsContribution
   }
 
   private async removeExpert(id: string | undefined): Promise<void> {
-    const root = this.workspaceRoot();
-    if (!root || !id) {
+    if (this.workspaceRoots().length === 0 || !id) {
       this.messages.warn("Remove expert requires a workspace and an expert id.");
       return;
     }
+    const root = await this.pickAgentFolder(`Workspace folder to remove "${id}" from`, await this.foldersWithExpert(id));
+    if (!root) return;
     const fileUri = agentsDir(root).resolve(`${id}.md`);
     const confirmed = await new ConfirmDialog({
       title: `Remove expert "${id}"?`,
@@ -1142,12 +1209,16 @@ export class SpexrCommandsContribution
       this.messages.warn("Start expert requires an expert definition.");
       return;
     }
+    const root = await this.pickAgentFolder(
+      `Workspace folder to start ${raw.name} in`,
+      await this.foldersWithExpert(raw.id),
+    );
+    if (!root) return;
     try {
-      const started = await this.claudeTerminal.startWithExpert({
-        id: raw.id,
-        name: raw.name,
-        icon: raw.icon,
-      });
+      const started = await this.claudeTerminal.startWithExpert(
+        { id: raw.id, name: raw.name, icon: raw.icon },
+        root.toString(),
+      );
       if (!started) return; // no session to announce, and nothing to type into
       this.messages.info(`Started session as ${raw.name}.`);
       if (raw.kickoffPrompt) await this.sendKickoff(raw.kickoffPrompt);
@@ -1244,7 +1315,9 @@ export class SpexrCommandsContribution
       const contextDir = uri.parent.resolve(SPEC_CONTEXT_DIR).resolve(slug);
       const { contextFiles, links } = await this.loadSpecContext(contextDir);
       const payload = buildSpecHandoff({ specBody: content.value, contextFiles, links });
-      await this.claudeTerminal.ensureStarted();
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(payload);
       await this.claudeTerminal.reveal();
       this.messages.info(`Sent ${slug} to agent.`);
@@ -1304,7 +1377,9 @@ export class SpexrCommandsContribution
       const content = await this.fileService.read(uri);
       const spec = parseSpec(content.value, uri.toString());
       const prompt = RETROSPECTIVE_PROMPT(spec.frontmatter.slug, spec.raw);
-      await this.claudeTerminal.ensureStarted();
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(prompt);
       await this.claudeTerminal.reveal();
       this.messages.info(`Started retrospective for ${spec.frontmatter.slug}.`);
@@ -1339,7 +1414,9 @@ export class SpexrCommandsContribution
       await this.flushDirtyEditor(uri);
       const slug = uri.path.base.replace(/\.md$/, "");
       const prompt = buildSpecLintFixPrompt({ path: this.workspacePath(uri), findings });
-      await this.claudeTerminal.ensureStarted();
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(prompt);
       await this.claudeTerminal.reveal();
       const count = findings.length;

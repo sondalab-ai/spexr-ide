@@ -7,11 +7,13 @@ import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { FileDialogService } from "@theia/filesystem/lib/browser/file-dialog";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { QuickInputService } from "@theia/core/lib/browser";
+import { WindowService } from "@theia/core/lib/browser/window/window-service";
 import type {
   AgentSummary,
   AgentTile,
   ClaudeConfigDir,
   FollowEvent,
+  SessionLink,
   SpexrDarkfactoryService,
 } from "../../common/darkfactory-protocol.js";
 import {
@@ -48,6 +50,15 @@ import {
 import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { keepPinnedTiles } from "./pinned-tiles.js";
+import {
+  applyLinks,
+  closeBrowser,
+  CLOSED_BROWSER,
+  navigateBrowser,
+  openBrowser,
+  type CardBrowserState,
+} from "./card-browser.js";
+import type { CardBrowserProps } from "./card-browser-pane.js";
 import { routeWheel, wheelDeltaPx } from "./wheel-routing.js";
 import { mosaicColumns, readWallLayout, writeWallLayout, type WallLayout } from "./wall-layout.js";
 import { shouldRefresh, type SummaryState } from "./summary-refresh.js";
@@ -108,6 +119,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(FileDialogService) private readonly fileDialog!: FileDialogService;
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
   @inject(QuickInputService) private readonly quickInput!: QuickInputService;
+  @inject(WindowService) private readonly windowService!: WindowService;
 
   private tiles: AgentTile[] = [];
 
@@ -150,6 +162,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private pinned: string[] = [];
   /** Per-pinned-session read-only follow buffer, for the cards with no terminal. */
   private readonly pinnedEvents = new Map<string, FollowEvent[]>();
+
+  /**
+   * Card key (session id, or a launched card's placeholder) → its browser
+   * (spec 0016). Kept for the window's life, so a card closed and pinned again
+   * reopens on the page it showed; moved with a launched card when adopted.
+   */
+  private readonly browsers = new Map<string, CardBrowserState>();
+  /** Session id → the links its transcript produced, newest first. */
+  private readonly sessionLinks = new Map<string, SessionLink[]>();
 
   /**
    * Sessions started from the launcher, still keyed by a placeholder: a new
@@ -468,8 +489,60 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * that process, so leaving it running would strand a session the wall could
    * never re-attach — the very thing that made switching cards destructive.
    */
+  /** The browser props a card with this key renders; `sessionId` is absent on a launched card. */
+  private browserProps(key: string, sessionId: string | undefined): CardBrowserProps {
+    return {
+      cardKey: key,
+      state: this.browsers.get(key) ?? CLOSED_BROWSER,
+      links: (sessionId && this.sessionLinks.get(sessionId)) || [],
+      onToggle: () => this.toggleBrowser(key, sessionId),
+      onNavigate: (url, how) => this.navigateCardBrowser(key, url, how),
+      onOpenExternal: (url) => this.windowService.openNewWindow(url, { external: true }),
+    };
+  }
+
+  private toggleBrowser(key: string, sessionId: string | undefined): void {
+    const current = this.browsers.get(key) ?? CLOSED_BROWSER;
+    if (current.open) {
+      this.browsers.set(key, closeBrowser(current));
+    } else {
+      this.browsers.set(key, openBrowser(current, (sessionId && this.sessionLinks.get(sessionId)) || []));
+      if (sessionId) void this.refreshLinks(sessionId);
+    }
+    this.update();
+  }
+
+  private navigateCardBrowser(key: string, url: string, how: "typed" | "picked"): void {
+    this.browsers.set(key, navigateBrowser(this.browsers.get(key) ?? CLOSED_BROWSER, url, how));
+    this.update();
+  }
+
+  /**
+   * Show a URL in a card's browser, opening it if needed. Returns false when no
+   * card has that key, so the caller can fall back to the system browser.
+   */
+  openInCardBrowser(key: string, url: string): boolean {
+    if (!this.pinned.includes(key) && !this.launched.some((l) => l.key === key)) return false;
+    this.navigateCardBrowser(key, url, "typed");
+    return true;
+  }
+
+  private async refreshLinks(sessionId: string): Promise<void> {
+    let links: SessionLink[];
+    try {
+      links = await this.service.listSessionLinks(sessionId);
+    } catch {
+      return; // keep what we had
+    }
+    this.sessionLinks.set(sessionId, links);
+    const current = this.browsers.get(sessionId);
+    if (current) this.browsers.set(sessionId, applyLinks(current, links));
+    this.update();
+  }
+
   private closeLaunched(key: string): void {
     this.terminals.live(key)?.dispose();
+    this.browsers.delete(key);
     this.launched = this.launched.filter((l) => l.key !== key);
     this.update();
   }
@@ -484,6 +557,12 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       const sessionId = matchLaunchedSession(launch.projectPath, launch.knownBefore, tiles);
       if (!sessionId || this.pinned.includes(sessionId)) continue;
       this.terminals.rekey(launch.key, sessionId);
+      const browser = this.browsers.get(launch.key);
+      if (browser) {
+        this.browsers.delete(launch.key);
+        this.browsers.set(sessionId, browser);
+        if (browser.open) void this.refreshLinks(sessionId);
+      }
       this.pinned = [sessionId, ...this.pinned];
       this.pinnedEvents.set(sessionId, []);
       adopted.push(launch.key);
@@ -591,6 +670,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       if (!live.has(id)) this.unpin(id);
     }
     this.adoptLaunched(tiles);
+    // A push is how the wall hears that transcripts changed: re-read the links
+    // of every open browser, so a new pull request or server shows up.
+    for (const [key, browser] of this.browsers) {
+      if (browser.open && this.pinned.includes(key)) void this.refreshLinks(key);
+    }
     // First compute for a newly-seen session; then keep it fresh, but only when
     // the transcript grew and the agent meaningfully moved (see shouldRefresh).
     const now = Date.now();
@@ -1075,6 +1159,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               }
               isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
               layout={this.wallLayout}
+              browser={this.browserProps(launch.key, undefined)}
             />
           ))}
           {expanded.map((tile) => (
@@ -1093,6 +1178,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               onRename={(t) => void this.renameSession(t)}
               isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
               layout={this.wallLayout}
+              browser={this.browserProps(tile.sessionId, tile.sessionId)}
             />
           ))}
         </div>

@@ -12,14 +12,17 @@ import { EXPERTS_VIEW_ID } from "./experts-view-contribution.js";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
 import { SpexrAgentServiceProxy } from "../agent/agent-service-proxy.js";
 import type { SpexrAgentService, ExpertAgentDto } from "../../common/agent-protocol.js";
-import { parseExpertFrontmatter, type InstalledExpertMeta } from "./experts-format.js";
+import { mergeInstalled, parseExpertFrontmatter, type InstalledExpert, type InstalledExpertMeta } from "./experts-format.js";
 import { SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE } from "../preferences/spexr-preferences.js";
 import { agentsDir } from "../workspace-paths.js";
+import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 
 interface ExpertsPanelProps {
   readonly hasWorkspace: boolean;
   readonly marketplace: readonly ExpertAgentDto[];
-  readonly installed: readonly InstalledExpertMeta[];
+  readonly installed: readonly InstalledExpert[];
+  /** Whether the workspace has several folders, so each expert says where it is installed. */
+  readonly multiRoot: boolean;
   readonly activeId: string | undefined;
   readonly onAdd: (expert: ExpertAgentDto) => void;
   readonly onRemove: (id: string) => void;
@@ -45,12 +48,15 @@ export class SpexrExpertsWidget extends ReactWidget {
   @inject(PreferenceService)
   private readonly preferences!: PreferenceService;
 
+  @inject(ClaudeTerminalManager)
+  private readonly claudeTerminal!: ClaudeTerminalManager;
+
   @optional()
   @inject(SpexrAgentServiceProxy)
   private readonly agentService!: SpexrAgentService | undefined;
 
   private marketplace: readonly ExpertAgentDto[] = [];
-  private installed: readonly InstalledExpertMeta[] = [];
+  private installed: readonly InstalledExpert[] = [];
 
   constructor() {
     super();
@@ -85,14 +91,13 @@ export class SpexrExpertsWidget extends ReactWidget {
   }
 
   private affectsAgents(event: FileOperationEvent): boolean {
-    const root = this.workspaceRoot();
-    if (!root) return false;
-    const agentsRoot = agentsDir(root).toString() + "/";
+    const agentsRoots = this.workspaceRoots().map((root) => agentsDir(root).toString() + "/");
     const candidates = [event.resource, event.target?.resource].filter(
       (u): u is URI => u !== undefined,
     );
     return candidates.some(
-      (uri) => uri.toString().startsWith(agentsRoot) && uri.path.base.endsWith(".md"),
+      (uri) =>
+        uri.path.base.endsWith(".md") && agentsRoots.some((dir) => uri.toString().startsWith(dir)),
     );
   }
 
@@ -110,9 +115,16 @@ export class SpexrExpertsWidget extends ReactWidget {
     }
   }
 
-  private async loadInstalled(): Promise<readonly InstalledExpertMeta[]> {
-    const root = this.workspaceRoot();
-    if (!root) return [];
+  /** Experts installed in any workspace folder, each with the folders that have it. */
+  private async loadInstalled(): Promise<readonly InstalledExpert[]> {
+    const roots = this.workspaceRoots();
+    const perFolder = await Promise.all(
+      roots.map(async (root) => ({ folder: root.path.base, experts: await this.loadInstalledIn(root) })),
+    );
+    return mergeInstalled(perFolder);
+  }
+
+  private async loadInstalledIn(root: URI): Promise<readonly InstalledExpertMeta[]> {
     try {
       const stat = await this.fileService.resolve(agentsDir(root));
       const items: InstalledExpertMeta[] = [];
@@ -132,13 +144,13 @@ export class SpexrExpertsWidget extends ReactWidget {
     }
   }
 
-  private workspaceRoot(): URI | undefined {
-    return this.workspace.tryGetRoots()[0]?.resource;
+  private workspaceRoots(): URI[] {
+    return this.workspace.tryGetRoots().map((root) => root.resource);
   }
 
+  /** The expert active in the folder the agent runs in. */
   private activeId(): string | undefined {
-    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE) ?? "";
-    return stored.trim() || undefined;
+    return this.claudeTerminal.activeExpertId();
   }
 
   private readonly handleAdd = (expert: ExpertAgentDto): void => {
@@ -172,9 +184,10 @@ export class SpexrExpertsWidget extends ReactWidget {
   protected render(): React.ReactNode {
     return (
       <ExpertsPanel
-        hasWorkspace={Boolean(this.workspaceRoot())}
+        hasWorkspace={this.workspaceRoots().length > 0}
         marketplace={this.marketplace}
         installed={this.installed}
+        multiRoot={this.workspaceRoots().length > 1}
         activeId={this.activeId()}
         onAdd={this.handleAdd}
         onRemove={this.handleRemove}
@@ -191,6 +204,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
   hasWorkspace,
   marketplace,
   installed,
+  multiRoot,
   activeId,
   onAdd,
   onRemove,
@@ -249,6 +263,9 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                     <span className="spexr-experts-list__name">{e.name}</span>
                     {dto?.description ? (
                       <span className="spexr-experts-list__desc">{dto.description}</span>
+                    ) : null}
+                    {multiRoot ? (
+                      <span className="spexr-experts-list__desc">in {e.folders.join(", ")}</span>
                     ) : null}
                   </span>
                   {isActive ? (

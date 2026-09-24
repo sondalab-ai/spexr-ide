@@ -28,10 +28,10 @@ export const SPEXR_CLAUDE_EXECUTABLE_PREFERENCE = "spexr.claude.executablePath";
  * Empty means the user has not chosen yet: with a single account SPEXR uses it,
  * with several it asks once and writes the answer here.
  *
- * Folder-scoped, like the active expert, and read against the first workspace
- * root: which identity to run under is a property of the project rather than of
- * the machine, but the side agent is one terminal per window — so a multi-root
- * workspace has one account, the first root's.
+ * Folder-scoped, like the active expert, and read against the folder the side
+ * agent runs in: which identity to run under is a property of the project
+ * rather than of the machine, so each folder of a multi-root workspace keeps
+ * its own.
  */
 export const SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE = "spexr.claude.activeProfile";
 
@@ -171,9 +171,9 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "Account SPEXR starts Claude under: the label of a spexr.claude.launchProfiles " +
         "entry, or \"default\" for the account that runs with no CLAUDE_CONFIG_DIR. " +
         "Empty means not chosen yet — SPEXR asks once when the machine has more " +
-        "than one account. Read against the first workspace root, so separate " +
-        "workspaces (personal, work) can run under different identities while " +
-        "the folders of one multi-root workspace share the side agent's account. " +
+        "than one account. Read against the workspace folder the agent runs in, " +
+        "so separate projects (personal, work) can run under different identities, " +
+        "including the folders of one multi-root workspace. " +
         "Change it with `Spexr: Select Claude account`.",
     },
     [SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE]: {

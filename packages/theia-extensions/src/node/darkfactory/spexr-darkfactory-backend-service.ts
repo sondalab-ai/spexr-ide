@@ -44,6 +44,7 @@ import { forEachConcurrent } from "./concurrency.js";
 export { forEachConcurrent };
 import { nowActionLine } from "./action-distiller.js";
 import { buildFollowEvents, sessionGoal, recentAssistantProse, type TurnEntry } from "./turns.js";
+import { extractLinks } from "./session-links.js";
 import {
   buildNowPrompt,
   buildOverviewPrompt,
@@ -56,6 +57,7 @@ import type {
   ClaudeConfigDir,
   FocusPlan,
   SessionHit,
+  SessionLink,
   SpexrDarkfactoryService,
   SpexrDarkfactoryClient,
 } from "../../common/darkfactory-protocol.js";
@@ -70,6 +72,12 @@ const EMPTY_SUMMARY: AgentSummary = { now: "", overview: "" };
 const FOLLOW_EVENTS = 40;
 /** How far back from the end a follow starts reading: ample for FOLLOW_EVENTS events. */
 const FOLLOW_TAIL_BYTES = 262_144;
+/**
+ * How far back from the end the first link scan of a transcript reads. A pull
+ * request is opened near the end of a session's work, but not necessarily in
+ * its last few events, so this reaches further back than a follow does.
+ */
+const LINK_SCAN_TAIL_BYTES = 2_097_152;
 /** How many recent assistant prose segments feed the now/overview summary model. */
 const SUMMARY_PROSE_TURNS = 4;
 /**
@@ -311,6 +319,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
   /** sessionId → { watcher, cursor } for active read-only follows. */
   private readonly follows = new Map<string, { watcher: FSWatcher; cursor: FollowCursor | undefined }>();
+  /**
+   * sessionId → incremental link scan of its transcript. The path is kept so a
+   * pinned session that has slid out of the latest scan keeps its links.
+   */
+  private readonly linkScans = new Map<
+    string,
+    { path: string; cursor: FollowCursor | undefined; links: SessionLink[] }
+  >();
 
   // @unmanaged(): inversify must not manage this optional test seam.
   constructor(@unmanaged() deps?: DarkfactoryDeps) {
@@ -919,6 +935,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     });
     this.follows.set(sessionId, { watcher, cursor: undefined });
     await emit(); // send the current tail immediately
+  }
+
+  async listSessionLinks(sessionId: string): Promise<SessionLink[]> {
+    const known = this.linkScans.get(sessionId);
+    const path = this.meta(sessionId)?.transcriptPath || known?.path;
+    if (!path) return [];
+    const { lines, cursor } = await readFollowChunk(path, known?.cursor, LINK_SCAN_TAIL_BYTES);
+    const fresh = extractLinks(lines.map(parseLine).filter((e): e is TurnEntry => !!e));
+    const freshUrls = new Set(fresh.map((l) => l.url));
+    const links = [...fresh, ...(known?.links ?? []).filter((l) => !freshUrls.has(l.url))];
+    this.linkScans.set(sessionId, { path, cursor, links });
+    return links;
   }
 
   async stopFollow(sessionId: string): Promise<void> {

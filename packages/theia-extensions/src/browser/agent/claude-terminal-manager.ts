@@ -2,6 +2,7 @@ import { injectable, inject, optional } from "@theia/core/shared/inversify";
 import { Disposable, DisposableCollection } from "@theia/core";
 import { Deferred } from "@theia/core/lib/common/promise-util";
 import { ApplicationShell, QuickInputService } from "@theia/core/lib/browser";
+import { StorageService } from "@theia/core/lib/browser/storage-service";
 import { MessageService } from "@theia/core/lib/common/message-service";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { PreferenceScope } from "@theia/core/lib/common/preferences/preference-scope";
@@ -22,6 +23,7 @@ import {
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import { readLaunchProfiles } from "../preferences/launch-profiles.js";
+import { rememberedRoot } from "./agent-root.js";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
@@ -77,6 +79,9 @@ export class ClaudeTerminalManager {
   @inject(QuickInputService)
   private readonly quickInput!: QuickInputService;
 
+  @inject(StorageService)
+  private readonly storage!: StorageService;
+
   @optional()
   @inject(SpexrAgentServiceProxy)
   private readonly agentService!: SpexrAgentService | undefined;
@@ -93,6 +98,18 @@ export class ClaudeTerminalManager {
   private currentExpertId: string | undefined;
 
   /**
+   * Workspace folder (URI string) the agent last ran in. A multi-root
+   * workspace runs the one side agent in whichever folder was chosen; launches
+   * that name no folder reuse it. Kept per workspace across reloads, since a
+   * terminal restored after a reload is still running in that folder.
+   */
+  private agentRoot: string | undefined;
+  private agentRootLoaded = false;
+
+  /** Folder the running terminal was launched in; undefined when none runs. */
+  private runningRoot: string | undefined;
+
+  /**
    * Ensure a Claude session is running and visible.
    *
    * Reveals the existing terminal when it still has a live process; otherwise
@@ -100,18 +117,29 @@ export class ClaudeTerminalManager {
    * from a saved layout is only adopted once its re-attach is known to have
    * succeeded — see {@link isTerminalLive}. Surfaces missing-workspace /
    * missing-CLI conditions as notifications instead of throwing.
+   *
+   * @param rootUri  Workspace folder to run in (a spec's folder); defaults to
+   *                 the remembered one. A session running elsewhere is
+   *                 relaunched there.
    */
-  async ensureStarted(): Promise<void> {
+  async ensureStarted(rootUri?: string): Promise<void> {
+    await this.loadAgentRoot();
+    const target = rootUri ?? this.agentRootUri();
     if (this.widget && isReusableTerminal(this.widget)) {
-      await this.reveal();
-      return;
+      if (this.runningRoot === target) {
+        await this.reveal();
+        return;
+      }
+      this.disposeCurrent();
     }
 
     const existing = this.terminalService.getById(CLAUDE_TERMINAL_ID);
     if (existing) {
-      if (await isTerminalLive(existing)) {
+      // A terminal restored from the saved layout runs in the remembered folder.
+      if (target === this.agentRootUri() && (await isTerminalLive(existing))) {
         this.widget = existing;
-        existing.setTitle(nls.localize("spexr/agent/title", "Agent"));
+        this.runningRoot = target;
+        existing.setTitle(this.title(undefined, target));
         await this.reveal();
         return;
       }
@@ -124,34 +152,39 @@ export class ClaudeTerminalManager {
       this.disposeCurrent();
     }
 
-    const activeId = this.activeExpertId();
+    const activeId = this.activeExpertId(target);
     const expert = activeId ? await this.resolveExpert(activeId) : undefined;
-    await this.launchSession(expert);
+    await this.launchSession(expert, target);
   }
 
   /**
    * Launch a session as the given expert (or the base agent when undefined),
    * reusing the existing terminal slot if a different one is running.
    *
-   * @param expert  Minimal expert info for title/icon, or undefined for base.
+   * @param expert   Minimal expert info for title/icon, or undefined for base.
+   * @param rootUri  Workspace folder to run in; defaults to the remembered one.
    * @returns  Whether a session is running as that expert afterwards.
    */
-  async startWithExpert(expert: { id: string; name: string; icon: string }): Promise<boolean> {
-    const firstRoot = this.workspace.tryGetRoots()[0];
-    if (firstRoot) {
-      await this.preferences.set(
-        SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
-        expert.id,
-        PreferenceScope.Folder,
-        firstRoot.resource.toString(),
-      );
+  async startWithExpert(
+    expert: { id: string; name: string; icon: string },
+    rootUri?: string,
+  ): Promise<boolean> {
+    await this.loadAgentRoot();
+    const target = rootUri ?? this.agentRootUri();
+    if (target) {
+      await this.preferences.set(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE, expert.id, PreferenceScope.Folder, target);
     }
-    if (this.widget && isReusableTerminal(this.widget) && this.currentExpertId === expert.id) {
+    if (
+      this.widget &&
+      isReusableTerminal(this.widget) &&
+      this.currentExpertId === expert.id &&
+      this.runningRoot === target
+    ) {
       await this.reveal();
       return true;
     }
     this.disposeCurrent();
-    return this.launchSession(expert);
+    return this.launchSession(expert, target);
   }
 
   /**
@@ -161,24 +194,22 @@ export class ClaudeTerminalManager {
    * the active selection is reset. Relaunches the single terminal because the
    * persona is fixed at process start.
    *
+   * @param rootUri  Workspace folder to run in; defaults to the remembered one.
    * @returns  Whether the base agent is running afterwards.
    */
-  async deactivateExpert(): Promise<boolean> {
-    const firstRoot = this.workspace.tryGetRoots()[0];
-    if (firstRoot) {
-      await this.preferences.set(
-        SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
-        "",
-        PreferenceScope.Folder,
-        firstRoot.resource.toString(),
-      );
+  async deactivateExpert(rootUri?: string): Promise<boolean> {
+    await this.loadAgentRoot();
+    const target = rootUri ?? this.agentRootUri();
+    if (target) {
+      await this.preferences.set(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE, "", PreferenceScope.Folder, target);
     }
     this.disposeCurrent();
-    return this.launchSession(undefined);
+    return this.launchSession(undefined, target);
   }
 
-  private activeExpertId(): string | undefined {
-    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE, "", this.rootUri()) ?? "";
+  /** The expert stored as active for a folder (the agent's own by default). */
+  activeExpertId(rootUri = this.rootUri()): string | undefined {
+    const stored = this.preferences.get<string>(SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE, "", rootUri) ?? "";
     return stored.trim() || undefined;
   }
 
@@ -188,11 +219,56 @@ export class ClaudeTerminalManager {
    * Theia's folder provider returns nothing at all when `get` is called without
    * a resource (`getFolderProviders` bails on an undefined uri), so a value
    * written at folder scope is invisible unless the read names a folder. The
-   * side agent is one terminal for the whole window, opened in the first root,
-   * so that root is the resource its settings belong to.
+   * side agent is one terminal for the whole window, running in one folder, so
+   * that folder is the resource its settings belong to.
    */
   private rootUri(): string | undefined {
-    return this.workspace.tryGetRoots()[0]?.resource.toString();
+    return this.agentRootUri();
+  }
+
+  /** The workspace folder (URI string) of the running agent; undefined when none runs. */
+  runningRootUri(): string | undefined {
+    return this.widget && isReusableTerminal(this.widget) ? this.runningRoot : undefined;
+  }
+
+  /**
+   * The workspace folder (URI string) the agent runs in, or would run in when
+   * started with no folder of its own.
+   */
+  agentRootUri(): string | undefined {
+    return rememberedRoot(this.rootUris(), this.agentRoot);
+  }
+
+  private rootUris(): string[] {
+    return this.workspace.tryGetRoots().map((r) => r.resource.toString());
+  }
+
+  private agentRootKey(): string {
+    return `spexr.agent.root:${this.workspace.workspace?.resource.toString() ?? ""}`;
+  }
+
+  private async loadAgentRoot(): Promise<void> {
+    if (this.agentRootLoaded) return;
+    this.agentRootLoaded = true;
+    try {
+      this.agentRoot ??= await this.storage.getData<string>(this.agentRootKey());
+    } catch {
+      // storage unavailable → first folder
+    }
+  }
+
+  private rememberAgentRoot(rootUri: string): void {
+    this.agentRoot = rootUri;
+    void this.storage.setData(this.agentRootKey(), rootUri).catch(() => {});
+  }
+
+  /** Tab title: the expert, and the folder when there is more than one to tell apart. */
+  private title(expert: { name: string } | undefined, rootUri: string | undefined): string {
+    const base = expert
+      ? nls.localize("spexr/agent/expertTitle", "Agent · {0}", expert.name)
+      : nls.localize("spexr/agent/title", "Agent");
+    const root = this.workspace.tryGetRoots().find((r) => r.resource.toString() === rootUri);
+    return root && this.workspace.tryGetRoots().length > 1 ? `${base} · ${root.resource.path.base}` : base;
   }
 
   private async resolveExpert(
@@ -214,6 +290,7 @@ export class ClaudeTerminalManager {
     adopted?.dispose();
     this.widget = undefined;
     this.currentExpertId = undefined;
+    this.runningRoot = undefined;
   }
 
   /**
@@ -224,24 +301,29 @@ export class ClaudeTerminalManager {
    * launch all leave the terminal slot empty.
    */
   private async launchSession(
-    expert?: { id: string; name: string; icon: string },
+    expert: { id: string; name: string; icon: string } | undefined,
+    rootUri: string | undefined,
   ): Promise<boolean> {
-    const firstRoot = this.workspace.tryGetRoots()[0];
-    if (!firstRoot) {
+    const root = this.workspace.tryGetRoots().find((r) => r.resource.toString() === rootUri);
+    if (!root) {
       void this.messages.info("SPEXR: open a workspace to start the Claude session.");
       return false;
     }
     if (!this.agentService) return false;
 
-    const workspaceRoot = firstRoot.resource.path.toString();
+    // Remembered first: the account and launch settings below are read
+    // against the agent's folder.
+    this.rememberAgentRoot(root.resource.toString());
+    const workspaceRoot = root.resource.path.toString();
 
     try {
       const account = await this.chooseAccount();
       if (!account) return false; // the account prompt was dismissed
       await this.linkMemory(workspaceRoot, account.configDir.trim() || undefined);
       const shellArgs = await this.buildShellArgs(workspaceRoot, expert?.id);
-      await this.launch(workspaceRoot, account, shellArgs, expert);
+      await this.launch(workspaceRoot, account, shellArgs, expert, root.resource.toString());
       this.currentExpertId = expert?.id;
+      this.runningRoot = root.resource.toString();
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -374,7 +456,8 @@ export class ClaudeTerminalManager {
     workspaceRoot: string,
     account: ResolvedAccount,
     shellArgs: string[],
-    expert?: { id: string; name: string; icon: string },
+    expert: { id: string; name: string; icon: string } | undefined,
+    rootUri: string,
   ): Promise<void> {
     const plan = launchPlanFor(account, this.executablePath());
     // Only what the plan says to export: a wrapper that owns the account must
@@ -388,9 +471,7 @@ export class ClaudeTerminalManager {
 
     const term = await this.terminalService.newTerminal({
       id: CLAUDE_TERMINAL_ID,
-      title: expert
-        ? nls.localize("spexr/agent/expertTitle", "Agent · {0}", expert.name)
-        : nls.localize("spexr/agent/title", "Agent"),
+      title: this.title(expert, rootUri),
       useServerTitle: false,
       iconClass: expert ? `codicon ${expert.icon}` : "codicon codicon-sparkle",
       ...this.resolveShell(plan, shellArgs),
@@ -540,10 +621,9 @@ export class ClaudeTerminalManager {
    *
    * Written folder-scoped, like the active expert: personal and work projects
    * want different identities, so the question belongs to the project and each
-   * one is asked once. The folder is the first workspace root, the one this
-   * terminal runs in — the other roots of a multi-root workspace share its
-   * account, because there is one side agent per window. With no folder open
-   * there is nothing to scope it to, and the answer falls back to user scope.
+   * one is asked once. The folder is the one the agent runs in, so each folder
+   * of a multi-root workspace keeps its own account. With no folder open there
+   * is nothing to scope it to, and the answer falls back to user scope.
    */
   async promptForAccount(): Promise<ResolvedAccount | undefined> {
     const profiles = this.launchProfiles();
@@ -564,16 +644,11 @@ export class ClaudeTerminalManager {
   }
 
   private async storeAccount(id: string): Promise<void> {
-    const firstRoot = this.workspace.tryGetRoots()[0];
-    if (!firstRoot) {
+    const root = this.rootUri();
+    if (!root) {
       await this.preferences.set(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE, id, PreferenceScope.User);
       return;
     }
-    await this.preferences.set(
-      SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE,
-      id,
-      PreferenceScope.Folder,
-      firstRoot.resource.toString(),
-    );
+    await this.preferences.set(SPEXR_CLAUDE_ACTIVE_PROFILE_PREFERENCE, id, PreferenceScope.Folder, root);
   }
 }
