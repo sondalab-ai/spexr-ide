@@ -87,6 +87,19 @@ export type DecisionAnswer = ChoiceDecision | ScoreDecision | NoulDecision;
 /** The answer, tagged with the model that gave it (thresholds are per model). */
 export type Decision = DecisionAnswer & { readonly model: DecisionModelOn };
 
+/**
+ * Whether the configured model can decide. `waiting` and `downloading` mean its
+ * weights are being fetched in the background (`received`/`total` in bytes);
+ * `missing` means they are absent and no download will run; `failed` means the
+ * download failed and is retried on the next start.
+ */
+export interface DecisionModelStatus {
+  readonly model: DecisionModel;
+  readonly state: "off" | "ready" | "waiting" | "downloading" | "failed" | "missing";
+  readonly received?: number;
+  readonly total?: number;
+}
+
 export interface SpexrDecisionService {
   /**
    * Answer one typed question about `state`. Undefined when no decision can be
@@ -95,6 +108,7 @@ export interface SpexrDecisionService {
    * rejects.
    */
   decide(state: string, question: DecisionQuestion): Promise<Decision | undefined>;
-  /** Switch model; the next decision uses it. */
+  /** Switch model; the next decision uses it. Missing weights are downloaded in the background. */
   setModel(model: DecisionModel): Promise<void>;
+  status(): Promise<DecisionModelStatus>;
 }

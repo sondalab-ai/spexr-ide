@@ -43,6 +43,8 @@ export const test = base.extend<AppFixtures>({
         ...process.env,
         THEIA_DEFAULT_PLUGINS: "local-dir:plugins",
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
+        // No multi-GB decision-model download during a test run (spec 0017).
+        SPEXR_MODEL_DOWNLOAD: "off",
         DISPLAY: process.env.DISPLAY ?? ":99",
       },
     });

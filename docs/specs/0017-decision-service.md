@@ -152,9 +152,15 @@ A preference `spexr.decisions.model`: `kev-4b` (default), `kev-0.6b`, or `off`.
   download and a couple of seconds per decision.
 - `kev-0.6b` as the light option: ~0.4 GB and well under a second, but not
   reliable enough to act alone: it ranks the options and the user confirms.
-- Weights are fetched into `resources/models` by
-  `scripts/fetch-search-model.mjs`, like the embedding and generation models,
-  so a packaged app decides offline. `kev-0.6b` is fetched only when selected.
+- Weights come from one of two places, looked up in this order:
+  - `resources/models`, vendored by `scripts/fetch-search-model.mjs` like the
+    embedding and generation models (development checkouts);
+  - `~/.spexr/models`, where the backend downloads them from Hugging Face in
+    the background (Slice 4). Releases rely on this: the installer ships no
+    weights.
+
+  Only the selected model is fetched; `off` fetches nothing. Once the weights
+  are on disk, decisions work with the network off.
 
 ### First consumer: TODO routing
 
@@ -228,6 +234,23 @@ descriptions or the service change, and its output is pasted into the PR.
   written by the implementing agent (assumption — accepted when the owner
   approved the spec, 2026-09-24).
 
+### Slice 4 — Download on first run
+
+- **AC-8** When the selected model's weights are in neither models directory,
+  the backend downloads them into `~/.spexr/models` about 20 s after the
+  frontend first reports the model, without blocking anything. Only the q4
+  weights and the config and tokenizer files are fetched.
+- **AC-9** A download lands in a `.partial` folder renamed into place when
+  complete, so an interrupted or failed download never leaves weights the
+  worker would load; the next start begins again from scratch.
+- **AC-10** Switching model cancels a download the new model does not need;
+  `off` downloads nothing; `SPEXR_MODEL_DOWNLOAD=off` disables downloads (the
+  E2E suite sets it). A failed download is retried on the next start or model
+  change, never in a loop.
+- **AC-11** The status bar shows the download's progress, and a warning if it
+  failed; until the weights land, "Work on this" opens the picker without
+  percentages.
+
 ## Non-goals
 
 - Fine-tuning or training a model. Examples only enter through option
@@ -246,10 +269,11 @@ descriptions or the service change, and its output is pasted into the PR.
 - **Small, partly synthetic evidence.** 59 items, 31 synthetic, labelled by the
   implementing agent. The owner confirms the labels before AC-7; the harness is
   there so the numbers are re-measured as real items accumulate.
-- **Packaged builds.** The release workflow does not run `fetch-model`, so a
-  release ships no weights (as with the search models) and every TODO item
-  opens the picker without percentages. Shipping kev-4b in the installer adds
-  ~2.5 GB; whether to do so, or to download it on first use, is open.
+- **First-run download.** Releases ship no weights; kev-4b (~2.5 GB) is
+  downloaded in the background on first run (Slice 4), which on a slow or
+  metered connection is a large, silent transfer. Until it lands, every TODO
+  item opens the picker. The search models are not covered by this download
+  yet: a release still ships without them.
 - **Download size.** The default, kev-4b, is ~2.5 GB and loads from disk in
   about 9–11 s (kev-0.6b: about 2 s), measured on the owner's machine; it is
   loaded once, on the first decision. Until its weights are present, decisions return
