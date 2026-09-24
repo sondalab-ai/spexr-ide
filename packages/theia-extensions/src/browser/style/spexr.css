@@ -130,6 +130,46 @@ body {
   --slg-tint-color: var(--sl-accent-subtle);
 }
 
+/* The Game of Life under the Spec and Darkfactory panels: a zero-height
+   sticky strip at the top of the scrolling node, holding a canvas that
+   life-background.tsx sizes to that node. Negative margins cancel the node's
+   own padding so the canvas starts at its edge. The content after it is
+   lifted above it; the glass cards bend what shows through. */
+.spexr-life-bg {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.spexr-life-bg__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  color: var(--sl-accent-default);
+  opacity: 0.09;
+  image-rendering: pixelated;
+}
+
+[data-sl-theme="light"] .spexr-life-bg__canvas {
+  opacity: 0.07;
+}
+
+[data-sl-theme="high-contrast"] .spexr-life-bg {
+  display: none;
+}
+
+.spexr-darkfactory > .spexr-life-bg {
+  margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
+}
+
+.spexr-life-bg ~ :is(.spexr-df-root, .spexr-spec-panel) {
+  position: relative;
+  z-index: 1;
+}
+
 /* spexr's eyebrows carry the accent; the kit's are muted. */
 .sl-eyebrow--accent {
   color: var(--slc-accent);
@@ -391,12 +431,15 @@ body {
   gap: var(--sl-space-2);
 }
 
+/* Translucent rather than glass: each item holds glass buttons, and a glass
+   host would take their lens away. A fill without backdrop-filter lets the
+   Game of Life show through and leaves the buttons something to bend. */
 .spexr-spec-list__item {
   display: flex;
   flex-direction: column;
   gap: var(--sl-space-3);
   padding: var(--sl-space-3);
-  background: var(--sl-bg-surface-raised);
+  background: color-mix(in srgb, var(--sl-bg-surface-raised) 72%, transparent);
   border-radius: var(--sl-radius-sm);
 }
 
@@ -1143,7 +1186,7 @@ code {
   padding: var(--sl-space-3);
   border-radius: var(--sl-radius-md);
   border: 1px solid var(--sl-border-subtle);
-  background: var(--sl-bg-surface-raised);
+  background: color-mix(in srgb, var(--sl-bg-surface-raised) 72%, transparent);
 }
 
 .spexr-progress__head {
