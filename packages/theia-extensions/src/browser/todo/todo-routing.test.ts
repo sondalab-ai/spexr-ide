@@ -33,6 +33,11 @@ describe("routeTodo", () => {
     expect(routeTodo(choice("software-engineering", probs, "kev-0.6b"), INSTALLED).kind).toBe("ask");
   });
 
+  it("never lets the light model act alone, however sure it says it is", () => {
+    const d = choice("marketing", { "software-engineering": 0.005, marketing: 0.99, review: 0.005 }, "kev-0.6b");
+    expect(routeTodo(d, INSTALLED)).toMatchObject({ kind: "ask", preselect: "marketing" });
+  });
+
   it("asks without percentages when there is no decision", () => {
     expect(routeTodo(undefined, INSTALLED)).toEqual({
       kind: "ask",

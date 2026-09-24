@@ -287,8 +287,8 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       enum: ["kev-4b", "kev-0.6b", "off"],
       default: "kev-4b",
       enumDescriptions: [
-        "Most accurate, and dependable when confident: SPEXR acts on its own above 70% confidence. About 2.5 GB, about a second per decision.",
-        "Lighter (about 0.4 GB, a tenth of a second) but less accurate, so SPEXR asks more often.",
+        "Most accurate, and dependable when confident: SPEXR acts on its own at 70% confidence or more. About 2.5 GB, a couple of seconds per decision.",
+        "Lighter (about 0.4 GB, under a second) but not reliable enough to act alone: it ranks the options and SPEXR always asks.",
         "No local decisions: SPEXR always asks.",
       ],
       description:

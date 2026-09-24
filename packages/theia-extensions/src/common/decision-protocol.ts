@@ -21,12 +21,14 @@ export const DECISION_MODEL_REPOS: Readonly<Record<DecisionModelOn, string>> = {
 
 /**
  * Confidence at or above which a caller may act without asking, per model.
- * Measured (spec 0017, Evidence): kev-4b at 0.7 was right on 97% of the items
- * it decided alone; kev-0.6b needs 0.8 to reach 85%.
+ * Measured with the evaluation harness (spec 0017, Evidence): kev-4b at 0.7
+ * is right on 97% of the tasks it decides alone. kev-0.6b is never right
+ * often enough (74% at 0.8, 79% at 0.9), so it only ranks the options and
+ * the user always confirms.
  */
 export const AUTO_DECISION_THRESHOLD: Readonly<Record<DecisionModelOn, number>> = {
   "kev-4b": 0.7,
-  "kev-0.6b": 0.8,
+  "kev-0.6b": Number.POSITIVE_INFINITY,
 };
 
 export function isDecisionModel(value: unknown): value is DecisionModel {
