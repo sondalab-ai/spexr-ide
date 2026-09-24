@@ -52,6 +52,7 @@ import { SpexrRevealOnRestore } from "./shell/reveal-on-restore.js";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
+import { SpexrEffectsContribution } from "./theme/spexr-effects-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
 import { ClaudeTerminalManager } from "./agent/claude-terminal-manager.js";
 import { SpexrLaunchProfilesService } from "./agent/launch-profiles-service.js";
@@ -200,6 +201,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(SpexrRevealOnRestore).toService(ScmContribution);
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
+  bind(FrontendApplicationContribution).to(SpexrEffectsContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
 

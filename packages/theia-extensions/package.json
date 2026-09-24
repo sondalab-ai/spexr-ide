@@ -24,6 +24,7 @@
     }
   ],
   "dependencies": {
+    "@sondalab/ui-kit": "^0.10.0",
     "@spexr/agent": "workspace:*",
     "@spexr/core": "workspace:*",
     "@spexr/memory": "workspace:*",
@@ -58,6 +59,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "reflect-metadata": "^0.2.2",
+    "vgpu": "~0.3.1",
     "xterm-addon-unicode11": "0.6.0"
   },
   "devDependencies": {

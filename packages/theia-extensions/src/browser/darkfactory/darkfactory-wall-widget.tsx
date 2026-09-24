@@ -1179,13 +1179,14 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               {` their prompt cache within ${EXPIRING_WINDOW_MS / 60_000} min — resuming after that re-sends the whole conversation.`}
             </span>
             <button
-              className="sl-btn sl-btn--ghost"
+              className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane"
               onClick={() => {
                 this.expiringOnly = !this.expiringOnly;
                 this.update();
               }}
             >
-              {this.expiringOnly ? "Show all" : "Show them"}
+              {/* A span, not bare text: React would reset the button's textContent and drop the injected glass layers. */}
+              <span>{this.expiringOnly ? "Show all" : "Show them"}</span>
             </button>
           </div>
         )}

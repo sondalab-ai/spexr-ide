@@ -67,6 +67,14 @@ export const SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE = "spexr.experts.activeId";
 export const SPEXR_SEARCH_AI_DESCRIPTIONS_PREFERENCE = "spexr.search.aiDescriptions.enabled";
 
 /**
+ * Toggle for the Sondalab glass family's WebGPU tier (`mountGpu` via `vgpu`).
+ * On by default, and switched off on a machine without WebGPU. Turning it
+ * on takes effect at once; the kit has no way to
+ * tear the tier down, so turning it off asks for a window reload.
+ */
+export const SPEXR_EFFECTS_GPU_PREFERENCE = "spexr.effects.gpu.enabled";
+
+/**
  * Whether we have already asked the user about adding `.spexr/` to their global git
  * ignore. Set once (either answer) so the one-time consent prompt never repeats.
  */
@@ -281,6 +289,14 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "Generate AI file descriptions locally for search results. " +
         "Turn off to skip the local model and show heuristic descriptions only.",
+    },
+    [SPEXR_EFFECTS_GPU_PREFERENCE]: {
+      type: "boolean",
+      default: true,
+      description:
+        "Render the glass effects with WebGPU: a hairline that reflects a moving environment, " +
+        "a wandering halo and the pointer's reflection. Switched off automatically where WebGPU is unavailable. " +
+        "Turning it off takes a window reload.",
     },
     [SPEXR_DECISIONS_MODEL_PREFERENCE]: {
       type: "string",

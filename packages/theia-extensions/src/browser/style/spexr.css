@@ -1,6 +1,7 @@
 @import "@spexr/ui-kit/fonts.css";
 @import "@spexr/ui-kit/tokens.css";
 @import "@spexr/ui-kit/components.css";
+@import "@spexr/ui-kit/effects.css";
 @import "@spexr/ui-kit/themes/light.css";
 @import "@spexr/ui-kit/themes/dark.css";
 @import "@spexr/ui-kit/themes/high-contrast.css";
@@ -63,6 +64,39 @@ body {
 .sl-segmented__item[aria-pressed="true"] {
   background: var(--slc-raised);
   color: var(--slc-text);
+}
+
+/* A ground for the glass. The kit's lens bends what is behind a pane, and a
+   flat panel bent is the same flat panel: these gradients give every panel
+   that hosts glass controls something for the refraction to move. Layered
+   over each panel's own background colour, never instead of it. High
+   contrast keeps its flat ground, as the kit's effects stand down there. */
+:root {
+  --spexr-glass-ground:
+    radial-gradient(60% 45% at 100% 0%, color-mix(in srgb, var(--slc-accent) 16%, transparent), transparent 70%),
+    radial-gradient(55% 40% at 0% 100%, color-mix(in srgb, var(--sl-viz-2, var(--slc-accent)) 12%, transparent), transparent 70%),
+    linear-gradient(160deg, color-mix(in srgb, var(--slc-text) 4%, transparent), transparent 55%);
+}
+
+[data-sl-theme="high-contrast"] {
+  --spexr-glass-ground: none;
+}
+
+/* The panels' own `background:` shorthands would reset the image, and the
+   main area's is keyed on #theia-main-content-panel. :is() takes the
+   specificity of its strongest argument, so the id outranks it everywhere
+   while `body` still matches panels in the side bars. */
+:root[data-sl-theme] :is(#theia-main-content-panel, body) :is(
+  .spexr-darkfactory,
+  .spexr-spec-widget,
+  .spexr-memory-widget,
+  .spexr-experts-widget,
+  .spexr-todo-widget,
+  .spexr-spec-lint-widget,
+  .spexr-spec-resources-widget
+) {
+  background-image: var(--spexr-glass-ground);
+  background-attachment: local;
 }
 
 /* spexr's eyebrows carry the accent; the kit's are muted. */

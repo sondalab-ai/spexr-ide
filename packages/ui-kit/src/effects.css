@@ -1,0 +1,8 @@
+/* Re-exports the Sondalab effects layer (.sl-fx-*): effects.css carries the
+   glass edge and the aurora, glass.css the pane's material, compositions.css
+   the bindings a composition needs. Import after components.css. The motion
+   and the lens need effects.js mount() at runtime; without it this is the
+   kit's static Tier 0. */
+@import "@sondalab/ui-kit/effects.css";
+@import "@sondalab/ui-kit/glass.css";
+@import "@sondalab/ui-kit/compositions.css";
