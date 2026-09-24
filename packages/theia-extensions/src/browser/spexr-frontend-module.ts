@@ -4,6 +4,7 @@ import {
   bindViewContribution,
   FrontendApplicationContribution,
   KeybindingContribution,
+  OpenHandler,
   WidgetFactory,
 } from "@theia/core/lib/browser";
 import { TabBarToolbarContribution } from "@theia/core/lib/browser/shell/tab-bar-toolbar";
@@ -91,6 +92,7 @@ import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/sm
 import { DescriptionJobStatusBarContribution } from "./search/description-job-status-bar-contribution.js";
 import { SpexrDarkfactoryWidget } from "./darkfactory/darkfactory-wall-widget.js";
 import { SpexrDarkfactoryViewContribution } from "./darkfactory/darkfactory-view-contribution.js";
+import { CardBrowserOpenHandler } from "./darkfactory/card-browser-open-handler.js";
 import {
   SpexrDarkfactoryServiceProxy,
   DARKFACTORY_SERVICE_PATH,
@@ -336,6 +338,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(SpexrDarkfactorySidebarVisibilityContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrDarkfactorySidebarVisibilityContribution);
   bind(SpexrDarkfactoryTerminalManager).toSelf().inSingletonScope();
+  bind(CardBrowserOpenHandler).toSelf().inSingletonScope();
+  bind(OpenHandler).toService(CardBrowserOpenHandler);
   bind(SpexrProjectTerminalService).toSelf().inSingletonScope();
   bind(SpexrDarkfactoryClientDispatcher).toSelf().inSingletonScope();
   bind(SpexrDarkfactoryClientToken).toService(SpexrDarkfactoryClientDispatcher);

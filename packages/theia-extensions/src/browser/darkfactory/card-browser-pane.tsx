@@ -4,6 +4,8 @@ import { normalizeAddress, type CardBrowserState } from "./card-browser.js";
 
 /** What a card needs to host its browser (spec 0016). */
 export interface CardBrowserProps {
+  /** The card's key: its session id, or a launched card's placeholder. */
+  readonly cardKey: string;
   readonly state: CardBrowserState;
   readonly links: readonly SessionLink[];
   readonly onToggle: () => void;

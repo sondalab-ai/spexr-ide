@@ -492,6 +492,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   /** The browser props a card with this key renders; `sessionId` is absent on a launched card. */
   private browserProps(key: string, sessionId: string | undefined): CardBrowserProps {
     return {
+      cardKey: key,
       state: this.browsers.get(key) ?? CLOSED_BROWSER,
       links: (sessionId && this.sessionLinks.get(sessionId)) || [],
       onToggle: () => this.toggleBrowser(key, sessionId),

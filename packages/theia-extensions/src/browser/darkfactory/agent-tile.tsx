@@ -24,6 +24,7 @@ import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.
 import type { WallLayout } from "./wall-layout.js";
 import { CardBrowserPane, type CardBrowserProps } from "./card-browser-pane.js";
 import { clampSplit, readSplitRatio, writeSplitRatio } from "./card-browser.js";
+import { CARD_KEY_ATTRIBUTE } from "./card-link-target.js";
 import { attachWidget, detachWidget } from "../terminal/terminal-attach.js";
 import { LUMINO_ATTACH_OPS } from "../terminal/lumino-attach-ops.js";
 import {
@@ -677,6 +678,7 @@ function CardSplit(props: { browser?: CardBrowserProps | undefined; children: Re
   return (
     <div
       ref={split}
+      {...(browser ? { [CARD_KEY_ATTRIBUTE]: browser.cardKey } : {})}
       className={`spexr-df-split${open ? " spexr-df-split--open" : ""}${dragging ? " spexr-df-split--dragging" : ""}`}
       style={{ ["--df-split" as string]: `${Math.round(ratio * 1000) / 10}%` }}
     >
