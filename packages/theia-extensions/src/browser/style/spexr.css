@@ -2747,6 +2747,78 @@ code {
 .spexr-df-termhost > .p-Widget,
 .spexr-df-termhost > .lm-Widget { position: absolute; inset: 0; width: 100%; height: 100%; }
 
+/*
+  Card body, and its browser below when open (spec 0016). The body keeps the
+  same wrapper either way, so opening the browser never remounts the terminal;
+  the terminal keeps --df-split of the height, the browser the rest.
+*/
+.spexr-df-split { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.spexr-df-split__top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.spexr-df-split--open .spexr-df-split__top { flex: 0 0 var(--df-split, 50%); }
+/* A card with no height of its own takes its tallest default once it holds two panes. */
+.spexr-df-pinned:has(.spexr-df-split--open) { min-height: 62vh; }
+.spexr-df-active--mosaic .spexr-df-pinned:has(.spexr-df-split--open) { min-height: 52vh; }
+.spexr-df-split__divider {
+  flex: none; height: 10px; touch-action: none; cursor: ns-resize;
+  display: flex; align-items: center; justify-content: center;
+}
+.spexr-df-split__divider::after {
+  content: ""; width: 36px; height: 3px; border-radius: 2px;
+  background: color-mix(in srgb, var(--sl-text-primary) 18%, transparent);
+  transition: background 120ms ease;
+}
+.spexr-df-split__divider:hover::after,
+.spexr-df-split--dragging .spexr-df-split__divider::after { background: var(--tile-accent); }
+/* The guest page would swallow the pointer mid-drag otherwise. */
+.spexr-df-split--dragging .spexr-df-browser__view { pointer-events: none; }
+
+.spexr-df-browser {
+  flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
+  background: var(--sl-bg-surface);
+}
+.spexr-df-browser__bar {
+  flex: none; display: flex; align-items: center; gap: var(--sl-space-1); min-width: 0;
+  padding: var(--sl-space-1) var(--sl-space-2);
+  border-bottom: 1px solid var(--sl-border-subtle);
+}
+.spexr-df-browser__icon {
+  flex: none; display: inline-flex; align-items: center; padding: 4px;
+  border: none; border-radius: var(--sl-radius-sm, 6px);
+  background: transparent; color: var(--sl-text-muted); cursor: pointer;
+}
+.spexr-df-browser__icon:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary);
+}
+.spexr-df-browser__icon:disabled { opacity: 0.4; cursor: default; }
+.spexr-df-browser__address { flex: 1 1 auto; min-width: 0; margin: 0; }
+.spexr-df-browser__input {
+  width: 100%; box-sizing: border-box; padding: 3px var(--sl-space-2);
+  font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs); color: var(--sl-text-primary);
+  background: color-mix(in srgb, var(--sl-text-primary) 5%, transparent);
+  border: 1px solid transparent; border-radius: var(--sl-radius-sm, 6px); outline: none;
+}
+.spexr-df-browser__input:focus { border-color: var(--tile-accent); }
+.spexr-df-browser__links {
+  flex: 0 1 auto; max-width: 14em; padding: 2px var(--sl-space-1);
+  font-size: var(--sl-text-xs); color: var(--sl-text-primary); background: var(--sl-bg-surface);
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
+}
+.spexr-df-browser__paused { flex: none; font-size: var(--sl-text-xs); font-style: italic; color: var(--sl-text-muted); }
+.spexr-df-browser__stage { flex: 1 1 0; min-height: 0; position: relative; }
+.spexr-df-browser__host,
+.spexr-df-browser__view { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* <webview> sizes its inner frame from a flex box. */
+.spexr-df-browser__view { display: flex; }
+.spexr-df-browser__empty {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2);
+  padding: var(--sl-space-4); color: var(--sl-text-muted); font-size: var(--sl-text-sm); line-height: 1.5;
+}
+.spexr-df-browser__empty--overlay {
+  position: absolute; inset: 0; justify-content: center; text-align: center;
+  background: var(--sl-bg-surface);
+}
+
 /* Terminal-like read-only follow: one styled line per event. */
 .spexr-df-term {
   font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs); line-height: 1.5;

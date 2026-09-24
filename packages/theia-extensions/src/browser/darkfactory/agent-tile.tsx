@@ -22,6 +22,8 @@ import { cacheFreshness, expiryLabel, formatTokens } from "./cache-freshness.js"
 import { readPinnedHeight, startHeightDrag, writePinnedHeight } from "./pinned-card-height.js";
 import { readConfigDirChoice, writeConfigDirChoice } from "./new-session-config.js";
 import type { WallLayout } from "./wall-layout.js";
+import { CardBrowserPane, type CardBrowserProps } from "./card-browser-pane.js";
+import { clampSplit, readSplitRatio, writeSplitRatio } from "./card-browser.js";
 import { attachWidget, detachWidget } from "../terminal/terminal-attach.js";
 import { LUMINO_ATTACH_OPS } from "../terminal/lumino-attach-ops.js";
 import {
@@ -634,6 +636,89 @@ function heightStyle(height: number | undefined): React.CSSProperties {
   return height !== undefined ? { height, minHeight: height, maxHeight: height } : {};
 }
 
+/**
+ * A card's body, with its browser below when that is open (spec 0016). The
+ * wrapper and the body's position inside it never change, whether the browser
+ * is open or not, so toggling it never remounts the terminal above.
+ */
+function CardSplit(props: { browser?: CardBrowserProps | undefined; children: React.ReactNode }): React.ReactElement {
+  const { browser, children } = props;
+  const split = React.useRef<HTMLDivElement | null>(null);
+  const [ratio, setRatio] = React.useState(() => readSplitRatio(window.localStorage));
+  const [dragging, setDragging] = React.useState(false);
+  const open = browser?.state.open === true;
+  const onDividerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const el = split.current;
+    if (!el) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const rect = el.getBoundingClientRect();
+    let latest: number | undefined;
+    const onMove = (e: PointerEvent): void => {
+      latest = clampSplit((e.clientY - rect.top) / rect.height);
+      setRatio(latest);
+    };
+    const onEnd = (e: PointerEvent): void => {
+      if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      handle.removeEventListener("lostpointercapture", onEnd);
+      setDragging(false);
+      if (latest !== undefined) writeSplitRatio(window.localStorage, latest);
+    };
+    handle.setPointerCapture(event.pointerId);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+    handle.addEventListener("lostpointercapture", onEnd);
+    setDragging(true);
+  };
+  return (
+    <div
+      ref={split}
+      className={`spexr-df-split${open ? " spexr-df-split--open" : ""}${dragging ? " spexr-df-split--dragging" : ""}`}
+      style={{ ["--df-split" as string]: `${Math.round(ratio * 1000) / 10}%` }}
+    >
+      <div className="spexr-df-split__top">{children}</div>
+      {open && browser && (
+        <>
+          <div
+            className="spexr-df-split__divider"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize the browser"
+            title="Drag to resize"
+            onPointerDown={onDividerDown}
+          />
+          <CardBrowserPane {...browser} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The card action that opens and closes its browser. */
+function BrowserToggle(props: { browser: CardBrowserProps | undefined }): React.ReactElement | null {
+  const { browser } = props;
+  if (!browser) return null;
+  return (
+    <button
+      className="spexr-button"
+      aria-pressed={browser.state.open}
+      onClick={browser.onToggle}
+      title={
+        browser.state.open
+          ? "Close the browser"
+          : "Open a browser under the terminal, on the pages this session produces (a pull request, a local server)"
+      }
+    >
+      <i className="codicon codicon-globe" />
+      Browser
+    </button>
+  );
+}
+
 export function AgentPinnedCard(props: {
   tile: AgentTile;
   now: number;
@@ -654,6 +739,8 @@ export function AgentPinnedCard(props: {
   isCurrent: boolean;
   /** How the wall arranges active cards; the card's height is remembered per arrangement. */
   layout: WallLayout;
+  /** The card's browser; absent where the wall offers none. */
+  browser?: CardBrowserProps | undefined;
 }): React.ReactElement {
   const {
     tile,
@@ -669,6 +756,7 @@ export function AgentPinnedCard(props: {
     onRename,
     isCurrent,
     layout,
+    browser,
   } = props;
   const status = statusOf(tile);
   // Both clauses, like a grid tile: the overview alone is the session goal, which
@@ -755,6 +843,7 @@ export function AgentPinnedCard(props: {
             <i className="codicon codicon-terminal" />
             Terminal here
           </button>
+          <BrowserToggle browser={browser} />
           {!terminal && (
             <button className="spexr-button spexr-button--primary" onClick={() => onFork(tile)}>
               Fork &amp; continue
@@ -773,18 +862,20 @@ export function AgentPinnedCard(props: {
           {ai.sub}
         </span>
       )}
-      {terminal ? (
-        <TerminalMount term={terminal} />
-      ) : tile.harness === "opencode" ? (
-        <div className="spexr-df-pinned__nofollow">
-          This session is live elsewhere — a read-only transcript view for opencode isn&apos;t available yet.
-          Fork it to continue the work in this card.
-        </div>
-      ) : (
-        <div className="spexr-df-pinned__scroll" ref={scroller} onScroll={onScroll}>
-          <FollowTranscript events={events} />
-        </div>
-      )}
+      <CardSplit browser={browser}>
+        {terminal ? (
+          <TerminalMount term={terminal} />
+        ) : tile.harness === "opencode" ? (
+          <div className="spexr-df-pinned__nofollow">
+            This session is live elsewhere — a read-only transcript view for opencode isn&apos;t available yet.
+            Fork it to continue the work in this card.
+          </div>
+        ) : (
+          <div className="spexr-df-pinned__scroll" ref={scroller} onScroll={onScroll}>
+            <FollowTranscript events={events} />
+          </div>
+        )}
+      </CardSplit>
       <CardResizeHandle onPointerDown={onResizeStart} />
     </section>
   );
@@ -1027,6 +1118,8 @@ export function LaunchedSessionCard(props: {
   isCurrent: boolean;
   /** How the wall arranges active cards; the card's height is remembered per arrangement. */
   layout: WallLayout;
+  /** The card's browser; absent where the wall offers none. */
+  browser?: CardBrowserProps | undefined;
 }): React.ReactElement {
   const {
     projectName,
@@ -1038,6 +1131,7 @@ export function LaunchedSessionCard(props: {
     onOpenTerminal,
     isCurrent,
     layout,
+    browser,
   } = props;
   const { ref: card, height, onResizeStart } = usePinnedHeight(layout);
   return (
@@ -1075,13 +1169,16 @@ export function LaunchedSessionCard(props: {
           >
             <i className="codicon codicon-terminal" /> Terminal here
           </button>
+          <BrowserToggle browser={browser} />
         </div>
       </header>
-      {terminal ? (
-        <TerminalMount term={terminal} />
-      ) : (
-        <div className="spexr-df-pinned__nofollow">Starting the session…</div>
-      )}
+      <CardSplit browser={browser}>
+        {terminal ? (
+          <TerminalMount term={terminal} />
+        ) : (
+          <div className="spexr-df-pinned__nofollow">Starting the session…</div>
+        )}
+      </CardSplit>
       <CardResizeHandle onPointerDown={onResizeStart} />
     </section>
   );
