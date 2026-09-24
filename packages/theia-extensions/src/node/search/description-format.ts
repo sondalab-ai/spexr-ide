@@ -65,6 +65,13 @@ export function buildOverviewPrompt(goal: string, progress: string): string {
 // ≈ 24 tokens; the cap leaves a little headroom.
 export const COMMIT_MAX_NEW_TOKENS = 30;
 
+export const ROUTE_MAX_NEW_TOKENS = 12;
+
+export const ROUTE_SYSTEM_PROMPT =
+  "You route a task to the expert best suited to do it. You are given a list of experts, " +
+  "each as '- <id>: <what it does>', then the task. Reply with exactly one id from the list, " +
+  "copied as written, and nothing else. If no expert clearly fits, reply 'none'.";
+
 export const COMMIT_SYSTEM_PROMPT =
   "You are given the list of files staged for a git commit, each with its status letter " +
   "(A added, M modified, D deleted, R renamed). Write ONE line, max 12 words, in the imperative " +
@@ -116,7 +123,7 @@ export const DescriptionGeneratorToken = Symbol("DescriptionGenerator");
  * fully-built user prompt in `content`; `description` composes its own from the
  * path and file content.
  */
-export type GenerationKind = "description" | "now" | "overview" | "commit";
+export type GenerationKind = "description" | "now" | "overview" | "commit" | "route";
 
 /** The kinds whose prompt the caller builds. */
 export type PromptedKind = Exclude<GenerationKind, "description">;

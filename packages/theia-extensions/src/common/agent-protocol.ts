@@ -116,6 +116,13 @@ export interface SpexrAgentService {
   listMarketplaceExperts(): Promise<ExpertAgentDto[]>;
 
   /**
+   * Ask the local model which of `candidates` (expert ids) is best suited to
+   * `task`. Undefined when none fits, the model is unavailable, or it does not
+   * answer in time; the caller then uses the base agent.
+   */
+  suggestExpert(task: string, candidates: string[]): Promise<string | undefined>;
+
+  /**
    * Build the launch context (system prompt) for the given workspace root.
    *
    * When `expertId` is provided, the persona from `docs/agents/<expertId>.md`

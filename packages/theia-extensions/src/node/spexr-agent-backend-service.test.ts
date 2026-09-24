@@ -1,11 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as os from "os";
 import * as path from "path";
 import {
   stripFrontmatter,
   formatGitContext,
   resolveMemoryPaths,
+  SpexrAgentBackendService,
 } from "./spexr-agent-backend-service.js";
+import type { DescriptionGenerator } from "./search/description-format.js";
 import type { GitStatusDto } from "../common/git-protocol.js";
 
 describe("stripFrontmatter", () => {
@@ -132,5 +134,60 @@ describe("resolveMemoryPaths", () => {
 
   it("links the workspace docs/memory folder", () => {
     expect(resolveMemoryPaths(root).source).toBe(path.join(root, "docs", "memory"));
+  });
+});
+
+describe("suggestExpert", () => {
+  function withModel(model: Partial<DescriptionGenerator>): SpexrAgentBackendService {
+    const svc = new SpexrAgentBackendService();
+    (svc as unknown as { generator: Partial<DescriptionGenerator> }).generator = {
+      isAvailable: () => true,
+      ...model,
+    };
+    return svc;
+  }
+
+  it("returns the expert the local model picks among the candidates", async () => {
+    const prompts: string[] = [];
+    const svc = withModel({
+      summarize: async (prompt, kind) => {
+        prompts.push(`${kind}:${prompt}`);
+        return "software-engineering";
+      },
+    });
+    expect(await svc.suggestExpert("Fix the card height", ["design", "software-engineering"])).toBe(
+      "software-engineering",
+    );
+    expect(prompts[0]).toMatch(/^route:Experts:/);
+    expect(prompts[0]).not.toContain("- marketing:");
+  });
+
+  it("asks nothing when no candidate is a known expert", async () => {
+    let asked = false;
+    const svc = withModel({
+      summarize: async () => {
+        asked = true;
+        return "design";
+      },
+    });
+    expect(await svc.suggestExpert("anything", ["not-an-expert"])).toBeUndefined();
+    expect(asked).toBe(false);
+  });
+
+  it("falls back to no expert when the model is unavailable", async () => {
+    const svc = withModel({ isAvailable: () => false });
+    expect(await svc.suggestExpert("anything", ["design"])).toBeUndefined();
+  });
+
+  it("stops waiting for a model that does not answer in time", async () => {
+    vi.useFakeTimers();
+    try {
+      const svc = withModel({ summarize: () => new Promise<string | null>(() => {}) });
+      const pending = svc.suggestExpert("anything", ["design"]);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await pending).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
