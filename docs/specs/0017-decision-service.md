@@ -74,6 +74,21 @@ https://github.com/sondalab-ai/spexr-ide/pull/48 ships scored 11/12 on the 12
 tasks its prompt was tuned on and 63% here: tuning on the test set inflated it.
 Jev-Omni (12B) and Open-Jev-9B were not evaluated: both need a CUDA GPU.
 
+How often each model is right when it acts on its own, and on what share of the
+items it would, at each confidence threshold:
+
+| Confidence ≥ | kev-4b: right / acts on | kev-0.6b: right / acts on |
+|---|---|---|
+| 0.5 | 85% / 90% | 77% / 95% |
+| 0.6 | 91% / 75% | 79% / 88% |
+| 0.7 | **97% / 58%** | 80% / 75% |
+| 0.8 | 97% / 49% | **85% / 58%** |
+| 0.9 | 100% / 19% | 87% / 39% |
+
+kev-4b at 0.7 decides six items in ten on its own and is almost always right;
+kev-0.6b never reaches that: at any threshold it still gets about one in
+eight or more of its own decisions wrong.
+
 ## Design
 
 ### Service
@@ -97,24 +112,40 @@ per-call timeout.
 
 ### Model
 
-A preference `spexr.decisions.model`: `kev-0.6b` (default), `kev-4b`, or `off`.
+A preference `spexr.decisions.model`: `kev-4b` (default), `kev-0.6b`, or `off`.
 
-- `kev-0.6b` by default: 0.12 s per decision and ~0.4 GB, fast enough to run on
-  every click.
-- `kev-4b` as the accurate option for users who accept a ~2.3 GB download and
-  about a second per decision; its calibration makes its high-confidence
-  answers dependable.
+- `kev-4b` by default: its high-confidence answers are dependable, which is
+  what lets SPEXR act without asking (see the threshold table). It costs a
+  ~2.3 GB download and about a second per decision.
+- `kev-0.6b` as the light option: ~0.4 GB and 0.12 s per decision, but less
+  accurate and poorly calibrated, so more decisions go back to the user.
 - Weights are fetched into `resources/models` by
   `scripts/fetch-search-model.mjs`, like the embedding and generation models,
-  so a packaged app decides offline. `kev-4b` is fetched only when selected.
+  so a packaged app decides offline. `kev-0.6b` is fetched only when selected.
 
 ### First consumer: TODO routing
 
 "Work on this" asks `decide(item, choice("Which expert should take this task?",
-installedExperts, descriptions))`. At or above the threshold (0.5 for kev-0.6b,
-0.7 for kev-4b) the agent starts as the chosen expert; otherwise it keeps what
-it runs as. The generative `route` kind, its prompt and `expert-routing.ts`
-from https://github.com/sondalab-ai/spexr-ide/pull/48 are removed.
+installedExperts, descriptions))`, then:
+
+- **Confident** — the chosen expert's probability is at or above the model's
+  threshold (0.7 for kev-4b, 0.8 for kev-0.6b): the item goes to that expert
+  without a question, and the notification names the expert and its confidence.
+- **Unsure** — below the threshold: a picker, "Which expert should take this
+  item?", lists the installed experts ordered by probability, each with its
+  percentage and description, the model's pick first and selected, plus "Keep
+  the agent as it is". Enter confirms the pick; choosing another expert or
+  "keep" does what it says; Escape cancels the hand-off and nothing is sent.
+- **No decision** — the service returned `undefined` (off, weights missing,
+  timed out): the same picker, in the experts' own order and without
+  percentages, so the user chooses.
+- With no expert installed in the folder, nothing is asked and the agent keeps
+  what it runs as.
+
+The thresholds come from the Evidence table and live next to the model
+choice, so a model change brings its own. The generative `route` kind, its
+prompt and `expert-routing.ts` from
+https://github.com/sondalab-ai/spexr-ide/pull/48 are removed.
 
 ### Evaluation harness
 
@@ -132,8 +163,9 @@ model, the prompts or the options change, and its output is pasted into the PR.
   questions with open-jev on the configured model, returns `undefined` when off,
   unavailable, failing or over its timeout, and never throws to its caller.
 - **AC-2** `spexr.decisions.model` switches between `kev-0.6b`, `kev-4b` and
-  `off` without a restart; the next decision uses the new model.
-- **AC-3** The fetch script vendors kev-0.6b by default and kev-4b on request;
+  `off` without a restart; the next decision uses the new model and its
+  threshold.
+- **AC-3** The fetch script vendors kev-4b by default and kev-0.6b on request;
   with the weights present the service works with the network off.
 - **AC-4** `@huggingface/transformers` moves from 4.2 to 4.3 (open-jev's
   minimum); the embedding model, the generation worker and their tests are
@@ -141,12 +173,16 @@ model, the prompts or the options change, and its output is pasted into the PR.
 
 ### Slice 2 — TODO routing on the service
 
-- **AC-5** "Work on this" routes through `decide` with the per-model threshold;
-  below it the agent keeps what it runs as. The `route` generation kind and
-  `expert-routing.ts` are removed.
-- **AC-6** Unit tests cover the threshold rule and the `undefined` path with a
-  fake service; a live check in the running app routes a bug item to software
-  engineering and a launch-copy item to marketing.
+- **AC-5** "Work on this" routes through `decide`. At or above the model's
+  threshold the item goes to the chosen expert with no question; below it, or
+  with no decision, the user picks from the installed experts (ordered by
+  probability when there is one, the model's pick preselected), may keep the
+  agent as it is, or cancels with Escape and nothing is sent. The `route`
+  generation kind and `expert-routing.ts` are removed.
+- **AC-6** The routing rule (auto, ask, or no decision; ordering and
+  preselection of the picker) is a pure function with unit tests; a live check
+  in the running app hands a bug item to software engineering without a
+  question, and shows the picker for an item the model is unsure about.
 
 ### Slice 3 — Evaluation harness in the repo
 
@@ -172,8 +208,10 @@ model, the prompts or the options change, and its output is pasted into the PR.
 - **Small, partly synthetic evidence.** 59 items, 31 synthetic, labelled by the
   implementing agent. The owner confirms the labels before AC-7; the harness is
   there so the numbers are re-measured as real items accumulate.
-- **Weak calibration on the default model.** kev-0.6b's confidence barely
-  separates right from wrong answers. Its threshold therefore only filters the
-  clearly unsure cases; kev-4b is the option when a wrong pick is costly.
-- **Download size.** kev-4b is ~2.3 GB; it is opt-in and fetched only when
-  chosen.
+- **Download size.** The default, kev-4b, is ~2.3 GB and loads from disk in
+  about 8.5 s (kev-0.6b: 1.6 s), measured on the owner's machine; it is loaded
+  once, on the first decision. Until its weights are present, decisions return
+  `undefined` and routing falls back to the picker, so nothing blocks on it.
+- **Asking too often.** Around four items in ten go to the picker with kev-4b,
+  more with kev-0.6b. That is the price of never auto-picking wrongly; the
+  thresholds are re-measured with the harness as real items accumulate.
