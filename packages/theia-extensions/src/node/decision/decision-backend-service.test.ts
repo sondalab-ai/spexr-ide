@@ -121,4 +121,27 @@ describe("SpexrDecisionBackendService", () => {
     const d = await pending;
     expect(d).toMatchObject({ type: "choice", choice: "b", model: "kev-4b" });
   });
+
+  it("drops a decision whose model changed between its option orders, and never mixes models", async () => {
+    const { started, workers, factory } = fakeWorkers();
+    const svc = new SpexrDecisionBackendService(factory, () => true);
+    await svc.setModel("kev-0.6b");
+    const pending = svc.decide("state", CHOICE);
+    await vi.waitFor(() => expect(workers[0]!.requests.length).toBe(1));
+    const req = workers[0]!.requests[0]!;
+    await svc.setModel("kev-4b"); // while the first option order is still pending
+    workers[0]!.reply({
+      id: req.id,
+      type: "done",
+      answer: { type: "choice", choice: "a", confidence: 0.99, probabilities: { a: 0.99, b: 0.005, c: 0.005 } },
+    });
+    expect(await pending).toBeUndefined();
+    expect(started).toEqual(["onnx-community/kev-0.6b-ONNX"]);
+
+    // The next decision runs on a kev-4b worker, not on a restarted 0.6b one.
+    const next = svc.decide("state", Q);
+    await vi.waitFor(() => expect(started).toEqual(["onnx-community/kev-0.6b-ONNX", "onnx-community/kev-4b-ONNX"]));
+    workers[1]!.reply({ id: workers[1]!.requests[0]!.id, type: "done", answer });
+    expect((await next)?.model).toBe("kev-4b");
+  });
 });

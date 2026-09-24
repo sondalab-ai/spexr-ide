@@ -18,7 +18,7 @@ workflowStep: plan
 ## Goal
 
 SPEXR keeps needing small decisions it can make on the machine, without a
-network call and in well under a second: which expert should take a TODO item;
+network call and in a few seconds at most: which expert should take a TODO item;
 later, whether a session needs the user, which workflow step a request belongs
 to, what kind of commit a change is. These are closed questions over a known set
 of answers. A generative model is the wrong tool for them: it can answer
@@ -41,7 +41,7 @@ typed questions go in, one forward pass returns a probability per option.
   `@huggingface/transformers` (browser or Node, CPU/WebGPU/WASM):
   https://github.com/nico-martin/open-jev
 - **kev-0.6b / kev-4b.** Apache-2.0 Jev-shaped decision models on Qwen3-0.6B
-  and Qwen3-4B, ONNX, the open-jev defaults:
+  and Qwen3-4B, in ONNX (Open Neural Network Exchange) format, the open-jev defaults:
   https://huggingface.co/onnx-community/kev-0.6b-ONNX,
   https://huggingface.co/onnx-community/kev-4b-ONNX
 
@@ -62,7 +62,7 @@ is also the "always pick software engineering" baseline.
 | Qwen2.5-Coder 1.5B labels the kind of work ([PR 48](https://github.com/sondalab-ai/spexr-ide/pull/48)) | 63% | 82% / 45% | 63% / 63% | none | ~0.3 s GPU |
 | open-jev DeBERTa-v3-large, choice over kinds | 56% | 89% / 26% | 53% / 63% | none above 0.5 | ~0.1 s |
 | MiniLM embeddings + example centroids | 49% | 39% / 58% | 58% / 25% | 81% on 27% | ~1 ms |
-| NLI DeBERTa-v3-xsmall zero-shot | 31% | 14% / 45% | 30% / 31% | none above 0.5 | ~35 ms |
+| Natural language inference (NLI), DeBERTa-v3-xsmall zero-shot | 31% | 14% / 45% | 30% / 31% | none above 0.5 | ~35 ms |
 
 Reading it: the Jev-shaped models win clearly, and only they hold up in
 Italian. kev-4b is the most accurate and — more useful — the best calibrated:
@@ -82,7 +82,7 @@ items it would, at each confidence threshold:
 | 0.5 | 85% / 90% | 77% / 95% |
 | 0.6 | 91% / 75% | 79% / 88% |
 | 0.7 | **97% / 58%** | 80% / 75% |
-| 0.8 | 97% / 49% | **85% / 58%** |
+| 0.8 | 97% / 49% | 85% / 58% |
 | 0.9 | 100% / 19% | 87% / 39% |
 
 kev-4b at 0.7 decides six items in ten on its own and is almost always right;
@@ -114,6 +114,10 @@ the catalog's routing descriptions, three rotations — on the same set:
 | **kev-4b** | **86%** | 86% / 88% | 95% / 71%, **97% / 56%**, 100% / 36% | ~2.4 s (three passes) |
 | kev-0.6b | 68% | 67% / 69% | 72% / 90%, 71% / 76%, 74% / 53% | ~0.4 s |
 
+kev-4b acts alone at 0.7. These figures were tuned on the same 59 tasks they
+are measured on (97% at 0.7 is 32 of 33), so real items will likely score
+somewhat lower; the harness re-measures them as labelled items accumulate.
+
 kev-4b acts alone at 0.7. kev-0.6b is never right often enough to act alone
 (79% even at 0.9), so it only ranks the options and the user always confirms.
 
@@ -137,7 +141,7 @@ The service wraps open-jev behind this interface, so the library (0.1.x, young)
 can be replaced or vendored without touching callers. The model runs in its own
 child process, like the generation worker, one request at a time, with a
 per-call timeout: its inference is a synchronous native call of up to a second,
-which in the backend process would stall every RPC and the wall.
+which in the backend process would stall every remote procedure call (RPC) and the wall.
 
 ### Model
 
@@ -242,6 +246,10 @@ descriptions or the service change, and its output is pasted into the PR.
 - **Small, partly synthetic evidence.** 59 items, 31 synthetic, labelled by the
   implementing agent. The owner confirms the labels before AC-7; the harness is
   there so the numbers are re-measured as real items accumulate.
+- **Packaged builds.** The release workflow does not run `fetch-model`, so a
+  release ships no weights (as with the search models) and every TODO item
+  opens the picker without percentages. Shipping kev-4b in the installer adds
+  ~2.5 GB; whether to do so, or to download it on first use, is open.
 - **Download size.** The default, kev-4b, is ~2.5 GB and loads from disk in
   about 9–11 s (kev-0.6b: about 2 s), measured on the owner's machine; it is
   loaded once, on the first decision. Until its weights are present, decisions return
