@@ -1,6 +1,7 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
+import { IShellTerminalServer } from "@theia/terminal/lib/common/shell-terminal-protocol";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import {
   SPEXR_CLAUDE_EXECUTABLE_PREFERENCE,
@@ -23,6 +24,7 @@ import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.
 import { SESSION_TERMINAL_KIND } from "../terminal/terminal-style.js";
 import { evictOnAttachFailure, isReusableTerminal } from "../terminal/terminal-liveness.js";
 import { fallBackOnContextLoss } from "../terminal/terminal-attach.js";
+import type { StoredTerminal } from "./pinned-store.js";
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -57,8 +59,11 @@ function harnessForSessionId(sessionId: string): HarnessCore | undefined {
 export class SpexrDarkfactoryTerminalManager {
   @inject(TerminalService) private readonly terminalService!: TerminalService;
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
+  @inject(IShellTerminalServer) private readonly shellServer!: IShellTerminalServer;
 
   private readonly widgets = new Map<string, TerminalWidget>();
+  /** Key → OS process id of its terminal, recorded once the process has started. */
+  private readonly processIds = new Map<string, number>();
 
   /**
    * The terminal already running for a session, if any. Callers use this to
@@ -121,7 +126,13 @@ export class SpexrDarkfactoryTerminalManager {
     if (!term || term.isDisposed || this.widgets.has(to)) return;
     this.widgets.delete(from);
     this.widgets.set(to, term);
-    term.onDidDispose(() => this.widgets.delete(to));
+    const processId = this.processIds.get(from);
+    this.processIds.delete(from);
+    if (processId !== undefined) this.processIds.set(to, processId);
+    term.onDidDispose(() => {
+      this.widgets.delete(to);
+      this.processIds.delete(to);
+    });
   }
 
   private async createResumeTerminal(
@@ -162,13 +173,76 @@ export class SpexrDarkfactoryTerminalManager {
       kind: SESSION_TERMINAL_KIND,
     });
     await term.start();
+    await this.register(key, term);
+    return term;
+  }
+
+  /**
+   * Keep a started terminal under `key`: the manager forgets it when it is
+   * disposed, evicts it when a later re-attach finds no process, and records
+   * its OS process id for {@link terminalInfo}.
+   */
+  private async register(key: string, term: TerminalWidget): Promise<void> {
     this.widgets.set(key, term);
-    term.onDidDispose(() => this.widgets.delete(key));
+    term.onDidDispose(() => {
+      this.widgets.delete(key);
+      this.processIds.delete(key);
+    });
+    // Awaited, so a card saved right after it opens already knows its process.
+    try {
+      this.processIds.set(key, await term.processId);
+    } catch {
+      // not started after all; the eviction below takes care of it
+    }
     // Subscribed after the first start so this only ever reports a *later*
     // death: a re-attach that found no process, typically after the frontend
     // reconnected to the backend on wake from standby.
     evictOnAttachFailure(term, () => this.evict(key));
     fallBackOnContextLoss(term);
+  }
+
+  /**
+   * What a card stores to find its terminal again after a window reload: the
+   * backend terminal id and the process running in it. Undefined when the card
+   * has no live terminal, or its process id is not known yet.
+   */
+  terminalInfo(key: string): StoredTerminal | undefined {
+    const term = this.live(key);
+    const processId = this.processIds.get(key);
+    return term && processId !== undefined ? { terminalId: term.terminalId, processId } : undefined;
+  }
+
+  /**
+   * Show a card the terminal it had before a window reload. The backend keeps
+   * session processes across a reload, but a new frontend has no widget for
+   * them. The process id is checked before attaching: terminal ids start over
+   * when the backend restarts, and attaching to another process would put
+   * somebody else's shell in the card (and disposing that widget would kill
+   * it). Returns undefined when the process is gone or the id is not ours.
+   */
+  async reattach(
+    key: string,
+    stored: StoredTerminal,
+    projectPath: string,
+  ): Promise<TerminalWidget | undefined> {
+    const existing = this.live(key);
+    if (existing) return existing;
+    const processId = await this.shellServer.getProcessId(stored.terminalId).catch(() => -1);
+    if (processId !== stored.processId) return undefined;
+    const term = await this.terminalService.newTerminal({
+      id: `spexr-df-${key}`,
+      title: baseName(projectPath),
+      useServerTitle: false,
+      iconClass: "codicon codicon-sparkle",
+      destroyTermOnClose: false,
+      kind: SESSION_TERMINAL_KIND,
+    });
+    try {
+      await term.start(stored.terminalId);
+    } catch {
+      return undefined; // the process ended in between; the widget holds no id to close
+    }
+    await this.register(key, term);
     return term;
   }
 

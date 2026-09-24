@@ -51,6 +51,7 @@ import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { keepPinnedTiles } from "./pinned-tiles.js";
 import { resolveForks, type PendingFork } from "./fork-adoption.js";
+import { readPins, writePins, type StoredPin } from "./pinned-store.js";
 import {
   applyLinks,
   closeBrowser,
@@ -177,6 +178,12 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private forks: PendingFork[] = [];
 
   /**
+   * Pins read back after a window reload, reopened once the first scan has
+   * landed: the backend can only follow a session it has scanned.
+   */
+  private pendingRestore: StoredPin[] | undefined;
+
+  /**
    * Sessions started from the launcher, still keyed by a placeholder: a new
    * session has no id until its harness writes a transcript. `knownBefore` is
    * what the wall knew at launch, which is how {@link matchLaunchedSession}
@@ -266,6 +273,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       }),
     );
     this.toDispose.push({ dispose: () => this.stopAllFollows() });
+    this.restorePins();
     // ReactWidget renders only on update() — paint the loading state now, before
     // the first tiles land (without this the widget body stays blank until then).
     this.update();
@@ -293,9 +301,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.pinned = [tile.sessionId, ...this.pinned];
     this.pinnedEvents.set(tile.sessionId, []);
     this.update();
-    void this.openPinned(tile).catch(() => {
-      /* ignore */
-    });
+    void this.openPinned(tile)
+      .catch(() => {
+        /* ignore */
+      })
+      .then(() => this.savePins());
   }
 
   private async openPinned(tile: AgentTile): Promise<void> {
@@ -356,6 +366,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       const plan = await this.service.planFocus(tile.sessionId);
       await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, true);
       this.stopFollow(tile.sessionId);
+      this.savePins();
       this.update();
     })().catch(() => {
       /* ignore */
@@ -585,6 +596,54 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   /**
+   * Bring back the cards pinned before a window reload ("Open project" is
+   * one). Their last tiles hold them on the wall until a scan returns them.
+   */
+  private restorePins(): void {
+    const stored = readPins(window.localStorage);
+    if (stored.length === 0) return;
+    this.pinned = stored.map((p) => p.tile.sessionId);
+    this.tiles = stored.map((p) => p.tile);
+    for (const id of this.pinned) this.pinnedEvents.set(id, []);
+    this.pendingRestore = stored;
+  }
+
+  /**
+   * Give each restored card what it had: its terminal, re-attached; or, for a
+   * card that had none, its read-only view. A terminal whose process is gone
+   * (the app or its backend restarted) is replaced the way pinning the session
+   * again would, so a reload alone never starts a harness that was not running.
+   */
+  private async reopenPins(stored: readonly StoredPin[]): Promise<void> {
+    for (const { tile, terminal } of stored) {
+      if (!this.pinned.includes(tile.sessionId)) continue;
+      if (terminal) {
+        const reattached = await this.terminals
+          .reattach(tile.sessionId, terminal, tile.projectPath)
+          .catch(() => undefined);
+        if (!reattached) await this.openPinned(tile).catch(() => {});
+      } else {
+        await this.service.startFollow(tile.sessionId).catch(() => {});
+      }
+      this.update();
+    }
+    this.savePins();
+  }
+
+  /** Remember the pinned cards and their terminals for the next window load. */
+  private savePins(): void {
+    const byId = new Map(this.tiles.map((t) => [t.sessionId, t]));
+    const pins: StoredPin[] = [];
+    for (const id of this.pinned) {
+      const tile = byId.get(id);
+      if (!tile) continue;
+      const terminal = this.terminals.terminalInfo(id);
+      pins.push(terminal ? { tile, terminal } : { tile });
+    }
+    writePins(window.localStorage, pins);
+  }
+
+  /**
    * Move forked cards onto the session their fork wrote: the terminal, the card
    * and its browser follow, so the card describes the session it is driving
    * rather than the one it was forked from.
@@ -630,6 +689,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.stopFollow(sessionId);
     this.pinned = this.pinned.filter((id) => id !== sessionId);
     this.pinnedEvents.delete(sessionId);
+    this.savePins();
     this.update();
   }
 
@@ -707,6 +767,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     }
     this.adoptLaunched(tiles);
     this.adoptForks(tiles);
+    this.savePins();
+    const restore = this.pendingRestore;
+    this.pendingRestore = undefined;
+    if (restore) void this.reopenPins(restore);
     // A push is how the wall hears that transcripts changed: re-read the links
     // of every open browser, so a new pull request or server shows up.
     for (const [key, browser] of this.browsers) {
