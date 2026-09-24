@@ -114,7 +114,7 @@ the catalog's routing descriptions, three rotations — on the same set:
 | **kev-4b** | **86%** | 86% / 88% | 95% / 71%, **97% / 56%**, 100% / 36% | ~2.4 s (three passes) |
 | kev-0.6b | 68% | 67% / 69% | 72% / 90%, 71% / 76%, 74% / 53% | ~0.4 s |
 
-kev-4b acts alone at 0.7. These figures were tuned on the same 59 tasks they
+These figures were tuned on the same 59 tasks they
 are measured on (97% at 0.7 is 32 of 33), so real items will likely score
 somewhat lower; the harness re-measures them as labelled items accumulate.
 

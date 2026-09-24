@@ -36,7 +36,7 @@ export interface DecisionWorkerLike {
 
 /**
  * Longest a decision may take. It covers loading the model on the first
- * decision (kev-4b loads from disk in about 8.5 s) with room to spare; a
+ * decision (kev-4b loads from disk in about 9–11 s) with room to spare; a
  * caller waiting longer is better served by deciding itself.
  */
 const DECIDE_TIMEOUT_MS = 30_000;
