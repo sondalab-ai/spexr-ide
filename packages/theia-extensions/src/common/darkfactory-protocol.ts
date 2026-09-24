@@ -183,6 +183,20 @@ export interface SpexrDarkfactoryService {
   /** Begin streaming transcript turns for a read-only follow; idempotent per session. */
   startFollow(sessionId: string): Promise<void>;
   stopFollow(sessionId: string): Promise<void>;
+  /**
+   * The web pages a session produced (pull requests, local servers), newest
+   * first, for the card browser. Reads the transcript incrementally; `[]` for
+   * an unknown session or one without a transcript file.
+   */
+  listSessionLinks(sessionId: string): Promise<SessionLink[]>;
+}
+
+/** A web page a session produced, as offered by the card browser. */
+export interface SessionLink {
+  readonly kind: "pr" | "local";
+  readonly url: string;
+  /** Short name for the link picker: `PR #45 · spexr-ide`, `localhost:5173`. */
+  readonly label: string;
 }
 
 /** Push channel: backend → frontend. */
