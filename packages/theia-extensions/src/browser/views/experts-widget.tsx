@@ -220,7 +220,9 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
   if (!hasWorkspace) {
     return (
       <section className="spexr-experts-panel" aria-label="Expert agents">
-        <p className="spexr-experts-panel__empty">Open a workspace to manage expert agents.</p>
+        <div className="sl-empty spexr-experts-panel__empty">
+          <p className="sl-empty__body">Open a workspace to manage expert agents.</p>
+        </div>
       </section>
     );
   }
@@ -236,7 +238,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
       </header>
 
       <div className="spexr-experts-panel__actions">
-        <button type="button" className="spexr-button" onClick={onRefresh}>
+        <button type="button" className="sl-btn sl-btn--ghost" onClick={onRefresh}>
           Refresh
         </button>
       </div>
@@ -244,9 +246,11 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
       <div className="spexr-experts-panel__section">
         <h3 className="spexr-experts-panel__subtitle">{nls.localize("spexr/experts/inProject", "In project")}</h3>
         {installed.length === 0 ? (
-          <p className="spexr-experts-panel__empty">
-            No experts yet. Add one from the marketplace below.
-          </p>
+          <div className="sl-empty spexr-experts-panel__empty">
+            <p className="sl-empty__body">
+              No experts yet. Add one from the marketplace below.
+            </p>
+          </div>
         ) : (
           <ul className="spexr-experts-list" role="list">
             {installed.map((e) => {
@@ -282,7 +286,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                     {dto && !isActive ? (
                       <button
                         type="button"
-                        className="spexr-button spexr-button--compact"
+                        className="sl-btn sl-btn--ghost sl-btn--sm"
                         onClick={() => onStart(dto)}
                       >
                         {nls.localize("spexr/experts/start", "Start")}
@@ -291,7 +295,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                     {isActive && dto?.kickoffPrompt ? (
                       <button
                         type="button"
-                        className="spexr-button spexr-button--compact"
+                        className="sl-btn sl-btn--ghost sl-btn--sm"
                         onClick={() => onKickoff(dto)}
                         title={nls.localize(
                           "spexr/experts/kickoffHint",
@@ -304,7 +308,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                     {isActive ? (
                       <button
                         type="button"
-                        className="spexr-button spexr-button--compact"
+                        className="sl-btn sl-btn--ghost sl-btn--sm"
                         onClick={onDeactivate}
                       >
                         {nls.localize("spexr/experts/deactivate", "Deactivate")}
@@ -312,7 +316,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                     ) : null}
                     <button
                       type="button"
-                      className="spexr-button spexr-button--ghost spexr-button--compact spexr-button--danger"
+                      className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
                       onClick={() => onRemove(e.id)}
                     >
                       {nls.localize("spexr/experts/remove", "Remove")}
@@ -328,7 +332,9 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
       <div className="spexr-experts-panel__section">
         <h3 className="spexr-experts-panel__subtitle">Marketplace</h3>
         {available.length === 0 ? (
-          <p className="spexr-experts-panel__empty">All marketplace experts are already in the project.</p>
+          <div className="sl-empty spexr-experts-panel__empty">
+            <p className="sl-empty__body">All marketplace experts are already in the project.</p>
+          </div>
         ) : (
           <ul className="spexr-experts-list" role="list">
             {available.map((e) => (
@@ -341,7 +347,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
                 <span className="spexr-experts-list__buttons">
                   <button
                     type="button"
-                    className="spexr-button spexr-button--compact"
+                    className="sl-btn sl-btn--ghost sl-btn--sm"
                     onClick={() => onAdd(e)}
                   >
                     {nls.localize("spexr/experts/add", "+ Add")}

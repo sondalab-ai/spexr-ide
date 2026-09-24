@@ -195,7 +195,7 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
           The embedded browser needs the desktop app.
           {links.length > 0 ? " Open one of the session's links in your system browser:" : ""}
           {links.map((l) => (
-            <button key={l.url} className="spexr-button" onClick={() => onOpenExternal(l.url)}>
+            <button key={l.url} className="sl-btn sl-btn--ghost" onClick={() => onOpenExternal(l.url)}>
               {l.label}
             </button>
           ))}

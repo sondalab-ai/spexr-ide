@@ -19,7 +19,7 @@
     "dev": "theia build --mode=development --watch",
     "lint": "echo \"no source files\"",
     "typecheck": "echo \"no source files\"",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --maxWorkers=2 --passWithNoTests",
     "clean": "rm -rf src-gen lib gen-webpack*.js .turbo *.tsbuildinfo dist-installers",
     "package": "electron-builder --config electron-builder.yml",
     "package:mac": "electron-builder --mac --config electron-builder.yml",

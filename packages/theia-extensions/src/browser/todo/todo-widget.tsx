@@ -186,13 +186,16 @@ export class SpexrTodoWidget extends ReactWidget {
     const sending = this.sending.has(key);
     return (
       <li key={key} className={`spexr-todo__item${item.done ? " spexr-todo__item--done" : ""}`}>
-        <input
-          type="checkbox"
-          className="spexr-todo__check"
-          checked={item.done}
-          aria-label={item.done ? "Mark as not done" : "Mark as done"}
-          onChange={() => void this.toggle(file, item)}
-        />
+        <label className="sl-check spexr-todo__check">
+          <input
+            type="checkbox"
+            className="sl-check__input"
+            checked={item.done}
+            aria-label={item.done ? "Mark as not done" : "Mark as done"}
+            onChange={() => void this.toggle(file, item)}
+          />
+          <span className="sl-check__box" aria-hidden="true" />
+        </label>
         <div className="spexr-todo__body">
           <button className="spexr-todo__title" title="Open TODO.md at this item" onClick={() => this.open(file, item)}>
             {item.title}
@@ -207,7 +210,7 @@ export class SpexrTodoWidget extends ReactWidget {
         </div>
         {!item.done && (
           <button
-            className="spexr-button spexr-button--compact spexr-todo__work"
+            className="sl-btn sl-btn--ghost sl-btn--sm spexr-todo__work"
             disabled={sending}
             title="Hand this item to the agent; the local model picks the expert best suited to it"
             onClick={() => void this.workOn(file, item)}

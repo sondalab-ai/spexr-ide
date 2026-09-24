@@ -23,7 +23,7 @@
     "dev": "tsc -b --watch",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --maxWorkers=2 --passWithNoTests",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
