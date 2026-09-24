@@ -12,7 +12,10 @@ interface NewTerminalCall {
 interface FakeTerminal {
   terminalId: number;
   isDisposed: boolean;
-  start(): Promise<void>;
+  /** The backend id `start` was asked to attach to, if any. */
+  startedWith?: number;
+  processId: Promise<number>;
+  start(id?: number): Promise<void>;
   dispose(): void;
   onDidDispose(listener: () => void): void;
   onDidOpenFailure(listener: () => void): { dispose(): void };
@@ -26,7 +29,13 @@ function fakeTerminal(): FakeTerminal {
   const term: FakeTerminal = {
     terminalId: 1,
     isDisposed: false,
-    start: async () => {},
+    processId: Promise.resolve(4242),
+    start: async (id?: number) => {
+      if (id !== undefined) {
+        term.startedWith = id;
+        term.terminalId = id;
+      }
+    },
     dispose: () => {
       term.isDisposed = true;
       disposeListeners.forEach((l) => l());
@@ -293,5 +302,55 @@ describe("SpexrDarkfactoryTerminalManager eviction", () => {
     expect(second).not.toBe(first);
     expect(first).toBeDefined();
     expect(terms[0]!.isDisposed).toBe(true);
+  });
+});
+
+describe("SpexrDarkfactoryTerminalManager across a window reload", () => {
+  /** A manager whose terminal server reports `pids` for backend terminal ids. */
+  function withServer(pids: Record<number, number>) {
+    const made = makeManager();
+    (made.manager as unknown as { shellServer: unknown }).shellServer = {
+      getProcessId: async (id: number) => pids[id] ?? -1,
+    };
+    return made;
+  }
+
+  it("reports the terminal and process a card can be found again by", async () => {
+    const { manager, terms } = withServer({});
+    await manager.openEmbedded(UUID, "/Users/x/proj", "", false);
+    terms[0]!.terminalId = 7;
+    await Promise.resolve();
+    expect(manager.terminalInfo(UUID)).toEqual({ terminalId: 7, processId: 4242 });
+  });
+
+  it("reattaches to the terminal a card showed before the reload", async () => {
+    const { manager, terms } = withServer({ 7: 4242 });
+    const term = await manager.reattach(UUID, { terminalId: 7, processId: 4242 }, "/Users/x/proj");
+    expect(term).toBe(terms[0]);
+    expect(terms[0]!.startedWith).toBe(7);
+    expect(manager.live(UUID)).toBe(term);
+  });
+
+  it("leaves alone a terminal id that now belongs to another process", async () => {
+    // After a backend restart ids start over: id 7 is somebody else's shell.
+    const { manager, calls } = withServer({ 7: 999 });
+    const term = await manager.reattach(UUID, { terminalId: 7, processId: 4242 }, "/Users/x/proj");
+    expect(term).toBeUndefined();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("gives up on a terminal whose process is gone", async () => {
+    const { manager, calls } = withServer({});
+    expect(await manager.reattach(UUID, { terminalId: 7, processId: 4242 }, "/Users/x/proj")).toBeUndefined();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("carries the process id when a terminal moves to another key", async () => {
+    const { manager, terms } = withServer({});
+    await manager.openNew("launch-1", "claude", "/Users/x/proj", "");
+    terms[0]!.terminalId = 3;
+    await Promise.resolve();
+    manager.rekey("launch-1", UUID);
+    expect(manager.terminalInfo(UUID)).toEqual({ terminalId: 3, processId: 4242 });
   });
 });

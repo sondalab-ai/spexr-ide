@@ -317,8 +317,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private missingSessionNames = new Set<string>();
   /** sessionId → { mtimeMs, summary } AI-summary cache, invalidated on transcript change. */
   private readonly summaryCache = new Map<string, { mtimeMs: number; summary: AgentSummary }>();
-  /** sessionId → { watcher, cursor } for active read-only follows. */
-  private readonly follows = new Map<string, { watcher: FSWatcher; cursor: FollowCursor | undefined }>();
+  /** sessionId → { watcher, cursor, emit } for active read-only follows. */
+  private readonly follows = new Map<
+    string,
+    { watcher: FSWatcher; cursor: FollowCursor | undefined; emit: () => Promise<void> }
+  >();
   /**
    * sessionId → incremental link scan of its transcript. The path is kept so a
    * pinned session that has slid out of the latest scan keeps its links.
@@ -905,7 +908,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async startFollow(sessionId: string): Promise<void> {
-    if (this.follows.has(sessionId)) return;
+    const existing = this.follows.get(sessionId);
+    if (existing) {
+      // Asked again by a window that reloaded: its view is empty while this
+      // follow kept running, so send the current tail once more.
+      existing.cursor = undefined;
+      await existing.emit();
+      return;
+    }
     const meta = this.meta(sessionId);
     if (!meta) return;
     const emit = async (): Promise<void> => {
@@ -933,7 +943,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     watcher.on("error", () => {
       void this.stopFollow(sessionId);
     });
-    this.follows.set(sessionId, { watcher, cursor: undefined });
+    this.follows.set(sessionId, { watcher, cursor: undefined, emit });
     await emit(); // send the current tail immediately
   }
 

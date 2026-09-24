@@ -1404,3 +1404,48 @@ describe("listSessionLinks", () => {
     expect(await svc().listSessionLinks("nope")).toEqual([]);
   });
 });
+
+describe("startFollow", () => {
+  it("sends the current tail again when a reloaded window asks to follow a session it already follows", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-follow-"));
+    const file = join(dir, "s1.jsonl");
+    const entries = [
+      { type: "mode", mode: "normal" },
+      { cwd: "/Users/x/src/proj", type: "user", message: { role: "user", content: "hello there" } },
+      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "hi" }] } },
+    ];
+    await writeFile(file, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+    const s = svc({
+      listTranscripts: () =>
+        Promise.resolve([
+          {
+            harness: claudeHarness,
+            ref: { sessionId: "s1", projectPath: "", mtimeMs: NOW - 5_000, loadEntries: async () => entries },
+            claude: {
+              sessionId: "s1",
+              transcriptPath: file,
+              configDir: "/Users/x/.claude",
+              mtimeMs: NOW - 5_000,
+              readLines: () => Promise.resolve(entries.map((e) => JSON.stringify(e))),
+            },
+          },
+        ]),
+    });
+    const chunks: number[] = [];
+    (s as unknown as { client: SpexrDarkfactoryClient }).client = {
+      ...fakeClient,
+      onFollowChunk: (_id, events) => chunks.push(events.length),
+    };
+    try {
+      await s.listTiles();
+      await s.startFollow("s1");
+      expect(chunks).toEqual([2]);
+      // The window reloaded: its view is empty, the backend still follows.
+      await s.startFollow("s1");
+      expect(chunks).toEqual([2, 2]);
+    } finally {
+      await s.stopFollow("s1");
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
