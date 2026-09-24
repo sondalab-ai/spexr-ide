@@ -4,7 +4,9 @@ import { PreferenceService } from "@theia/core/lib/common/preferences/preference
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import { TerminalThemeService } from "@theia/terminal/lib/browser/terminal-theme-service";
+import { Unicode11Addon } from "xterm-addon-unicode11";
 import { readTerminalStyle, terminalKindOf, xtermOptions, xtermTheme } from "./terminal-style.js";
+import { enableUnicode11, type XtermUnicodeLike } from "./terminal-unicode.js";
 
 /** The slice of the xterm instance we write to. */
 interface XtermLike {
@@ -12,7 +14,8 @@ interface XtermLike {
 }
 
 /**
- * Applies the per-family terminal style preferences.
+ * Applies the per-family terminal style preferences, and switches every
+ * terminal to Unicode 11 character widths (see `terminal-unicode`).
  *
  * Theia styles every terminal from one global source — `TerminalThemeService`
  * for colours and `terminal.integrated.*` for the font — and exposes no seam to
@@ -38,7 +41,11 @@ export class SpexrTerminalStyleContribution implements FrontendApplicationContri
   @inject(TerminalThemeService) private readonly terminalTheme!: TerminalThemeService;
 
   onStart(): void {
-    this.terminals.onDidCreateTerminal((widget) => this.applyLater(widget));
+    this.terminals.onDidCreateTerminal((widget) => {
+      this.useUnicode11(widget);
+      this.applyLater(widget);
+    });
+    for (const widget of this.terminals.all) this.useUnicode11(widget);
     this.terminalTheme.onDidChange(() => this.applyLater());
     this.preferences.onPreferenceChanged((event) => {
       if (
@@ -68,6 +75,17 @@ export class SpexrTerminalStyleContribution implements FrontendApplicationContri
     const theme = xtermTheme(style, xterm.options.theme ?? {});
     // Assigning a theme redraws, so only do it when a colour is actually set.
     if (theme) xterm.options.theme = theme;
+  }
+
+  /** Gives the widget's xterm the emoji widths Claude Code lays out with. */
+  private useUnicode11(widget: TerminalWidget): void {
+    const term = (widget as unknown as { term?: Partial<XtermUnicodeLike> }).term;
+    if (!term || typeof term.loadAddon !== "function" || !term.options) return;
+    try {
+      enableUnicode11(term as XtermUnicodeLike, () => new Unicode11Addon());
+    } catch (err) {
+      console.warn("[spexr] could not switch terminal to Unicode 11 widths", err);
+    }
   }
 
   /** The widget's xterm instance, when this Theia still keeps it where we expect. */
