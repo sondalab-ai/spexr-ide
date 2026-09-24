@@ -73,9 +73,9 @@ export class SpexrAgentBackendService implements SpexrAgentService {
   }
 
   async suggestExpert(task: string, candidates: string[]): Promise<string | undefined> {
-    const experts = EXPERT_CATALOG.filter((e) => candidates.includes(e.id));
-    if (experts.length === 0 || !this.generator?.isAvailable()) return undefined;
-    const prompt = buildRoutePrompt(task, experts);
+    const known = candidates.filter((id) => EXPERT_CATALOG.some((e) => e.id === id));
+    if (known.length === 0 || !this.generator?.isAvailable()) return undefined;
+    const prompt = buildRoutePrompt(task);
     // The model worker is shared with the wall's session summaries and runs one
     // request at a time: an answer stuck behind them must not hold the task up.
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -84,7 +84,7 @@ export class SpexrAgentBackendService implements SpexrAgentService {
     });
     try {
       const answer = await Promise.race([this.generator.summarize(prompt, "route"), late]);
-      return parseRouteAnswer(answer, experts);
+      return parseRouteAnswer(answer, known);
     } catch {
       return undefined;
     } finally {

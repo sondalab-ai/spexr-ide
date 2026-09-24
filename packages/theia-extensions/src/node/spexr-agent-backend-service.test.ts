@@ -152,14 +152,13 @@ describe("suggestExpert", () => {
     const svc = withModel({
       summarize: async (prompt, kind) => {
         prompts.push(`${kind}:${prompt}`);
-        return "software-engineering";
+        return "bug";
       },
     });
     expect(await svc.suggestExpert("Fix the card height", ["design", "software-engineering"])).toBe(
       "software-engineering",
     );
-    expect(prompts[0]).toMatch(/^route:Experts:/);
-    expect(prompts[0]).not.toContain("- marketing:");
+    expect(prompts[0]).toBe("route:Task: Fix the card height\nLabel:");
   });
 
   it("asks nothing when no candidate is a known expert", async () => {
@@ -167,7 +166,7 @@ describe("suggestExpert", () => {
     const svc = withModel({
       summarize: async () => {
         asked = true;
-        return "design";
+        return "code";
       },
     });
     expect(await svc.suggestExpert("anything", ["not-an-expert"])).toBeUndefined();
