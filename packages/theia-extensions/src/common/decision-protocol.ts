@@ -79,8 +79,11 @@ export interface NoulDecision {
   readonly confidence: number;
 }
 
+/** A model answer to one question. */
+export type DecisionAnswer = ChoiceDecision | ScoreDecision | NoulDecision;
+
 /** The answer, tagged with the model that gave it (thresholds are per model). */
-export type Decision = (ChoiceDecision | ScoreDecision | NoulDecision) & { readonly model: DecisionModelOn };
+export type Decision = DecisionAnswer & { readonly model: DecisionModelOn };
 
 export interface SpexrDecisionService {
   /**

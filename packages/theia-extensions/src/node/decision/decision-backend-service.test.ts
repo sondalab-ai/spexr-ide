@@ -7,7 +7,8 @@ import {
   type DecisionWorkerResponse,
 } from "./decision-backend-service.js";
 
-const Q: DecisionQuestion = { type: "choice", instructions: "Which?", options: ["a", "b"] };
+const Q: DecisionQuestion = { type: "noul", instructions: "It holds." };
+const CHOICE: DecisionQuestion = { type: "choice", instructions: "Which?", options: ["a", "b", "c"] };
 
 /** A worker whose replies the test drives; records requests and the models it was started with. */
 function fakeWorkers() {
@@ -33,7 +34,7 @@ function fakeWorkers() {
   return { started, workers, factory };
 }
 
-const answer = { type: "choice", choice: "a", confidence: 0.8, probabilities: { a: 0.8, b: 0.2 } } as const;
+const answer = { type: "noul", answer: true, probability: 0.8, confidence: 0.8 } as const;
 
 afterEach(() => vi.useRealTimers());
 
@@ -41,7 +42,7 @@ describe("SpexrDecisionBackendService", () => {
   it("answers through the worker of the configured model, tagging the model", async () => {
     const { started, workers, factory } = fakeWorkers();
     const svc = new SpexrDecisionBackendService(factory, () => true);
-    const pending = svc.decide("state", Q);
+    const pending = svc.decide("  state\n", Q);
     expect(started).toEqual(["onnx-community/kev-4b-ONNX"]);
     const req = workers[0]!.requests[0]!;
     expect(req).toMatchObject({ state: "state", question: Q });
@@ -95,5 +96,29 @@ describe("SpexrDecisionBackendService", () => {
     const crashed = svc.decide("state", Q);
     (workers[0] as unknown as { exit: () => void }).exit();
     expect(await crashed).toBeUndefined();
+  });
+
+  it("asks a choice in several option orders and averages them, so position does not decide", async () => {
+    const { workers, factory } = fakeWorkers();
+    const svc = new SpexrDecisionBackendService(factory, () => true);
+    const pending = svc.decide("state", CHOICE);
+    // The model favours whatever comes first; averaged, "b" wins.
+    const firstWins = (options: readonly string[]) =>
+      Object.fromEntries(options.map((o, i) => [o, i === 0 ? 0.5 : o === "b" ? 0.4 : 0.1]));
+    for (let i = 0; i < 3; i++) {
+      await vi.waitFor(() => expect(workers[0]!.requests.length).toBe(i + 1));
+      const req = workers[0]!.requests[i]!;
+      const options = (req.question as { options: readonly string[] }).options;
+      const probabilities = firstWins(options);
+      workers[0]!.reply({
+        id: req.id,
+        type: "done",
+        answer: { type: "choice", choice: options[0]!, confidence: 0.5, probabilities },
+      });
+    }
+    const orders = workers[0]!.requests.map((r) => (r.question as { options: readonly string[] }).options[0]);
+    expect(orders).toEqual(["a", "b", "c"]);
+    const d = await pending;
+    expect(d).toMatchObject({ type: "choice", choice: "b", model: "kev-4b" });
   });
 });

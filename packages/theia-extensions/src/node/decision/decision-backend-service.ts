@@ -6,13 +6,14 @@ import {
   DECISION_MODEL_REPOS,
   DEFAULT_DECISION_MODEL,
   type Decision,
+  type DecisionAnswer,
   type DecisionModel,
-  type DecisionModelOn,
   type DecisionQuestion,
   type SpexrDecisionService,
 } from "../../common/decision-protocol.js";
 import { resolveDecisionWorkerPath, resolveModelsDir } from "../search/models-dir.js";
 import { resolveNodeBinary } from "../search/worker-description-generator.js";
+import { averageChoices, CHOICE_ROTATIONS, rotations } from "./option-order.js";
 
 /** host → worker */
 export interface DecisionWorkerRequest {
@@ -23,7 +24,7 @@ export interface DecisionWorkerRequest {
 
 /** worker → host */
 export type DecisionWorkerResponse =
-  | { readonly id: number; readonly type: "done"; readonly answer: Omit<Decision, "model"> }
+  | { readonly id: number; readonly type: "done"; readonly answer: DecisionAnswer }
   | { readonly id: number; readonly type: "error"; readonly message: string };
 
 export interface DecisionWorkerLike {
@@ -78,7 +79,7 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
   private model: DecisionModel = DEFAULT_DECISION_MODEL;
   private worker: DecisionWorkerLike | undefined;
   private seq = 0;
-  private readonly pending = new Map<number, (d: Omit<Decision, "model"> | undefined) => void>();
+  private readonly pending = new Map<number, (d: DecisionAnswer | undefined) => void>();
 
   // @unmanaged(): inversify must not try to inject these test seams.
   constructor(
@@ -93,14 +94,40 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
     this.stop();
   }
 
+  /**
+   * A choice question is asked in a few rotations of its options and the
+   * probabilities averaged: the model favours options by position, so a
+   * single ordering would make the answer depend on how the caller listed
+   * them (see option-order.ts).
+   */
   async decide(state: string, question: DecisionQuestion): Promise<Decision | undefined> {
     const model = this.model;
     if (model === "off") return undefined;
     const repo = DECISION_MODEL_REPOS[model];
     if (!this.available(repo)) return undefined;
+    const text = state.trim();
+    if (question.type !== "choice" || question.options.length < 2) {
+      const answer = await this.ask(repo, text, question);
+      return answer ? ({ ...answer, model } as Decision) : undefined;
+    }
+    const distributions: Readonly<Record<string, number>>[] = [];
+    for (const order of rotations(question.options, CHOICE_ROTATIONS)) {
+      const answer = await this.ask(repo, text, { ...question, options: order });
+      if (answer?.type !== "choice") return undefined;
+      distributions.push(answer.probabilities);
+    }
+    return { type: "choice", ...averageChoices(question.options, distributions), model };
+  }
+
+  /** One round trip to the worker; undefined on error, crash or timeout. */
+  private async ask(
+    repo: string,
+    state: string,
+    question: DecisionQuestion,
+  ): Promise<DecisionAnswer | undefined> {
     const worker = (this.worker ??= this.start(repo));
     const id = ++this.seq;
-    const answer = await new Promise<Omit<Decision, "model"> | undefined>((resolve) => {
+    const answer = await new Promise<DecisionAnswer | undefined>((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         resolve(undefined);
@@ -111,7 +138,7 @@ export class SpexrDecisionBackendService implements SpexrDecisionService {
       });
       worker.postMessage({ id, state, question });
     });
-    return answer ? ({ ...answer, model: model as DecisionModelOn } as Decision) : undefined;
+    return answer;
   }
 
   private start(repo: string): DecisionWorkerLike {
