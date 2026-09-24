@@ -35,3 +35,11 @@ export function chooseAgentRoot(input: {
 export function rememberedRoot(roots: readonly string[], remembered: string | undefined): string | undefined {
   return remembered !== undefined && roots.includes(remembered) ? remembered : roots[0];
 }
+
+/**
+ * Whether running a spec action in `target` would restart an agent that is
+ * running in another folder, which the user is asked to confirm first.
+ */
+export function movesAgent(running: string | undefined, target: string | undefined): boolean {
+  return running !== undefined && target !== undefined && running !== target;
+}

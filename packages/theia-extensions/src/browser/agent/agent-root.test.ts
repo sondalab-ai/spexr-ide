@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseAgentRoot, rememberedRoot } from "./agent-root.js";
+import { chooseAgentRoot, movesAgent, rememberedRoot } from "./agent-root.js";
 
 const A = "file:///w/api";
 const B = "file:///w/web";
@@ -61,5 +61,23 @@ describe("rememberedRoot", () => {
 
   it("is undefined without a workspace folder", () => {
     expect(rememberedRoot([], A)).toBeUndefined();
+  });
+});
+
+describe("movesAgent", () => {
+  it("is true when a spec action would restart an agent running in another folder", () => {
+    expect(movesAgent(A, B)).toBe(true);
+  });
+
+  it("is false when the agent already runs in the spec's folder", () => {
+    expect(movesAgent(A, A)).toBe(false);
+  });
+
+  it("is false when no agent is running, since nothing is interrupted", () => {
+    expect(movesAgent(undefined, B)).toBe(false);
+  });
+
+  it("is false when the spec is outside every workspace folder", () => {
+    expect(movesAgent(A, undefined)).toBe(false);
   });
 });

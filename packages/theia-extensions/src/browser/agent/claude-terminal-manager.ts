@@ -226,6 +226,11 @@ export class ClaudeTerminalManager {
     return this.agentRootUri();
   }
 
+  /** The workspace folder (URI string) of the running agent; undefined when none runs. */
+  runningRootUri(): string | undefined {
+    return this.widget && isReusableTerminal(this.widget) ? this.runningRoot : undefined;
+  }
+
   /**
    * The workspace folder (URI string) the agent runs in, or would run in when
    * started with no folder of its own.

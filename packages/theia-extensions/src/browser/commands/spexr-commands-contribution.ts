@@ -54,7 +54,7 @@ import { SpexrShellLayoutContribution } from "../shell/spexr-shell-layout-contri
 import { SpexrSpecResourcesViewContribution } from "../views/spec-resources-view-contribution.js";
 import { memoryDir, specsDir, agentsDir, SPEC_CONTEXT_DIR } from "../workspace-paths.js";
 import { locateSpec, rootContaining, specContextDirFor } from "../spec/spec-roots.js";
-import { chooseAgentRoot } from "../agent/agent-root.js";
+import { chooseAgentRoot, movesAgent } from "../agent/agent-root.js";
 import {
   buildSpecHandoff,
   buildSpecLintFixPrompt,
@@ -524,8 +524,10 @@ export class SpexrCommandsContribution
       }
 
       const prompt = this.buildWorkflowPrompt(step, spec.frontmatter.slug, spec.raw);
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
       await this.applyStepExpert(step, uri);
-      await this.claudeTerminal.ensureStarted(this.specRootUri(uri));
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(prompt.body);
       await this.claudeTerminal.reveal();
       await this.persistStep(uri, step);
@@ -1083,6 +1085,27 @@ export class SpexrCommandsContribution
     return uri ? new URI(uri) : undefined;
   }
 
+  /**
+   * The folder a spec action runs the agent in: the spec's own. When that
+   * means restarting an agent running in another folder, the user confirms
+   * first; `undefined` means they cancelled and the action should stop.
+   */
+  private async agentFolderForSpec(uri: URI): Promise<{ root: string | undefined } | undefined> {
+    const target = this.specRootUri(uri);
+    const running = this.claudeTerminal.runningRootUri();
+    if (!movesAgent(running, target)) return { root: target };
+    const from = new URI(running!).path.base;
+    const to = new URI(target!).path.base;
+    const confirmed = await new ConfirmDialog({
+      title: "Restart the agent in another folder?",
+      msg: `The agent is running in ${from}. Restart it in ${to} for this spec?`,
+      ok: `Restart in ${to}`,
+      cancel: "Cancel",
+      maxWidth: 480,
+    }).open();
+    return confirmed ? { root: target } : undefined;
+  }
+
   /** The workspace folder (URI string) holding a spec. */
   private specRootUri(uri: URI): string | undefined {
     return rootContaining(this.workspaceRoots(), uri)?.toString();
@@ -1292,7 +1315,9 @@ export class SpexrCommandsContribution
       const contextDir = uri.parent.resolve(SPEC_CONTEXT_DIR).resolve(slug);
       const { contextFiles, links } = await this.loadSpecContext(contextDir);
       const payload = buildSpecHandoff({ specBody: content.value, contextFiles, links });
-      await this.claudeTerminal.ensureStarted(this.specRootUri(uri));
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(payload);
       await this.claudeTerminal.reveal();
       this.messages.info(`Sent ${slug} to agent.`);
@@ -1352,7 +1377,9 @@ export class SpexrCommandsContribution
       const content = await this.fileService.read(uri);
       const spec = parseSpec(content.value, uri.toString());
       const prompt = RETROSPECTIVE_PROMPT(spec.frontmatter.slug, spec.raw);
-      await this.claudeTerminal.ensureStarted(this.specRootUri(uri));
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(prompt);
       await this.claudeTerminal.reveal();
       this.messages.info(`Started retrospective for ${spec.frontmatter.slug}.`);
@@ -1387,7 +1414,9 @@ export class SpexrCommandsContribution
       await this.flushDirtyEditor(uri);
       const slug = uri.path.base.replace(/\.md$/, "");
       const prompt = buildSpecLintFixPrompt({ path: this.workspacePath(uri), findings });
-      await this.claudeTerminal.ensureStarted(this.specRootUri(uri));
+      const folder = await this.agentFolderForSpec(uri);
+      if (!folder) return;
+      await this.claudeTerminal.ensureStarted(folder.root);
       await this.sendAndSubmit(prompt);
       await this.claudeTerminal.reveal();
       const count = findings.length;
