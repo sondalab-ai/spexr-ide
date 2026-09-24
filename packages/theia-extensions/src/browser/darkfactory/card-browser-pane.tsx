@@ -161,8 +161,13 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
           </select>
         )}
         {!state.following && links.length > 0 && (
-          <span className="spexr-df-browser__paused" title="You typed an address; pick a session link to follow the session again">
-            not following
+          <span
+            className="spexr-df-browser__paused"
+            role="img"
+            aria-label="Not following the session"
+            title="Not following the session: you typed an address. Pick a session link to follow it again."
+          >
+            <i className="codicon codicon-debug-pause" />
           </span>
         )}
         <button

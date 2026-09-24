@@ -2684,7 +2684,7 @@ code {
   border-radius: var(--sl-radius-md) var(--sl-radius-md) 0 0;
 }
 .spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; overflow: hidden; }
-.spexr-df-pinned__actions { display: flex; align-items: center; gap: var(--sl-space-3); min-width: 0; }
+.spexr-df-pinned__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2) var(--sl-space-3); min-width: 0; }
 .spexr-df-pinned__project {
   /* Same as the grid card: the name yields to the actions beside it. */
   flex: 0 1 auto; min-width: 0;
@@ -2791,7 +2791,8 @@ code {
   background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary);
 }
 .spexr-df-browser__icon:disabled { opacity: 0.4; cursor: default; }
-.spexr-df-browser__address { flex: 1 1 auto; min-width: 0; margin: 0; }
+/* The address keeps priority over the link picker when the card is narrow. */
+.spexr-df-browser__address { flex: 1 1 8em; min-width: 5em; margin: 0; }
 .spexr-df-browser__input {
   width: 100%; box-sizing: border-box; padding: 3px var(--sl-space-2);
   font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs); color: var(--sl-text-primary);
@@ -2800,11 +2801,11 @@ code {
 }
 .spexr-df-browser__input:focus { border-color: var(--tile-accent); }
 .spexr-df-browser__links {
-  flex: 0 1 auto; max-width: 14em; padding: 2px var(--sl-space-1);
+  flex: 0 1 auto; min-width: 0; width: 7.5em; max-width: 14em; padding: 2px var(--sl-space-1);
   font-size: var(--sl-text-xs); color: var(--sl-text-primary); background: var(--sl-bg-surface);
   border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
 }
-.spexr-df-browser__paused { flex: none; font-size: var(--sl-text-xs); font-style: italic; color: var(--sl-text-muted); }
+.spexr-df-browser__paused { flex: none; display: inline-flex; color: var(--sl-text-muted); }
 .spexr-df-browser__stage { flex: 1 1 0; min-height: 0; position: relative; }
 .spexr-df-browser__host,
 .spexr-df-browser__view { position: absolute; inset: 0; width: 100%; height: 100%; }
