@@ -90,6 +90,9 @@ import {
 import { SmartSearchWidget } from "./search/smart-search-widget.js";
 import { SpexrSearchServiceProxy, SEARCH_SERVICE_PATH } from "./search/smart-search-service.js";
 import { SpexrGenerationModelContribution } from "./search/generation-model-contribution.js";
+import { SpexrDecisionServiceProxy } from "./decision/decision-service-proxy.js";
+import { SpexrDecisionModelContribution } from "./decision/decision-model-contribution.js";
+import { DECISION_SERVICE_PATH } from "../common/decision-protocol.js";
 import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/smart-search-client.js";
 import { DescriptionJobStatusBarContribution } from "./search/description-job-status-bar-contribution.js";
 import { SpexrDarkfactoryWidget } from "./darkfactory/darkfactory-wall-widget.js";
@@ -321,6 +324,14 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     .inSingletonScope();
   bind(SpexrGenerationModelContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrGenerationModelContribution);
+  bind(SpexrDecisionServiceProxy)
+    .toDynamicValue((ctx) => {
+      const connection = ctx.container.get(WebSocketConnectionProvider);
+      return connection.createProxy(DECISION_SERVICE_PATH);
+    })
+    .inSingletonScope();
+  bind(SpexrDecisionModelContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrDecisionModelContribution);
   bindSmartSearchWidgetFactory(bind);
   bind(WidgetFactory)
     .toDynamicValue((ctx) => ({

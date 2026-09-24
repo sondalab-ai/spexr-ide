@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf lib .turbo *.tsbuildinfo",
-    "fetch-model": "node scripts/fetch-search-model.mjs"
+    "fetch-model": "node scripts/fetch-search-model.mjs",
+    "eval:decisions": "node eval/decisions/eval.mjs"
   },
   "theiaExtensions": [
     {
@@ -48,7 +49,8 @@
     "@theia/userstorage": "^1.75.0",
     "@theia/variable-resolver": "^1.75.0",
     "@theia/workspace": "^1.75.0",
-    "@huggingface/transformers": "^4.2.0",
+    "@huggingface/transformers": "^4.3.0",
+    "open-jev": "^0.1.2",
     "dompurify": "^3.4.14",
     "highlight.js": "^11.12.0",
     "ignore": "^7.0.6",
