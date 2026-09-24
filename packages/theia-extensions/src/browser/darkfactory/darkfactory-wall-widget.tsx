@@ -50,6 +50,7 @@ import {
 import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
 import { matchLaunchedSession } from "./new-session-match.js";
 import { keepPinnedTiles } from "./pinned-tiles.js";
+import { resolveForks, type PendingFork } from "./fork-adoption.js";
 import {
   applyLinks,
   closeBrowser,
@@ -171,6 +172,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private readonly browsers = new Map<string, CardBrowserState>();
   /** Session id → the links its transcript produced, newest first. */
   private readonly sessionLinks = new Map<string, SessionLink[]>();
+
+  /** Cards forked in place, waiting for the scan to name the fork's session. */
+  private forks: PendingFork[] = [];
 
   /**
    * Sessions started from the launcher, still keyed by a placeholder: a new
@@ -338,6 +342,16 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   /** Fork a live session into a writable terminal embedded in the pinned card. */
   private forkTakeover(tile: AgentTile): void {
+    // The fork writes a new session; remember what existed so the scan that
+    // first shows it can move this card onto it (see adoptForks).
+    this.forks = [
+      ...this.forks.filter((f) => f.fromId !== tile.sessionId),
+      {
+        fromId: tile.sessionId,
+        projectPath: tile.projectPath,
+        knownBefore: new Set(this.tiles.map((t) => t.sessionId)),
+      },
+    ];
     void (async () => {
       const plan = await this.service.planFocus(tile.sessionId);
       await this.terminals.openEmbedded(plan.sessionId, plan.projectPath, plan.configDir, true);
@@ -571,6 +585,28 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   /**
+   * Move forked cards onto the session their fork wrote: the terminal, the card
+   * and its browser follow, so the card describes the session it is driving
+   * rather than the one it was forked from.
+   */
+  private adoptForks(tiles: AgentTile[]): void {
+    const { adopted, pending } = resolveForks(this.forks, this.pinned, tiles);
+    this.forks = pending;
+    for (const { fromId, toId } of adopted) {
+      this.terminals.rekey(fromId, toId);
+      this.pinned = this.pinned.map((id) => (id === fromId ? toId : id));
+      this.pinnedEvents.delete(fromId);
+      this.pinnedEvents.set(toId, []);
+      const browser = this.browsers.get(fromId);
+      if (browser) {
+        this.browsers.delete(fromId);
+        this.browsers.set(toId, browser);
+        if (browser.open) void this.refreshLinks(toId);
+      }
+    }
+  }
+
+  /**
    * Load a tile's project in this window. Kept separate from {@link pin}: pinning
    * drives the session in place, this repoints the whole workspace and costs a
    * window reload.
@@ -670,6 +706,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       if (!live.has(id)) this.unpin(id);
     }
     this.adoptLaunched(tiles);
+    this.adoptForks(tiles);
     // A push is how the wall hears that transcripts changed: re-read the links
     // of every open browser, so a new pull request or server shows up.
     for (const [key, browser] of this.browsers) {
