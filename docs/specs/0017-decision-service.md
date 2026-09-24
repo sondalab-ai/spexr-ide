@@ -106,9 +106,10 @@ that as "leave things as they are". Every caller passes its own confidence
 threshold and ignores answers below it.
 
 The service wraps open-jev behind this interface, so the library (0.1.x, young)
-can be replaced or vendored without touching callers. It runs in the backend
-process pool like the existing embedding model, one request at a time, with a
-per-call timeout.
+can be replaced or vendored without touching callers. The model runs in its own
+child process, like the generation worker, one request at a time, with a
+per-call timeout: its inference is a synchronous native call of up to a second,
+which in the backend process would stall every RPC and the wall.
 
 ### Model
 

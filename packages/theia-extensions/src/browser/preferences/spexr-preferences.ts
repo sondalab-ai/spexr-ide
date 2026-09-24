@@ -79,6 +79,9 @@ export const SPEXR_SEARCH_GLOBAL_IGNORE_PROMPTED = "spexr.search.globalIgnore.pr
  */
 export const SPEXR_SEARCH_GEN_MODEL_PREFERENCE = "spexr.search.generationModel";
 
+/** Key for the local decision model preference (spec 0017). */
+export const SPEXR_DECISIONS_MODEL_PREFERENCE = "spexr.decisions.model";
+
 /** Quantisation the generation model is loaded at. See the model's `onnx/` files. */
 export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDtype";
 
@@ -278,6 +281,20 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "Generate AI file descriptions locally for search results. " +
         "Turn off to skip the local model and show heuristic descriptions only.",
+    },
+    [SPEXR_DECISIONS_MODEL_PREFERENCE]: {
+      type: "string",
+      enum: ["kev-4b", "kev-0.6b", "off"],
+      default: "kev-4b",
+      enumDescriptions: [
+        "Most accurate, and dependable when confident: SPEXR acts on its own above 70% confidence. About 2.5 GB, about a second per decision.",
+        "Lighter (about 0.4 GB, a tenth of a second) but less accurate, so SPEXR asks more often.",
+        "No local decisions: SPEXR always asks.",
+      ],
+      description:
+        "Small local model SPEXR uses for closed decisions, such as which expert takes a TODO item. " +
+        "Its weights must sit in the app's models directory (`pnpm fetch-model`; add " +
+        "`SPEXR_DECISION_MODELS=kev-4b,kev-0.6b` to fetch both). Until they are there, SPEXR asks. User-scoped.",
     },
     [SPEXR_SEARCH_GEN_MODEL_PREFERENCE]: {
       type: "string",

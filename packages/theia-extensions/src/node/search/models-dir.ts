@@ -26,3 +26,8 @@ export function resolveModelsDir(): string {
 export function resolveWorkerPath(): string {
   return join(resolvePackageDir(), "lib", "node", "search", "description-worker.js");
 }
+
+/** Absolute path to the compiled decision worker entry (spec 0017). */
+export function resolveDecisionWorkerPath(): string {
+  return join(resolvePackageDir(), "lib", "node", "decision", "decision-worker.js");
+}
