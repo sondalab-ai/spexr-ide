@@ -51,3 +51,27 @@ export function fallBackOnContextLoss(terminal: object): { dispose(): void } | u
   const addon = (terminal as { webglAddon?: ContextLossSource }).webglAddon;
   return addon?.onContextLoss(() => addon.dispose());
 }
+
+interface RenderServiceHost {
+  readonly cols: number;
+  readonly rows: number;
+  readonly _core?: { readonly _renderService?: { handleResize(cols: number, rows: number): void } };
+}
+
+/**
+ * Redraw a terminal from scratch as its card is shown again, the way a manual
+ * resize does: rebuild its own render model at its current size. Not
+ * `clearTextureAtlas()`: xterm shares one glyph atlas between every terminal
+ * with the same font and colours, and only the caller rebuilds after a clear,
+ * so every other terminal kept drawing from positions now holding other
+ * glyphs until it was resized. Reads xterm's private render service; absent,
+ * this is a no-op.
+ */
+export function redrawShownTerminal(terminal: object): void {
+  try {
+    const xterm = (terminal as { getTerminal?: () => RenderServiceHost }).getTerminal?.();
+    xterm?._core?._renderService?.handleResize(xterm.cols, xterm.rows);
+  } catch {
+    /* terminal not opened yet */
+  }
+}

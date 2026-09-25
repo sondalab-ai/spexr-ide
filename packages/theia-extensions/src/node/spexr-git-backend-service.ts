@@ -2,7 +2,7 @@ import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { isAbsolute, resolve as resolvePath, join } from "node:path";
 import { existsSync, statSync, watch, type FSWatcher } from "node:fs";
 import { rm } from "node:fs/promises";
-import simpleGit, { type SimpleGit } from "simple-git";
+import simpleGit, { type SimpleGit, type SimpleGitOptions } from "simple-git";
 import type {
   SpexrGitService,
   SpexrGitClient,
@@ -39,6 +39,35 @@ const MAX_COMMIT_DIFF_CHARS = 512_000;
  * process behind on every tick.
  */
 const BACKGROUND_FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * The simple-git checks an inherited environment can trip. Passing any
+ * environment through `.env()` makes simple-git vet all of it, including config
+ * set through GIT_CONFIG_COUNT/KEY/VALUE, so an inherited EDITOR, PAGER,
+ * GIT_SSH_COMMAND or credential helper would fail every call. It is the user's
+ * own environment, which a spawn without `.env()` inherits unchecked, so these
+ * are granted. The checks that guard arguments only stay on: a custom binary,
+ * `--upload-pack`/`--receive-pack`, and `ext::` protocol overrides.
+ */
+const INHERITED_ENV_UNSAFE: NonNullable<SimpleGitOptions["unsafe"]> = {
+  allowUnsafeAlias: true,
+  allowUnsafeAskPass: true,
+  allowUnsafeConfigEnvCount: true,
+  allowUnsafeConfigPaths: true,
+  allowUnsafeCredentialHelper: true,
+  allowUnsafeDiffExternal: true,
+  allowUnsafeDiffTextConv: true,
+  allowUnsafeEditor: true,
+  allowUnsafeFilter: true,
+  allowUnsafeFsMonitor: true,
+  allowUnsafeGitProxy: true,
+  allowUnsafeGpgProgram: true,
+  allowUnsafeHooksPath: true,
+  allowUnsafeMergeDriver: true,
+  allowUnsafePager: true,
+  allowUnsafeSshCommand: true,
+  allowUnsafeTemplateDir: true,
+};
 
 export interface GitBackendDeps {
   /** Directory-watch seam (default: node:fs `watch`); tests capture the calls. */
@@ -253,7 +282,8 @@ export class SpexrGitBackendService implements SpexrGitService {
    * watcher bookkeeping this needs no staleness check.
    */
   private readonly gitDirs = new Map<string, string>();
-  private debounce?: ReturnType<typeof setTimeout>;
+  /** Per repository, so a burst in one cannot swallow another's notification. */
+  private readonly debounces = new Map<string, ReturnType<typeof setTimeout>>();
 
   /** Absent when the backend module could not supply one; generation then no-ops. */
   private readonly generator: DescriptionGenerator | undefined;
@@ -271,7 +301,13 @@ export class SpexrGitBackendService implements SpexrGitService {
   private git(root: string): SimpleGit {
     let client = this.clients.get(root);
     if (!client) {
-      client = simpleGit(root, { maxConcurrentProcesses: 1 });
+      // No optional locks: a plain `status` otherwise takes .git/index.lock to
+      // write back refreshed stat info, the git-dir watcher reports that as a
+      // repository change, and the refresh it triggers does it again, forever.
+      client = simpleGit(root, { maxConcurrentProcesses: 1, unsafe: INHERITED_ENV_UNSAFE }).env({
+        ...process.env,
+        GIT_OPTIONAL_LOCKS: "0",
+      });
       this.clients.set(root, client);
     }
     return client;
@@ -361,8 +397,14 @@ export class SpexrGitBackendService implements SpexrGitService {
    */
   private armWatch(root: string, gitDir: string, commonDir: string): void {
     const notify = (): void => {
-      if (this.debounce) clearTimeout(this.debounce);
-      this.debounce = setTimeout(() => this.client?.onRepositoryChanged(), WATCH_DEBOUNCE_MS);
+      clearTimeout(this.debounces.get(root));
+      this.debounces.set(
+        root,
+        setTimeout(() => {
+          this.debounces.delete(root);
+          this.client?.onRepositoryChanged(root);
+        }, WATCH_DEBOUNCE_MS),
+      );
     };
     // HEAD / index / MERGE_HEAD / ORIG_HEAD are per-worktree and live in gitDir.
     // Branch refs are shared, so they come from the common dir — in a linked
@@ -433,7 +475,8 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   dispose(): void {
-    if (this.debounce) clearTimeout(this.debounce);
+    for (const timer of this.debounces.values()) clearTimeout(timer);
+    this.debounces.clear();
     for (const root of [...this.armed.keys()]) this.disarm(root);
     this.gitDirs.clear();
   }
@@ -675,6 +718,7 @@ export class SpexrGitBackendService implements SpexrGitService {
     const git = simpleGit(root, {
       maxConcurrentProcesses: 1,
       timeout: { block: BACKGROUND_FETCH_TIMEOUT_MS },
+      unsafe: INHERITED_ENV_UNSAFE,
     }).env({
       ...process.env,
       // There is no terminal to answer a credential prompt on, and a blocked

@@ -22,3 +22,19 @@ describe(".spexr-df-pinned__bar", () => {
     expect(bar).toMatch(/margin:[^;]*calc\(var\(--df-pinned-bar-inset\) - var\(--sl-space-4\)\)/);
   });
 });
+
+// The kit draws the live light under its host's children. The pinned card's
+// opaque sticky bar and terminal box covered it: no light along the top edge,
+// and a hard dark rectangle cut out of its inner fade.
+describe("the pinned card's live light", () => {
+  it("sits above the sticky bar", () => {
+    const zOf = (block: string): number => Number(block.match(/z-index:\s*(-?\d+)/)![1]);
+    const bar = zOf(rule(".spexr-df-pinned__bar"));
+    const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
+    const light = css.match(
+      /\.spexr-df-pinned\.sl-fx-aurora > \.sl-fx-live__canvas,\s*\.spexr-df-pinned\.sl-fx-aurora::after \{([^}]*)\}/,
+    );
+    expect(light, "a rule lifts both the canvas and the ring").not.toBeNull();
+    expect(zOf(light![1])).toBeGreaterThan(bar);
+  });
+});

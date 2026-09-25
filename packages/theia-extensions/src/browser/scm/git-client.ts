@@ -10,10 +10,11 @@ export const SpexrGitClientToken = Symbol("SpexrGitClientDispatcher");
  */
 @injectable()
 export class SpexrGitClientDispatcher implements SpexrGitClient {
-  private readonly emitter = new Emitter<void>();
-  readonly onRepositoryChanged$: Event<void> = this.emitter.event;
+  private readonly emitter = new Emitter<string>();
+  /** Fires the root of the repository that changed. */
+  readonly onRepositoryChanged$: Event<string> = this.emitter.event;
 
-  onRepositoryChanged(): void {
-    this.emitter.fire();
+  onRepositoryChanged(root: string): void {
+    this.emitter.fire(root);
   }
 }
