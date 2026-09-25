@@ -69,7 +69,7 @@ const StepButton: React.FC<{
         <button
           ref={btnRef}
           type="button"
-          className="spexr-stepper__btn"
+          className={`sl-btn ${state === "current" ? "sl-btn--primary" : "sl-btn--ghost"} sl-btn--sm spexr-stepper__btn sl-fx-glass sl-fx-glass--pane sl-fx-press`}
           onClick={() => onStepClick(step)}
           onMouseEnter={show}
           onMouseLeave={hide}
@@ -88,7 +88,7 @@ const StepButton: React.FC<{
           {state === "current" && onForceStep ? (
             <button
               type="button"
-              className="spexr-stepper__overlay spexr-stepper__overlay--force"
+              className="sl-icon-btn sl-icon-btn--round spexr-stepper__action spexr-stepper__action--force"
               onClick={(e) => {
                 e.stopPropagation();
                 onForceStep(step);
@@ -102,7 +102,7 @@ const StepButton: React.FC<{
           {isLastForced && onUnforceStep ? (
             <button
               type="button"
-              className="spexr-stepper__overlay spexr-stepper__overlay--undo"
+              className="sl-icon-btn sl-icon-btn--round spexr-stepper__action spexr-stepper__action--undo"
               onClick={(e) => {
                 e.stopPropagation();
                 onUnforceStep(step);
@@ -116,7 +116,7 @@ const StepButton: React.FC<{
           {isUnverified ? (
             <button
               type="button"
-              className="spexr-stepper__warning"
+              className="sl-icon-btn sl-icon-btn--round spexr-stepper__action spexr-stepper__action--warning"
               onClick={(e) => {
                 e.stopPropagation();
                 void new ConfirmDialog({

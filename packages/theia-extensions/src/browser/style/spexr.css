@@ -1331,106 +1331,37 @@ code {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 22px;
+  min-height: 2rem;
   margin-top: 4px;
 }
 
-/* Shared badge base for all three action icons (force / undo / warning) —
-   identical size, shape, border, and shadow so they read as one family;
-   only the fill color carries meaning. */
-.spexr-stepper__overlay,
-.spexr-stepper__warning {
+/* Force, undo and warning are the kit's round icon buttons; only the glyph's
+   colour carries meaning. Force shows on hover or keyboard focus. */
+.spexr-stepper__action .codicon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.spexr-stepper__action--force {
   display: none;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border-radius: 999px;
-  border: 2px solid var(--sl-bg-canvas);
-  color: var(--sl-text-on-accent);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: var(--sl-shadow-md);
-  transition:
-    box-shadow var(--sl-motion-fast) var(--sl-motion-ease),
-    background var(--sl-motion-fast) var(--sl-motion-ease);
+  color: var(--sl-accent-default);
 }
 
-/* Codicon glyph inside a badge: size to the badge, override the codicon
-   font's default 16px so it sits crisp and centered in the 20px circle. */
-.spexr-stepper__overlay .codicon,
-.spexr-stepper__warning .codicon {
-  font-size: 13px;
-  line-height: 1;
-}
-
-.spexr-stepper__item:hover .spexr-stepper__overlay--force {
+.spexr-stepper__item:is(:hover, :focus-within) .spexr-stepper__action--force {
   display: inline-flex;
 }
 
-.spexr-stepper__overlay--force {
-  background: var(--sl-accent-default);
-}
-
-.spexr-stepper__overlay--force:hover {
-  box-shadow:
-    var(--sl-shadow-lg),
-    0 0 0 6px color-mix(in srgb, var(--sl-accent-default) 35%, transparent);
-}
-
-/* Always visible (not hover-gated) — undoing a force is a correction the
-   user should be able to reach without first re-discovering the step. */
-.spexr-stepper__overlay--undo {
-  display: inline-flex;
-  background: var(--sl-text-secondary);
-}
-
-.spexr-stepper__overlay--undo:hover {
-  box-shadow:
-    var(--sl-shadow-lg),
-    0 0 0 6px color-mix(in srgb, var(--sl-text-secondary) 35%, transparent);
-}
-
-.spexr-stepper__warning {
-  display: inline-flex;
-  background: var(--sl-status-warning);
-}
-
-.spexr-stepper__warning:hover {
-  box-shadow:
-    var(--sl-shadow-lg),
-    0 0 0 6px color-mix(in srgb, var(--sl-status-warning) 35%, transparent);
-}
-
-.spexr-stepper__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: var(--sl-radius-sm);
-  border: 1px solid var(--sl-border-subtle);
-  background: var(--sl-bg-surface);
+.spexr-stepper__action--undo {
   color: var(--sl-text-secondary);
-  font: inherit;
-  font-size: var(--sl-text-xs);
-  cursor: pointer;
-  transition:
-    border-color var(--sl-motion-fast) var(--sl-motion-ease),
-    background var(--sl-motion-fast) var(--sl-motion-ease),
-    color var(--sl-motion-fast) var(--sl-motion-ease);
 }
 
-.spexr-stepper__btn:hover:not(:disabled) {
-  border-color: var(--sl-accent-default);
-  color: var(--sl-text-primary);
+.spexr-stepper__action--warning {
+  color: var(--sl-status-warning);
 }
 
-.spexr-stepper__btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+/* The kit's button; the stepper adds only the gap before the label. */
+.spexr-stepper__btn {
+  gap: 6px;
 }
 
 .spexr-stepper__num {
@@ -1457,28 +1388,18 @@ code {
   font-weight: 500;
 }
 
-.spexr-stepper__item--done .spexr-stepper__btn {
-  border-color: var(--sl-accent-default);
-  background: var(--sl-accent-subtle);
-  color: var(--sl-text-primary);
-}
-
 .spexr-stepper__item--done .spexr-stepper__num {
   background: var(--sl-accent-default);
   border-color: var(--sl-accent-default);
   color: var(--sl-bg-canvas);
 }
 
-.spexr-stepper__item--current .spexr-stepper__btn {
-  border-color: var(--sl-accent-default);
-  color: var(--sl-text-primary);
-  box-shadow: 0 0 0 2px var(--sl-accent-subtle);
-}
-
+/* The current step is the kit's primary button: its badge takes the button's
+   own text colour rather than the accent fill it sits on. */
 .spexr-stepper__item--current .spexr-stepper__num {
-  background: var(--sl-accent-default);
-  border-color: var(--sl-accent-default);
-  color: var(--sl-bg-canvas);
+  background: transparent;
+  border-color: currentColor;
+  color: inherit;
 }
 
 /* Custom tooltip for stepper buttons — explains the prompt sent on click.
@@ -1544,8 +1465,7 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spexr-progress__fill,
-  .spexr-stepper__btn {
+  .spexr-progress__fill {
     transition: none;
   }
 
