@@ -145,6 +145,26 @@ describe("DescriptionJob", () => {
     await rm(env.root, { recursive: true, force: true });
   });
 
+  it("cancels a pause that has not taken effect yet when resumed", async () => {
+    const idx = new VectorIndex();
+    idx.upsert(rec("a.ts"));
+    idx.upsert(rec("b.ts"));
+    const generator = new FakeGenerator();
+    const env = await makeEnv(idx, generator);
+
+    const job = new DescriptionJob(env.d);
+    // Pause and resume within one file's generation: the pause must not land later.
+    generator.beforeResolve = () => {
+      generator.beforeResolve = undefined;
+      job.pause();
+      void job.resume();
+    };
+    await job.start({ regenerate: false });
+
+    expect(job.status).toMatchObject({ state: "complete", done: 2, total: 2 });
+    await rm(env.root, { recursive: true, force: true });
+  });
+
   it("pauses after the current file and resumes the rest", async () => {
     const idx = new VectorIndex();
     idx.upsert(rec("a.ts"));

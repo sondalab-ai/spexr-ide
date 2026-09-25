@@ -1,6 +1,7 @@
 import * as React from "@theia/core/shared/react";
 import { LifeGrid, SPECIES, gridSizeFor } from "./life-grid.js";
 import { advanceTrail } from "./life-trail.js";
+import { POWER_SAVE_ATTRIBUTE, isPowerSaving } from "../power/power-save-dom.js";
 
 /** Cell pitch, generation period, and the share of brightness a dead cell keeps per generation. */
 const CELL_PX = 4;
@@ -18,7 +19,7 @@ const FADE = 0.72;
  * smoothing off, so drawing costs the same however many cells are lit, and the
  * lensed panes re-filter once per tick rather than every frame. It pauses while
  * the window or the panel is hidden, draws a single still frame under reduced
- * motion, and draws nothing in high contrast. Strength comes from CSS, and
+ * motion or while saving power, and draws nothing in high contrast. Strength comes from CSS, and
  * each species' colour from the canvas's `--sl-life-species-<n>` properties.
  */
 export const LifeBackground = React.memo(function LifeBackground(): React.ReactElement {
@@ -102,7 +103,8 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
       draw();
     };
 
-    const running = (): boolean => onScreen && !document.hidden && !reduced.matches && !highContrast();
+    const running = (): boolean =>
+      onScreen && !document.hidden && !reduced.matches && !highContrast() && !isPowerSaving();
     const sync = (): void => {
       if (running() && timer === undefined) {
         timer = setInterval(() => {
@@ -130,7 +132,7 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
     });
     visibility.observe(host);
     const theme = new MutationObserver(restyle);
-    theme.observe(root, { attributes: true, attributeFilter: ["data-sl-theme"] });
+    theme.observe(root, { attributes: true, attributeFilter: ["data-sl-theme", POWER_SAVE_ATTRIBUTE] });
     document.addEventListener("visibilitychange", sync);
     reduced.addEventListener("change", restyle);
 

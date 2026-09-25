@@ -146,6 +146,32 @@ body {
   --slfx-pane-swell: 1;
 }
 
+/* Power saving (power-save-dom.ts): decorative loops stand still. Status
+   animations (working LEDs, loading pulses, alerts) keep running because
+   they carry information. The kit's effects are stilled with its own
+   kill-switch list (effects.css) keyed on our flag instead of its
+   data-sl-fx="off", which would stop it dressing content that mounts
+   while saving. */
+:root[data-spexr-power-save] :is(.sl-fx-glass, .sl-fx-glass__lit, .sl-fx-press, .sl-fx-aurora, .sl-fx-aurora__glow, .sl-fx-liquid, .sl-fx-liquid__skin, .sl-fx-goo, .sl-fx-goo__field, .sl-fx-glitch, .sl-fx-glitch__text, .sl-fx-glitch__shards, .sl-fx-glitch__shard) {
+  animation: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  border-image: none !important;
+  backdrop-filter: none !important;
+  --slfx-fill-a: 100% !important;
+}
+
+:root[data-spexr-power-save] .sl-fx-goo__member {
+  animation: none !important;
+}
+
+:root[data-spexr-power-save] .spexr-welcome-bg__blob::before,
+:root[data-spexr-power-save] .spexr-smart-search__map-cta,
+:root[data-spexr-power-save] .spexr-smart-search__map-glyph {
+  animation: none;
+}
+
 /* The Game of Life under the Spec and Darkfactory panels: a zero-height
    sticky strip at the top of the scrolling node, holding a canvas that
    life-background.tsx sizes to that node. Negative margins cancel the node's

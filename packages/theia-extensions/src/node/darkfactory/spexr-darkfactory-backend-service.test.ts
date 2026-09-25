@@ -742,6 +742,34 @@ describe("wall polling", () => {
   });
 });
 
+describe("setPollingPaused", () => {
+  it("stops the rescan while paused and restarts it after", async () => {
+    vi.useFakeTimers();
+    try {
+      let scans = 0;
+      const s = svc({
+        configDirs: [],
+        detect: () => false,
+        watchDir: fakeWatch([]),
+        listTranscripts: async () => {
+          scans++;
+          return [];
+        },
+      });
+      s.setClient(fakeClient);
+      s.setPollingPaused(true);
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(scans).toBe(0);
+      s.setPollingPaused(false);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(scans).toBe(1);
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("searchSessions", () => {
   /**
    * `count` sessions, the last of which carries the OLDEST mtime: listTiles

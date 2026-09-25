@@ -15,6 +15,7 @@ import {
 import { SpexrSearchServiceProxy } from "./smart-search-service.js";
 import { SpexrSearchClientDispatcher } from "./smart-search-client.js";
 import { formatScore, scoreColor, statusLabel, debounce, CATEGORY_LABELS, categoryColor } from "./smart-search-format.js";
+import { isPowerSaving } from "../power/power-save-dom.js";
 
 const INDEXING_MESSAGES = [
   "Scanning your workspace…",
@@ -99,9 +100,12 @@ export class SmartSearchWidget extends ReactWidget {
   }
 
   private pollStatus(): void {
+    let ticks = 0;
     const tick = async (): Promise<void> => {
       const root = this.root();
       if (!root) return;
+      // Saving power and not indexing: every fifth second is enough.
+      if (isPowerSaving() && this.status.state !== "indexing" && ticks++ % 5 !== 0) return;
       this.status = await this.service.getIndexStatus(root);
       if (this.status.state === "indexing") {
         if (this.indexingStart === undefined) this.indexingStart = Date.now();

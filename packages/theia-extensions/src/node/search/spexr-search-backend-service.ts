@@ -212,6 +212,23 @@ export class SpexrSearchBackendService implements SpexrSearchService {
     (await ws.jobReady).pause();
   }
 
+  /**
+   * Pause every description job that is running, for power saving, and
+   * return their roots so exactly those can be resumed later; a job the user
+   * paused stays paused.
+   */
+  async pauseRunningJobs(): Promise<string[]> {
+    const paused: string[] = [];
+    for (const [root, ws] of this.workspaces) {
+      if (!ws.jobReady) continue;
+      const job = await ws.jobReady;
+      if (job.status.state !== "running") continue;
+      job.pause();
+      paused.push(root);
+    }
+    return paused;
+  }
+
   async resumeDescriptionJob(root: string): Promise<void> {
     const ws = this.workspaces.get(root);
     if (!ws?.jobReady) return;

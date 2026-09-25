@@ -3,17 +3,20 @@ import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-bar/status-bar";
 import type { SpexrResourceService } from "../../common/resource-protocol.js";
 import { formatResourceEntry, formatResourceTooltip } from "./resource-status-format.js";
+import { isPowerSaving } from "../power/power-save-dom.js";
 
 /** Symbol for the backend resource service proxy, bound in the frontend module. */
 export const SpexrResourceServiceProxy = Symbol("SpexrResourceServiceProxy");
 
 const ENTRY_ID = "spexr-resources";
 const POLL_MS = 4_000;
+/** Slower while saving power: each sample is a `ps` run in the backend. */
+const POWER_SAVE_POLL_MS = 20_000;
 
 /**
  * SPEXR's memory and CPU in the status bar, with a per-group breakdown on
- * hover. Polls the backend while the window is visible; a hidden window
- * skips its turns. The entry is removed where usage cannot be measured.
+ * hover. Polls the backend while the window is visible, less often while
+ * saving power; a hidden window skips its turns. The entry is removed where usage cannot be measured.
  */
 @injectable()
 export class SpexrResourceStatusBarContribution implements FrontendApplicationContribution {
@@ -44,6 +47,6 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
         this.statusBar.removeElement(ENTRY_ID);
       }
     }
-    this.timer = setTimeout(() => void this.poll(), POLL_MS);
+    this.timer = setTimeout(() => void this.poll(), isPowerSaving() ? POWER_SAVE_POLL_MS : POLL_MS);
   }
 }

@@ -274,6 +274,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private loopMonitor?: ReturnType<typeof setInterval>;
   /** Periodic rescan timer; the watchers are the fast path, this is the floor. */
   private poll: ReturnType<typeof setInterval> | undefined;
+  /** Set while power saving: the periodic rescan stays off, the watchers keep working. */
+  private pollPaused = false;
   private readonly wallWatchers: FSWatcher[] = [];
   /** Single-flight push state: while a scan runs, events mark it dirty for one follow-up scan. */
   private scanInFlight = false;
@@ -993,7 +995,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * an in-flight scan coalesces instead of stacking another one.
    */
   private startPolling(): void {
-    if (this.poll) return;
+    if (this.poll || this.pollPaused) return;
     this.poll = setInterval(() => {
       void this.pushTiles();
     }, POLL_INTERVAL_MS);
@@ -1111,6 +1113,21 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       for (const ref of refs) out.push({ harness: h, ref });
     }
     return out;
+  }
+
+  /**
+   * Stop or restart the periodic rescan, for power saving. The directory
+   * watchers stay armed, so the wall still follows the sessions that write;
+   * only the safety-net full scan (with its `ps` and `lsof` runs) pauses.
+   */
+  setPollingPaused(paused: boolean): void {
+    this.pollPaused = paused;
+    if (paused && this.poll) {
+      clearInterval(this.poll);
+      this.poll = undefined;
+    } else if (!paused && this.watching) {
+      this.startPolling();
+    }
   }
 
   dispose(): void {

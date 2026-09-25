@@ -1,4 +1,5 @@
 import * as React from "react";
+import { POWER_SAVE_ATTRIBUTE, isPowerSaving } from "../power/power-save-dom.js";
 
 /** Decorative blobs; `depth` pairs with the per-class parallax factor in CSS. */
 const BLOBS = ["a", "b", "c", "d", "e"] as const;
@@ -13,7 +14,8 @@ const FOLLOW = 0.02;
  * animation, while a requestAnimationFrame loop eases two CSS custom properties
  * (`--wx`, `--wy`, normalized to roughly -1..1) toward the pointer position so
  * the blobs trail the mouse very slowly via per-blob parallax. Honors
- * `prefers-reduced-motion` by leaving the layer static.
+ * `prefers-reduced-motion` by leaving the layer static, and stops the loop
+ * while SPEXR saves power (the CSS stills the drift then too).
  */
 export const WelcomeBackground: React.FC = () => {
   const ref = React.useRef<HTMLDivElement>(null);
@@ -44,10 +46,22 @@ export const WelcomeBackground: React.FC = () => {
       raf = requestAnimationFrame(tick);
     };
 
+    const sync = (): void => {
+      if (isPowerSaving()) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      } else if (raf === 0) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    const power = new MutationObserver(sync);
+    power.observe(document.documentElement, { attributes: true, attributeFilter: [POWER_SAVE_ATTRIBUTE] });
+
     window.addEventListener("mousemove", onMove);
-    raf = requestAnimationFrame(tick);
+    sync();
     return () => {
       window.removeEventListener("mousemove", onMove);
+      power.disconnect();
       cancelAnimationFrame(raf);
     };
   }, []);
