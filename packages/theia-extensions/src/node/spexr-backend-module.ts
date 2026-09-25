@@ -17,6 +17,10 @@ import { WorkerDescriptionGenerator } from "./search/worker-description-generato
 import { SpexrSearchBackendService } from "./search/spexr-search-backend-service.js";
 import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryBackendService } from "./darkfactory/spexr-darkfactory-backend-service.js";
+import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
+import { SpexrResourceBackendService } from "./resources/spexr-resource-backend-service.js";
+import { POWER_SERVICE_PATH, type SpexrPowerService } from "../common/power-protocol.js";
+import { SpexrPowerBackendService, followPowerSaving } from "./power/spexr-power-backend-service.js";
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   // Guard Theia 1.75 against exiting on a double socket close; see the service doc.
@@ -90,5 +94,36 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
         return service;
       });
     })
+    .inSingletonScope();
+
+  // Pull only: one shared sample serves every window (a push would reach only the newest).
+  bind(SpexrResourceBackendService).toSelf().inSingletonScope();
+  bind(ConnectionHandler)
+    .toDynamicValue(
+      (ctx) => new RpcConnectionHandler(RESOURCE_SERVICE_PATH, () => ctx.container.get(SpexrResourceBackendService)),
+    )
+    .inSingletonScope();
+
+  bind(SpexrPowerBackendService).toSelf().inSingletonScope();
+  bind(BackendApplicationContribution).toService(SpexrPowerBackendService);
+  // Windows get state() alone, not the service's lifecycle methods.
+  bind(ConnectionHandler)
+    .toDynamicValue((ctx) => {
+      const power = ctx.container.get(SpexrPowerBackendService);
+      const facade: SpexrPowerService = { state: () => power.state() };
+      return new RpcConnectionHandler(POWER_SERVICE_PATH, () => facade);
+    })
+    .inSingletonScope();
+  // Resolved per change, not up front, so power saving never builds these services early.
+  bind(BackendApplicationContribution)
+    .toDynamicValue((ctx) => ({
+      initialize: () => {
+        followPowerSaving(ctx.container.get(SpexrPowerBackendService), {
+          pauseRunningJobs: () => ctx.container.get(SpexrSearchBackendService).pauseRunningJobs(),
+          resumeDescriptionJob: (root) => ctx.container.get(SpexrSearchBackendService).resumeDescriptionJob(root),
+          setPollingPaused: (paused) => ctx.container.get(SpexrDarkfactoryBackendService).setPollingPaused(paused),
+        });
+      },
+    }))
     .inSingletonScope();
 });

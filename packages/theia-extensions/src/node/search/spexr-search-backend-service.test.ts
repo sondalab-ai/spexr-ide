@@ -285,6 +285,34 @@ describe("description job", () => {
   });
 });
 
+describe("pauseRunningJobs", () => {
+  it("pauses a running job and returns its root, leaving an idle workspace alone", async () => {
+    await writeFile(join(root, "auth.ts"), "export const token = 1;");
+    await writeFile(join(root, "ui.ts"), "export function render() {}");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const generator = new FakeGenerator(() => "x");
+    generator.generate = async () => {
+      await gate;
+      return "x";
+    };
+    const service = new SpexrSearchBackendService(new FakeEmbedder(), generator);
+    service.setClient({ onDescriptionUpdate: () => undefined, onDescriptionJobProgress: () => undefined });
+    await service.ensureIndexed(root);
+    await waitReady(service);
+    await service.startDescriptionJob(root, { regenerate: false });
+
+    expect(await service.pauseRunningJobs()).toEqual([root]);
+    release();
+    for (let i = 0; i < 100 && (await service.getDescriptionJobStatus(root)).state !== "paused"; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect((await service.getDescriptionJobStatus(root)).state).toBe("paused");
+    // Already paused: not the power saver's to resume.
+    expect(await service.pauseRunningJobs()).toEqual([]);
+  });
+});
+
 describe("persistIfMissing", () => {
   it("re-persists the index and descriptions store after .spexr/ is deleted", async () => {
     await writeFile(join(root, "auth.ts"), "export const token = 1;");

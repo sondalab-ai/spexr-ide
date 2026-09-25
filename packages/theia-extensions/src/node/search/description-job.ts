@@ -70,6 +70,8 @@ export class DescriptionJob {
   }
 
   async resume(): Promise<void> {
+    // A pause still waiting for the current file to finish is simply withdrawn.
+    if (this.state === "running") this.pauseRequested = false;
     if (this.state !== "paused") return;
     this.pauseRequested = false;
     this.state = "running";

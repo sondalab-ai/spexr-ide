@@ -1,6 +1,7 @@
 import * as React from "@theia/core/shared/react";
-import { LifeGrid, gridSizeFor } from "./life-grid.js";
+import { LifeGrid, SPECIES, gridSizeFor } from "./life-grid.js";
 import { advanceTrail } from "./life-trail.js";
+import { POWER_SAVE_ATTRIBUTE, isPowerSaving } from "../power/power-save-dom.js";
 
 /** Cell pitch, generation period, and the share of brightness a dead cell keeps per generation. */
 const CELL_PX = 4;
@@ -18,7 +19,8 @@ const FADE = 0.72;
  * smoothing off, so drawing costs the same however many cells are lit, and the
  * lensed panes re-filter once per tick rather than every frame. It pauses while
  * the window or the panel is hidden, draws a single still frame under reduced
- * motion, and draws nothing in high contrast. Colour and strength come from CSS.
+ * motion or while saving power, and draws nothing in high contrast. Strength comes from CSS, and
+ * each species' colour from the canvas's `--sl-life-species-<n>` properties.
  */
 export const LifeBackground = React.memo(function LifeBackground(): React.ReactElement {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -42,32 +44,39 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
 
     const highContrast = (): boolean => root.getAttribute("data-sl-theme") === "high-contrast";
 
-    /** The CSS colour as RGB bytes, resolved by painting it: tokens may be oklch(). */
-    const cellRgb = (): [number, number, number] => {
+    let palette: Array<[number, number, number]> = [];
+
+    /** A CSS colour as RGB bytes, resolved by painting it: tokens may be oklch(). */
+    const toRgb = (colour: string): [number, number, number] => {
       cellCtx.clearRect(0, 0, 1, 1);
-      cellCtx.fillStyle = getComputedStyle(canvas).color;
+      cellCtx.fillStyle = colour;
       cellCtx.fillRect(0, 0, 1, 1);
       const [r, g, b] = cellCtx.getImageData(0, 0, 1, 1).data;
       return [r!, g!, b!];
     };
 
-    /** Refill the image's colour channels, keeping each cell's alpha. */
-    const paintRgb = (): void => {
-      if (!image) return;
-      const [r, g, b] = cellRgb();
-      const px = image.data;
-      for (let i = 0; i < px.length; i += 4) {
-        px[i] = r;
-        px[i + 1] = g;
-        px[i + 2] = b;
-      }
+    /** Re-read the species colours, falling back to the canvas's text colour. */
+    const readPalette = (): void => {
+      const style = getComputedStyle(canvas);
+      palette = Array.from({ length: SPECIES }, (_, n) =>
+        toRgb(style.getPropertyValue(`--sl-life-species-${n}`).trim() || style.color),
+      );
     };
 
     const draw = (): void => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!grid || !image || highContrast()) return;
       const px = image.data;
-      for (let i = 0; i < trail.length; i++) px[i * 4 + 3] = trail[i]!;
+      for (let y = 0, i = 0; y < grid.rows; y++) {
+        for (let x = 0; x < grid.cols; x++, i++) {
+          const [r, g, b] = palette[grid.speciesAt(x, y)]!;
+          const o = i * 4;
+          px[o] = r;
+          px[o + 1] = g;
+          px[o + 2] = b;
+          px[o + 3] = trail[i]!;
+        }
+      }
       cellCtx.putImageData(image, 0, 0);
       ctx.imageSmoothingEnabled = false;
       const dpr = window.devicePixelRatio || 1;
@@ -90,12 +99,12 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
         cellCanvas.width = cols;
         cellCanvas.height = rows;
         image = cellCtx.createImageData(cols, rows);
-        paintRgb();
       }
       draw();
     };
 
-    const running = (): boolean => onScreen && !document.hidden && !reduced.matches && !highContrast();
+    const running = (): boolean =>
+      onScreen && !document.hidden && !reduced.matches && !highContrast() && !isPowerSaving();
     const sync = (): void => {
       if (running() && timer === undefined) {
         timer = setInterval(() => {
@@ -110,7 +119,7 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
       }
     };
     const restyle = (): void => {
-      paintRgb();
+      readPalette();
       draw();
       sync();
     };
@@ -123,10 +132,11 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
     });
     visibility.observe(host);
     const theme = new MutationObserver(restyle);
-    theme.observe(root, { attributes: true, attributeFilter: ["data-sl-theme"] });
+    theme.observe(root, { attributes: true, attributeFilter: ["data-sl-theme", POWER_SAVE_ATTRIBUTE] });
     document.addEventListener("visibilitychange", sync);
     reduced.addEventListener("change", restyle);
 
+    readPalette();
     resize();
     sync();
     return () => {

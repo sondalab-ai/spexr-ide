@@ -13,6 +13,7 @@ import { distinctRepoRoots, type RepoRootMapping } from "./git-repo-roots.js";
 import { SingleFlight } from "./single-flight.js";
 import { BACKGROUND_FETCH_INTERVAL_MS, shouldFetchNow } from "./background-fetch-policy.js";
 import { SPEXR_GIT_AUTOFETCH_PREFERENCE } from "../preferences/spexr-preferences.js";
+import { isPowerSaving } from "../power/power-save-dom.js";
 
 /** A registered repository: its provider and the registry's own subscriptions to it. */
 interface ProviderEntry {
@@ -133,6 +134,8 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
     // Read per tick rather than subscribing: turning the preference off then
     // takes effect at the next tick with no listener to keep in sync.
     if (!this.preferences.get<boolean>(SPEXR_GIT_AUTOFETCH_PREFERENCE, true)) return;
+    // Paused while saving power; Fetch and Pull by hand still work.
+    if (isPowerSaving()) return;
     const now = Date.now();
     if (!shouldFetchNow(this.lastFetchAt, now)) return;
     this.lastFetchAt = now;

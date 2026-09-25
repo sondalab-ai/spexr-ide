@@ -146,6 +146,32 @@ body {
   --slfx-pane-swell: 1;
 }
 
+/* Power saving (power-save-dom.ts): decorative loops stand still. Status
+   animations (working LEDs, loading pulses, alerts) keep running because
+   they carry information. The kit's effects are stilled with its own
+   kill-switch list (effects.css) keyed on our flag instead of its
+   data-sl-fx="off", which would stop it dressing content that mounts
+   while saving. */
+:root[data-spexr-power-save] :is(.sl-fx-glass, .sl-fx-glass__lit, .sl-fx-press, .sl-fx-aurora, .sl-fx-aurora__glow, .sl-fx-liquid, .sl-fx-liquid__skin, .sl-fx-goo, .sl-fx-goo__field, .sl-fx-glitch, .sl-fx-glitch__text, .sl-fx-glitch__shards, .sl-fx-glitch__shard) {
+  animation: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  border-image: none !important;
+  backdrop-filter: none !important;
+  --slfx-fill-a: 100% !important;
+}
+
+:root[data-spexr-power-save] .sl-fx-goo__member {
+  animation: none !important;
+}
+
+:root[data-spexr-power-save] .spexr-welcome-bg__blob::before,
+:root[data-spexr-power-save] .spexr-smart-search__map-cta,
+:root[data-spexr-power-save] .spexr-smart-search__map-glyph {
+  animation: none;
+}
+
 /* The Game of Life under the Spec and Darkfactory panels: a zero-height
    sticky strip at the top of the scrolling node, holding a canvas that
    life-background.tsx sizes to that node. Negative margins cancel the node's
@@ -159,18 +185,24 @@ body {
   pointer-events: none;
 }
 
+/* One colour per species (see life-grid.ts): the accent and three code
+   hues, so every theme gets four distinct ones for free. */
 .spexr-life-bg__canvas {
+  --sl-life-species-0: var(--sl-accent-default);
+  --sl-life-species-1: var(--sl-code-string);
+  --sl-life-species-2: var(--sl-code-keyword);
+  --sl-life-species-3: var(--sl-code-number);
   position: absolute;
   top: 0;
   left: 0;
   display: block;
   color: var(--sl-accent-default);
-  opacity: 0.09;
+  opacity: 0.13;
   image-rendering: pixelated;
 }
 
 [data-sl-theme="light"] .spexr-life-bg__canvas {
-  opacity: 0.07;
+  opacity: 0.1;
 }
 
 [data-sl-theme="high-contrast"] .spexr-life-bg {
