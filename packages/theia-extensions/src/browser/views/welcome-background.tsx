@@ -1,5 +1,6 @@
 import * as React from "react";
 import { POWER_SAVE_ATTRIBUTE, isPowerSaving } from "../power/power-save-dom.js";
+import { followStep } from "./welcome-follow.js";
 
 /** Decorative blobs; `depth` pairs with the per-class parallax factor in CSS. */
 const BLOBS = ["a", "b", "c", "d", "e"] as const;
@@ -13,7 +14,8 @@ const FOLLOW = 0.02;
  * Renders a fixed set of gradient blobs whose hue drifts on their own CSS
  * animation, while a requestAnimationFrame loop eases two CSS custom properties
  * (`--wx`, `--wy`, normalized to roughly -1..1) toward the pointer position so
- * the blobs trail the mouse very slowly via per-blob parallax. Honors
+ * the blobs trail the mouse very slowly via per-blob parallax. The loop runs
+ * only while the blobs are still catching up with the pointer. Honors
  * `prefers-reduced-motion` by leaving the layer static, and stops the loop
  * while SPEXR saves power (the CSS stills the drift then too).
  */
@@ -26,32 +28,37 @@ export const WelcomeBackground: React.FC = () => {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
     let raf = 0;
-    let curX = 0;
-    let curY = 0;
-    let tgtX = 0;
-    let tgtY = 0;
+    let cur = { x: 0, y: 0 };
+    const tgt = { x: 0, y: 0 };
 
+    const tick = (): void => {
+      const next = followStep(cur, tgt, FOLLOW);
+      cur = next;
+      el.style.setProperty("--wx", cur.x.toFixed(4));
+      el.style.setProperty("--wy", cur.y.toFixed(4));
+      raf = next.settled ? 0 : requestAnimationFrame(tick);
+    };
+
+    const start = (): void => {
+      if (raf === 0 && !isPowerSaving()) raf = requestAnimationFrame(tick);
+    };
+
+    // A hidden page has an empty box, so pointer moves elsewhere in the app
+    // leave the loop stopped.
     const onMove = (e: MouseEvent): void => {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) return;
-      tgtX = ((e.clientX - r.left) / r.width - 0.5) * 2;
-      tgtY = ((e.clientY - r.top) / r.height - 0.5) * 2;
-    };
-
-    const tick = (): void => {
-      curX += (tgtX - curX) * FOLLOW;
-      curY += (tgtY - curY) * FOLLOW;
-      el.style.setProperty("--wx", curX.toFixed(4));
-      el.style.setProperty("--wy", curY.toFixed(4));
-      raf = requestAnimationFrame(tick);
+      tgt.x = ((e.clientX - r.left) / r.width - 0.5) * 2;
+      tgt.y = ((e.clientY - r.top) / r.height - 0.5) * 2;
+      start();
     };
 
     const sync = (): void => {
       if (isPowerSaving()) {
         cancelAnimationFrame(raf);
         raf = 0;
-      } else if (raf === 0) {
-        raf = requestAnimationFrame(tick);
+      } else {
+        start();
       }
     };
     const power = new MutationObserver(sync);
