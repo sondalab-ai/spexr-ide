@@ -166,6 +166,21 @@ body {
   animation: none !important;
 }
 
+/* The sweeps, the orbit and the curtains run on pseudo-elements, which the
+   rules above never reach. Paused like the kit pauses them off-screen (its
+   off-screen gate in effects.css; power-save-style.test.ts keeps the two
+   lists in step), so they resume where they were when power is back. */
+:root[data-spexr-power-save] .sl-fx-aurora::after,
+:root[data-spexr-power-save] .sl-fx-aurora > .sl-fx-aurora__glow,
+:root[data-spexr-power-save] .sl-fx-aurora > .sl-fx-aurora__glow::before,
+:root[data-spexr-power-save] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora),
+:root[data-spexr-power-save] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora)::before,
+:root[data-spexr-power-save] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora)::after,
+:root[data-spexr-power-save] .sl-fx-glass::before,
+:root[data-spexr-power-save] .sl-fx-glass::after {
+  animation-play-state: paused !important;
+}
+
 :root[data-spexr-power-save] .spexr-welcome-bg__blob::before,
 :root[data-spexr-power-save] .spexr-smart-search__map-cta,
 :root[data-spexr-power-save] .spexr-smart-search__map-glyph {
