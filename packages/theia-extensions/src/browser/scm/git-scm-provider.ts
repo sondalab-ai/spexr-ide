@@ -29,6 +29,7 @@ import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client
 import { SingleFlight } from "./single-flight.js";
 import { partitionUnstaged } from "./unstaged-partition.js";
 import { touchesRepository } from "./repository-change-scope.js";
+import { sameStatus } from "./status-equality.js";
 
 // Display glyphs following VS Code's own SCM decoration convention ("U" for
 // untracked, "!" for conflicted) — not the protocol's GitFileState letters,
@@ -282,6 +283,7 @@ export class SpexrGitScmProvider implements ScmProvider {
     if (!this.rootFsPath) return;
     try {
       const status = await this.gitService.getStatus(this.rootFsPath);
+      if (sameStatus(this._lastStatus, status)) return;
       this._lastStatus = status;
       this._onDidChangeStatusEmitter.fire(status);
       const root = this.rootFsPath;

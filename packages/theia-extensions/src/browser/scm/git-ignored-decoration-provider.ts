@@ -14,6 +14,7 @@ import { SpexrGitServiceProxySymbol } from "./git-service-proxy.js";
 import type { SpexrGitService } from "../../common/git-protocol.js";
 import { buildIgnoreMatcher } from "./git-ignore-matcher.js";
 import { containingRoot } from "./git-repo-roots.js";
+import { sameIgnoreListings, type IgnoreListing } from "./status-equality.js";
 
 /** One workspace folder's ignore set, resolved relative to that folder. */
 interface RootIgnores {
@@ -52,6 +53,7 @@ export class GitIgnoredDecorationProvider
   /** Keyed by the folder's filesystem path — what {@link containingRoot} matches on. */
   private roots = new Map<string, RootIgnores>();
   private ignoredUris: URI[] = [];
+  private listings: IgnoreListing[] | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   async onStart(): Promise<void> {
@@ -95,6 +97,9 @@ export class GitIgnoredDecorationProvider
         return { root, paths };
       }),
     );
+    const listings = perRoot.map(({ root, paths }) => ({ root: root.resource.toString(), paths }));
+    if (sameIgnoreListings(this.listings, listings)) return;
+    this.listings = listings;
     for (const { root, paths } of perRoot) {
       next.set(root.resource.path.toString(), {
         uri: root.resource,
