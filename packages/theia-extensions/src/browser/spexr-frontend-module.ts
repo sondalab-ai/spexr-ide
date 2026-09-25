@@ -94,6 +94,11 @@ import { SpexrGenerationModelContribution } from "./search/generation-model-cont
 import { SpexrDecisionServiceProxy } from "./decision/decision-service-proxy.js";
 import { SpexrDecisionModelContribution } from "./decision/decision-model-contribution.js";
 import { SpexrDecisionModelStatusBar } from "./decision/decision-model-status-bar.js";
+import {
+  SpexrResourceServiceProxy,
+  SpexrResourceStatusBarContribution,
+} from "./resources/resource-status-bar-contribution.js";
+import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
 import { DECISION_SERVICE_PATH } from "../common/decision-protocol.js";
 import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/smart-search-client.js";
 import { DescriptionJobStatusBarContribution } from "./search/description-job-status-bar-contribution.js";
@@ -337,6 +342,14 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(SpexrDecisionModelStatusBar).toSelf().inSingletonScope();
   bind(SpexrDecisionModelContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrDecisionModelContribution);
+  bind(SpexrResourceServiceProxy)
+    .toDynamicValue((ctx) => {
+      const connection = ctx.container.get(WebSocketConnectionProvider);
+      return connection.createProxy(RESOURCE_SERVICE_PATH);
+    })
+    .inSingletonScope();
+  bind(SpexrResourceStatusBarContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrResourceStatusBarContribution);
   bindSmartSearchWidgetFactory(bind);
   bind(WidgetFactory)
     .toDynamicValue((ctx) => ({

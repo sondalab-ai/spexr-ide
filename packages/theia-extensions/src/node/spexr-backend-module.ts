@@ -17,6 +17,8 @@ import { WorkerDescriptionGenerator } from "./search/worker-description-generato
 import { SpexrSearchBackendService } from "./search/spexr-search-backend-service.js";
 import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common/darkfactory-protocol.js";
 import { SpexrDarkfactoryBackendService } from "./darkfactory/spexr-darkfactory-backend-service.js";
+import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
+import { SpexrResourceBackendService } from "./resources/spexr-resource-backend-service.js";
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   // Guard Theia 1.75 against exiting on a double socket close; see the service doc.
@@ -90,5 +92,13 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
         return service;
       });
     })
+    .inSingletonScope();
+
+  // Pull only: one shared sample serves every window (a push would reach only the newest).
+  bind(SpexrResourceBackendService).toSelf().inSingletonScope();
+  bind(ConnectionHandler)
+    .toDynamicValue(
+      (ctx) => new RpcConnectionHandler(RESOURCE_SERVICE_PATH, () => ctx.container.get(SpexrResourceBackendService)),
+    )
     .inSingletonScope();
 });
