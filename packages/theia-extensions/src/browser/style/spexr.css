@@ -2957,10 +2957,9 @@ code {
 .spexr-df-card__status[data-kind="error"] { color: var(--sl-status-danger, #e5484d); }
 
 /* The live light of a working agent (the kit's aurora, "run") is drawn in that
-   agent's own colour, end to end. Plain variables only: the kit reads these two
-   back as rgb(), and a color-mix() here would serialise as oklab() and read as
-   black. The pinned card hands its content the product accent back, so its
-   buttons keep their own colour; the tile's content has nothing to repaint. */
+   agent's own colour, end to end. The pinned card hands its content the
+   product accent back, so its buttons keep their own colour; the tile's content
+   has nothing to repaint. */
 :is(.spexr-df-card, .spexr-df-pinned).sl-fx-aurora {
   --slc-accent: var(--tile-accent);
   --slfx-depth: var(--tile-accent);
