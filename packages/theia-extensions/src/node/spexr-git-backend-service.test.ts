@@ -96,6 +96,55 @@ describe("SpexrGitBackendService", () => {
     expect(ignored).not.toContain("dist/bundle.js"); // covered by dist/
   });
 
+  it("getStatus and getIgnoredPaths leave the git dir untouched", async () => {
+    // A plain `git status` takes .git/index.lock to write back refreshed stat
+    // info, even with nothing changed. The git-dir watcher saw that as a
+    // repository change and refreshed again: a loop that never went idle.
+    const gitDir = path.join(tmpDir, ".git");
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "edit");
+    const before = fs.statSync(gitDir, { bigint: true }).mtimeNs;
+    for (let i = 0; i < 3; i++) {
+      await service.getStatus(tmpDir);
+      await service.getIgnoredPaths(tmpDir);
+    }
+    expect(fs.statSync(gitDir, { bigint: true }).mtimeNs).toBe(before);
+  });
+
+  it("getStatus: an inherited EDITOR, PAGER or GIT_SSH_COMMAND does not fail the call", async () => {
+    vi.stubEnv("EDITOR", "vim");
+    vi.stubEnv("PAGER", "less");
+    vi.stubEnv("GIT_SSH_COMMAND", "ssh");
+    try {
+      const status = await new SpexrGitBackendService().getStatus(tmpDir);
+      expect(status.isClean).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("backgroundFetch: moves the remote-tracking branch", async () => {
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-remote-"));
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-other-"));
+    try {
+      execSync(`git clone -q --bare "${tmpDir}" "${remote}"`);
+      execSync(`git remote add origin "${remote}"`, { cwd: tmpDir });
+      execSync("git fetch -q origin", { cwd: tmpDir });
+      execSync(`git clone -q "${remote}" "${other}"`);
+      execSync('git -c user.email=t@t -c user.name=T commit -q --allow-empty -m ahead', { cwd: other });
+      execSync("git push -q origin HEAD", { cwd: other });
+      const pushed = execSync("git rev-parse HEAD", { cwd: other }).toString().trim();
+      const branch = execSync("git branch --show-current", { cwd: tmpDir }).toString().trim();
+
+      await service.backgroundFetch(tmpDir);
+
+      const tracking = execSync(`git rev-parse origin/${branch}`, { cwd: tmpDir }).toString().trim();
+      expect(tracking).toBe(pushed);
+    } finally {
+      fs.rmSync(remote, { recursive: true, force: true });
+      fs.rmSync(other, { recursive: true, force: true });
+    }
+  });
+
   it("getIgnoredPaths: returns [] outside a git repo", async () => {
     const nonRepo = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-nonrepo-"));
     try {
