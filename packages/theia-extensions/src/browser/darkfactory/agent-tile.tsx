@@ -2,7 +2,6 @@ import * as React from "@theia/core/shared/react";
 import { Widget } from "@theia/core/lib/browser/widgets/widget";
 import { MessageLoop } from "@theia/core/shared/@lumino/messaging";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
-import type { Terminal as XTerm } from "xterm";
 import type {
   AgentSummary,
   AgentTile,
@@ -26,29 +25,13 @@ import type { WallLayout } from "./wall-layout.js";
 import { CardBrowserPane, type CardBrowserProps } from "./card-browser-pane.js";
 import { clampSplit, readSplitRatio, writeSplitRatio } from "./card-browser.js";
 import { CARD_KEY_ATTRIBUTE } from "./card-link-target.js";
-import { attachWidget, detachWidget } from "../terminal/terminal-attach.js";
+import { attachWidget, detachWidget, redrawShownTerminal } from "../terminal/terminal-attach.js";
 import { LUMINO_ATTACH_OPS } from "../terminal/lumino-attach-ops.js";
 import {
   launchOptionLabel,
   profileForConfigDir,
   type ClaudeLaunchProfile,
 } from "../../common/claude-launch-profiles.js";
-
-/**
- * Redraw a terminal from scratch as it is shown again: a glyph atlas built for
- * another display's pixel ratio, or left stale while the card was closed, is
- * what makes characters overlap until the terminal is recreated.
- */
-function repaint(term: TerminalWidget): void {
-  try {
-    // getTerminal() is on Theia's TerminalWidgetImpl, not the abstract type.
-    const xterm = (term as { getTerminal?: () => XTerm }).getTerminal?.();
-    xterm?.clearTextureAtlas();
-    xterm?.refresh(0, xterm.rows - 1);
-  } catch {
-    /* terminal not opened yet */
-  }
-}
 
 /**
  * Mount a Theia TerminalWidget into a React-owned host div: attach its Lumino node
@@ -69,7 +52,7 @@ function TerminalMount(props: { term: TerminalWidget }): React.ReactElement {
     const term = props.term;
     if (!host) return undefined;
     attachWidget(term, host, LUMINO_ATTACH_OPS);
-    repaint(term);
+    redrawShownTerminal(term);
     const fit = (): void => {
       try {
         MessageLoop.sendMessage(term, Widget.ResizeMessage.UnknownSize);

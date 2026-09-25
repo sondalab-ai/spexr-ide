@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attachWidget, detachWidget, fallBackOnContextLoss, type AttachOps } from "./terminal-attach.js";
+import { attachWidget, detachWidget, fallBackOnContextLoss, redrawShownTerminal, type AttachOps } from "./terminal-attach.js";
 
 interface FakeNode {
   isConnected: boolean;
@@ -97,5 +97,47 @@ describe("fallBackOnContextLoss", () => {
 
   it("does nothing on a terminal without a WebGL renderer", () => {
     expect(fallBackOnContextLoss({})).toBeUndefined();
+  });
+});
+
+describe("redrawShownTerminal", () => {
+  function fakeTerminal() {
+    const calls: string[] = [];
+    const xterm = {
+      cols: 80,
+      rows: 24,
+      clearTextureAtlas: () => calls.push("clearTextureAtlas"),
+      _core: { _renderService: { handleResize: (c: number, r: number) => calls.push(`handleResize ${c}x${r}`) } },
+    };
+    return { calls, term: { getTerminal: () => xterm } };
+  }
+
+  it("rebuilds only this terminal's render model, at its current size", () => {
+    const { calls, term } = fakeTerminal();
+    redrawShownTerminal(term);
+    expect(calls).toEqual(["handleResize 80x24"]);
+  });
+
+  it("never clears the glyph atlas, which every terminal with the same font shares", () => {
+    // Clearing it garbled every other terminal until each was resized.
+    const { calls, term } = fakeTerminal();
+    redrawShownTerminal(term);
+    expect(calls).not.toContain("clearTextureAtlas");
+  });
+
+  it("does nothing when xterm's internals are not there", () => {
+    expect(() => redrawShownTerminal({ getTerminal: () => ({ cols: 1, rows: 1 }) })).not.toThrow();
+    expect(() => redrawShownTerminal({})).not.toThrow();
+  });
+
+  it("does nothing on a terminal that is not opened yet", () => {
+    const term = {
+      getTerminal: () => ({
+        cols: 1,
+        rows: 1,
+        _core: { _renderService: { handleResize: () => { throw new Error("not open"); } } },
+      }),
+    };
+    expect(() => redrawShownTerminal(term)).not.toThrow();
   });
 });
