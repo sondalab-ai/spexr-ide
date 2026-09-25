@@ -28,6 +28,7 @@ import type {
 import { SpexrGitClientToken, type SpexrGitClientDispatcher } from "./git-client.js";
 import { SingleFlight } from "./single-flight.js";
 import { partitionUnstaged } from "./unstaged-partition.js";
+import { touchesRepository } from "./repository-change-scope.js";
 
 // Display glyphs following VS Code's own SCM decoration convention ("U" for
 // untracked, "!" for conflicted) — not the protocol's GitFileState letters,
@@ -253,8 +254,17 @@ export class SpexrGitScmProvider implements ScmProvider {
     this.repository = repository;
     repository.input.placeholder = "Message (press Ctrl/Cmd+Enter to commit)";
     this.toDispose.push(repository);
-    this.toDispose.push(this.fileService.onDidFilesChange(() => this.scheduleRefresh()));
-    this.toDispose.push(this.gitClient.onRepositoryChanged$(() => this.scheduleRefresh()));
+    this.toDispose.push(
+      this.fileService.onDidFilesChange((event) => {
+        const paths = event.changes.map((c) => c.resource.path.toString());
+        if (touchesRepository(repoRoot, paths)) this.scheduleRefresh();
+      }),
+    );
+    this.toDispose.push(
+      this.gitClient.onRepositoryChanged$((root) => {
+        if (root === repoRoot) this.scheduleRefresh();
+      }),
+    );
 
     await this.refresh();
   }

@@ -272,7 +272,8 @@ export class SpexrGitBackendService implements SpexrGitService {
    * watcher bookkeeping this needs no staleness check.
    */
   private readonly gitDirs = new Map<string, string>();
-  private debounce?: ReturnType<typeof setTimeout>;
+  /** Per repository, so a burst in one cannot swallow another's notification. */
+  private readonly debounces = new Map<string, ReturnType<typeof setTimeout>>();
 
   /** Absent when the backend module could not supply one; generation then no-ops. */
   private readonly generator: DescriptionGenerator | undefined;
@@ -386,8 +387,14 @@ export class SpexrGitBackendService implements SpexrGitService {
    */
   private armWatch(root: string, gitDir: string, commonDir: string): void {
     const notify = (): void => {
-      if (this.debounce) clearTimeout(this.debounce);
-      this.debounce = setTimeout(() => this.client?.onRepositoryChanged(), WATCH_DEBOUNCE_MS);
+      clearTimeout(this.debounces.get(root));
+      this.debounces.set(
+        root,
+        setTimeout(() => {
+          this.debounces.delete(root);
+          this.client?.onRepositoryChanged(root);
+        }, WATCH_DEBOUNCE_MS),
+      );
     };
     // HEAD / index / MERGE_HEAD / ORIG_HEAD are per-worktree and live in gitDir.
     // Branch refs are shared, so they come from the common dir — in a linked
@@ -458,7 +465,8 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   dispose(): void {
-    if (this.debounce) clearTimeout(this.debounce);
+    for (const timer of this.debounces.values()) clearTimeout(timer);
+    this.debounces.clear();
     for (const root of [...this.armed.keys()]) this.disarm(root);
     this.gitDirs.clear();
   }

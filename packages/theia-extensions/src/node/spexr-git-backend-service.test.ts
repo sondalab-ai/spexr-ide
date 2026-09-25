@@ -738,6 +738,28 @@ describe("SpexrGitBackendService — repository watcher", () => {
     expect(calls).toBe(1); // exactly one, not three
   });
 
+  it("names the repository that changed, debouncing each on its own", async () => {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-other-"));
+    try {
+      execSync("git init -q", { cwd: other });
+      const roots: string[] = [];
+      service.setClient({ onRepositoryChanged: (root) => roots.push(root) });
+      await service.getStatus(tmpDir);
+      await vi.waitFor(() => expect(fire.length).toBeGreaterThan(0));
+      const firstRepoWatchers = fire.length;
+      await service.getStatus(other);
+      await vi.waitFor(() => expect(fire.length).toBeGreaterThan(firstRepoWatchers));
+
+      fire[0]!();
+      fire[firstRepoWatchers]!();
+      await new Promise((r) => setTimeout(r, 250));
+      // A shared debounce kept only the last repository of a burst.
+      expect(roots.sort()).toEqual([tmpDir, other].sort());
+    } finally {
+      fs.rmSync(other, { recursive: true, force: true });
+    }
+  });
+
   it("does not throw when the watch target cannot be watched", async () => {
     const failing = new SpexrGitBackendService({
       watchDir: () => {

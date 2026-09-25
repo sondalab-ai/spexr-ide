@@ -106,8 +106,11 @@ export interface BlameResultDto {
 
 /** Push channel: backend → frontend. */
 export interface SpexrGitClient {
-  /** The repository changed on disk — from this IDE, a terminal, or anything else. */
-  onRepositoryChanged(): void;
+  /**
+   * The repository at `root` (as passed to `getStatus`) changed on disk — from
+   * this IDE, a terminal, or anything else.
+   */
+  onRepositoryChanged(root: string): void;
 }
 
 export interface SpexrGitService {
