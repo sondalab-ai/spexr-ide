@@ -3116,6 +3116,15 @@ code {
 .spexr-df-pinned.sl-fx-aurora > :is(header, div) {
   --slc-accent: var(--sl-accent-default);
 }
+/* The kit draws the light under the host's content, which suits the tile. The
+   pinned card's sticky bar (z-index 2) and terminal box are opaque and cover
+   it: the bar hid the bright band along the top edge, and the terminal cut its
+   inner fade off in a hard rectangle. Lift the light, and the CSS ring standing
+   in for it without WebGL, above them; neither takes pointer events. */
+.spexr-df-pinned.sl-fx-aurora > .sl-fx-live__canvas,
+.spexr-df-pinned.sl-fx-aurora::after {
+  z-index: 3;
+}
 
 /* Attention emphasis — accent ring for waiting, red for failed (no left border). */
 .spexr-df-card[data-status="attn"] { border-color: var(--tile-accent); }
