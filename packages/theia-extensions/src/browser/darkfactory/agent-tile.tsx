@@ -1028,26 +1028,28 @@ export function NewSessionLauncher(props: {
         <label className="sl-field spexr-df-launcher__field">
           <span className="sl-field__label">Project</span>
           <div className="spexr-df-launcher__project">
-            <span className="sl-field__control sl-select spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
-              <select
-                className="sl-field__input"
-                value={path}
-                title={path}
-                onChange={(e) => setPath(e.target.value)}
-              >
-                {TARGET_GROUPS.map(({ kind, label }) => {
-                  const group = all.filter((t) => t.kind === kind);
-                  return group.length === 0 ? null : (
-                    <optgroup key={kind} label={label}>
-                      {group.map((t) => (
-                        <option key={t.path} value={t.path} title={t.path}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
-              </select>
+            <span className="sl-field__control spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
+              <span className="sl-select">
+                <select
+                  className="sl-field__input"
+                  value={path}
+                  title={path}
+                  onChange={(e) => setPath(e.target.value)}
+                >
+                  {TARGET_GROUPS.map(({ kind, label }) => {
+                    const group = all.filter((t) => t.kind === kind);
+                    return group.length === 0 ? null : (
+                      <optgroup key={kind} label={label}>
+                        {group.map((t) => (
+                          <option key={t.path} value={t.path} title={t.path}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+              </span>
             </span>
             <button
               className="spexr-df-launcher__browse"
@@ -1060,33 +1062,37 @@ export function NewSessionLauncher(props: {
         </label>
         <label className="sl-field spexr-df-launcher__field">
           <span className="sl-field__label">Harness</span>
-          <span className="sl-field__control sl-select spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
-            <select
-              className="sl-field__input"
-              value={harness}
-              onChange={(e) => setHarness(e.target.value as HarnessId)}
-            >
-              <option value="claude">claude</option>
-              <option value="opencode">opencode</option>
-            </select>
+          <span className="sl-field__control spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
+            <span className="sl-select">
+              <select
+                className="sl-field__input"
+                value={harness}
+                onChange={(e) => setHarness(e.target.value as HarnessId)}
+              >
+                <option value="claude">claude</option>
+                <option value="opencode">opencode</option>
+              </select>
+            </span>
           </span>
         </label>
         {pickableConfigs && (
           <label className="sl-field spexr-df-launcher__field">
             <span className="sl-field__label">Config</span>
-            <span className="sl-field__control sl-select spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
-              <select
-                className="sl-field__input"
-                value={configDir}
-                title={configDir}
-                onChange={(e) => setConfigDir(e.target.value)}
-              >
-                {configs.map((c) => (
-                  <option key={c.path} value={c.path}>
-                    {launchOptionLabel(c.label, c.isDefault, profileForConfigDir(profiles, c.path))}
-                  </option>
-                ))}
-              </select>
+            <span className="sl-field__control spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
+              <span className="sl-select">
+                <select
+                  className="sl-field__input"
+                  value={configDir}
+                  title={configDir}
+                  onChange={(e) => setConfigDir(e.target.value)}
+                >
+                  {configs.map((c) => (
+                    <option key={c.path} value={c.path}>
+                      {launchOptionLabel(c.label, c.isDefault, profileForConfigDir(profiles, c.path))}
+                    </option>
+                  ))}
+                </select>
+              </span>
             </span>
           </label>
         )}
