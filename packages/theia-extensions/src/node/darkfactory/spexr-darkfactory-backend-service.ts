@@ -40,6 +40,7 @@ import { readFirstPrompt } from "./session-goal.js";
 import { expandQuery } from "../search/query-expander.js";
 import type { SessionIndex } from "./session-index.js";
 import { forEachConcurrent } from "./concurrency.js";
+import { memoizeFor } from "./ttl-memo.js";
 
 export { forEachConcurrent };
 import { nowActionLine } from "./action-distiller.js";
@@ -112,6 +113,16 @@ const FIRST_CRAWL_DELAY_MS = 10_000;
  * stalled the scan for ~30s. 8 keeps the spawn/memory pressure modest.
  */
 const PARSE_CONCURRENCY = 8;
+
+/**
+ * How long a non-Claude harness's session list is reused across scans. Even a
+ * read-only `opencode db` query writes opencode's data dir, which the wall
+ * watches, so each scan's own query set off the next scan: about two spawns a
+ * second with opencode not even running. Scans driven by busy Claude
+ * transcripts re-ran the query just as often. opencode tiles have no live
+ * follow yet, so 15s behind is acceptable.
+ */
+const HARNESS_SESSIONS_TTL_MS = 15_000;
 
 /**
  * Live-process-dir freshness floor. `ps` only anchors the "working" attribution
@@ -302,6 +313,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * must not pay for it on every debounce.
    */
   private enumCache?: { at: number; value: UnifiedRef[] };
+  /** Per non-Claude harness: its session list, memoized (see harnessSessions). */
+  private readonly harnessSessionMemos = new Map<string, () => Promise<HarnessSessionRef[]>>();
   private sessionIndex?: Promise<SessionIndex>;
   private indexing = false;
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
@@ -1085,6 +1098,20 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     return value;
   }
 
+  /**
+   * A non-Claude harness's session list, re-read at most once per
+   * {@link HARNESS_SESSIONS_TTL_MS}. The refs carry their memoized transcript
+   * loaders, so `opencode export` is not re-run within the window either.
+   */
+  private harnessSessions(h: HarnessAdapter): () => Promise<HarnessSessionRef[]> {
+    let memo = this.harnessSessionMemos.get(h.id);
+    if (!memo) {
+      memo = memoizeFor(HARNESS_SESSIONS_TTL_MS, this.now, () => h.listSessions());
+      this.harnessSessionMemos.set(h.id, memo);
+    }
+    return memo;
+  }
+
   /** Merge every installed harness's session list (Claude: disk walk, opencode: db query). */
   private async defaultListTranscripts(): Promise<UnifiedRef[]> {
     const out: UnifiedRef[] = [];
@@ -1109,7 +1136,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     }
     for (const h of installed) {
       if (h.id === "claude") continue;
-      const refs = await h.listSessions();
+      const refs = await this.harnessSessions(h)();
       for (const ref of refs) out.push({ harness: h, ref });
     }
     return out;
