@@ -122,6 +122,18 @@ describe("SpexrGitBackendService", () => {
     }
   });
 
+  it("getStatus: config inherited through GIT_CONFIG_COUNT does not fail the call", async () => {
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "credential.helper");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "osxkeychain");
+    try {
+      const status = await new SpexrGitBackendService().getStatus(tmpDir);
+      expect(status.isClean).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("backgroundFetch: moves the remote-tracking branch", async () => {
     const remote = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-remote-"));
     const other = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-other-"));

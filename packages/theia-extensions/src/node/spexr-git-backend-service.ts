@@ -41,19 +41,29 @@ const MAX_COMMIT_DIFF_CHARS = 512_000;
 const BACKGROUND_FETCH_TIMEOUT_MS = 20_000;
 
 /**
- * The simple-git checks that fire on environment variables alone. Passing any
- * environment through `.env()` makes simple-git vet the whole of it, so an
- * inherited EDITOR, PAGER or GIT_SSH_COMMAND would fail every call. It is the
- * user's own environment, which a spawn without `.env()` inherits unchecked, so
- * these are granted. The argument-only checks stay on.
+ * The simple-git checks an inherited environment can trip. Passing any
+ * environment through `.env()` makes simple-git vet all of it, including config
+ * set through GIT_CONFIG_COUNT/KEY/VALUE, so an inherited EDITOR, PAGER,
+ * GIT_SSH_COMMAND or credential helper would fail every call. It is the user's
+ * own environment, which a spawn without `.env()` inherits unchecked, so these
+ * are granted. The checks that guard arguments only stay on: a custom binary,
+ * `--upload-pack`/`--receive-pack`, and `ext::` protocol overrides.
  */
 const INHERITED_ENV_UNSAFE: NonNullable<SimpleGitOptions["unsafe"]> = {
+  allowUnsafeAlias: true,
   allowUnsafeAskPass: true,
   allowUnsafeConfigEnvCount: true,
   allowUnsafeConfigPaths: true,
+  allowUnsafeCredentialHelper: true,
   allowUnsafeDiffExternal: true,
+  allowUnsafeDiffTextConv: true,
   allowUnsafeEditor: true,
+  allowUnsafeFilter: true,
+  allowUnsafeFsMonitor: true,
   allowUnsafeGitProxy: true,
+  allowUnsafeGpgProgram: true,
+  allowUnsafeHooksPath: true,
+  allowUnsafeMergeDriver: true,
   allowUnsafePager: true,
   allowUnsafeSshCommand: true,
   allowUnsafeTemplateDir: true,
