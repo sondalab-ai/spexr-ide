@@ -20,6 +20,7 @@ import {
 import { SPEC_VIEW_ID } from "./spec-view-contribution.js";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
 import { SPEC_CONTEXT_DIR } from "../workspace-paths.js";
+import { LifeBackground } from "../backdrop/life-background.js";
 import {
   specDirPrefixes,
   specDirsForRoots,
@@ -300,22 +301,25 @@ export class SpexrSpecWidget extends ReactWidget {
 
   protected render(): React.ReactNode {
     return (
-      <SpecPanel
-        specs={this.specs}
-        groups={this.groups}
-        hasWorkspace={this.workspaceRoots().length > 0}
-        aggregatePercent={this.aggregatePercent}
-        onCreate={this.handleCreate}
-        onSendToAgent={this.handleSendToAgent}
-        onRetrospective={this.handleRetrospective}
-        onOpen={this.handleOpen}
-        onDelete={this.handleDelete}
-        onRefresh={this.handleRefresh}
-        onStepClick={this.handleStepClick}
-        onTaskToggle={this.handleTaskToggle}
-        onForceStep={this.handleForceStep}
-        onUnforceStep={this.handleUnforceStep}
-      />
+      <>
+        <LifeBackground />
+        <SpecPanel
+          specs={this.specs}
+          groups={this.groups}
+          hasWorkspace={this.workspaceRoots().length > 0}
+          aggregatePercent={this.aggregatePercent}
+          onCreate={this.handleCreate}
+          onSendToAgent={this.handleSendToAgent}
+          onRetrospective={this.handleRetrospective}
+          onOpen={this.handleOpen}
+          onDelete={this.handleDelete}
+          onRefresh={this.handleRefresh}
+          onStepClick={this.handleStepClick}
+          onTaskToggle={this.handleTaskToggle}
+          onForceStep={this.handleForceStep}
+          onUnforceStep={this.handleUnforceStep}
+        />
+      </>
     );
   }
 }

@@ -68,6 +68,7 @@ import { SessionSearchState } from "./session-search.js";
 import { addTrashed, partitionTrashed, readTrashed, removeTrashed, writeTrashed } from "./trash.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
+import { LifeBackground } from "../backdrop/life-background.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
@@ -1149,177 +1150,181 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // leaving every bar short of a maximum nothing reaches.
     const best = Math.max(0, ...visibleHits.map((h) => h.score));
     return (
-      <div className="spexr-df-root">
-        <NewSessionLauncher
-          targets={launchTargets(this.tiles, currentProject, this.recentProjects)}
-          defaultPath={currentProject ?? ""}
-          configs={this.configs}
-          profiles={parseLaunchProfiles(
-            this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+      <>
+        <LifeBackground />
+        <div className="spexr-df-root">
+          <NewSessionLauncher
+            targets={launchTargets(this.tiles, currentProject, this.recentProjects)}
+            defaultPath={currentProject ?? ""}
+            configs={this.configs}
+            profiles={parseLaunchProfiles(
+              this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+            )}
+            layout={this.wallLayout}
+            onLayoutChange={(layout) => this.setLayout(layout)}
+            refreshing={this.refreshing}
+            onRefresh={() => this.refreshNow()}
+            onBrowse={() => this.browseForProject()}
+            onStart={(projectPath, harness, configDir) =>
+              this.startNewSession(projectPath, harness, configDir)
+            }
+          />
+          {/*
+            The alert is withheld while a search is running: search already
+            replaces the grid, and a second filter competing with it would leave
+            the user unable to tell which one is hiding what.
+          */}
+          {expiring.length > 0 && !this.search.active && (
+            <div className="spexr-df-expiry">
+              <i className="codicon codicon-watch" />
+              <span className="spexr-df-expiry__text">
+                {expiring.length === 1 ? "1 session loses" : `${expiring.length} sessions lose`}
+                {` their prompt cache within ${EXPIRING_WINDOW_MS / 60_000} min — resuming after that re-sends the whole conversation.`}
+              </span>
+              <button
+                className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
+                onClick={() => {
+                  this.expiringOnly = !this.expiringOnly;
+                  this.update();
+                }}
+              >
+                {/* A span, not bare text: React would reset the button's textContent and drop the injected glass layers. */}
+                <span>{this.expiringOnly ? "Show all" : "Show them"}</span>
+              </button>
+            </div>
           )}
-          layout={this.wallLayout}
-          onLayoutChange={(layout) => this.setLayout(layout)}
-          refreshing={this.refreshing}
-          onRefresh={() => this.refreshNow()}
-          onBrowse={() => this.browseForProject()}
-          onStart={(projectPath, harness, configDir) =>
-            this.startNewSession(projectPath, harness, configDir)
-          }
-        />
-        {/*
-          The alert is withheld while a search is running: search already
-          replaces the grid, and a second filter competing with it would leave
-          the user unable to tell which one is hiding what.
-        */}
-        {expiring.length > 0 && !this.search.active && (
-          <div className="spexr-df-expiry">
-            <i className="codicon codicon-watch" />
-            <span className="spexr-df-expiry__text">
-              {expiring.length === 1 ? "1 session loses" : `${expiring.length} sessions lose`}
-              {` their prompt cache within ${EXPIRING_WINDOW_MS / 60_000} min — resuming after that re-sends the whole conversation.`}
-            </span>
-            <button
-              className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
-              onClick={() => {
-                this.expiringOnly = !this.expiringOnly;
-                this.update();
-              }}
-            >
-              {this.expiringOnly ? "Show all" : "Show them"}
-            </button>
-          </div>
-        )}
-        <div className="spexr-df-search">
-          <div className="spexr-df-search__box">
-            <i className="codicon codicon-search spexr-df-search__icon" />
-            <input
-              className="spexr-df-search__input"
-              placeholder="Find a session — describe it"
-              value={this.search.query}
-              onChange={(e) => this.onSearchInput(e.target.value)}
-              onKeyDown={this.onSearchKeyDown}
-            />
-            {/*
-              One slot for two states: a query in flight shows the spinner, a
-              settled one the clear button. Sharing the slot keeps the field's
-              right edge still while typing.
-            */}
-            {this.search.active && (
-              <span className="spexr-df-search__slot">
-                {this.search.pending ? (
-                  <i className="codicon codicon-loading codicon-modifier-spin" />
-                ) : (
-                  <button
-                    className="spexr-df-search__clear"
-                    title="Clear search"
-                    aria-label="Clear search"
-                    onClick={() => {
-                      this.search.clear();
-                      this.update();
-                    }}
-                  >
-                    <i className="codicon codicon-close" />
-                  </button>
-                )}
+          <div className="spexr-df-search">
+            <div className="spexr-df-search__box">
+              <i className="codicon codicon-search spexr-df-search__icon" />
+              <input
+                className="spexr-df-search__input"
+                placeholder="Find a session — describe it"
+                value={this.search.query}
+                onChange={(e) => this.onSearchInput(e.target.value)}
+                onKeyDown={this.onSearchKeyDown}
+              />
+              {/*
+                One slot for two states: a query in flight shows the spinner, a
+                settled one the clear button. Sharing the slot keeps the field's
+                right edge still while typing.
+              */}
+              {this.search.active && (
+                <span className="spexr-df-search__slot">
+                  {this.search.pending ? (
+                    <i className="codicon codicon-loading codicon-modifier-spin" />
+                  ) : (
+                    <button
+                      className="spexr-df-search__clear"
+                      title="Clear search"
+                      aria-label="Clear search"
+                      onClick={() => {
+                        this.search.clear();
+                        this.update();
+                      }}
+                    >
+                      <i className="codicon codicon-close" />
+                    </button>
+                  )}
+                </span>
+              )}
+            </div>
+            {this.search.active && !this.search.pending && (
+              <span className="spexr-df-search__count">{visibleHits.length} found</span>
+            )}
+            {this.indexProgress && (
+              <span className="spexr-df-search__progress">
+                indexing {this.indexProgress.done}/{this.indexProgress.total}
               </span>
             )}
           </div>
-          {this.search.active && !this.search.pending && (
-            <span className="spexr-df-search__count">{visibleHits.length} found</span>
-          )}
-          {this.indexProgress && (
-            <span className="spexr-df-search__progress">
-              indexing {this.indexProgress.done}/{this.indexProgress.total}
-            </span>
-          )}
-        </div>
-        {/*
-          One wrapper for every card that owns a terminal, in both arrangements:
-          only its class changes, so React keeps the same DOM node and no
-          TerminalMount unmounts — a remount would detach and re-attach every xterm.
-        */}
-        <div
-          ref={this.setActiveHost}
-          className={`spexr-df-active spexr-df-active--${this.wallLayout}`}
-          style={{ ["--df-mosaic-columns" as string]: String(this.mosaicColumnCount()) }}
-        >
-          {this.launched.map((launch) => (
-            <LaunchedSessionCard
-              key={launch.key}
-              projectName={this.projectNameAt(launch.projectPath, launch.projectName)}
-              projectPath={launch.projectPath}
-              harness={launch.harness}
-              terminal={this.terminals.live(launch.key)}
-              onClose={() => this.closeLaunched(launch.key)}
-              onOpenProject={() => this.openProject(launch.projectPath)}
-              onOpenTerminal={() =>
-                this.openProjectTerminal(
-                  launch.projectPath,
-                  this.projectNameAt(launch.projectPath, launch.projectName),
-                )
-              }
-              isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
-              layout={this.wallLayout}
-              browser={this.browserProps(launch.key, undefined)}
-            />
-          ))}
-          {expanded.map((tile) => (
-            <AgentPinnedCard
-              key={tile.sessionId}
-              tile={tile}
-              now={now}
-              summary={this.summaries.get(tile.sessionId)}
-              events={this.pinnedEvents.get(tile.sessionId) ?? []}
-              terminal={this.terminals.live(tile.sessionId)}
-              onClose={() => this.unpin(tile.sessionId)}
-              onFork={(t) => this.forkTakeover(t)}
-              onOpenProject={(t) => this.openProject(t.projectPath)}
-              onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, projectLabel(t))}
-              onTrash={(t) => this.moveToTrash(t.sessionId)}
-              onRename={(t) => void this.renameSession(t)}
-              isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
-              layout={this.wallLayout}
-              browser={this.browserProps(tile.sessionId, tile.sessionId)}
-            />
-          ))}
-        </div>
-        {/*
-          Only the grid is replaced by results. The expanded and launched cards
-          above keep their positions inside spexr-df-active, so no TerminalMount
-          unmounts and no running session is detached by a search.
-        */}
-        {this.search.active ? (
-          visibleHits.length === 0 ? (
-            <div className="spexr-df-empty">
-              {this.search.pending
-                ? "Searching…"
-                : this.indexProgress
-                  ? `No session matches "${this.search.query}" yet — still indexing.`
-                  : `No session matches "${this.search.query}".`}
-            </div>
-          ) : (
-            <div className="spexr-df-grid">
-              {visibleHits.map((h) =>
-                this.renderCard(h.tile, now, true, {
-                  archived: h.archived,
-                  match: { score: h.score, dense: h.dense, lexical: h.lexical, terms: h.terms, best },
-                }),
-              )}
-            </div>
-          )
-        ) : tiles.length === 0 ? (
-          <div className="spexr-df-empty">
-            {discarded.length > 0
-              ? "Every session on the wall is in the trash."
-              : "No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here."}
+          {/*
+            One wrapper for every card that owns a terminal, in both arrangements:
+            only its class changes, so React keeps the same DOM node and no
+            TerminalMount unmounts — a remount would detach and re-attach every xterm.
+          */}
+          <div
+            ref={this.setActiveHost}
+            className={`spexr-df-active spexr-df-active--${this.wallLayout}`}
+            style={{ ["--df-mosaic-columns" as string]: String(this.mosaicColumnCount()) }}
+          >
+            {this.launched.map((launch) => (
+              <LaunchedSessionCard
+                key={launch.key}
+                projectName={this.projectNameAt(launch.projectPath, launch.projectName)}
+                projectPath={launch.projectPath}
+                harness={launch.harness}
+                terminal={this.terminals.live(launch.key)}
+                onClose={() => this.closeLaunched(launch.key)}
+                onOpenProject={() => this.openProject(launch.projectPath)}
+                onOpenTerminal={() =>
+                  this.openProjectTerminal(
+                    launch.projectPath,
+                    this.projectNameAt(launch.projectPath, launch.projectName),
+                  )
+                }
+                isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
+                layout={this.wallLayout}
+                browser={this.browserProps(launch.key, undefined)}
+              />
+            ))}
+            {expanded.map((tile) => (
+              <AgentPinnedCard
+                key={tile.sessionId}
+                tile={tile}
+                now={now}
+                summary={this.summaries.get(tile.sessionId)}
+                events={this.pinnedEvents.get(tile.sessionId) ?? []}
+                terminal={this.terminals.live(tile.sessionId)}
+                onClose={() => this.unpin(tile.sessionId)}
+                onFork={(t) => this.forkTakeover(t)}
+                onOpenProject={(t) => this.openProject(t.projectPath)}
+                onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, projectLabel(t))}
+                onTrash={(t) => this.moveToTrash(t.sessionId)}
+                onRename={(t) => void this.renameSession(t)}
+                isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
+                layout={this.wallLayout}
+                browser={this.browserProps(tile.sessionId, tile.sessionId)}
+              />
+            ))}
           </div>
-        ) : groups.length > 1 ? (
-          groups.map((g, i) => this.renderGroup(g, i, now))
-        ) : (
-          this.renderFlat(rest, now)
-        )}
-        {!this.search.active && discarded.length > 0 && this.renderTrash(discarded, now)}
-      </div>
+          {/*
+            Only the grid is replaced by results. The expanded and launched cards
+            above keep their positions inside spexr-df-active, so no TerminalMount
+            unmounts and no running session is detached by a search.
+          */}
+          {this.search.active ? (
+            visibleHits.length === 0 ? (
+              <div className="spexr-df-empty">
+                {this.search.pending
+                  ? "Searching…"
+                  : this.indexProgress
+                    ? `No session matches "${this.search.query}" yet — still indexing.`
+                    : `No session matches "${this.search.query}".`}
+              </div>
+            ) : (
+              <div className="spexr-df-grid">
+                {visibleHits.map((h) =>
+                  this.renderCard(h.tile, now, true, {
+                    archived: h.archived,
+                    match: { score: h.score, dense: h.dense, lexical: h.lexical, terms: h.terms, best },
+                  }),
+                )}
+              </div>
+            )
+          ) : tiles.length === 0 ? (
+            <div className="spexr-df-empty">
+              {discarded.length > 0
+                ? "Every session on the wall is in the trash."
+                : "No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here."}
+            </div>
+          ) : groups.length > 1 ? (
+            groups.map((g, i) => this.renderGroup(g, i, now))
+          ) : (
+            this.renderFlat(rest, now)
+          )}
+          {!this.search.active && discarded.length > 0 && this.renderTrash(discarded, now)}
+        </div>
+      </>
     );
   }
 }

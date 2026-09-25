@@ -66,6 +66,126 @@ body {
   color: var(--slc-text);
 }
 
+/* A ground for the glass. The kit's lens bends what is behind a pane, and a
+   flat panel bent is the same flat panel: these gradients give every panel
+   that hosts glass controls something for the refraction to move. Layered
+   over each panel's own background colour, never instead of it. High
+   contrast keeps its flat ground, as the kit's effects stand down there. */
+:root {
+  --spexr-glass-ground:
+    radial-gradient(60% 45% at 100% 0%, color-mix(in srgb, var(--slc-accent) 16%, transparent), transparent 70%),
+    radial-gradient(55% 40% at 0% 100%, color-mix(in srgb, var(--sl-viz-2, var(--slc-accent)) 12%, transparent), transparent 70%),
+    linear-gradient(160deg, color-mix(in srgb, var(--slc-text) 4%, transparent), transparent 55%);
+}
+
+[data-sl-theme="high-contrast"] {
+  --spexr-glass-ground: none;
+}
+
+/* The panels' own `background:` shorthands would reset the image, and the
+   main area's is keyed on #theia-main-content-panel. :is() takes the
+   specificity of its strongest argument, so the id outranks it everywhere
+   while `body` still matches panels in the side bars. */
+:root[data-sl-theme] :is(#theia-main-content-panel, body) :is(
+  .spexr-darkfactory,
+  .spexr-spec-widget,
+  .spexr-memory-widget,
+  .spexr-experts-widget,
+  .spexr-todo-widget,
+  .spexr-spec-lint-widget,
+  .spexr-spec-resources-widget
+) {
+  background-image: var(--spexr-glass-ground);
+  background-attachment: local;
+}
+
+/* Glass cards. Only leaf cards take glass: a lensed pane is a backdrop root,
+   and a glass button inside one would lose its lens. The kit clears a glass
+   host's own fill once it has built the layers, but these cards' own
+   `background:` rules come later and would keep them opaque, so they stand
+   down on the same condition: layers built, and never under high contrast,
+   where the kit builds none. The fill moves into the kit's tint, rebound per
+   state, so a hovered card still lifts. */
+:root:not([data-sl-theme="high-contrast"]) :is(.spexr-df-card, .spexr-welcome-card, .spexr-whats-new, .spexr-plan-checklist, .spexr-stepper__tooltip).sl-glass,
+:root:not([data-sl-theme="high-contrast"]) :is(.spexr-df-card, .spexr-welcome-card).sl-glass:hover {
+  background: transparent;
+}
+
+.spexr-df-card.sl-fx-glass,
+.spexr-welcome-card.sl-fx-glass {
+  --slfx-fill: var(--sl-bg-surface);
+  --slg-tint-color: var(--sl-bg-surface);
+}
+
+.spexr-stepper__tooltip.sl-fx-glass,
+.spexr-plan-checklist.sl-fx-glass,
+.spexr-df-card.sl-fx-glass:hover {
+  --slfx-fill: var(--sl-bg-surface-raised);
+  --slg-tint-color: var(--sl-bg-surface-raised);
+}
+
+.spexr-whats-new.sl-fx-glass,
+.spexr-welcome-card--primary.sl-fx-glass,
+.spexr-welcome-card.sl-fx-glass:hover {
+  --slfx-fill: var(--sl-accent-subtle);
+  --slg-tint-color: var(--sl-accent-subtle);
+}
+
+/* The cards' own `transition` shorthands would drop the kit's swell easing. */
+:is(.spexr-df-card, .spexr-welcome-card).sl-fx-glass {
+  transition:
+    transform 420ms cubic-bezier(0.22, 0.61, 0.28, 1),
+    border-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+/* What's New is not clickable, so it does not swell under the pointer. The
+   kit scales the columns' glow with the pane, and the glow is the panel's
+   preceding sibling, so both need the swell turned off. */
+.spexr-whats-new.sl-fx-glass,
+.sl-fx-aurora__glow:has(+ .spexr-whats-new) {
+  --slfx-pane-swell: 1;
+}
+
+/* The Game of Life under the Spec and Darkfactory panels: a zero-height
+   sticky strip at the top of the scrolling node, holding a canvas that
+   life-background.tsx sizes to that node. Negative margins cancel the node's
+   own padding so the canvas starts at its edge. The content after it is
+   lifted above it; the glass cards bend what shows through. */
+.spexr-life-bg {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.spexr-life-bg__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  color: var(--sl-accent-default);
+  opacity: 0.09;
+  image-rendering: pixelated;
+}
+
+[data-sl-theme="light"] .spexr-life-bg__canvas {
+  opacity: 0.07;
+}
+
+[data-sl-theme="high-contrast"] .spexr-life-bg {
+  display: none;
+}
+
+.spexr-darkfactory > .spexr-life-bg {
+  margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
+}
+
+.spexr-life-bg ~ :is(.spexr-df-root, .spexr-spec-panel) {
+  position: relative;
+  z-index: 1;
+}
+
 /* spexr's eyebrows carry the accent; the kit's are muted. */
 .sl-eyebrow--accent {
   color: var(--slc-accent);
@@ -327,12 +447,15 @@ body {
   gap: var(--sl-space-2);
 }
 
+/* Translucent rather than glass: each item holds glass buttons, and a glass
+   host would take their lens away. A fill without backdrop-filter lets the
+   Game of Life show through and leaves the buttons something to bend. */
 .spexr-spec-list__item {
   display: flex;
   flex-direction: column;
   gap: var(--sl-space-3);
   padding: var(--sl-space-3);
-  background: var(--sl-bg-surface-raised);
+  background: color-mix(in srgb, var(--sl-bg-surface-raised) 72%, transparent);
   border-radius: var(--sl-radius-sm);
 }
 
@@ -794,7 +917,6 @@ code {
   cursor: pointer;
   font: inherit;
   transition:
-    transform var(--sl-motion-fast) var(--sl-motion-ease),
     border-color var(--sl-motion-fast) var(--sl-motion-ease),
     background var(--sl-motion-fast) var(--sl-motion-ease);
 }
@@ -802,7 +924,6 @@ code {
 .spexr-welcome-card:hover {
   border-color: var(--sl-accent-default);
   background: var(--sl-accent-subtle);
-  transform: translateY(-1px);
 }
 
 .spexr-welcome-card--primary {
@@ -812,26 +933,6 @@ code {
     var(--sl-accent-subtle),
     var(--sl-bg-surface) 70%
   );
-}
-
-/* The action cards are glass over the drifting blobs (the kit's pane, lens and
-   specular edge). The pane is the fill: the card's own background stands down
-   once the kit has built the material, and never under high contrast, where
-   the kit builds none. */
-.spexr-welcome-card.sl-fx-glass {
-  --slg-radius: var(--sl-radius-lg);
-  --slfx-fill: var(--sl-bg-surface);
-  --slg-tint-color: var(--sl-bg-surface);
-}
-.spexr-welcome-card--primary.sl-fx-glass,
-.spexr-welcome-card.sl-fx-glass:hover {
-  --slfx-fill: var(--sl-accent-subtle);
-  --slg-tint-color: var(--sl-accent-subtle);
-}
-/* The pane swells on hover; a lift on top of it reads as a jolt. */
-.spexr-welcome-card.sl-fx-glass:hover { transform: none; }
-:root:not([data-sl-theme="high-contrast"]) :is(.spexr-welcome-card, .spexr-whats-new).sl-glass {
-  background: transparent;
 }
 
 .spexr-welcome-card__title {
@@ -942,12 +1043,6 @@ code {
   display: flex;
   flex-direction: column;
   gap: var(--sl-space-3);
-}
-
-.spexr-whats-new.sl-fx-glass {
-  --slg-radius: var(--sl-radius-lg);
-  --slfx-fill: var(--sl-accent-subtle);
-  --slg-tint-color: var(--sl-accent-subtle);
 }
 
 .spexr-whats-new__head {
@@ -1107,7 +1202,7 @@ code {
   padding: var(--sl-space-3);
   border-radius: var(--sl-radius-md);
   border: 1px solid var(--sl-border-subtle);
-  background: var(--sl-bg-surface-raised);
+  background: color-mix(in srgb, var(--sl-bg-surface-raised) 72%, transparent);
 }
 
 .spexr-progress__head {
