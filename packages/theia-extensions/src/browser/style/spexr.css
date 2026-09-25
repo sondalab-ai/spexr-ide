@@ -2554,16 +2554,23 @@ code {
  * Identity + CTAs, kept at the top and sticky against the wall's scroll: the
  * card's own body is the tall part, and the actions must never be something the
  * user has to scroll to find. Negative margins bleed the bar over the card
- * padding so it reads as a toolbar rather than a floating row.
+ * padding so it reads as a toolbar rather than a floating row: fully at the
+ * top, but only to --df-pinned-bar-inset short of each side. A working card's
+ * live light is brightest just inside its border and sits under the card's
+ * children, so a bar reaching the sides would cover that band and notch the
+ * glow along the header. The side padding shrinks by the same amount, so the
+ * header content stays put; the divider under it stops short of the sides.
+ * Its top corners sit inside the card's rounded ones, so they are square.
  */
 .spexr-df-pinned__bar {
+  --df-pinned-bar-inset: 10px;
   position: sticky; top: calc(-1 * var(--sl-space-4)); z-index: 2;
   display: flex; flex-direction: column; gap: var(--sl-space-2); min-width: 0;
-  margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
-  padding: var(--sl-space-4) var(--sl-space-4) var(--sl-space-3);
+  margin: calc(-1 * var(--sl-space-4)) calc(var(--df-pinned-bar-inset) - var(--sl-space-4)) 0;
+  padding: var(--sl-space-4) calc(var(--sl-space-4) - var(--df-pinned-bar-inset)) var(--sl-space-3);
   background: var(--sl-bg-surface);
   border-bottom: 1px solid var(--sl-border-subtle);
-  border-radius: var(--sl-radius-md) var(--sl-radius-md) 0 0;
+  border-radius: 0;
 }
 .spexr-df-pinned__head { display: flex; align-items: baseline; gap: var(--sl-space-2); min-width: 0; overflow: hidden; }
 .spexr-df-pinned__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2) var(--sl-space-3); min-width: 0; }
