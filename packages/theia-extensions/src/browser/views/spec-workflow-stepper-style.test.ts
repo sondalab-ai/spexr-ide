@@ -15,6 +15,10 @@ describe("spec workflow stepper buttons", () => {
     for (const b of buttons) expect(b).toMatch(/className=[^\n]*\bsl-(icon-)?btn\b/);
   });
 
+  it("gives every button the kit's glass surface", () => {
+    for (const b of buttons) expect(b).toMatch(/className=[^\n]*\bsl-fx-glass--pane\b/);
+  });
+
   it("leaves the buttons' fill, border and shadow to the kit", () => {
     const css = read("../style/spexr.css");
     const rules = css.match(/[^{}]*\.spexr-stepper__(btn|action)[^{}]*\{[^}]*\}/g) ?? [];

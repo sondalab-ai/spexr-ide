@@ -88,7 +88,7 @@ const StepButton: React.FC<{
           {state === "current" && onForceStep ? (
             <button
               type="button"
-              className="sl-icon-btn sl-icon-btn--round spexr-stepper__action spexr-stepper__action--force"
+              className="sl-icon-btn sl-icon-btn--round sl-fx-glass sl-fx-glass--pane sl-fx-press spexr-stepper__action spexr-stepper__action--force"
               onClick={(e) => {
                 e.stopPropagation();
                 onForceStep(step);
@@ -102,7 +102,7 @@ const StepButton: React.FC<{
           {isLastForced && onUnforceStep ? (
             <button
               type="button"
-              className="sl-icon-btn sl-icon-btn--round spexr-stepper__action spexr-stepper__action--undo"
+              className="sl-icon-btn sl-icon-btn--round sl-fx-glass sl-fx-glass--pane sl-fx-press spexr-stepper__action spexr-stepper__action--undo"
               onClick={(e) => {
                 e.stopPropagation();
                 onUnforceStep(step);
@@ -116,7 +116,7 @@ const StepButton: React.FC<{
           {isUnverified ? (
             <button
               type="button"
-              className="sl-icon-btn sl-icon-btn--round spexr-stepper__action spexr-stepper__action--warning"
+              className="sl-icon-btn sl-icon-btn--round sl-fx-glass sl-fx-glass--pane sl-fx-press spexr-stepper__action spexr-stepper__action--warning"
               onClick={(e) => {
                 e.stopPropagation();
                 void new ConfirmDialog({
