@@ -467,7 +467,7 @@ export function AgentTileCard(props: {
 
   return (
     <button
-      className="spexr-df-card sl-fx-aurora"
+      className="spexr-df-card sl-fx-glass sl-fx-glass--pane sl-fx-aurora"
       data-state={tile.state}
       data-status={status.kind}
       {...liveOf(status)}
@@ -1028,7 +1028,7 @@ export function NewSessionLauncher(props: {
         <label className="sl-field spexr-df-launcher__field">
           <span className="sl-field__label">Project</span>
           <div className="spexr-df-launcher__project">
-            <span className="sl-field__control sl-select spexr-df-launcher__select">
+            <span className="sl-field__control sl-select spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
               <select
                 className="sl-field__input"
                 value={path}
@@ -1060,7 +1060,7 @@ export function NewSessionLauncher(props: {
         </label>
         <label className="sl-field spexr-df-launcher__field">
           <span className="sl-field__label">Harness</span>
-          <span className="sl-field__control sl-select spexr-df-launcher__select">
+          <span className="sl-field__control sl-select spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
             <select
               className="sl-field__input"
               value={harness}
@@ -1074,7 +1074,7 @@ export function NewSessionLauncher(props: {
         {pickableConfigs && (
           <label className="sl-field spexr-df-launcher__field">
             <span className="sl-field__label">Config</span>
-            <span className="sl-field__control sl-select spexr-df-launcher__select">
+            <span className="sl-field__control sl-select spexr-df-launcher__select sl-fx-glass sl-fx-glass--field sl-fx-aurora sl-fx-aurora--field">
               <select
                 className="sl-field__input"
                 value={configDir}

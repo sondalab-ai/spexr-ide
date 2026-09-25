@@ -3,6 +3,14 @@ import { Tip } from "@spexr/ui-kit";
 import type { ReleaseNote } from "../../common/changelog.js";
 import { httpsHref } from "./external-link.js";
 
+/**
+ * The action cards and What's New are glass panes under the kit's drifting
+ * light columns (the pillars aurora), marked ambiently live so the columns keep
+ * moving rather than lighting on focus only. Static on purpose: the kit dresses
+ * a host once, when it is inserted.
+ */
+const CURTAIN_CARD = "sl-fx-glass sl-fx-glass--pane sl-fx-aurora sl-fx-aurora--pillars";
+
 export interface WelcomeSplashProps {
   readonly onNewProject: () => void;
   readonly onOpenFolder: () => void;
@@ -118,7 +126,7 @@ const WhatsNewPanel: React.FC<{ note: ReleaseNote }> = ({ note }) => {
   if (dismissed) return null;
 
   return (
-    <section className="spexr-whats-new sl-fx-glass sl-fx-glass--pane" aria-labelledby="spexr-whats-new-title">
+    <section className={`spexr-whats-new ${CURTAIN_CARD}`} data-sl-fx-live="on" aria-labelledby="spexr-whats-new-title">
       <div className="spexr-whats-new__head">
         <div>
           <p className="sl-eyebrow sl-eyebrow--accent spexr-whats-new__eyebrow">What&rsquo;s new &mdash; v{note.version}</p>
@@ -200,12 +208,19 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
         </p>
       </header>
 
-      <section className="spexr-welcome__actions" aria-label="Get started">
+      {/* Keyed on the card set: the kit dresses glass and columns only when a
+          card is inserted, so a changed set remounts the row rather than patch it. */}
+      <section
+        key={cards.map((c) => `${c.id}${c.primary ? "*" : ""}`).join("|")}
+        className="spexr-welcome__actions"
+        aria-label="Get started"
+      >
         {cards.map((card) => (
           <button
             key={card.id}
             type="button"
-            className={`spexr-welcome-card sl-fx-glass sl-fx-glass--pane sl-fx-press sl-fx-aurora${card.primary ? " spexr-welcome-card--primary" : ""}`}
+            className={`spexr-welcome-card ${CURTAIN_CARD} sl-fx-press${card.primary ? " spexr-welcome-card--primary" : ""}`}
+            data-sl-fx-live="on"
             onClick={card.onClick}
           >
             <span className="spexr-welcome-card__title">{card.title}</span>
