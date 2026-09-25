@@ -2369,7 +2369,7 @@ code {
 }
 .spexr-df-launcher__field { gap: 4px; min-width: 0; }
 .spexr-df-launcher__select { flex: 0 1 auto; min-width: 0; max-width: 22rem; }
-.spexr-df-launcher__select > .sl-field__input { height: var(--df-control-height); padding-top: 0; padding-bottom: 0; }
+.spexr-df-launcher__select .sl-field__input { height: var(--df-control-height); padding-top: 0; padding-bottom: 0; }
 /* Select and Browse read as one control: the button is the select's overflow,
    for a project neither the wall nor the recents know about. */
 .spexr-df-launcher__project { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
