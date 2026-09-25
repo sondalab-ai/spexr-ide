@@ -210,7 +210,7 @@ export class SpexrTodoWidget extends ReactWidget {
         </div>
         {!item.done && (
           <button
-            className="sl-btn sl-btn--ghost sl-btn--sm spexr-todo__work"
+            className="sl-btn sl-btn--ghost sl-btn--sm spexr-todo__work sl-fx-glass sl-fx-glass--pane sl-fx-press"
             disabled={sending}
             title="Hand this item to the agent; the local model picks the expert best suited to it"
             onClick={() => void this.workOn(file, item)}

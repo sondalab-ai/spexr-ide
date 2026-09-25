@@ -11,11 +11,12 @@ import type {
 } from "../../common/darkfactory-protocol.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import {
-  stateLabel,
   relativeTime,
   projectDisplayName,
   projectLabel,
   matchShares,
+  statusOf,
+  liveOf,
 } from "./darkfactory-format.js";
 import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
 import { cacheFreshness, expiryLabel, formatTokens } from "./cache-freshness.js";
@@ -168,13 +169,6 @@ function CacheChip(props: {
       {`cache ${left}`}
     </span>
   );
-}
-
-/** The single most important status word for a tile, with its visual class. */
-function statusOf(tile: AgentTile): { label: string; kind: string } {
-  if (tile.lastFailed) return { label: "Failed", kind: "error" };
-  if (tile.needsYou) return { label: tile.needsYouCertain ? "Needs you" : "Waiting", kind: "attn" };
-  return { label: stateLabel(tile.state), kind: tile.state };
 }
 
 /** Marks the tile whose project this window has loaded. */
@@ -473,9 +467,10 @@ export function AgentTileCard(props: {
 
   return (
     <button
-      className="spexr-df-card"
+      className="spexr-df-card sl-fx-aurora"
       data-state={tile.state}
       data-status={status.kind}
+      {...liveOf(status)}
       style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}
       onClick={() => onOpen(tile)}
       title={[tile.projectPath, contextNote(tile)].filter(Boolean).join("\n")}
@@ -790,9 +785,10 @@ export function AgentPinnedCard(props: {
   return (
     <section
       ref={card}
-      className="spexr-df-pinned"
+      className="spexr-df-pinned sl-fx-aurora"
       data-state={tile.state}
       data-status={status.kind}
+      {...liveOf(status)}
       style={{
         ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})`,
         ...heightStyle(height),
@@ -840,13 +836,13 @@ export function AgentPinnedCard(props: {
             )}
           </span>
           {!isCurrent && (
-            <button className="sl-btn sl-btn--ghost" onClick={() => onOpenProject(tile)} title={tile.projectPath}>
+            <button className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={() => onOpenProject(tile)} title={tile.projectPath}>
               <i className="codicon codicon-folder-opened" />
               Open project
             </button>
           )}
           <button
-            className="sl-btn sl-btn--ghost"
+            className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
             onClick={() => onOpenTerminal(tile)}
             title={`Open a shell in the bottom panel at ${tile.projectPath}`}
           >
@@ -855,7 +851,7 @@ export function AgentPinnedCard(props: {
           </button>
           <BrowserToggle browser={browser} />
           {!terminal && (
-            <button className="sl-btn sl-btn--primary" onClick={() => onFork(tile)}>
+            <button className="sl-btn sl-btn--primary sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={() => onFork(tile)}>
               Fork &amp; continue
             </button>
           )}
@@ -908,7 +904,7 @@ function WallLayoutToggle(props: {
       {LAYOUTS.map((l) => (
         <button
           key={l.id}
-          className="sl-segmented__item"
+          className={`sl-segmented__item sl-fx-press${l.id === layout ? " sl-fx-aurora sl-fx-aurora--rim" : ""}`}
           aria-pressed={l.id === layout}
           title={l.title}
           onClick={() => onChange(l.id)}
@@ -1095,7 +1091,7 @@ export function NewSessionLauncher(props: {
           </label>
         )}
         <button
-          className="sl-btn sl-btn--primary spexr-df-launcher__start"
+          className="sl-btn sl-btn--primary spexr-df-launcher__start sl-fx-glass sl-fx-glass--pane sl-fx-press"
           disabled={!path}
           onClick={start}
         >
@@ -1173,12 +1169,12 @@ export function LaunchedSessionCard(props: {
           {isCurrent ? (
             <CurrentProjectChip />
           ) : (
-            <button className="sl-btn sl-btn--ghost" onClick={onOpenProject} title={projectPath}>
+            <button className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={onOpenProject} title={projectPath}>
               Open project
             </button>
           )}
           <button
-            className="sl-btn sl-btn--ghost"
+            className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
             onClick={onOpenTerminal}
             title={`Open a shell in the bottom panel at ${projectPath}`}
           >

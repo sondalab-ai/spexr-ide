@@ -4,6 +4,13 @@
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "effects": [
+        "./dist/effects.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,9 +24,17 @@
       "import": "./dist/themes/index.js",
       "default": "./dist/themes/index.js"
     },
+    "./effects": {
+      "types": "./dist/effects.d.ts",
+      "require": "./dist/effects.js",
+      "import": "./dist/effects.js",
+      "default": "./dist/effects.js"
+    },
     "./tokens.css": "./src/tokens/tokens.css",
     "./fonts.css": "./src/fonts.css",
     "./components.css": "./src/components.css",
+    "./glass.css": "./src/glass.css",
+    "./effects.css": "./src/effects.css",
     "./themes/light.css": "./src/themes/light.css",
     "./themes/dark.css": "./src/themes/dark.css",
     "./themes/high-contrast.css": "./src/themes/high-contrast.css",
@@ -34,7 +49,7 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@sondalab/ui-kit": "^0.10.0",
+    "@sondalab/ui-kit": "^0.15.0",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@radix-ui/react-tabs": "^1.1.21",

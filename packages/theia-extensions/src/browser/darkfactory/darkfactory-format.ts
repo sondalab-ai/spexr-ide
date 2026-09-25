@@ -18,6 +18,21 @@ export function stateLabel(state: AgentState): string {
   return state === "working" ? "Working" : state === "idle" ? "Idle" : "Done";
 }
 
+/**
+ * The kit's live light for a tile: "run" while the agent is working, and nothing
+ * once it waits, fails or stops, so the light means work is happening now.
+ */
+export function liveOf(status: { kind: string }): { "data-sl-fx-live"?: "run"; "aria-busy"?: true } {
+  return status.kind === "working" ? { "data-sl-fx-live": "run", "aria-busy": true } : {};
+}
+
+/** The single most important status word for a tile, with its visual class. */
+export function statusOf(tile: AgentTile): { label: string; kind: string } {
+  if (tile.lastFailed) return { label: "Failed", kind: "error" };
+  if (tile.needsYou) return { label: tile.needsYouCertain ? "Needs you" : "Waiting", kind: "attn" };
+  return { label: stateLabel(tile.state), kind: tile.state };
+}
+
 const STATE_RANK: Record<AgentState, number> = { working: 0, idle: 1, done: 2 };
 
 /** Lower = higher attention. Needs-you always outranks state. */
