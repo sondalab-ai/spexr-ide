@@ -137,3 +137,12 @@ function sameCells(a: Uint8Array, b: Uint8Array): boolean {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
 }
+
+/**
+ * The board for a box of `width` x `height` CSS px at `cellPx` a cell: never
+ * smaller than one cell a side. A hidden panel measures 0 wide, and a 0-sized
+ * board would make a 0-sized ImageData, which throws.
+ */
+export function gridSizeFor(width: number, height: number, cellPx: number): { cols: number; rows: number } {
+  return { cols: Math.max(1, Math.ceil(width / cellPx)), rows: Math.max(1, Math.ceil(height / cellPx)) };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LifeGrid } from "./life-grid.js";
+import { LifeGrid, gridSizeFor } from "./life-grid.js";
 
 /** A grid with the given live cells and a seed source that never fires. */
 function gridWith(cols: number, rows: number, live: ReadonlyArray<readonly [number, number]>, random = () => 0.99) {
@@ -78,5 +78,20 @@ describe("LifeGrid seeding", () => {
     const grid = new LifeGrid(20, 20, { random: () => ((n = (n * 9301 + 49297) % 233280) / 233280), density: 0.25 });
     expect(grid.population / 400).toBeGreaterThan(0.15);
     expect(grid.population / 400).toBeLessThan(0.35);
+  });
+});
+
+// A panel opened in the background measures 0 wide; a 0-sized board made a
+// 0-sized ImageData, which threw and unmounted the Spec panel (E2E, #55).
+describe("gridSizeFor", () => {
+  it("covers the box, rounding a partial cell up", () => {
+    expect(gridSizeFor(10, 9, 4)).toEqual({ cols: 3, rows: 3 });
+  });
+
+  it("never sizes a hidden panel's board to zero, and agrees with LifeGrid", () => {
+    const size = gridSizeFor(0, 0, 4);
+    expect(size).toEqual({ cols: 1, rows: 1 });
+    const grid = new LifeGrid(size.cols, size.rows);
+    expect([grid.cols, grid.rows]).toEqual([size.cols, size.rows]);
   });
 });

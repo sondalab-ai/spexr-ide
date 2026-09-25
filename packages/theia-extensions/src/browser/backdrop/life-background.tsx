@@ -1,5 +1,5 @@
 import * as React from "@theia/core/shared/react";
-import { LifeGrid } from "./life-grid.js";
+import { LifeGrid, gridSizeFor } from "./life-grid.js";
 import { advanceTrail } from "./life-trail.js";
 
 /** Cell pitch, generation period, and the share of brightness a dead cell keeps per generation. */
@@ -82,8 +82,7 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
       canvas.style.height = `${height}px`;
       canvas.width = Math.max(1, Math.round(width * dpr));
       canvas.height = Math.max(1, Math.round(height * dpr));
-      const cols = Math.ceil(width / CELL_PX);
-      const rows = Math.ceil(height / CELL_PX);
+      const { cols, rows } = gridSizeFor(width, height, CELL_PX);
       if (!grid || grid.cols !== cols || grid.rows !== rows) {
         grid = new LifeGrid(cols, rows);
         trail = new Uint8Array(cols * rows);
