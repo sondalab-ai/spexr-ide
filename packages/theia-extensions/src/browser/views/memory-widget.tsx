@@ -261,7 +261,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
     <div className="spexr-memory-panel__actions">
       <button
         type="button"
-        className="sl-btn sl-btn--primary"
+        className="sl-btn sl-btn--primary sl-fx-glass sl-fx-glass--pane sl-fx-press"
         onClick={onAdd}
         disabled={!hasWorkspace}
       >
@@ -269,7 +269,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
       </button>
       <button
         type="button"
-        className="sl-btn sl-btn--ghost"
+        className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
         onClick={onRefresh}
         disabled={!hasWorkspace}
       >
@@ -299,7 +299,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
             <div className="spexr-memory-list__buttons">
               <button
                 type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm"
+                className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                 onClick={() => onOpen(entry.uri)}
                 aria-label={`Open ${entry.name}`}
               >
@@ -307,7 +307,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
               </button>
               <button
                 type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
+                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
                 onClick={() => onDelete(entry.uri)}
                 aria-label={`Delete ${entry.name}`}
               >
@@ -355,7 +355,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
           <div className="spexr-memory-panel__actions">
             <button
               type="button"
-              className="sl-btn sl-btn--ghost sl-btn--danger"
+              className="sl-btn sl-btn--ghost sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
               onClick={onResolveConflict}
             >
               Resolve conflict…
@@ -371,7 +371,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
           <div className="spexr-memory-panel__actions">
             <button
               type="button"
-              className="sl-btn sl-btn--ghost"
+              className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
               onClick={onLink}
               disabled={linkDisabled}
             >
@@ -379,7 +379,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
             </button>
             <button
               type="button"
-              className="sl-btn sl-btn--ghost sl-btn--danger"
+              className="sl-btn sl-btn--ghost sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
               onClick={onUnlink}
               disabled={unlinkDisabled}
             >

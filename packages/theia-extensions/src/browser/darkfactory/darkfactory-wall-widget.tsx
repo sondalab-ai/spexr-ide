@@ -1179,7 +1179,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               {` their prompt cache within ${EXPIRING_WINDOW_MS / 60_000} min — resuming after that re-sends the whole conversation.`}
             </span>
             <button
-              className="sl-btn sl-btn--ghost"
+              className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
               onClick={() => {
                 this.expiringOnly = !this.expiringOnly;
                 this.update();

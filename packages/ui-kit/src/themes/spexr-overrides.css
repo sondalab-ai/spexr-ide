@@ -34,6 +34,8 @@
   --sl-accent-active: #3645d4;
   --sl-accent-subtle: #eef0ff;
   --sl-focus-ring: #5b6cff;
+  /* The accent's depth companion: where the kit's light recedes to. */
+  --sl-accent-depth: #7a3fd0;
 
   /* Agent surfaces — primary view emphasis */
   --sl-agent-bg: #fbfbfd;
@@ -54,6 +56,7 @@
   --sl-accent-active: #6b78f0;
   --sl-accent-subtle: #1c1f3a;
   --sl-focus-ring: #8b96ff;
+  --sl-accent-depth: #b58cff;
 
   --sl-agent-bg: #0e0f13;
   --sl-agent-bubble-user: #1c1f3a;

@@ -364,7 +364,7 @@ const SpecList: React.FC<{ readonly specs: readonly SpecEntry[] } & SpecItemHand
               {isComplete ? (
                 <button
                   type="button"
-                  className="sl-btn sl-btn--primary sl-btn--sm"
+                  className="sl-btn sl-btn--primary sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                   onClick={() => onRetrospective(spec.uri)}
                   aria-label={`Run retrospective with agent for ${spec.title}`}
                 >
@@ -373,7 +373,7 @@ const SpecList: React.FC<{ readonly specs: readonly SpecEntry[] } & SpecItemHand
               ) : (
                 <button
                   type="button"
-                  className="sl-btn sl-btn--primary sl-btn--sm"
+                  className="sl-btn sl-btn--primary sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                   onClick={() => onSendToAgent(spec.uri)}
                   aria-label={`Chat with agent about ${spec.title}`}
                 >
@@ -382,7 +382,7 @@ const SpecList: React.FC<{ readonly specs: readonly SpecEntry[] } & SpecItemHand
               )}
               <button
                 type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm"
+                className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                 onClick={() => onOpen(spec.uri)}
                 aria-label={`Open ${spec.title}`}
               >
@@ -390,7 +390,7 @@ const SpecList: React.FC<{ readonly specs: readonly SpecEntry[] } & SpecItemHand
               </button>
               <button
                 type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
+                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
                 onClick={() => onDelete(spec.uri)}
                 aria-label={`Delete ${spec.title}`}
                 title="Delete spec (and its context folder)"
@@ -431,12 +431,12 @@ const SpecPanel: React.FC<SpecPanelProps> = ({
     ) : null}
 
     <div className="spexr-spec-panel__actions">
-      <button type="button" className="sl-btn sl-btn--primary" onClick={onCreate}>
+      <button type="button" className="sl-btn sl-btn--primary sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={onCreate}>
         Create new spec
       </button>
       <button
         type="button"
-        className="sl-btn sl-btn--ghost"
+        className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
         onClick={onRefresh}
         disabled={!hasWorkspace}
       >

@@ -118,7 +118,7 @@ const WhatsNewPanel: React.FC<{ note: ReleaseNote }> = ({ note }) => {
   if (dismissed) return null;
 
   return (
-    <section className="spexr-whats-new" aria-labelledby="spexr-whats-new-title">
+    <section className="spexr-whats-new sl-fx-glass sl-fx-glass--pane" aria-labelledby="spexr-whats-new-title">
       <div className="spexr-whats-new__head">
         <div>
           <p className="sl-eyebrow sl-eyebrow--accent spexr-whats-new__eyebrow">What&rsquo;s new &mdash; v{note.version}</p>
@@ -205,7 +205,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
           <button
             key={card.id}
             type="button"
-            className={`spexr-welcome-card ${card.primary ? "spexr-welcome-card--primary" : ""}`}
+            className={`spexr-welcome-card sl-fx-glass sl-fx-glass--pane sl-fx-press sl-fx-aurora${card.primary ? " spexr-welcome-card--primary" : ""}`}
             onClick={card.onClick}
           >
             <span className="spexr-welcome-card__title">{card.title}</span>

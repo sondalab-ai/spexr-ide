@@ -1,6 +1,8 @@
 @import "@spexr/ui-kit/fonts.css";
 @import "@spexr/ui-kit/tokens.css";
 @import "@spexr/ui-kit/components.css";
+@import "@spexr/ui-kit/glass.css";
+@import "@spexr/ui-kit/effects.css";
 @import "@spexr/ui-kit/themes/light.css";
 @import "@spexr/ui-kit/themes/dark.css";
 @import "@spexr/ui-kit/themes/high-contrast.css";
@@ -43,7 +45,6 @@ body {
 
 .sl-btn--danger {
   color: var(--slc-danger);
-  border-color: var(--slc-border-subtle);
 }
 
 .sl-btn--danger:hover:not(:disabled) {
@@ -813,6 +814,26 @@ code {
   );
 }
 
+/* The action cards are glass over the drifting blobs (the kit's pane, lens and
+   specular edge). The pane is the fill: the card's own background stands down
+   once the kit has built the material, and never under high contrast, where
+   the kit builds none. */
+.spexr-welcome-card.sl-fx-glass {
+  --slg-radius: var(--sl-radius-lg);
+  --slfx-fill: var(--sl-bg-surface);
+  --slg-tint-color: var(--sl-bg-surface);
+}
+.spexr-welcome-card--primary.sl-fx-glass,
+.spexr-welcome-card.sl-fx-glass:hover {
+  --slfx-fill: var(--sl-accent-subtle);
+  --slg-tint-color: var(--sl-accent-subtle);
+}
+/* The pane swells on hover; a lift on top of it reads as a jolt. */
+.spexr-welcome-card.sl-fx-glass:hover { transform: none; }
+:root:not([data-sl-theme="high-contrast"]) :is(.spexr-welcome-card, .spexr-whats-new).sl-glass {
+  background: transparent;
+}
+
 .spexr-welcome-card__title {
   font-size: var(--sl-text-md);
   font-weight: 600;
@@ -921,6 +942,12 @@ code {
   display: flex;
   flex-direction: column;
   gap: var(--sl-space-3);
+}
+
+.spexr-whats-new.sl-fx-glass {
+  --slg-radius: var(--sl-radius-lg);
+  --slfx-fill: var(--sl-accent-subtle);
+  --slg-tint-color: var(--sl-accent-subtle);
 }
 
 .spexr-whats-new__head {
@@ -2928,6 +2955,18 @@ code {
 .spexr-df-card__status[data-kind="idle"] { color: var(--sl-text-muted); }
 .spexr-df-card__status[data-kind="done"] { color: var(--sl-border-default); }
 .spexr-df-card__status[data-kind="error"] { color: var(--sl-status-danger, #e5484d); }
+
+/* The live light of a working agent (the kit's aurora, "run") is drawn in that
+   agent's own colour, end to end. The pinned card hands its content the
+   product accent back, so its buttons keep their own colour; the tile's content
+   has nothing to repaint. */
+:is(.spexr-df-card, .spexr-df-pinned).sl-fx-aurora {
+  --slc-accent: var(--tile-accent);
+  --slfx-depth: var(--tile-accent);
+}
+.spexr-df-pinned.sl-fx-aurora > :is(header, div) {
+  --slc-accent: var(--sl-accent-default);
+}
 
 /* Attention emphasis — accent ring for waiting, red for failed (no left border). */
 .spexr-df-card[data-status="attn"] { border-color: var(--tile-accent); }

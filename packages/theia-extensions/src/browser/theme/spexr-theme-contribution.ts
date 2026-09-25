@@ -1,6 +1,7 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { ThemeService } from "@theia/core/lib/browser/theming";
+import { mount as mountEffects } from "@spexr/ui-kit/effects";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** Maps a SPEXR theme id to the matching built-in Theia color theme. */
@@ -83,6 +84,17 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     this.rememberPreloadBackground(spexrTheme);
     this.rememberRenderedTheme(spexrTheme);
     this.reportWindowBackground(spexrTheme);
+    this.armEffects();
+  }
+
+  /**
+   * Arm the kit's effects runtime: the live light on working agents, the press
+   * light on controls, the specular edge on glass. Tried on every theme change
+   * because the kit refuses to arm under high contrast, and arms once for good
+   * after that; later calls return at once. Reduced motion is the kit's call.
+   */
+  private armEffects(): void {
+    mountEffects(document);
   }
 
   /**

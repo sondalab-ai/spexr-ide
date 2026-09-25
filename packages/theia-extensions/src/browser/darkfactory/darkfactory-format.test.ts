@@ -11,6 +11,8 @@ import {
   projectDisplayName,
   defaultSessionName,
   matchShares,
+  statusOf,
+  liveOf,
 } from "./darkfactory-format.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
 import { MAX_SESSION_NAME_CHARS } from "../../common/darkfactory-protocol.js";
@@ -440,5 +442,21 @@ describe("matchShares", () => {
 
   test("is empty for a hit with no score, rather than dividing by zero", () => {
     expect(matchShares({ score: 0, dense: 0, lexical: 0 })).toEqual({ meaning: 0, words: 0 });
+  });
+});
+
+describe("liveOf", () => {
+  const tile = (over: Partial<AgentTile>): AgentTile =>
+    ({ state: "working", needsYou: false, needsYouCertain: false, lastFailed: false, ...over }) as AgentTile;
+
+  test("lights a tile only while its agent is working", () => {
+    expect(liveOf(statusOf(tile({})))).toEqual({ "data-sl-fx-live": "run", "aria-busy": true });
+    expect(liveOf(statusOf(tile({ state: "idle" })))).toEqual({});
+    expect(liveOf(statusOf(tile({ state: "done" })))).toEqual({});
+  });
+
+  test("a working agent that waits on you or failed is not lit", () => {
+    expect(liveOf(statusOf(tile({ needsYou: true })))).toEqual({});
+    expect(liveOf(statusOf(tile({ lastFailed: true })))).toEqual({});
   });
 });

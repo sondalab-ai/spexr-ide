@@ -292,7 +292,7 @@ const SpecResourcesPanel: React.FC<SpecResourcesPanelProps> = ({ state, onAdd, o
         </span>
         <button
           type="button"
-          className="sl-btn sl-btn--primary sl-btn--sm"
+          className="sl-btn sl-btn--primary sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
           onClick={onAdd}
           aria-label={`Add a resource to ${state.title}`}
         >
@@ -322,7 +322,7 @@ const SpecResourcesPanel: React.FC<SpecResourcesPanelProps> = ({ state, onAdd, o
                 {r.kind === "file" ? (
                   <button
                     type="button"
-                    className="sl-btn sl-btn--ghost sl-btn--sm"
+                    className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                     onClick={() => onOpen(r)}
                     aria-label={`Open ${r.label}`}
                   >
@@ -331,7 +331,7 @@ const SpecResourcesPanel: React.FC<SpecResourcesPanelProps> = ({ state, onAdd, o
                 ) : null}
                 <button
                   type="button"
-                  className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
+                  className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
                   onClick={() => onRemove(r)}
                   aria-label={`Remove ${r.label}`}
                 >
