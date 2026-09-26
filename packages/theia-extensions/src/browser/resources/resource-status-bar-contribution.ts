@@ -2,7 +2,7 @@ import { inject, injectable } from "@theia/core/shared/inversify";
 import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-bar/status-bar";
 import type { SpexrResourceService } from "../../common/resource-protocol.js";
-import { formatResourceEntry, formatResourceTooltip } from "./resource-status-format.js";
+import { formatResourceEntry, formatResourceLabel, renderResourceTooltip } from "./resource-status-format.js";
 import { isPowerSaving } from "../power/power-save-dom.js";
 
 /** Symbol for the backend resource service proxy, bound in the frontend module. */
@@ -39,7 +39,8 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
       if (usage) {
         void this.statusBar.setElement(ENTRY_ID, {
           text: formatResourceEntry(usage),
-          tooltip: formatResourceTooltip(usage),
+          tooltip: renderResourceTooltip(usage, this.interval()),
+          accessibilityInformation: { label: formatResourceLabel(usage) },
           alignment: StatusBarAlignment.RIGHT,
           priority: 10,
         });
@@ -47,6 +48,11 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
         this.statusBar.removeElement(ENTRY_ID);
       }
     }
-    this.timer = setTimeout(() => void this.poll(), isPowerSaving() ? POWER_SAVE_POLL_MS : POLL_MS);
+    this.timer = setTimeout(() => void this.poll(), this.interval());
+  }
+
+  /** How long until the next sample: longer while saving power. */
+  private interval(): number {
+    return isPowerSaving() ? POWER_SAVE_POLL_MS : POLL_MS;
   }
 }
