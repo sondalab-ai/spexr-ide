@@ -69,6 +69,7 @@ import { addTrashed, partitionTrashed, readTrashed, removeTrashed, writeTrashed 
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 import { LifeBackground } from "../backdrop/life-background.js";
+import { WorkingHold } from "./working-hold.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
@@ -125,6 +126,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(WindowService) private readonly windowService!: WindowService;
 
   private tiles: AgentTile[] = [];
+  /** Softens cards leaving "working" (see WorkingHold); fed every scan. */
+  private readonly workingHold = new WorkingHold();
+  /** The last scan as received, re-shown when a hold runs out. */
+  private lastScanned: AgentTile[] = [];
+  private holdTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
    * The wall's query state. Filtering never touches the cards that own
@@ -258,6 +264,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // rather than squeezing the terminals below what they need to be readable.
     this.activeObserver = new ResizeObserver(() => this.onActiveResize());
     this.toDispose.push({ dispose: () => this.activeObserver?.disconnect() });
+    this.toDispose.push({ dispose: () => clearTimeout(this.holdTimer) });
     this.toDispose.push(this.client.onTilesChanged$((tiles) => this.setTiles(tiles)));
     this.toDispose.push(
       this.client.onFollowChunk$(({ sessionId, events }) => {
@@ -739,7 +746,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     });
   }
 
-  private setTiles(scanned: AgentTile[]): void {
+  private setTiles(fresh: AgentTile[]): void {
+    this.lastScanned = fresh;
+    clearTimeout(this.holdTimer);
+    const held = this.workingHold.apply(fresh, Date.now());
+    if (held.nextExpiry !== undefined) {
+      // Show the card's real state once its hold runs out, with no new scan needed.
+      this.holdTimer = setTimeout(() => this.setTiles(this.lastScanned), held.nextExpiry - Date.now());
+    }
+    const scanned = held.tiles;
     const tiles = keepPinnedTiles(scanned, this.tiles, this.pinned);
     this.tiles = tiles;
     this.loaded = true;
