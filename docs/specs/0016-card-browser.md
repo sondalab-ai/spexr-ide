@@ -3,7 +3,9 @@ slug: 0016-card-browser
 title: Card browser — watch what a pinned session is doing on the web
 status: draft
 createdAt: 2026-09-23
-workflowStep: plan
+workflowStep: ship
+forcedSteps: [plan, implement, validate, ship]
+updatedAt: 2026-09-25
 ---
 > **What is this file.** Implementation contract for an embedded browser in the
 > Darkfactory pinned card, opened by a dedicated button, which follows the web
