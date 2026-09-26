@@ -38,3 +38,28 @@ describe("the pinned card's live light", () => {
     expect(zOf(light![1])).toBeGreaterThan(bar);
   });
 });
+
+// Leaving "working" swapped a moving accent light for a grey label and a plain
+// edge at once, which read as the card changing colour.
+describe("a card leaving working", () => {
+  const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
+
+  it("fades the live light in instead of switching it on", () => {
+    const rule = css.match(/:is\(\.spexr-df-card, \.spexr-df-pinned\)\.sl-fx-aurora > \.sl-fx-live__canvas \{([^}]*)\}/);
+    expect(rule, "a rule animates the light's canvas").not.toBeNull();
+    const name = rule![1]!.match(/animation:\s*([\w-]+)/)![1]!;
+    expect(css).toMatch(new RegExp(`@keyframes ${name} \\{\\s*from \\{ opacity: 0; \\}`));
+  });
+
+  it("keeps the card's colour in its idle label", () => {
+    expect(rule('.spexr-df-card__status[data-kind="idle"]')).toMatch(/var\(--tile-accent\)/);
+  });
+
+  it("keeps a trace of the colour on a resting tile's edge, but not over waiting or failed", () => {
+    const resting = css.match(/\.spexr-df-card\.sl-fx-aurora:not\(([^)]*)\) \{([^}]*)\}/);
+    expect(resting).not.toBeNull();
+    expect(resting![1]).toContain('[data-status="attn"]');
+    expect(resting![1]).toContain('[data-status="error"]');
+    expect(resting![2]).toMatch(/border-color:[^;]*var\(--tile-accent\)/);
+  });
+});

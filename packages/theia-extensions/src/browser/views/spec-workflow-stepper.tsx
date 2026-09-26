@@ -69,7 +69,7 @@ const StepButton: React.FC<{
         <button
           ref={btnRef}
           type="button"
-          className={`sl-btn ${state === "current" ? "sl-btn--primary" : "sl-btn--ghost"} sl-btn--sm spexr-stepper__btn sl-fx-glass sl-fx-glass--pane sl-fx-press`}
+          className={`sl-btn ${state === "current" ? "sl-btn--primary" : "sl-btn--ghost"} spexr-stepper__btn sl-fx-glass sl-fx-glass--pane sl-fx-press`}
           onClick={() => onStepClick(step)}
           onMouseEnter={show}
           onMouseLeave={hide}

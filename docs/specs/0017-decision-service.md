@@ -3,7 +3,9 @@ slug: 0017-decision-service
 title: Decision service — a small local model for typed decisions
 status: draft
 createdAt: 2026-09-24
-workflowStep: plan
+workflowStep: ship
+forcedSteps: [plan, implement, validate, ship]
+updatedAt: 2026-09-25
 ---
 > **What is this file.** Implementation contract for a shared, local "decision"
 > service: SPEXR asks a small on-device model a typed question (pick one of
