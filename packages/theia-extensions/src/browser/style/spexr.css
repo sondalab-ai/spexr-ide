@@ -1330,22 +1330,16 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 1.75rem;
-  margin-top: 4px;
+  gap: var(--sl-space-1);
+  min-height: 2rem;
+  margin-top: var(--sl-space-1);
 }
 
-/* Force, undo and warning are the kit's round glass icon buttons; only the
-   glyph's colour carries meaning. Force shows on hover or keyboard focus. The
-   kit has no small icon button, so these take the small button's height to
-   sit level with the steps above them. */
-.spexr-stepper__action {
-  width: 1.75rem;
-  height: 1.75rem;
-}
-
+/* Force, undo and warning are the kit's round glass icon buttons, at the
+   kit's own 32px, level with the steps above them; only the glyph's colour
+   carries meaning. Force shows on hover or keyboard focus. */
 .spexr-stepper__action .codicon {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
 }
 
@@ -1366,24 +1360,27 @@ code {
   color: var(--sl-status-warning);
 }
 
-/* The kit's button; the stepper adds only the gap before the label. */
+/* The kit's button. The badge leads, so the start padding equals the space
+   above and below it: the circle then sits concentric with the button's
+   rounded end instead of pressed against it. */
 .spexr-stepper__btn {
-  gap: 6px;
+  gap: var(--sl-space-2);
+  padding-inline-start: 0.35rem;
 }
 
-/* 16px against the small button's 14px line, the extra pulled into its
-   padding, so a step button is exactly as tall as any other small button. */
+/* 20px against the button's 14px line, the extra pulled into its padding, so
+   a step button is exactly as tall as any other kit button. */
 .spexr-stepper__num {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: 16px;
-  height: 16px;
-  margin-block: -1px;
+  width: 20px;
+  height: 20px;
+  margin-block: -3px;
   border-radius: 999px;
   font-family: var(--sl-font-code);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   background: var(--sl-bg-canvas);
   color: var(--sl-text-muted);
@@ -1391,7 +1388,7 @@ code {
 }
 
 .spexr-stepper__num .codicon {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
 }
 
