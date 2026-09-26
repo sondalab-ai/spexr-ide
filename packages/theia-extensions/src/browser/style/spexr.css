@@ -3029,7 +3029,9 @@ code {
   text-transform: uppercase; letter-spacing: 0.14em;
 }
 .spexr-df-card__status[data-kind="working"], .spexr-df-card__status[data-kind="attn"] { color: var(--tile-accent); }
-.spexr-df-card__status[data-kind="idle"] { color: var(--sl-text-muted); }
+/* Idle keeps the card's own colour, dimmed, so leaving "working" reads as the
+   same card resting rather than as a change of colour. */
+.spexr-df-card__status[data-kind="idle"] { color: color-mix(in srgb, var(--tile-accent) 55%, var(--sl-text-muted)); }
 .spexr-df-card__status[data-kind="done"] { color: var(--sl-border-default); }
 .spexr-df-card__status[data-kind="error"] { color: var(--sl-status-danger, #e5484d); }
 
@@ -3052,6 +3054,22 @@ code {
 .spexr-df-pinned.sl-fx-aurora > .sl-fx-live__canvas,
 .spexr-df-pinned.sl-fx-aurora::after {
   z-index: 3;
+}
+/* A resting tile keeps a trace of its colour on its edge, so the live light
+   arriving and leaving is a change of intensity, not of colour. */
+.spexr-df-card.sl-fx-aurora:not([data-sl-fx-live], [data-status="attn"], [data-status="error"]) {
+  border-color: color-mix(in srgb, var(--tile-accent) 40%, var(--sl-border-subtle));
+}
+/* The kit adds the light's canvas when work starts: fade it in rather than
+   switching it on. */
+:is(.spexr-df-card, .spexr-df-pinned).sl-fx-aurora > .sl-fx-live__canvas {
+  animation: spexr-df-light-in 600ms var(--sl-motion-ease) both;
+}
+@keyframes spexr-df-light-in {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.spexr-df-card, .spexr-df-pinned).sl-fx-aurora > .sl-fx-live__canvas { animation: none; }
 }
 
 /* Attention emphasis — accent ring for waiting, red for failed (no left border). */
