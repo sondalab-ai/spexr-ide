@@ -260,6 +260,126 @@ body {
   color: var(--sl-text-primary);
 }
 
+/* Resource meter hover (resource-status-format.ts): a telemetry table. Every
+   row shares one column template so figures line up without a <table>. */
+.spexr-telemetry {
+  --spexr-telemetry-cols: minmax(8.5rem, 1fr) 4.5rem 2.75rem 2.75rem 4.5rem;
+  min-width: 22rem;
+  font-family: var(--sl-font-sans);
+  font-size: var(--sl-text-xs);
+  color: var(--sl-text-secondary);
+}
+
+.spexr-telemetry__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sl-space-3);
+  padding-bottom: var(--sl-space-2);
+  margin-bottom: var(--sl-space-1);
+  border-bottom: 1px solid var(--sl-border-subtle);
+}
+
+.spexr-telemetry__title {
+  color: var(--sl-text-primary);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.spexr-telemetry__meta {
+  color: var(--sl-text-muted);
+  font-family: var(--sl-font-mono);
+  font-size: 0.65rem;
+}
+
+.spexr-telemetry__row {
+  display: grid;
+  grid-template-columns: var(--spexr-telemetry-cols);
+  align-items: center;
+  column-gap: var(--sl-space-2);
+  padding: 3px 0;
+}
+
+.spexr-telemetry__row--head {
+  color: var(--sl-text-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spexr-telemetry__row--group .spexr-telemetry__label {
+  color: var(--sl-text-primary);
+}
+
+.spexr-telemetry__row--total {
+  margin-top: var(--sl-space-1);
+  padding-top: var(--sl-space-2);
+  border-top: 1px solid var(--sl-border-subtle);
+  color: var(--sl-text-primary);
+  font-weight: 600;
+}
+
+.spexr-telemetry__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spexr-telemetry__num {
+  text-align: right;
+  font-family: var(--sl-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.spexr-telemetry__bar {
+  height: 4px;
+  border-radius: var(--sl-radius-pill);
+  background: var(--sl-border-subtle);
+  overflow: hidden;
+}
+
+.spexr-telemetry__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sl-accent-default);
+  transform-origin: left;
+  animation: spexr-telemetry-fill var(--sl-motion-mid) var(--sl-motion-ease) both;
+}
+
+.spexr-telemetry__row--group:nth-child(3) .spexr-telemetry__fill {
+  animation-delay: 40ms;
+}
+
+.spexr-telemetry__row--group:nth-child(4) .spexr-telemetry__fill {
+  animation-delay: 80ms;
+}
+
+.spexr-telemetry__note {
+  margin: var(--sl-space-2) 0 0;
+  color: var(--sl-text-muted);
+  font-size: 0.65rem;
+  line-height: var(--sl-line-normal);
+}
+
+.spexr-telemetry__note + .spexr-telemetry__note {
+  margin-top: 0;
+}
+
+@keyframes spexr-telemetry-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spexr-telemetry__fill {
+    animation: none;
+  }
+}
+
 /* Spec + memory panels */
 .spexr-spec-widget,
 .spexr-memory-widget,
