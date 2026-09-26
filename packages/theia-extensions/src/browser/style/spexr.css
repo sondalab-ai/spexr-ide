@@ -3004,9 +3004,11 @@ code {
 .spexr-df-expiry__text { flex: 1 1 auto; min-width: 0; }
 /* The project this window has loaded — takes the place of the jump action. */
 .spexr-df-card__current {
-  flex: none; align-self: center; padding: 0 var(--sl-space-1);
+  /* Baseline-aligned with the harness chip beside it; the transparent border
+     matches that chip's box so the two sit level. */
+  flex: none; padding: 0 var(--sl-space-1);
   font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs); line-height: 1.5;
-  color: var(--tile-accent);
+  color: var(--tile-accent); border: 1px solid transparent;
   background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
   border-radius: var(--sl-radius-sm);
 }
