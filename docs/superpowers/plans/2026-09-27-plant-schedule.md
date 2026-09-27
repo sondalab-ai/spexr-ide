@@ -5,8 +5,7 @@
 > **What is this file.** Implementation plan for spec 0018. Audience: whoever
 > implements it (human or agent). Owner: marcello.barile. The spec
 > (`docs/specs/0018-plant-schedule.md`) is the contract; this file is the order
-> of work. Slices 1–3 are planned task by task. Slice 4 is outlined only: it is
-> planned in full once Slice 3 is in.
+> of work. Slices 1–4 are planned task by task.
 
 **Goal:** Let the operator define a dependency graph of agent sessions in a Dark Factory sidebar and run it, each session a live wall card.
 
@@ -39,6 +38,14 @@
 4. **A transcript that never appears** — usually Claude's folder-trust dialog (probe, 2026-09-27). The task must show *Needs you*, not sit silently in `running`, and must fail when the pty exits. Pinned in Task 8 ("reports needs-you while no transcript exists") and Task 11 ("fails the task when the pty exits first").
 5. **Parallel check commands overloading the machine** (several `pnpm test` at once; the 18 GB machine crashed on 2026-09-24). Checks are serialized backend-wide and killed by process group on timeout. Pinned in Task 15 ("kills the whole process group on timeout: a child sleep is gone too", "two tasks' real checks never overlap", "returns even when a process outside the group keeps the output open").
 6. **A check's output breaking out of the paste.** The follow-up carries check output written by agent-authored code; an embedded `ESC[201~` would end the bracketed paste and turn the rest into keystrokes. Pinned in Task 16 (`bracketedPaste` "cannot be broken out of"). Review Focus 1 extends to pastes: re-arming must not count the reply still on screen — pinned in Task 16 ("never counts the reply still on screen again", both watchers).
+7. **A retry that makes a fresh worktree, or a rerun that silently builds on an old one.** Retry must continue in the task's own worktree; a new Run must refuse a leftover (R15). Pinned in Task 24 ("a retry continues in the same worktree…", "a new run refuses a worktree left from an earlier run…") and Task 26 ("retry reuses the task's worktree…").
+8. **A skipped task's reply leaking into its dependents.** A failed task may already have replied; after Skip its placeholders must render empty. Pinned in Task 22 ("skip lets dependents start, and the skipped task's placeholders render empty even when it replied") and Task 26 ("skip lets the dependent start…").
+9. **Pauses after retry and skip.** A failure pause clears only when nothing else is failed or interrupted; an operator pause survives both. Pinned in Task 22 ("a failure pause clears only when…", "an operator pause survives retry and skip…").
+10. **`sameAs` in the wrong folder.** It must resolve to the upstream's real worktree, and never fall back to the project folder. Pinned in Task 23 (`workspacePlan`) and Task 26 ("runs a sameAs task in its upstream's real worktree…", "fails a sameAs task whose upstream never got its worktree…").
+11. **Siblings serialized by accident.** Two ready tasks in separate worktrees must both be launched before either starts. Pinned in Task 26 ("starts two siblings in separate worktrees together…") and Task 24 ("two siblings prepared at once…").
+12. **Git through a shell.** Pinned in Task 24 ("never goes through a shell: a repository whose path is shell syntax…").
+13. **Closing someone else's terminal, or re-attaching a dead one.** Retry resets the task to a bare state (R12); every close is checked against the recorded process id and never applies to an interrupted task (R13). Pinned in Task 22 ("retry of an interrupted task never closes a terminal…") and Task 25 (`SchedulePty.close` "leaves alone a terminal id that now runs another process").
+14. **Invisible ptys.** A launch for an aborted or replaced run, or one whose watcher failed, is closed (R14). Pinned in Task 25.
 
 ---
 
@@ -61,6 +68,7 @@
 | `src/node/schedule/schedule-runner.ts` | Serialized dispatch, effects, watcher lifetimes |
 | `src/node/schedule/schedule-pty.ts` | Backend pty via `ShellTerminalServer` + `ProcessManager`; bracketed paste then Enter |
 | `src/node/schedule/check-runner.ts` | Check command in a login shell, process-group kill on timeout, backend-wide FIFO queue |
+| `src/node/schedule/workspace.ts` | Worktree workspaces: path and branch, fresh or reused, git via `execFile`, one change at a time per repository |
 | `src/node/schedule/spexr-schedule-backend-service.ts` | RPC service |
 | `src/node/darkfactory/spexr-darkfactory-backend-service.ts` | + scan announcements for opencode tasks |
 | `src/node/darkfactory/session-state.ts` | export `lastTurn`, `AUTO_APPROVE_MODES`, `SETTLE_MS` |
@@ -70,6 +78,7 @@
 | `src/browser/darkfactory/schedule/schedule-wall.ts` | Pure: which task terminals the wall must mount |
 | `src/browser/darkfactory/schedule/sidebar-prefs.ts` | Sidebar width/open in localStorage |
 | `src/browser/darkfactory/schedule/loop-edit.ts` | Pure: switch the loop on/off, edit its fields and check |
+| `src/browser/darkfactory/schedule/task-edit.ts` | Pure: "waits for", workspace, hand-off and account choices |
 | `src/browser/darkfactory/schedule/schedule-sidebar.tsx` | Sidebar React component |
 | `src/browser/darkfactory/darkfactory-wall-widget.tsx` | Shell row layout, sidebar, mount task cards |
 | `src/browser/style/spexr.css` | Sidebar styles |
@@ -5672,9 +5681,2427 @@ git commit -m "feat(schedule): loop settings and Pause/Resume in the plant-sched
 
 ---
 
-# Slice 4 — The graph (outline; plan in full after Slice 3)
+# Slice 4 — The graph
 
-- **Engine:** `retry { task }` (from iteration 1, same workspace, new session), `skip { task }` (placeholders render empty), Retry/Skip also for `interrupted`. Both recompute the failure pause the way `resume` does (Slice 3, R3): `pausedBy` stays `"operator"` while the operator has paused, else it is `"failure"` only while a task is still failed or interrupted.
-- **Workspaces** (`node/schedule/workspace.ts`): `git -C <project> rev-parse --show-toplevel`, worktree at `<parent>/<repo>-spexr-<schedule>-<task>` on `spexr/<schedule>/<task>`; reuse on retry; `execFile` only. Tests against a temporary git repo.
-- **Service:** `retry(scheduleId, taskId, launch)`, `skip` (`pause`/`resume` shipped in Slice 3, Task 19; AC-15's "Pause and Resume work at any time" is re-checked here across a multi-task graph).
-- **UI:** "waits for" multi-select, workspace picker (folder / worktree / same as …), placeholder picker listing upstream tasks, account picker, inline validation everywhere, row selection highlights upstream tasks, Retry/Skip on failed rows; full Look and feel pass in both themes and keyboard-only (AC-17).
+Planned in full on 2026-09-28 against the code after Task 20 (commit `66545b6`). Where this plan and the Slice 1–3 task text disagree, the code wins. Where the code disagrees with the spec, the task below fixes the code. The contradictions found:
+
+- **A `sameAs` task can land in the project folder.** `ScheduleRunner.perform` resolves a `sameAs` workspace as `run.tasks[up]?.workspace ?? task.project`. If the upstream is a worktree task that never started (it was skipped after its worktree failed), the dependent runs in the project folder. That goes around the shared-folder guard. Fixed in Task 26 (R20).
+- **A skipped task leaks its reply.** `advance()` fills `{{x.reply}}` from the stored reply whatever the task's status. A task that failed after replying still has one, so skipping it would carry that reply into its dependents. AC-14 says it renders empty. Fixed in Task 22.
+- **New effects can be dropped without a trace.** `perform()` ends with `if (e.type !== "start") return;`, so any new effect type is ignored silently. This was a deferred minor from Task 19. Task 25 replaces it with an exhaustive switch.
+- **The sidebar is missing parts of the spec.** It has no Duplicate button (spec, Sidebar). Rows show neither the workspace nor the adopted opencode session id (spec, Risks). `aria-current` follows the task being edited, not the selected one. Deleting a schedule asks for no confirmation. Fixed in Tasks 29 and 31.
+
+**Rulings for this slice** (numbering continues from Slice 3)
+
+- **R11. Retry starts the task at once, even while the run is paused.** Resetting it to `pending` and letting `advance()` start it would deadlock when two tasks have failed: the failure pause stays set, so nothing starts. Under an operator pause the retried task starts, and R4 holds its turn end like any other. *Cost if wrong:* an operator who paused and then retries sees one session start during the pause.
+- **R12. Retry resets the task to a bare `{ status: "starting", iteration: 1 }`.** The terminal, process, session, workspace, reply, error and check output are all dropped. `starting` is an active status, so a leftover `terminalId` would make `taskCardsToMount` re-attach the old terminal. *Cost if wrong:* the failed attempt's last reply is gone from the run state. Its transcript stays on disk.
+- **R13. Retry closes the failed attempt's session; Skip and Abort do not.**
+  - Retry closes the session if it is still open. The new session works in the same folder, and the shared-folder guard exists to keep one live session per folder.
+  - Every close is checked against the recorded process id.
+  - An `interrupted` task's terminal is never closed. Its id died with the old backend and may now belong to someone else's shell.
+  - Skip leaves the failed session open for the operator to read. Abort leaves every session open (spec).
+  - *Cost if wrong:* Retry loses the failed TUI, although the wall still lists the session as resumable. After a Skip, a `sameAs` dependent shares its folder with the skipped session's TUI until the operator closes it, and the wall may credit liveness to either one.
+- **R14. A pty that nothing can see is closed.** This covers three cases:
+  - a launch that resolves after its run was aborted or replaced;
+  - a `started` event dropped by `dispatch()` for a stale or finished run;
+  - a launch whose watcher or exit listener could not be registered.
+  
+  Such a pty has no card and no watcher. This settles the Task 11 deferred minor. *Cost if wrong:* none known. Only ptys whose terminal id was never recorded in any run are closed.
+- **R15. A new Run refuses a leftover worktree or branch; Retry reuses it.** AC-13 asks for a *fresh* worktree. So a first start finds `spexr/<schedule>/<task>` or its folder left from an earlier run, and fails the task with the commands that remove them. Retry continues on whatever is there: the worktree itself, or a new worktree for a branch left without one. *Cost if wrong:* every rerun after a finished or aborted run stops at each worktree task, until the operator cleans up or presses Retry.
+- **R16. The task keeps its place inside the repository.** When the project is a folder inside its repository (a package in a monorepo), the task works in the same folder inside the worktree (`rev-parse --show-prefix`). A folder git does not track has no copy there, so the start fails. *Cost if wrong:* none for projects at the repository root.
+- **R17. Git runs through `execFile` only, one worktree change at a time per repository.**
+  - The per-repository key is `--git-common-dir`. This needs git ≥ 2.31 for `--path-format=absolute`; this machine has 2.50.
+  - Every call has a 30-second timeout.
+  - *Cost if wrong:* the second of two siblings waits about 0.1 s for the first one's worktree.
+- **R18. The trust dialog stays with the operator.**
+  - Every new worktree is a folder Claude has not seen, so Claude shows its folder-trust dialog once. The task shows *Needs you* after 8 s (Task 8).
+  - The schedule never edits Claude's own settings (`.claude.json`) to skip the dialog. Other Claude processes rewrite that file whole, and its format is not a public contract.
+  - The editor tells the operator to choose "Yes" in the card. The dialog's default answer, "No, exit", ends the pty, and the task fails.
+  - *Cost if wrong:* a schedule with Claude worktree tasks is not unattended. Each new worktree waits for one answer.
+- **R19. Worktree folder names may collide, and no check prevents it.** Ids may contain dashes, so schedule `a-b` with task `c` and schedule `a` with task `b-c` map to the same sibling folder. The second one then finds the folder taken and fails with a message that says so. *Cost if wrong:* the operator renames one task or schedule.
+- **R20. A `sameAs` task resolves its folder at start, never falling back to the project folder.** The resolution order:
+  1. The folder the upstream recorded when it started.
+  2. For a `folder` upstream that never started, its project.
+  3. Through a `sameAs` chain, the same rules one link further up.
+  4. When the chain ends at a worktree that was never made, the task fails to start with a reason.
+  
+  *Cost if wrong:* none. Falling back to the project folder would break the shared-folder guard.
+- **R21. Retry and Skip apply only to a `failed` or `interrupted` task of a running run.** Anything else is answered with a problem, and the sidebar shows it above Run. Retry also re-checks the launch command, exactly as Run does. *Cost if wrong:* none.
+- **R22. Retry resolves the task's launch again in the frontend.** The preferences or the active profile may have changed since Run. The new launch replaces `run.launches[task]`. *Cost if wrong:* none. It is the same resolution Run performs.
+- **R23. The editor prevents a cycle before it can be saved.** A "waits for" choice that would close a cycle is shown disabled, with the reason next to it. Placeholders are inserted with one button per hand-off, not with a `<select>`: in Chromium, arrowing through a closed select fires `change` on every step, which would insert a token at each one. *Cost if wrong:* none.
+
+### Task 21: Record the Slice 4 rulings in the spec
+
+**Files:**
+- Modify: `docs/specs/0018-plant-schedule.md` (Engine, Launch, Risks)
+
+**Interfaces:** none (documentation). Every later task implements what this one states.
+
+- [ ] **Step 1: Engine**
+
+In `### Engine`, find the bullet that begins with "A task that fails pauses the run" and ends with "or aborts the run.". Insert this bullet directly after it:
+
+```markdown
+- Retry starts the task at once, even while the run is paused; an operator
+  pause then holds its turn end like any other. Nothing of the failed attempt
+  is carried over (terminal, session, reply, error), and its session is closed
+  if it is still open, because the new session works in the same folder. An
+  interrupted task's session is never closed: its terminal id died with the old
+  backend and may now belong to another process. Skip leaves the failed session
+  open for the operator to read. After either, the run stays paused on a
+  failure only while another task is still failed or interrupted; an operator
+  pause is kept. Both apply only to a failed or interrupted task.
+```
+
+- [ ] **Step 2: Launch**
+
+In `### Launch`, replace the paragraph that begins "The workspace is prepared before launch:" with:
+
+```markdown
+The workspace is prepared before launch. A `worktree` task runs
+`git worktree add -b spexr/<schedule>/<task> <path> HEAD` in the project's
+repository (`git -C <project> rev-parse --show-toplevel`), with `<path>` a
+sibling folder `<repo>-spexr-<schedule>-<task>`, so it starts from the
+project's last commit; uncommitted changes stay behind. When the project is a
+folder inside its repository, the task works in the same folder inside the
+worktree. Git runs with an argument list, never through a shell, one worktree
+change at a time per repository. A retry reuses the task's worktree, or makes
+one for its branch when only the branch is left. A new run refuses a worktree
+or branch left from an earlier run and names the commands that remove them;
+Retry continues on them instead. A `sameAs` task runs in the folder its
+upstream actually used; when the upstream never got one (a worktree task
+skipped before it started), the task fails to start rather than fall back to
+the project folder.
+
+A pty that starts for a run that has meanwhile been aborted or replaced, or
+whose watcher cannot be registered, is closed: it has no card and nothing
+watches it.
+```
+
+- [ ] **Step 3: Risks**
+
+In `## Risks`, in the probe bullet that ends "Every new worktree (Slice 4) is a new folder and will ask once.", append:
+
+```markdown
+    The operator answers it in the task's card: choose "Yes" (the default
+    answer ends the session and fails the task). The schedule never edits
+    Claude's own settings to skip the dialog; a schedule with Claude worktree
+    tasks is therefore not unattended.
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/specs/0018-plant-schedule.md
+git commit -m "docs(spec): 0018 retry, skip, worktree reuse and the trust dialog (Slice 4 rulings)"
+```
+
+### Task 22: Engine — retry and skip
+
+**Files:**
+- Modify: `src/common/schedule/schedule-types.ts`
+- Modify: `src/node/schedule/schedule-engine.ts`
+- Test: `src/node/schedule/schedule-engine.test.ts`
+
+**Interfaces:**
+- Consumes: `TaskLaunch`, `SETTLED_STATUSES` (Task 1); `fail`, `hasFailure`, `advance` (Tasks 10, 18).
+- Produces:
+
+```ts
+// schedule-types.ts
+export const RETRYABLE_STATUSES: ReadonlySet<TaskStatus>; // failed, interrupted
+// schedule-engine.ts
+export type EngineEvent = /* … */ | { type: "retry"; task: string; launch: TaskLaunch } | { type: "skip"; task: string };
+export type Effect =
+  | { type: "start"; task: string; prompt: string; reuse?: true } // reuse: set only by a retry (R15)
+  | /* name, paste, check as before */
+  | { type: "close"; terminalId: number; processId: number };    // R13
+```
+
+- [ ] **Step 1: Failing tests**
+
+Append to `schedule-engine.test.ts`:
+
+```ts
+describe("step — retry and skip (Slice 4)", () => {
+  const s = sched(task("a"), task("b"), task("c", { needs: ["a"], prompt: "after {{a.reply}} in [{{a.workspace}}]" }));
+  const other: TaskLaunch = { plan: { command: "claude-work", exportConfigDir: "", unquoted: true }, configDir: "/acct" };
+  const begin = (): RunState => {
+    let run = startRun(s, launches(s), "r1", 0).run;
+    run = step(s, run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a", sessionId: "u-a" }).run;
+    return step(s, run, { type: "started", task: "b", terminalId: 8, processId: 80, workspace: "/r-b", sessionId: "u-b" }).run;
+  };
+  const failed = (run: RunState, id: string): RunState => step(s, run, { type: "exited", task: id }).run;
+
+  it("retry starts the task again from iteration 1 in a bare state, closes the failed session, and takes the new launch (R12, R13, R22)", () => {
+    const { run, effects } = step(s, failed(begin(), "a"), { type: "retry", task: "a", launch: other });
+    expect(run.tasks["a"]).toEqual({ status: "starting", iteration: 1 });
+    expect(run.launches["a"]).toEqual(other);
+    expect(effects).toEqual([
+      { type: "close", terminalId: 7, processId: 70 },
+      { type: "start", task: "a", prompt: "do a", reuse: true },
+    ]);
+    expect(run.pausedBy).toBeUndefined();
+  });
+
+  it("retry of an interrupted task never closes a terminal: its id may belong to another process now (R13)", () => {
+    const recovered = step(s, begin(), { type: "recover" }).run;
+    const { run, effects } = step(s, recovered, { type: "retry", task: "a", launch });
+    expect(effects).toEqual([{ type: "start", task: "a", prompt: "do a", reuse: true }]);
+    expect(run.tasks["a"]!.status).toBe("starting");
+    expect(run.pausedBy).toBe("failure"); // b is still interrupted
+  });
+
+  it("a failure pause clears only when nothing else is failed or interrupted", () => {
+    let run = failed(failed(begin(), "a"), "b");
+    run = step(s, run, { type: "retry", task: "a", launch }).run;
+    expect(run.pausedBy).toBe("failure");
+    run = step(s, run, { type: "skip", task: "b" }).run;
+    expect(run.pausedBy).toBeUndefined();
+  });
+
+  it("skip lets dependents start, and the skipped task's placeholders render empty even when it replied (AC-14)", () => {
+    const s2 = sched(
+      task("a", { loop: { stopCriteria: "done", followUp: "more", maxIterations: 1 } }),
+      task("c", { needs: ["a"], prompt: "after {{a.reply}} in [{{a.workspace}}]" }),
+    );
+    let run = startRun(s2, launches(s2), "r1", 0).run;
+    run = step(s2, run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a" }).run;
+    run = step(s2, run, { type: "turn-ended", task: "a", reply: "half of it" }).run;
+    expect(run.tasks["a"]).toMatchObject({ status: "failed", reply: "half of it" });
+    const out = step(s2, run, { type: "skip", task: "a" });
+    expect(out.run.tasks["a"]!.status).toBe("skipped");
+    expect(out.run.pausedBy).toBeUndefined();
+    expect(out.effects).toEqual([{ type: "start", task: "c", prompt: "after  in []" }]); // no close: R13
+  });
+
+  it("a run finishes once every task has converged or been skipped", () => {
+    const s3 = sched(task("a"), task("b"));
+    let run = startRun(s3, launches(s3), "r1", 0).run;
+    run = step(s3, run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a" }).run;
+    run = step(s3, run, { type: "started", task: "b", terminalId: 8, processId: 80, workspace: "/r-b" }).run;
+    run = step(s3, run, { type: "turn-ended", task: "a", reply: "ok" }).run;
+    run = step(s3, run, { type: "exited", task: "b" }).run;
+    expect(run.status).toBe("running");
+    expect(step(s3, run, { type: "skip", task: "b" }).run.status).toBe("finished");
+  });
+
+  it("an operator pause survives retry and skip; a retried task starts at once and its turn end is held (R11, R4)", () => {
+    const paused = step(s, failed(begin(), "a"), { type: "pause" }).run;
+    const retried = step(s, paused, { type: "retry", task: "a", launch });
+    expect(retried.run.pausedBy).toBe("operator");
+    expect(retried.effects.map((e) => e.type)).toEqual(["close", "start"]);
+    let run = step(s, retried.run, { type: "started", task: "a", terminalId: 9, processId: 90, workspace: "/r-a" }).run;
+    run = step(s, run, { type: "turn-ended", task: "a", reply: "done" }).run;
+    expect(run.tasks["a"]!.status).toBe("held");
+    expect(run.tasks["c"]!.status).toBe("pending");
+    const skipped = step(s, failed(run, "b"), { type: "skip", task: "b" });
+    expect(skipped.run.pausedBy).toBe("operator");
+    expect(skipped.effects).toEqual([]);
+    const resumed = step(s, skipped.run, { type: "resume" });
+    expect(resumed.run.pausedBy).toBeUndefined();
+    expect(resumed.effects).toEqual([{ type: "start", task: "c", prompt: "after done in [/r-a]" }]);
+  });
+
+  it("retry and skip ignore a task that is not failed or interrupted", () => {
+    const run = begin();
+    for (const e of [
+      { type: "retry", task: "a", launch } as const,
+      { type: "skip", task: "a" } as const,
+      { type: "skip", task: "c" } as const,
+    ]) {
+      const out = step(s, run, e);
+      expect(out.run).toEqual(run);
+      expect(out.effects).toEqual([]);
+    }
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-engine.test.ts`
+Expected: FAIL. TypeScript accepts no `retry` event, and at run time the retried task stays `failed`.
+
+- [ ] **Step 3: Implement**
+
+In `schedule-types.ts`, after `SETTLED_STATUSES`:
+
+```ts
+/** Retry and Skip apply to a task in one of these (spec, Engine; R21). */
+export const RETRYABLE_STATUSES: ReadonlySet<TaskStatus> = new Set(["failed", "interrupted"]);
+```
+
+In `schedule-engine.ts`:
+
+1. Add `RETRYABLE_STATUSES` to the import from `schedule-types.js`.
+2. Add to `EngineEvent`, after `| { type: "recover" }`:
+
+```ts
+  | { type: "retry"; task: string; launch: TaskLaunch }
+  | { type: "skip"; task: string };
+```
+
+(and drop the `;` after `{ type: "recover" }`).
+
+3. Replace the `Effect` type with:
+
+```ts
+export type Effect =
+  | { type: "start"; task: string; prompt: string; reuse?: true }
+  | { type: "name"; sessionId: string; name: string }
+  | { type: "paste"; task: string; terminalId: number; text: string }
+  | { type: "check"; task: string; command: string; cwd: string; timeoutSec: number }
+  | { type: "close"; terminalId: number; processId: number };
+```
+
+4. In `step`, before `case "abort":`, insert:
+
+```ts
+    case "retry":
+      if (!task || !RETRYABLE_STATUSES.has(task.status)) break;
+      // R13: the failed attempt's session may still be open in the folder the
+      // retry works in. An interrupted one's terminal died with the old backend.
+      if (task.status === "failed" && task.terminalId !== undefined && task.processId !== undefined) {
+        effects.push({ type: "close", terminalId: task.terminalId, processId: task.processId });
+      }
+      run.launches[event.task] = event.launch;
+      // R11: started here, not left pending, so another task's failure pause cannot hold it back.
+      startTask(schedule, run, taskOf(schedule, event.task), effects, true);
+      recomputeFailurePause(run);
+      break;
+    case "skip":
+      if (!task || !RETRYABLE_STATUSES.has(task.status)) break;
+      task.status = "skipped";
+      recomputeFailurePause(run);
+      break;
+```
+
+5. After `hasFailure`, add:
+
+```ts
+/** R3 for retry and skip: an operator pause stays; otherwise the run pauses only while a task is still failed or interrupted. */
+function recomputeFailurePause(run: RunState): void {
+  if (run.pausedBy === "operator") return;
+  if (hasFailure(run)) run.pausedBy = "failure";
+  else delete run.pausedBy;
+}
+
+/** Start one task from a bare state at iteration 1 (R12), its hand-offs filled from upstream. */
+function startTask(schedule: Schedule, run: RunState, t: ScheduleTask, effects: Effect[], reuse: boolean): void {
+  run.tasks[t.id] = { status: "starting", iteration: 1 };
+  const filled = fillPlaceholders(t.prompt, (id, field) => handOff(run, id, field));
+  effects.push({ type: "start", task: t.id, prompt: firstPrompt(t, filled), ...(reuse ? { reuse: true as const } : {}) });
+}
+
+/** What a placeholder receives: nothing from a skipped task (AC-14), else its reply without the marker, or its folder. */
+function handOff(run: RunState, taskId: string, field: "reply" | "workspace"): string | undefined {
+  const up = run.tasks[taskId];
+  if (!up || up.status === "skipped") return undefined;
+  return field === "reply" ? stripMarker(up.reply ?? "") : up.workspace;
+}
+```
+
+6. In `advance`, replace the `for (const t of ready(schedule, run)) { … }` loop body with a call:
+
+```ts
+    for (const t of ready(schedule, run)) startTask(schedule, run, t, effects, false);
+```
+
+The runner ignores `close` until Task 25 and never raises `retry` or `skip` until Task 26, so nothing changes in the app yet.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/ src/common/schedule/`
+Expected: PASS, and every Slice 2–3 engine test is unchanged: `reuse` is absent from ordinary starts.
+
+- [ ] **Step 5: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/common/schedule/schedule-types.ts src/node/schedule/schedule-engine.ts src/node/schedule/schedule-engine.test.ts
+git commit -m "feat(schedule): engine retries and skips failed or interrupted tasks (AC-14, AC-15)"
+```
+
+### Task 23: Engine — the graph end to end, and where a task works
+
+**Files:**
+- Modify: `src/node/schedule/schedule-engine.ts`
+- Test: `src/node/schedule/schedule-engine.test.ts`
+
+**Interfaces:**
+- Consumes: `startRun`, `step` (Tasks 10, 18, 22).
+- Produces:
+
+```ts
+export type WorkspacePlan = { kind: "path"; path: string } | { kind: "worktree" } | { kind: "missing"; reason: string };
+export function workspacePlan(schedule: Schedule, run: RunState, taskId: string): WorkspacePlan; // R20
+```
+
+- [ ] **Step 1: Failing tests**
+
+Add `workspacePlan` to the import from `./schedule-engine.js` and append:
+
+```ts
+describe("step — the graph (Slice 4)", () => {
+  const d = sched(
+    task("a"),
+    task("b", { needs: ["a"] }),
+    task("c", { needs: ["a"], workspace: { kind: "worktree" } }),
+    task("d", { needs: ["b", "c"], prompt: "b said {{b.reply}}; c worked in {{c.workspace}}" }),
+  );
+  const started = (id: string, n: number, workspace: string) =>
+    ({ type: "started", task: id, terminalId: n, processId: n * 10, workspace }) as const;
+
+  it("starts every ready task at once, and a task only once all its needs have converged (AC-12, AC-14)", () => {
+    const first = startRun(d, launches(d), "r1", 0);
+    expect(first.effects).toEqual([{ type: "start", task: "a", prompt: "do a" }]);
+    const afterA = step(d, step(d, first.run, started("a", 1, "/r-a")).run, { type: "turn-ended", task: "a", reply: "base ready" });
+    expect(afterA.effects).toEqual([
+      { type: "start", task: "b", prompt: "do b" },
+      { type: "start", task: "c", prompt: "do c" },
+    ]);
+    let run = step(d, afterA.run, started("b", 2, "/r-b")).run;
+    run = step(d, run, started("c", 3, "/wt/c")).run;
+    const afterB = step(d, run, { type: "turn-ended", task: "b", reply: "api done\nCONVERGED" });
+    expect(afterB.effects).toEqual([]);
+    expect(afterB.run.tasks["d"]!.status).toBe("pending");
+    const afterC = step(d, afterB.run, { type: "turn-ended", task: "c", reply: "client done" });
+    expect(afterC.effects).toEqual([{ type: "start", task: "d", prompt: "b said api done; c worked in /wt/c" }]);
+  });
+
+  it("lets running siblings finish during a failure pause, and starts the join only once the failure is skipped (AC-15)", () => {
+    let run = startRun(d, launches(d), "r1", 0).run;
+    run = step(d, run, started("a", 1, "/r-a")).run;
+    run = step(d, run, { type: "turn-ended", task: "a", reply: "ok" }).run;
+    run = step(d, run, started("b", 2, "/r-b")).run;
+    run = step(d, run, started("c", 3, "/wt/c")).run;
+    run = step(d, run, { type: "exited", task: "b" }).run;
+    expect(run.pausedBy).toBe("failure");
+    const cDone = step(d, run, { type: "turn-ended", task: "c", reply: "client done" });
+    expect(cDone.run.tasks["c"]!.status).toBe("converged");
+    expect(cDone.effects).toEqual([]);
+    const skipped = step(d, cDone.run, { type: "skip", task: "b" });
+    expect(skipped.effects).toEqual([{ type: "start", task: "d", prompt: "b said ; c worked in /wt/c" }]);
+  });
+});
+
+describe("workspacePlan (R20)", () => {
+  const w = sched(
+    task("a", { workspace: { kind: "worktree" } }),
+    task("f", { project: "/r-f" }),
+    task("b", { needs: ["a"], workspace: { kind: "sameAs", task: "a" } }),
+    task("c", { needs: ["b"], workspace: { kind: "sameAs", task: "b" } }),
+    task("g", { needs: ["f"], workspace: { kind: "sameAs", task: "f" } }),
+  );
+  const fresh = () => startRun(w, launches(w), "r1", 0).run;
+
+  it("gives a folder task its project and a worktree task a worktree to prepare", () => {
+    expect(workspacePlan(w, fresh(), "f")).toEqual({ kind: "path", path: "/r-f" });
+    expect(workspacePlan(w, fresh(), "a")).toEqual({ kind: "worktree" });
+  });
+  it("runs a sameAs task in the folder its upstream actually used, through a chain", () => {
+    const run = step(w, fresh(), { type: "started", task: "a", terminalId: 1, processId: 10, workspace: "/wt/app-spexr-s-a" }).run;
+    expect(workspacePlan(w, run, "b")).toEqual({ kind: "path", path: "/wt/app-spexr-s-a" });
+    expect(workspacePlan(w, run, "c")).toEqual({ kind: "path", path: "/wt/app-spexr-s-a" });
+  });
+  it("uses a folder upstream's project even before it ran, but never falls back to the project for a worktree nobody made", () => {
+    expect(workspacePlan(w, fresh(), "g")).toEqual({ kind: "path", path: "/r-f" });
+    expect(workspacePlan(w, fresh(), "b")).toEqual({ kind: "missing", reason: expect.stringContaining("never got its worktree") });
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-engine.test.ts`
+Expected: FAIL: `workspacePlan` is not a function (under Vitest's transform the missing export is `undefined`), and typecheck reports the missing export. The two graph tests pass already, because they pin the behaviour Tasks 10, 18 and 22 built.
+
+- [ ] **Step 3: Implement**
+
+Append to `schedule-engine.ts`:
+
+```ts
+export type WorkspacePlan = { kind: "path"; path: string } | { kind: "worktree" } | { kind: "missing"; reason: string };
+
+/**
+ * Where a task runs, from the schedule and what its run recorded: its project,
+ * a worktree to prepare, or — for `sameAs` — the folder its upstream actually
+ * used (R20). A worktree upstream that never got one is "missing", never the
+ * project folder: that would put two sessions in one folder behind the
+ * shared-folder guard's back.
+ */
+export function workspacePlan(schedule: Schedule, run: RunState, taskId: string): WorkspacePlan {
+  const seen = new Set<string>();
+  let id = taskId;
+  for (;;) {
+    const t = schedule.tasks.find((x) => x.id === id);
+    if (!t) return { kind: "missing", reason: `Unknown task: ${id}.` };
+    if (id !== taskId) {
+      const recorded = run.tasks[id]?.workspace;
+      if (recorded) return { kind: "path", path: recorded };
+    }
+    if (t.workspace.kind === "folder") return { kind: "path", path: t.project };
+    if (t.workspace.kind === "worktree") {
+      if (id === taskId) return { kind: "worktree" };
+      return {
+        kind: "missing",
+        reason: `"${t.name}" never got its worktree, so there is no workspace to share. Retry it, or give this task its own workspace.`,
+      };
+    }
+    if (seen.has(id)) return { kind: "missing", reason: "The shared workspaces point at each other." };
+    seen.add(id);
+    id = t.workspace.task;
+  }
+}
+```
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-engine.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/node/schedule/schedule-engine.ts src/node/schedule/schedule-engine.test.ts
+git commit -m "feat(schedule): pin graph execution and resolve sameAs to the upstream's real folder (AC-12, AC-14, R20)"
+```
+
+### Task 24: Worktree workspaces
+
+**Files:**
+- Create: `src/node/schedule/workspace.ts`
+- Test: `src/node/schedule/workspace.test.ts`
+
+**Interfaces:**
+- Produces:
+
+```ts
+export const GIT_TIMEOUT_MS = 30_000;
+export interface WorktreeRequest { project: string; scheduleId: string; taskId: string; reuse: boolean }
+export function worktreeBranch(scheduleId: string, taskId: string): string;       // spexr/<schedule>/<task>
+export function worktreePath(toplevel: string, scheduleId: string, taskId: string): string; // <parent>/<repo>-spexr-<schedule>-<task>
+export function parseWorktreeList(porcelain: string): { path: string; branch?: string }[];
+export class Workspaces { prepareWorktree(req: WorktreeRequest): Promise<string> } // resolves the task's cwd
+```
+
+- [ ] **Step 1: Failing tests**
+
+The repository is created in its own temporary parent folder. Its sibling worktrees land there as well, so two workers never collide, and one `rm` cleans everything up. User and system git config are switched off, so global hooks and gpg signing cannot hang the tests.
+
+```ts
+// src/node/schedule/workspace.test.ts
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { Workspaces, parseWorktreeList, worktreeBranch, worktreePath } from "./workspace.js";
+
+const saved = { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM };
+beforeAll(() => {
+  process.env.GIT_CONFIG_GLOBAL = "/dev/null";
+  process.env.GIT_CONFIG_NOSYSTEM = "1";
+});
+afterAll(() => {
+  for (const [k, v] of Object.entries(saved)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+});
+
+const g = (cwd: string, ...args: string[]): string =>
+  execFileSync(
+    "git",
+    ["-C", cwd, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", ...args],
+    { encoding: "utf8" },
+  ).trim();
+
+function makeRepo(parent: string, name: string): string {
+  const repo = join(parent, name);
+  mkdirSync(join(repo, "packages", "web"), { recursive: true });
+  writeFileSync(join(repo, "packages", "web", "index.ts"), "export {};\n");
+  g(repo, "init", "-q", "--initial-branch=main");
+  g(repo, "add", ".");
+  g(repo, "commit", "-q", "-m", "init");
+  return repo;
+}
+
+let parent: string;
+let repo: string;
+beforeEach(() => {
+  parent = realpathSync(mkdtempSync(join(tmpdir(), "spexr-ws-"))); // macOS: /var → /private/var, as git reports it
+  repo = makeRepo(parent, "app");
+});
+afterEach(() => rmSync(parent, { recursive: true, force: true }));
+
+const fresh = () => ({ project: repo, scheduleId: "s", taskId: "t", reuse: false });
+
+describe("worktree naming", () => {
+  it("puts the worktree next to the repository, on spexr/<schedule>/<task>", () => {
+    expect(worktreeBranch("nightly", "api")).toBe("spexr/nightly/api");
+    expect(worktreePath("/src/app", "nightly", "api")).toBe("/src/app-spexr-nightly-api");
+  });
+  it("reads git's porcelain worktree list", () => {
+    expect(parseWorktreeList("worktree /r\nHEAD abc\nbranch refs/heads/main\n\nworktree /r-x\nHEAD def\ndetached\n")).toEqual([
+      { path: "/r", branch: "main" },
+      { path: "/r-x" },
+    ]);
+  });
+});
+
+describe("Workspaces.prepareWorktree", () => {
+  it("makes a fresh worktree on spexr/<schedule>/<task> from the project's HEAD, next to the repository (AC-13)", async () => {
+    const ws = await new Workspaces().prepareWorktree({ project: repo, scheduleId: "nightly", taskId: "api", reuse: false });
+    expect(ws).toBe(join(parent, "app-spexr-nightly-api"));
+    expect(g(ws, "rev-parse", "--abbrev-ref", "HEAD")).toBe("spexr/nightly/api");
+    expect(g(ws, "rev-parse", "HEAD")).toBe(g(repo, "rev-parse", "HEAD"));
+    expect(g(repo, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main"); // the project stays where it was
+  });
+
+  it("runs a project that is a folder inside its repository in the same folder of the worktree (R16)", async () => {
+    const ws = await new Workspaces().prepareWorktree({ ...fresh(), project: join(repo, "packages", "web") });
+    expect(ws).toBe(join(parent, "app-spexr-s-t", "packages", "web"));
+    expect(existsSync(join(ws, "index.ts"))).toBe(true);
+  });
+
+  it("a retry continues in the same worktree, with the work left there (R15)", async () => {
+    const w = new Workspaces();
+    const first = await w.prepareWorktree(fresh());
+    writeFileSync(join(first, "notes.md"), "half done\n");
+    expect(await w.prepareWorktree({ ...fresh(), reuse: true })).toBe(first);
+    expect(existsSync(join(first, "notes.md"))).toBe(true);
+    expect(g(repo, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(2);
+  });
+
+  it("a new run refuses a worktree left from an earlier run, and says how to clean up or continue (R15)", async () => {
+    const w = new Workspaces();
+    await w.prepareWorktree(fresh());
+    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/left from an earlier run.*Retry.*git worktree remove/s);
+  });
+
+  it("a retry makes a worktree for a branch left without one; a new run refuses the branch (R15)", async () => {
+    const w = new Workspaces();
+    const first = await w.prepareWorktree(fresh());
+    g(repo, "worktree", "remove", first); // the branch stays
+    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/branch spexr\/s\/t is left from an earlier run.*git branch -D/s);
+    expect(await w.prepareWorktree({ ...fresh(), reuse: true })).toBe(first);
+    expect(g(first, "rev-parse", "--abbrev-ref", "HEAD")).toBe("spexr/s/t");
+  });
+
+  it("refuses a folder at the worktree path that is not this task's worktree, and leaves it alone (R19)", async () => {
+    const taken = join(parent, "app-spexr-s-t");
+    mkdirSync(taken);
+    writeFileSync(join(taken, "keep.txt"), "mine");
+    const w = new Workspaces();
+    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/already exists/);
+    await expect(w.prepareWorktree({ ...fresh(), reuse: true })).rejects.toThrow(/already exists/);
+    expect(existsSync(join(taken, "keep.txt"))).toBe(true);
+  });
+
+  it("refuses a branch checked out in another folder", async () => {
+    g(repo, "worktree", "add", "-q", "-b", "spexr/s/t", join(parent, "elsewhere"));
+    await expect(new Workspaces().prepareWorktree({ ...fresh(), reuse: true })).rejects.toThrow(/checked out in .*elsewhere/);
+  });
+
+  it("refuses a folder outside any git repository", async () => {
+    const plain = join(parent, "plain");
+    mkdirSync(plain);
+    await expect(new Workspaces().prepareWorktree({ ...fresh(), project: plain })).rejects.toThrow(/not inside a git repository/);
+  });
+
+  it("starts from a linked worktree's own HEAD when the project is itself a worktree", async () => {
+    const linked = join(parent, "app-feature");
+    g(repo, "worktree", "add", "-q", "-b", "feature", linked);
+    g(linked, "commit", "-q", "--allow-empty", "-m", "feature work");
+    const ws = await new Workspaces().prepareWorktree({ ...fresh(), project: linked });
+    expect(ws).toBe(join(parent, "app-feature-spexr-s-t"));
+    expect(g(ws, "rev-parse", "HEAD")).toBe(g(linked, "rev-parse", "HEAD"));
+  });
+
+  it("two siblings prepared at once both get their worktree (R17)", async () => {
+    const w = new Workspaces();
+    const [a, b] = await Promise.all([
+      w.prepareWorktree({ ...fresh(), taskId: "a" }),
+      w.prepareWorktree({ ...fresh(), taskId: "b" }),
+    ]);
+    expect([a, b]).toEqual([join(parent, "app-spexr-s-a"), join(parent, "app-spexr-s-b")]);
+  });
+
+  it("never goes through a shell: a repository whose path is shell syntax works and runs nothing (Security)", async () => {
+    const odd = makeRepo(parent, "it's $(touch PWNED) ;`touch PWNED2`");
+    const ws = await new Workspaces().prepareWorktree({ ...fresh(), project: odd });
+    expect(g(ws, "rev-parse", "--abbrev-ref", "HEAD")).toBe("spexr/s/t");
+    for (const dir of [parent, odd, ws, process.cwd()]) {
+      expect(existsSync(join(dir, "PWNED"))).toBe(false);
+      expect(existsSync(join(dir, "PWNED2"))).toBe(false);
+    }
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/workspace.test.ts`
+Expected: FAIL. `Cannot find module './workspace.js'`.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// src/node/schedule/workspace.ts
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+
+/** A git call never waits longer than this: a hung git must not hold a task in Starting for ever. */
+export const GIT_TIMEOUT_MS = 30_000;
+
+export interface WorktreeRequest {
+  /** The task's project folder: a repository root or a folder inside one. */
+  project: string;
+  scheduleId: string;
+  taskId: string;
+  /** A retry continues on a worktree or branch left from before; a first start refuses them (R15). */
+  reuse: boolean;
+}
+
+interface Repo {
+  toplevel: string;
+  /** The project's folder relative to `toplevel`, "" at the root. */
+  prefix: string;
+  /** Shared by every worktree of the repository: the key worktree changes are serialized on (R17). */
+  commonDir: string;
+}
+
+/** The branch a worktree task works on (spec, Launch). */
+export function worktreeBranch(scheduleId: string, taskId: string): string {
+  return `spexr/${scheduleId}/${taskId}`;
+}
+
+/** The worktree's folder: a sibling of the repository root, `<repo>-spexr-<schedule>-<task>`. */
+export function worktreePath(toplevel: string, scheduleId: string, taskId: string): string {
+  return join(dirname(toplevel), `${basename(toplevel)}-spexr-${scheduleId}-${taskId}`);
+}
+
+/** The entries of `git worktree list --porcelain`: each folder and, when one is checked out, its branch. */
+export function parseWorktreeList(porcelain: string): { path: string; branch?: string }[] {
+  const out: { path: string; branch?: string }[] = [];
+  for (const block of porcelain.split(/\n\n+/)) {
+    let path: string | undefined;
+    let branch: string | undefined;
+    for (const line of block.split("\n")) {
+      if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
+      else if (line.startsWith("branch ")) branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
+    }
+    if (path) out.push(branch ? { path, branch } : { path });
+  }
+  return out;
+}
+
+/** Run git with an argument list, never a shell: no path or id is ever read as shell syntax. */
+function git(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("git", ["-C", cwd, ...args], { timeout: GIT_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(String(stderr).trim() || err.message));
+      else resolve(String(stdout));
+    });
+  });
+}
+
+/** The task's folder inside the worktree (R16); a folder git does not track has no copy there. */
+function inside(path: string, prefix: string): string {
+  const cwd = prefix ? join(path, prefix) : path;
+  if (!existsSync(cwd)) throw new Error(`${cwd} does not exist in the worktree: git tracks nothing in that folder.`);
+  return cwd;
+}
+
+/**
+ * Worktree workspaces for scheduled tasks. Changes are serialized per
+ * repository (R17): siblings starting together would otherwise race on
+ * git's locks in the shared git dir.
+ */
+export class Workspaces {
+  private readonly queues = new Map<string, Promise<void>>();
+
+  /** Make (or, on retry, reuse) the task's worktree; resolves the folder the task runs in. */
+  async prepareWorktree(req: WorktreeRequest): Promise<string> {
+    const repo = await this.repoOf(req.project);
+    return this.serial(repo.commonDir, () => this.ensure(repo, req));
+  }
+
+  private async repoOf(project: string): Promise<Repo> {
+    let out: string;
+    try {
+      out = await git(project, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--show-prefix", "--git-common-dir"]);
+    } catch (err) {
+      throw new Error(`${project} is not inside a git repository, so it cannot have a worktree (${(err as Error).message}).`);
+    }
+    const [toplevel = "", prefix = "", commonDir = ""] = out.split("\n");
+    return { toplevel, prefix: prefix.replace(/\/+$/, ""), commonDir };
+  }
+
+  private async ensure(repo: Repo, req: WorktreeRequest): Promise<string> {
+    const branch = worktreeBranch(req.scheduleId, req.taskId);
+    const path = worktreePath(repo.toplevel, req.scheduleId, req.taskId);
+    const leftover = (what: string, cleanup: string): Error =>
+      new Error(`${what} is left from an earlier run. Press Retry to continue on it, or remove it first: ${cleanup}`);
+    const onBranch = parseWorktreeList(await git(repo.toplevel, ["worktree", "list", "--porcelain"])).find(
+      (w) => w.branch === branch,
+    );
+    if (onBranch) {
+      if (onBranch.path !== path) throw new Error(`${branch} is checked out in ${onBranch.path}; this task needs it in ${path}.`);
+      if (!req.reuse) throw leftover(`The worktree ${path}`, `git worktree remove '${path}' && git branch -D ${branch}`);
+      return inside(path, repo.prefix);
+    }
+    if (existsSync(path)) throw new Error(`${path} already exists and is not this task's worktree. Move it away, or rename the task.`);
+    const branchExists = await git(repo.toplevel, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).then(
+      () => true,
+      () => false,
+    );
+    if (branchExists && !req.reuse) throw leftover(`The branch ${branch}`, `git branch -D ${branch}`);
+    await git(repo.toplevel, branchExists ? ["worktree", "add", path, branch] : ["worktree", "add", "-b", branch, path, "HEAD"]);
+    return inside(path, repo.prefix);
+  }
+
+  private serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const next = (this.queues.get(key) ?? Promise.resolve()).then(fn, fn);
+    const tail = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.queues.set(key, tail);
+    void tail.then(() => {
+      if (this.queues.get(key) === tail) this.queues.delete(key);
+    });
+    return next;
+  }
+}
+```
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/workspace.test.ts`
+Expected: PASS. Each test runs a handful of git processes, so the file takes a few seconds.
+
+- [ ] **Step 5: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/node/schedule/workspace.ts src/node/schedule/workspace.test.ts
+git commit -m "feat(schedule): worktree workspaces — fresh on a run, reused on retry, git never through a shell (AC-13)"
+```
+
+### Task 25: Closing ptys — the kill port, orphans, and the retry close
+
+**Files:**
+- Modify: `src/node/schedule/schedule-pty.ts`, test `schedule-pty.test.ts`
+- Modify: `src/node/schedule/schedule-runner.ts`, test `schedule-runner.test.ts`
+- Modify: `src/node/schedule/spexr-schedule-backend-service.ts`
+
+**Interfaces:**
+- Consumes: `Effect` `close` (Task 22); `IShellTerminalServer.close(id)` and `getProcessId(id)` (Theia; `close` kills a `TerminalProcess`).
+- Produces: `SchedulePty.close(terminalId: number, processId: number): Promise<void>`; `RunnerPorts.close(terminalId: number, processId: number): Promise<void>`. `perform()` becomes an exhaustive switch, and the start body moves into `private start(scheduleId, runId, e)`.
+
+- [ ] **Step 1: Failing tests**
+
+Append to `schedule-pty.test.ts` (add `SchedulePty` to the import):
+
+```ts
+describe("SchedulePty.close", () => {
+  function pty(pids: Record<number, number>) {
+    const closed: number[] = [];
+    const p = new SchedulePty();
+    (p as unknown as { terminals: unknown }).terminals = {
+      getProcessId: async (id: number) => {
+        if (!(id in pids)) throw new Error("gone");
+        return pids[id]!;
+      },
+      close: async (id: number) => void closed.push(id),
+    };
+    return { p, closed };
+  }
+  it("closes a terminal that still runs the recorded process", async () => {
+    const { p, closed } = pty({ 4: 40 });
+    await p.close(4, 40);
+    expect(closed).toEqual([4]);
+  });
+  it("leaves alone a terminal id that now runs another process, or none (R13)", async () => {
+    const { p, closed } = pty({ 4: 99 });
+    await p.close(4, 40);
+    await p.close(5, 50);
+    expect(closed).toEqual([]);
+  });
+});
+```
+
+In `schedule-runner.test.ts`, give `fakes()` the port and expose what it saw:
+
+```ts
+  const closes: [number, number][] = [];
+  // …inside `ports`:
+    close: async (id, pid) => void closes.push([id, pid]),
+  // …in the returned object:
+    closes,
+```
+
+At the end of `it("does not bind a rerun's task to the previous run's terminal, …")`, add:
+
+```ts
+    expect(f.closes).toEqual([[1, 10]]); // R14: run 1's pty had no card and nothing watching it
+```
+
+At the end of `it("drops a superseded run's late started event even when Abort/Run were queued behind a busy queue …")`, add:
+
+```ts
+    expect(f.closes).toEqual([[1, 10]]); // R14: dispatch() dropped run 1's "started" and closed its pty
+```
+
+Then append, inside `describe("ScheduleRunner", …)`:
+
+```ts
+  it("closes a launch that resolves after its run was aborted: it would have no card (R14)", async () => {
+    const f = fakes();
+    type Terminal = { terminalId: number; processId: number };
+    const pending: ((t: Terminal) => void)[] = [];
+    f.ports.launch = () => new Promise<Terminal>((resolve) => pending.push(resolve));
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    await runner.abort("s");
+    pending.shift()!({ terminalId: 5, processId: 50 });
+    await settle();
+    expect(f.closes).toEqual([[5, 50]]);
+    expect(f.watching()).toBe(false);
+  });
+
+  it("closes the pty when its watcher cannot be registered (R14)", async () => {
+    const f = fakes();
+    f.ports.watchClaude = () => {
+      throw new Error("boom");
+    };
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("failed");
+    expect(f.closes).toEqual([[3, 30]]);
+  });
+
+  it("a retry closes the failed session and launches a new one; Abort closes nothing (R13)", async () => {
+    const f = fakes();
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    f.exit();
+    await settle();
+    await runner.dispatch("s", { type: "retry", task: "a", launch });
+    await settle();
+    expect(f.closes).toEqual([[3, 30]]);
+    expect(f.lines).toHaveLength(2);
+    expect(f.saved()!.runs["s"]!.tasks["a"]).toMatchObject({ status: "running", terminalId: 3 });
+    await runner.abort("s");
+    await settle();
+    expect(f.closes).toEqual([[3, 30]]); // Abort keeps sessions open (spec)
+  });
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-pty.test.ts src/node/schedule/schedule-runner.test.ts`
+Expected: FAIL. `p.close is not a function`, and `f.closes` stays `[]`.
+
+- [ ] **Step 3: Implement the port**
+
+In `schedule-pty.ts`, add to `SchedulePty`:
+
+```ts
+  /**
+   * End a task's session, but only while `terminalId` still runs `processId`:
+   * terminal ids start over when the backend restarts, and another process's
+   * terminal must never be closed (R13). Resolves either way.
+   */
+  async close(terminalId: number, processId: number): Promise<void> {
+    const current = await this.terminals.getProcessId(terminalId).catch(() => -1);
+    if (current === processId) await this.terminals.close(terminalId);
+  }
+```
+
+In `spexr-schedule-backend-service.ts`, add to `ports()`:
+
+```ts
+      close: (id, pid) => this.pty.close(id, pid),
+```
+
+- [ ] **Step 4: Implement the runner**
+
+In `schedule-runner.ts`:
+
+1. Add to `RunnerPorts`:
+
+```ts
+  /** End a pty, only while it still runs `processId` (R13, R14). */
+  close(terminalId: number, processId: number): Promise<void>;
+```
+
+2. In `dispatch`, replace
+
+```ts
+      if (runId !== undefined && prev.runId !== runId) return;
+```
+
+with
+
+```ts
+      const stale = runId !== undefined && prev.runId !== runId;
+      // R14: a pty that started for a run that is gone has no card and nothing watching it.
+      if (event.type === "started" && (stale || prev.status !== "running")) await this.closeTerminal(event);
+      if (stale) return;
+```
+
+3. Replace the whole `perform` method with the three methods below. `start` holds the old body of `perform` from `const schedule = this.schedule(scheduleId);` onwards, with the three marked changes: the `isCurrentRun` comment and its position, the close after a late launch, and the close after a failed registration.
+
+```ts
+  private async perform(scheduleId: string, runId: string, e: Effect): Promise<void> {
+    switch (e.type) {
+      case "name":
+        await this.ports.rename(e.sessionId, e.name).catch((err) => console.error("[schedule] renaming the session failed", err));
+        return;
+      case "paste":
+        // Re-armed first: the reply to this paste counts even if it lands between
+        // two reads, and the reply still on screen never counts twice (R1).
+        this.watches.get(`${scheduleId}/${e.task}`)?.arm();
+        await this.ports.paste(e.terminalId, e.text).catch((err) => console.error("[schedule] pasting the follow-up failed", err));
+        return;
+      case "check":
+        await this.check(scheduleId, runId, e);
+        return;
+      case "close":
+        await this.closeTerminal(e);
+        return;
+      case "start":
+        await this.start(scheduleId, runId, e);
+        return;
+      default: {
+        const unknown: never = e;
+        throw new Error(`Unknown effect: ${JSON.stringify(unknown)}`);
+      }
+    }
+  }
+
+  /** Close a pty the run no longer wants (R13, R14); the port checks the process id first. */
+  private async closeTerminal(t: { terminalId: number; processId: number }): Promise<void> {
+    await this.ports.close(t.terminalId, t.processId).catch((err) => console.error("[schedule] closing a session failed", err));
+  }
+
+  /** Launch a task's pty and register its watcher and exit listener; every outcome goes back through dispatch(), bound to `runId`. */
+  private async start(scheduleId: string, runId: string, e: Extract<Effect, { type: "start" }>): Promise<void> {
+    const schedule = this.schedule(scheduleId);
+    const task = schedule?.tasks.find((t) => t.id === e.task);
+    const run = this.file.runs[scheduleId];
+    const launch = task && run?.launches[task.id];
+    // Bound to this run: dispatch() drops it inside the queue if Abort→Run has since replaced run `runId`.
+    const send = (event: EngineEvent): void => {
+      void this.dispatch(scheduleId, event, runId).catch((err) => console.error("[schedule] dispatch failed", err));
+    };
+    // An early-out only: it reads `this.file` outside the queue, so on a busy
+    // queue it can still see a superseded run as current and register a
+    // watcher for it. Abort's commit() releases that registration, and
+    // dispatch() drops the stale "started" and closes its pty (R14).
+    const isCurrentRun = (): boolean => {
+      const current = this.file.runs[scheduleId];
+      return !!current && current.runId === runId && current.status === "running";
+    };
+    if (!schedule || !task || !run || !launch) {
+      send({ type: "start-failed", task: e.task, error: "The task is no longer in the schedule." });
+      return;
+    }
+    const workspace =
+      task.workspace.kind === "sameAs" ? (run.tasks[task.workspace.task]?.workspace ?? task.project) : task.project;
+    const sessionId = task.harness === "claude" ? this.ports.newSessionId() : undefined;
+    const line = buildLaunchLine({
+      plan: launch.plan,
+      args: buildTaskArgs(task, e.prompt, sessionId),
+      cwd: workspace,
+      ownsAccount: task.harness === "claude",
+      keepShell: false,
+    });
+    let terminal: { terminalId: number; processId: number };
+    try {
+      terminal = await this.ports.launch(line, workspace);
+    } catch (err) {
+      if (!isCurrentRun()) return;
+      send({ type: "start-failed", task: task.id, error: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    if (!isCurrentRun()) {
+      // R14: the run was aborted or replaced while this pty started; it has no card and no watcher.
+      await this.closeTerminal(terminal);
+      return;
+    }
+    const onWatch = (w: WatchEvent): void => send({ ...w, task: task.id } as EngineEvent);
+    const registered: (() => void)[] = [];
+    let watch: TaskWatch;
+    try {
+      watch =
+        task.harness === "claude"
+          ? this.ports.watchClaude(
+              {
+                sessionId: sessionId!,
+                configDir: launch.configDir,
+                ...(task.permissionMode ? { permissionMode: task.permissionMode } : {}),
+              },
+              onWatch,
+            )
+          : this.ports.watchOpencode({ workspace, ...(task.permissionMode ? { permissionMode: task.permissionMode } : {}) }, onWatch);
+      registered.push(() => watch.stop());
+      const stopExit = this.ports.onExit(terminal.terminalId, () => send({ type: "exited", task: task.id }));
+      registered.push(stopExit);
+    } catch (err) {
+      for (const stop of registered) stop();
+      send({ type: "start-failed", task: task.id, error: err instanceof Error ? err.message : String(err) });
+      await this.closeTerminal(terminal); // R14: nothing would ever watch it
+      return;
+    }
+    this.registerReleases(scheduleId, task.id, registered);
+    this.watches.set(`${scheduleId}/${task.id}`, watch);
+    send({ type: "started", task: task.id, ...terminal, workspace, ...(sessionId ? { sessionId } : {}) });
+  }
+```
+
+- [ ] **Step 5: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/`
+Expected: PASS.
+
+- [ ] **Step 6: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/node/schedule/schedule-pty.ts src/node/schedule/schedule-pty.test.ts src/node/schedule/schedule-runner.ts src/node/schedule/schedule-runner.test.ts src/node/schedule/spexr-schedule-backend-service.ts
+git commit -m "feat(schedule): close orphaned and retried task ptys, checked by process id (R13, R14)"
+```
+
+### Task 26: Runner and service — workspaces, retry and skip
+
+**Files:**
+- Modify: `src/node/schedule/schedule-runner.ts`, test `schedule-runner.test.ts`
+- Modify: `src/common/schedule/schedule-protocol.ts`
+- Modify: `src/node/schedule/spexr-schedule-backend-service.ts`
+
+**Interfaces:**
+- Consumes: `workspacePlan` (Task 23); `Workspaces`, `WorktreeRequest` (Task 24); `RETRYABLE_STATUSES`, the `retry` and `skip` events (Task 22).
+- Produces:
+
+```ts
+// RunnerPorts
+prepareWorktree(req: WorktreeRequest): Promise<string>;
+// ScheduleRunner
+retry(scheduleId: string, taskId: string, launch: TaskLaunch): Promise<ValidationProblem[]>;
+skip(scheduleId: string, taskId: string): Promise<ValidationProblem[]>;
+// SpexrScheduleService (protocol) — same two signatures
+```
+
+- [ ] **Step 1: Failing tests**
+
+In `schedule-runner.test.ts`:
+- add `import type { WorktreeRequest } from "./workspace.js";`;
+- add `prepareWorktree: async (req) => \`/wt/${req.taskId}\`,` to the `ports` of `fakes()`;
+- append:
+
+```ts
+describe("ScheduleRunner — the graph (Slice 4)", () => {
+  type Terminal = { terminalId: number; processId: number };
+  const graph: Schedule = {
+    id: "s",
+    name: "S",
+    tasks: [
+      { id: "a", name: "A", needs: [], project: "/repo", workspace: { kind: "worktree" }, harness: "claude", prompt: "do a" },
+      { id: "b", name: "B", needs: [], project: "/repo", workspace: { kind: "worktree" }, harness: "claude", prompt: "do b" },
+      { id: "c", name: "C", needs: ["a"], project: "/repo", workspace: { kind: "sameAs", task: "a" }, harness: "claude", prompt: "review {{a.workspace}}" },
+    ],
+  };
+  const all = { a: launch, b: launch, c: launch };
+  const sessionIn = (line: string): string => /'--session-id' '([^']+)'/.exec(line)![1]!;
+
+  function graphFakes() {
+    const launched: { line: string; cwd: string; resolve: (t: Terminal) => void }[] = [];
+    const worktrees: WorktreeRequest[] = [];
+    const watchers = new Map<string, (e: WatchEvent) => void>();
+    const exits = new Map<number, () => void>();
+    const closes: [number, number][] = [];
+    let sessions = 0;
+    let saved: ScheduleFile | undefined;
+    const ports: RunnerPorts = {
+      launch: (line, cwd) => new Promise<Terminal>((resolve) => launched.push({ line, cwd, resolve })),
+      onExit: (id, l) => (exits.set(id, l), () => void exits.delete(id)),
+      watchClaude: (req, l) => (watchers.set(req.sessionId, l), { stop: () => void watchers.delete(req.sessionId), arm: () => {} }),
+      watchOpencode: () => ({ stop: () => {}, arm: () => {} }),
+      rename: async () => {},
+      newSessionId: () => `u-${++sessions}`,
+      now: () => 1,
+      save: async (f) => void (saved = structuredClone(f)),
+      publish: () => {},
+      paste: async () => {},
+      check: async () => ({ ok: true, tail: "" }),
+      close: async (id, pid) => void closes.push([id, pid]),
+      prepareWorktree: async (req) => (worktrees.push(req), `/wt/${req.taskId}`),
+    };
+    return {
+      ports,
+      launched,
+      worktrees,
+      exits,
+      closes,
+      /** Report a turn end on the session the launch `line` started. */
+      turnEnded: (line: string, reply: string) => watchers.get(sessionIn(line))!({ type: "turn-ended", reply }),
+      run: () => saved!.runs["s"]!,
+    };
+  }
+  /** Run the graph and let both roots start: a on terminal 1, b on terminal 2. */
+  async function running(f: ReturnType<typeof graphFakes>): Promise<ScheduleRunner> {
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [graph], runs: {} });
+    expect(await runner.run("s", all)).toEqual([]);
+    await settle();
+    f.launched[0]!.resolve({ terminalId: 1, processId: 10 });
+    f.launched[1]!.resolve({ terminalId: 2, processId: 20 });
+    await settle();
+    return runner;
+  }
+
+  it("starts two siblings in separate worktrees together, both launched before either has started (AC-12, AC-13)", async () => {
+    const f = graphFakes();
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [graph], runs: {} });
+    expect(await runner.run("s", all)).toEqual([]); // Slice 2's "worktree arrives in Slice 4" refusal is gone
+    await settle();
+    expect(f.worktrees).toEqual([
+      { project: "/repo", scheduleId: "s", taskId: "a", reuse: false },
+      { project: "/repo", scheduleId: "s", taskId: "b", reuse: false },
+    ]);
+    expect(f.launched.map((l) => l.cwd)).toEqual(["/wt/a", "/wt/b"]); // both in flight, neither resolved
+    expect(f.launched[0]!.line).toContain(`cd '/wt/a'`);
+    expect(f.run().tasks["a"]!.status).toBe("starting");
+    expect(f.run().tasks["b"]!.status).toBe("starting");
+  });
+
+  it("runs a sameAs task in its upstream's real worktree and makes none of its own (AC-13, R20)", async () => {
+    const f = graphFakes();
+    await running(f);
+    f.turnEnded(f.launched[0]!.line, "done");
+    await settle();
+    expect(f.launched[2]!.cwd).toBe("/wt/a");
+    expect(f.launched[2]!.line).toContain(`'review /wt/a'`);
+    expect(f.worktrees.map((w) => w.taskId)).toEqual(["a", "b"]);
+  });
+
+  it("retry reuses the task's worktree, closes the failed session and launches a new one (R13, R15)", async () => {
+    const f = graphFakes();
+    const runner = await running(f);
+    f.exits.get(2)!();
+    await settle();
+    expect(f.run()).toMatchObject({ pausedBy: "failure", tasks: { b: { status: "failed" } } });
+    expect(await runner.retry("s", "b", launch)).toEqual([]);
+    await settle();
+    expect(f.closes).toEqual([[2, 20]]);
+    expect(f.worktrees[f.worktrees.length - 1]).toEqual({ project: "/repo", scheduleId: "s", taskId: "b", reuse: true });
+    expect(f.launched[2]!.cwd).toBe("/wt/b");
+    expect(f.run().tasks["b"]!.status).toBe("starting");
+    expect(f.run().pausedBy).toBeUndefined();
+  });
+
+  it("skip lets the dependent start: it still shares the folder, but the placeholders arrive empty (AC-14)", async () => {
+    const f = graphFakes();
+    const runner = await running(f);
+    f.exits.get(1)!();
+    await settle();
+    expect(await runner.skip("s", "a")).toEqual([]);
+    await settle();
+    expect(f.run().tasks["a"]!.status).toBe("skipped");
+    expect(f.launched[2]!.cwd).toBe("/wt/a");
+    expect(f.launched[2]!.line).toContain(`'review '`);
+    expect(f.closes).toEqual([]); // R13: skip leaves the failed session open
+  });
+
+  it("fails a sameAs task whose upstream never got its worktree, instead of using the project folder (R20)", async () => {
+    const f = graphFakes();
+    f.ports.prepareWorktree = async (req) => {
+      if (req.taskId === "a") throw new Error("/repo is not inside a git repository");
+      return `/wt/${req.taskId}`;
+    };
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [graph], runs: {} });
+    await runner.run("s", all);
+    await settle();
+    expect(f.run().tasks["a"]).toMatchObject({ status: "failed", error: "/repo is not inside a git repository" });
+    await runner.skip("s", "a");
+    await settle();
+    expect(f.run().tasks["c"]).toMatchObject({ status: "failed", error: expect.stringContaining("never got its worktree") });
+    expect(f.launched.map((l) => l.cwd)).toEqual(["/wt/b"]);
+  });
+
+  it("refuses retry and skip on a task that is not failed or interrupted, a bad launch, or a run that is over (R21)", async () => {
+    const f = graphFakes();
+    const runner = await running(f);
+    const notFailed = [{ task: "a", field: "run", message: "Only a failed or interrupted task can be retried or skipped." }];
+    expect(await runner.retry("s", "a", launch)).toEqual(notFailed);
+    expect(await runner.skip("s", "a")).toEqual(notFailed);
+    f.exits.get(1)!();
+    await settle();
+    const bad: TaskLaunch = { ...launch, plan: { ...launch.plan, command: "claude\nrm -rf ~" } };
+    expect(await runner.retry("s", "a", bad)).toEqual([{ field: "run", message: "A task has no usable launch command." }]);
+    await runner.abort("s");
+    expect(await runner.skip("s", "a")).toEqual([{ field: "run", message: "This schedule is not running." }]);
+    expect(f.launched).toHaveLength(2);
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-runner.test.ts`
+Expected: FAIL. Run answers `[{ field: "workspace", message: "Worktree workspaces arrive with the full graph (Slice 4)." }]`, and `runner.retry` is not a function.
+
+- [ ] **Step 3: Implement the runner**
+
+In `schedule-runner.ts`:
+
+1. Imports: add `RETRYABLE_STATUSES` and `type ScheduleTask` to the `schedule-types.js` import. Import `workspacePlan` from `./schedule-engine.js`, and `import type { WorktreeRequest } from "./workspace.js";`.
+2. Add to `RunnerPorts`:
+
+```ts
+  /** Make (or, with `reuse`, find again) a worktree task's worktree; resolves the folder the task runs in. */
+  prepareWorktree(req: WorktreeRequest): Promise<string>;
+```
+
+3. Below the imports, add:
+
+```ts
+/** Why the backend will not use a launch the frontend resolved (spec, Security), or undefined. */
+function launchProblem(launch: TaskLaunch | undefined): ValidationProblem | undefined {
+  if (launch?.plan.command.trim() && !/[\n\r]/.test(launch.plan.command)) return undefined;
+  return { field: "run", message: "A task has no usable launch command." };
+}
+```
+
+4. In `run()`, replace the worktree refusal and the launch-command check (the two `if (schedule.tasks.some(…))` blocks) with:
+
+```ts
+      const bad = schedule.tasks.map((t) => launchProblem(launches[t.id])).find((x) => x !== undefined);
+      if (bad) return [bad];
+```
+
+5. After `resume()`, add:
+
+```ts
+  /**
+   * Start a failed or interrupted task again from iteration 1 in the same
+   * workspace, with the launch the frontend resolved just now (R11–R13, R15,
+   * R22). Returns why not instead (R21).
+   */
+  retry(scheduleId: string, taskId: string, launch: TaskLaunch): Promise<ValidationProblem[]> {
+    return this.serial(async () => {
+      const problem = this.taskActionProblem(scheduleId, taskId) ?? launchProblem(launch);
+      if (problem) return [problem];
+      await this.stepNow(scheduleId, { type: "retry", task: taskId, launch });
+      return [];
+    });
+  }
+
+  /** Let a failed or interrupted task's dependents start without it; returns why not instead (R21). */
+  skip(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
+    return this.serial(async () => {
+      const problem = this.taskActionProblem(scheduleId, taskId);
+      if (problem) return [problem];
+      await this.stepNow(scheduleId, { type: "skip", task: taskId });
+      return [];
+    });
+  }
+
+  /** Why retry or skip cannot apply (R21); read inside the queue, against the state it would change. */
+  private taskActionProblem(scheduleId: string, taskId: string): ValidationProblem | undefined {
+    const run = this.file.runs[scheduleId];
+    if (!this.schedule(scheduleId) || run?.status !== "running") return { field: "run", message: "This schedule is not running." };
+    const state = run.tasks[taskId];
+    if (!state || !RETRYABLE_STATUSES.has(state.status)) {
+      return { task: taskId, field: "run", message: "Only a failed or interrupted task can be retried or skipped." };
+    }
+    return undefined;
+  }
+
+  /** Apply an operator event from inside the queue; dispatch() would queue behind the caller and never run. */
+  private async stepNow(scheduleId: string, event: EngineEvent): Promise<void> {
+    const { run, effects } = step(this.schedule(scheduleId)!, this.file.runs[scheduleId]!, event);
+    await this.commit(scheduleId, run, effects);
+  }
+
+  /** The folder a task runs in (R20): its project, its worktree (made or reused, R15), or its upstream's real folder. */
+  private async workspaceFor(schedule: Schedule, run: RunState, task: ScheduleTask, reuse: boolean): Promise<string> {
+    const plan = workspacePlan(schedule, run, task.id);
+    if (plan.kind === "path") return plan.path;
+    if (plan.kind === "missing") throw new Error(plan.reason);
+    return this.ports.prepareWorktree({ project: task.project, scheduleId: schedule.id, taskId: task.id, reuse });
+  }
+```
+
+6. In `start()`, replace
+
+```ts
+    const workspace =
+      task.workspace.kind === "sameAs" ? (run.tasks[task.workspace.task]?.workspace ?? task.project) : task.project;
+```
+
+with
+
+```ts
+    let workspace: string;
+    try {
+      workspace = await this.workspaceFor(schedule, run, task, e.reuse === true);
+    } catch (err) {
+      if (isCurrentRun()) send({ type: "start-failed", task: task.id, error: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    if (!isCurrentRun()) return;
+```
+
+- [ ] **Step 4: Protocol and service**
+
+In `schedule-protocol.ts`, add to `SpexrScheduleService` after `resume`:
+
+```ts
+  /** Start a failed or interrupted task again, from iteration 1, in the same workspace; returns why not instead. */
+  retry(scheduleId: string, taskId: string, launch: TaskLaunch): Promise<ValidationProblem[]>;
+  /** Let a failed or interrupted task's dependents start without it (its hand-offs arrive empty); returns why not instead. */
+  skip(scheduleId: string, taskId: string): Promise<ValidationProblem[]>;
+```
+
+In `spexr-schedule-backend-service.ts`:
+
+```ts
+import { Workspaces } from "./workspace.js";
+// fields:
+  /** One per backend (the service is a singleton): worktree changes are serialized per repository (R17). */
+  private readonly workspaces = new Workspaces();
+// methods, after resume():
+  async retry(scheduleId: string, taskId: string, launch: TaskLaunch): Promise<ValidationProblem[]> {
+    return (await this.runner).retry(scheduleId, taskId, launch);
+  }
+
+  async skip(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
+    return (await this.runner).skip(scheduleId, taskId);
+  }
+// ports():
+      prepareWorktree: (req) => this.workspaces.prepareWorktree(req),
+```
+
+- [ ] **Step 5: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/ src/common/schedule/`
+Expected: PASS.
+
+- [ ] **Step 6: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean. The frontend only holds a proxy of `SpexrScheduleService`, so nothing there has to implement the new methods yet.
+
+```bash
+git add src/node/schedule/schedule-runner.ts src/node/schedule/schedule-runner.test.ts src/common/schedule/schedule-protocol.ts src/node/schedule/spexr-schedule-backend-service.ts
+git commit -m "feat(schedule): worktree and sameAs workspaces, retry and skip in the runner and service (AC-13..AC-15)"
+```
+
+### Task 27: A failed re-attach disposes the widget it made
+
+A retried task's card is mounted by its new terminal id through `reattach`. When `term.start` throws there, the widget is left registered with the terminal service under `spexr-df-<key>`. This settles the Task 12 deferred minor.
+
+**Files:**
+- Modify: `src/browser/darkfactory/darkfactory-terminal-manager.ts`
+- Test: `src/browser/darkfactory/darkfactory-terminal-manager.test.ts`
+
+**Interfaces:** `reattach` keeps its signature; on a failed start it now disposes the widget before it returns `undefined`.
+
+- [ ] **Step 1: Failing test**
+
+Append inside `describe("SpexrDarkfactoryTerminalManager across a window reload", …)`:
+
+```ts
+  it("disposes the widget it made when the attach itself fails, so a later attach under the key starts clean", async () => {
+    const { manager, terms } = withServer({ 7: 4242 });
+    const service = (manager as unknown as { terminalService: { newTerminal: (o: Record<string, unknown>) => FakeTerminal } })
+      .terminalService;
+    const make = service.newTerminal;
+    service.newTerminal = (o) => {
+      const t = make(o);
+      t.start = async () => {
+        throw new Error("gone");
+      };
+      return t;
+    };
+    expect(await manager.reattach(UUID, { terminalId: 7, processId: 4242 }, "/Users/x/proj")).toBeUndefined();
+    expect(terms[0]!.isDisposed).toBe(true);
+    expect(manager.live(UUID)).toBeUndefined();
+  });
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/darkfactory-terminal-manager.test.ts`
+Expected: FAIL. `isDisposed` is `false`.
+
+- [ ] **Step 3: Implement**
+
+In `reattach`, replace the `catch` block:
+
+```ts
+    } catch {
+      // The process ended in between. The widget's id is derived from the key,
+      // so a stale one would collide with the next attach under it.
+      term.dispose();
+      return undefined;
+    }
+```
+
+- [ ] **Step 4: Run, lint, typecheck, commit**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/darkfactory-terminal-manager.test.ts && pnpm run lint && pnpm run typecheck`
+Expected: PASS, clean.
+
+```bash
+git add src/browser/darkfactory/darkfactory-terminal-manager.ts src/browser/darkfactory/darkfactory-terminal-manager.test.ts
+git commit -m "fix(darkfactory): a failed re-attach disposes the terminal widget it created"
+```
+
+### Task 28: Editor view model — waits for, workspace, hand-offs, account
+
+**Files:**
+- Create: `src/browser/darkfactory/schedule/task-edit.ts`
+- Test: `src/browser/darkfactory/schedule/task-edit.test.ts`
+
+**Interfaces:**
+- Consumes: `upstreamOf` (Task 1); `ClaudeConfigDir` (`common/darkfactory-protocol.ts`).
+- Produces:
+
+```ts
+export interface Choice { value: string; label: string }
+export interface NeedChoice { id: string; name: string; checked: boolean; blockedBy?: string }
+export function needChoices(schedule: Schedule, taskId: string): NeedChoice[];            // R23
+export function withNeed(task: ScheduleTask, id: string, on: boolean): ScheduleTask;
+export function workspaceOptions(schedule: Schedule, taskId: string): Choice[];         // only upstream sameAs
+export function workspaceValue(ws: TaskWorkspace): string;
+export function withWorkspace(task: ScheduleTask, value: string): ScheduleTask;
+export function placeholderChoices(schedule: Schedule, taskId: string): { token: string; label: string }[];
+export function insertAt(text: string, start: number, end: number, token: string): { text: string; caret: number };
+export function accountOptions(configs: readonly ClaudeConfigDir[], current: string | undefined): Choice[];
+export function withAccount(task: ScheduleTask, configDir: string): ScheduleTask;
+```
+
+- [ ] **Step 1: Failing tests**
+
+```ts
+// src/browser/darkfactory/schedule/task-edit.test.ts
+import { describe, expect, it } from "vitest";
+import type { Schedule, ScheduleTask } from "../../../common/schedule/schedule-types.js";
+import {
+  accountOptions,
+  insertAt,
+  needChoices,
+  placeholderChoices,
+  withAccount,
+  withNeed,
+  withWorkspace,
+  workspaceOptions,
+  workspaceValue,
+} from "./task-edit.js";
+
+const t = (id: string, needs: string[] = []): ScheduleTask => ({
+  id, name: id.toUpperCase(), needs, project: "/r", workspace: { kind: "folder" }, harness: "claude", prompt: "p",
+});
+const s: Schedule = { id: "s", name: "S", tasks: [t("a"), t("b", ["a"]), t("c", ["b"]), t("d")] };
+
+describe("waits for", () => {
+  it("offers every other task, blocking the ones that already wait for this one (R23)", () => {
+    expect(needChoices(s, "a")).toEqual([
+      { id: "b", name: "B", checked: false, blockedBy: "B already waits for this task." },
+      { id: "c", name: "C", checked: false, blockedBy: "C already waits for this task." },
+      { id: "d", name: "D", checked: false },
+    ]);
+    expect(needChoices(s, "c").map((n) => [n.id, n.checked, n.blockedBy])).toEqual([
+      ["a", false, undefined],
+      ["b", true, undefined],
+      ["d", false, undefined],
+    ]);
+  });
+  it("adds and removes a link without duplicates", () => {
+    expect(withNeed(t("c", ["b"]), "a", true).needs).toEqual(["b", "a"]);
+    expect(withNeed(t("c", ["b"]), "b", true).needs).toEqual(["b"]);
+    expect(withNeed(t("c", ["b", "a"]), "b", false).needs).toEqual(["a"]);
+  });
+});
+
+describe("workspace", () => {
+  it("offers the folder, a worktree, and only the tasks upstream of this one", () => {
+    expect(workspaceOptions(s, "c").map((o) => o.value)).toEqual(["folder", "worktree", "sameAs:a", "sameAs:b"]);
+    expect(workspaceOptions(s, "c")[2]!.label).toBe("Same as A");
+    expect(workspaceOptions(s, "d").map((o) => o.value)).toEqual(["folder", "worktree"]);
+  });
+  it("round-trips the choice", () => {
+    for (const v of ["folder", "worktree", "sameAs:a"]) expect(workspaceValue(withWorkspace(t("c"), v).workspace)).toBe(v);
+    expect(withWorkspace(t("c"), "sameAs:a").workspace).toEqual({ kind: "sameAs", task: "a" });
+  });
+});
+
+describe("hand-offs", () => {
+  it("lists each upstream task's reply and folder, in schedule order, and nothing without upstream", () => {
+    expect(placeholderChoices(s, "c").map((h) => h.token)).toEqual(["{{a.reply}}", "{{a.workspace}}", "{{b.reply}}", "{{b.workspace}}"]);
+    expect(placeholderChoices(s, "c")[0]!.label).toBe("A: final reply");
+    expect(placeholderChoices(s, "a")).toEqual([]);
+  });
+  it("inserts at the caret, replacing a selection, and clamps out-of-range positions", () => {
+    expect(insertAt("see  now", 4, 4, "{{a.reply}}")).toEqual({ text: "see {{a.reply}} now", caret: 15 });
+    expect(insertAt("see XX now", 4, 6, "T")).toEqual({ text: "see T now", caret: 5 });
+    expect(insertAt("ab", 9, 12, "T")).toEqual({ text: "abT", caret: 3 });
+  });
+});
+
+describe("account", () => {
+  const configs = [
+    { path: "/u/.claude", label: ".claude", isDefault: true },
+    { path: "/u/.claude-work", label: ".claude-work", isDefault: false },
+  ];
+  it("offers the default account and every known one, keeping an unknown current choice visible", () => {
+    expect(accountOptions(configs, undefined)).toEqual([
+      { value: "", label: "Default account" },
+      { value: "/u/.claude", label: ".claude (default)" },
+      { value: "/u/.claude-work", label: ".claude-work" },
+    ]);
+    expect(accountOptions(configs, "/gone")[3]).toEqual({ value: "/gone", label: "/gone (not found)" });
+  });
+  it("the default account drops the setting instead of storing an empty path", () => {
+    expect(withAccount(t("a"), "/u/.claude-work").configDir).toBe("/u/.claude-work");
+    expect("configDir" in withAccount({ ...t("a"), configDir: "/x" }, "")).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/schedule/task-edit.test.ts`
+Expected: FAIL. `Cannot find module './task-edit.js'`.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// src/browser/darkfactory/schedule/task-edit.ts
+import type { ClaudeConfigDir } from "../../../common/darkfactory-protocol.js";
+import type { Schedule, ScheduleTask, TaskWorkspace } from "../../../common/schedule/schedule-types.js";
+import { upstreamOf } from "../../../common/schedule/schedule-graph.js";
+
+export interface Choice {
+  value: string;
+  label: string;
+}
+
+export interface NeedChoice {
+  id: string;
+  name: string;
+  checked: boolean;
+  /** Why it cannot be chosen: that task already waits for this one, so choosing it would close a cycle (R23). */
+  blockedBy?: string;
+}
+
+/** The other tasks this one may wait for; a task downstream of it is offered but blocked, with why. */
+export function needChoices(schedule: Schedule, taskId: string): NeedChoice[] {
+  const task = schedule.tasks.find((x) => x.id === taskId);
+  return schedule.tasks
+    .filter((x) => x.id !== taskId)
+    .map((x) => {
+      const checked = task?.needs.includes(x.id) ?? false;
+      const downstream = !checked && upstreamOf(schedule, x.id).has(taskId);
+      return { id: x.id, name: x.name, checked, ...(downstream ? { blockedBy: `${x.name} already waits for this task.` } : {}) };
+    });
+}
+
+/** Add or remove one "waits for" link. */
+export function withNeed(task: ScheduleTask, id: string, on: boolean): ScheduleTask {
+  if (on) return task.needs.includes(id) ? task : { ...task, needs: [...task.needs, id] };
+  return { ...task, needs: task.needs.filter((x) => x !== id) };
+}
+
+/** The project folder, a new worktree, or the workspace of a task this one waits for — never of any other (spec, Sidebar). */
+export function workspaceOptions(schedule: Schedule, taskId: string): Choice[] {
+  const up = upstreamOf(schedule, taskId);
+  return [
+    { value: "folder", label: "Project folder" },
+    { value: "worktree", label: "New worktree" },
+    ...schedule.tasks.filter((x) => up.has(x.id)).map((x) => ({ value: `sameAs:${x.id}`, label: `Same as ${x.name}` })),
+  ];
+}
+
+export function workspaceValue(ws: TaskWorkspace): string {
+  return ws.kind === "sameAs" ? `sameAs:${ws.task}` : ws.kind;
+}
+
+export function withWorkspace(task: ScheduleTask, value: string): ScheduleTask {
+  const workspace: TaskWorkspace =
+    value === "worktree"
+      ? { kind: "worktree" }
+      : value.startsWith("sameAs:")
+        ? { kind: "sameAs", task: value.slice("sameAs:".length) }
+        : { kind: "folder" };
+  return { ...task, workspace };
+}
+
+/** The hand-offs a prompt may use: each upstream task's reply and folder, in schedule order (spec, Hand-off). */
+export function placeholderChoices(schedule: Schedule, taskId: string): { token: string; label: string }[] {
+  const up = upstreamOf(schedule, taskId);
+  return schedule.tasks
+    .filter((x) => up.has(x.id))
+    .flatMap((x) => [
+      { token: `{{${x.id}.reply}}`, label: `${x.name}: final reply` },
+      { token: `{{${x.id}.workspace}}`, label: `${x.name}: folder` },
+    ]);
+}
+
+/** Put `token` in place of the selection `start..end`; returns the text and where the caret goes. */
+export function insertAt(text: string, start: number, end: number, token: string): { text: string; caret: number } {
+  const a = Math.max(0, Math.min(start, text.length));
+  const b = Math.max(a, Math.min(end, text.length));
+  return { text: text.slice(0, a) + token + text.slice(b), caret: a + token.length };
+}
+
+/** "Default account", then every account the launcher knows; a stored one no longer found stays visible. */
+export function accountOptions(configs: readonly ClaudeConfigDir[], current: string | undefined): Choice[] {
+  const options: Choice[] = [
+    { value: "", label: "Default account" },
+    ...configs.map((c) => ({ value: c.path, label: c.isDefault ? `${c.label} (default)` : c.label })),
+  ];
+  if (current && !configs.some((c) => c.path === current)) options.push({ value: current, label: `${current} (not found)` });
+  return options;
+}
+
+/** Pick the Claude account; "" is the default and drops the key (exactOptionalPropertyTypes). */
+export function withAccount(task: ScheduleTask, configDir: string): ScheduleTask {
+  if (configDir) return { ...task, configDir };
+  const { configDir: _dropped, ...rest } = task;
+  return rest;
+}
+```
+
+- [ ] **Step 4: Run, lint, typecheck, commit**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/schedule/ && pnpm run lint && pnpm run typecheck`
+Expected: PASS, clean.
+
+```bash
+git add src/browser/darkfactory/schedule/task-edit.ts src/browser/darkfactory/schedule/task-edit.test.ts
+git commit -m "feat(schedule): editor view model for waits-for, workspace, hand-offs and account"
+```
+
+### Task 29: Row view model — workspace, Retry/Skip, bands, upstream, duplicate
+
+**Files:**
+- Modify: `src/browser/darkfactory/schedule/schedule-view.ts`
+- Test: `src/browser/darkfactory/schedule/schedule-view.test.ts`
+
+**Interfaces:**
+- Consumes: `upstreamOf` (Task 1); `RETRYABLE_STATUSES` (Task 22).
+- Produces: `TaskRow` gains `workspace: string`, `canRetry: boolean` and `session?: string`. New exports:
+
+```ts
+export function bandsOf(rows: readonly TaskRow[]): { layer: number; rows: TaskRow[] }[];
+export function upstreamHighlight(schedule: Schedule, selected: string | undefined): ReadonlySet<string>;
+export function duplicateSchedule(s: Schedule, taken: ReadonlySet<string>): Schedule;
+```
+
+- [ ] **Step 1: Failing tests**
+
+Add `bandsOf`, `duplicateSchedule` and `upstreamHighlight` to the import from `./schedule-view.js`, then append:
+
+```ts
+describe("rows for the graph (Slice 4)", () => {
+  const g: Schedule = {
+    id: "g",
+    name: "G",
+    tasks: [
+      { id: "a", name: "A", needs: [], project: "/r", workspace: { kind: "worktree" }, harness: "claude", prompt: "p" },
+      { id: "b", name: "B", needs: ["a"], project: "/r", workspace: { kind: "sameAs", task: "a" }, harness: "opencode", prompt: "p" },
+      { id: "c", name: "C", needs: [], project: "/q", workspace: { kind: "folder" }, harness: "claude", prompt: "p" },
+    ],
+  };
+  const runOf = (tasks: RunState["tasks"], status: RunState["status"] = "running"): RunState => ({
+    scheduleId: "g", runId: "r", status, startedAtMs: 0, launches: {}, tasks,
+  });
+
+  it("names each row's workspace", () => {
+    expect(taskRows(g).map((r) => [r.id, r.workspace])).toEqual([["a", "Worktree"], ["c", "Project folder"], ["b", "Same as A"]]);
+  });
+  it("offers Retry and Skip only on a failed or interrupted task of a running run (R21)", () => {
+    const tasks: RunState["tasks"] = {
+      a: { status: "failed", iteration: 1 },
+      b: { status: "pending", iteration: 0 },
+      c: { status: "interrupted", iteration: 1 },
+    };
+    expect(taskRows(g, runOf(tasks)).map((r) => [r.id, r.canRetry])).toEqual([["a", true], ["c", true], ["b", false]]);
+    expect(taskRows(g, runOf(tasks, "aborted")).some((r) => r.canRetry)).toBe(false);
+  });
+  it("shows the opencode session the runner adopted (spec, Risks)", () => {
+    const rows = taskRows(g, runOf({
+      a: { status: "converged", iteration: 1, sessionId: "u-a" },
+      b: { status: "running", iteration: 1, sessionId: "ses_42" },
+      c: { status: "pending", iteration: 0 },
+    }));
+    expect(rows.find((r) => r.id === "b")!.session).toBe("ses_42");
+    expect("session" in rows.find((r) => r.id === "a")!).toBe(false);
+  });
+  it("groups rows into layer bands", () => {
+    expect(bandsOf(taskRows(g)).map((b) => [b.layer, b.rows.map((r) => r.id)])).toEqual([[0, ["a", "c"]], [1, ["b"]]]);
+  });
+  it("highlights every task upstream of the selection, and nothing without one", () => {
+    expect([...upstreamHighlight(g, "b")]).toEqual(["a"]);
+    expect(upstreamHighlight(g, undefined).size).toBe(0);
+  });
+  it("duplicates a schedule under a free id, as a deep copy", () => {
+    const copy = duplicateSchedule(g, new Set(["g", "schedule-1"]));
+    expect(copy).toMatchObject({ id: "schedule-2", name: "G (copy)" });
+    expect(copy.tasks).toEqual(g.tasks);
+    expect(copy.tasks[0]).not.toBe(g.tasks[0]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/schedule/schedule-view.test.ts`
+Expected: FAIL. `bandsOf` is not exported, and `workspace` is undefined.
+
+- [ ] **Step 3: Implement**
+
+In `schedule-view.ts`:
+
+1. Imports: add `RETRYABLE_STATUSES` to the `schedule-types.js` import, and `upstreamOf` to the `schedule-graph.js` import.
+2. In `TaskRow`, after `waitsFor: string[];`, add:
+
+```ts
+  /** Where it works: "Project folder", "Worktree" or "Same as <task>". */
+  workspace: string;
+```
+
+and after `unattended: boolean;`, add:
+
+```ts
+  /** Failed or interrupted in a running run: Retry and Skip apply (R21). */
+  canRetry: boolean;
+  /** The opencode session the runner adopted, shown so a wrong pick-up is visible (spec, Risks). */
+  session?: string;
+```
+
+3. In `taskRows`, add `const live = run?.status === "running";` before `return order.map(…)`. In the returned object, add `workspace: workspaceLabel(t, byId),` after `waitsFor: …,`, and add these after `unattended: …,`:
+
+```ts
+      canRetry: live && RETRYABLE_STATUSES.has(status),
+      ...(t.harness === "opencode" && state?.sessionId ? { session: state.sessionId } : {}),
+```
+
+4. Add:
+
+```ts
+function workspaceLabel(t: ScheduleTask, byId: ReadonlyMap<string, ScheduleTask>): string {
+  switch (t.workspace.kind) {
+    case "folder":
+      return "Project folder";
+    case "worktree":
+      return "Worktree";
+    case "sameAs":
+      return `Same as ${byId.get(t.workspace.task)?.name ?? t.workspace.task}`;
+  }
+}
+
+/** Rows grouped into their layer's band, in order; taskRows() already sorts them by layer. */
+export function bandsOf(rows: readonly TaskRow[]): { layer: number; rows: TaskRow[] }[] {
+  const bands: { layer: number; rows: TaskRow[] }[] = [];
+  for (const r of rows) {
+    const last = bands[bands.length - 1];
+    if (last?.layer === r.layer) last.rows.push(r);
+    else bands.push({ layer: r.layer, rows: [r] });
+  }
+  return bands;
+}
+
+/** The tasks the selected one waits for, directly or not: the rows to highlight. */
+export function upstreamHighlight(schedule: Schedule, selected: string | undefined): ReadonlySet<string> {
+  return selected ? upstreamOf(schedule, selected) : new Set<string>();
+}
+
+/** A deep copy under a free id, named "<name> (copy)"; its worktrees get their own branches, since those carry the id. */
+export function duplicateSchedule(s: Schedule, taken: ReadonlySet<string>): Schedule {
+  return { ...structuredClone(s), id: newSchedule(taken).id, name: `${s.name} (copy)` };
+}
+```
+
+- [ ] **Step 4: Run, lint, typecheck, commit**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/schedule/ && pnpm run lint && pnpm run typecheck`
+Expected: PASS, clean.
+
+```bash
+git add src/browser/darkfactory/schedule/schedule-view.ts src/browser/darkfactory/schedule/schedule-view.test.ts
+git commit -m "feat(schedule): rows show workspace, Retry/Skip, adopted session; bands, upstream highlight, duplicate"
+```
+
+### Task 30: Sidebar editor — waits for, workspace, hand-offs, account, inline problems
+
+**Files:**
+- Modify: `src/browser/darkfactory/schedule/schedule-sidebar.tsx`
+- Modify: `src/browser/darkfactory/darkfactory-wall-widget.tsx`
+- Modify: `src/browser/style/spexr.css`
+
+**Interfaces:**
+- Consumes: everything in `task-edit.ts` (Task 28); `ClaudeConfigDir`.
+- Produces: `ScheduleSidebarProps.configs: readonly ClaudeConfigDir[]`; `TaskEditor` takes `schedule` and `configs`.
+
+Write this task against `schedule-sidebar.tsx` as of commit `66545b6`, with the targeted edits below. Never replace the whole file.
+
+- [ ] **Step 1: Props and imports**
+
+1. Add the imports:
+
+```ts
+import type { ClaudeConfigDir } from "../../../common/darkfactory-protocol.js";
+import {
+  accountOptions,
+  insertAt,
+  needChoices,
+  placeholderChoices,
+  withAccount,
+  withNeed,
+  withWorkspace,
+  workspaceOptions,
+  workspaceValue,
+} from "./task-edit.js";
+```
+
+2. In `ScheduleSidebarProps`, after `projects: …;`, add:
+
+```ts
+  /** The Claude accounts the wall's launcher knows; a task picks one. */
+  configs: readonly ClaudeConfigDir[];
+```
+
+3. In the `<TaskEditor` call, add `schedule={schedule}` and `configs={p.configs}`. In `TaskEditor`'s props type, after `task: ScheduleTask;`, add `schedule: Schedule;` and `configs: readonly ClaudeConfigDir[];`.
+
+- [ ] **Step 2: Schedule name, inline**
+
+In `ScheduleSidebar`, after `const bar = …;`, add:
+
+```ts
+  const nameProblem = problems.find((x) => !x.task && x.field === "name")?.message;
+```
+
+Replace the schedule Name `<label className="sl-field">…</label>` (the one holding `value={schedule.name}`) with:
+
+```tsx
+          <label className="sl-field" data-invalid={nameProblem ? "true" : undefined}>
+            <span className="sl-field__label">Name</span>
+            <span className="sl-field__control">
+              <input
+                className="sl-field__input"
+                value={schedule.name}
+                disabled={running}
+                aria-invalid={nameProblem ? true : undefined}
+                onChange={(e) => edit({ ...schedule, name: e.target.value })}
+                onBlur={flush}
+              />
+            </span>
+            {nameProblem && <span className="spexr-sched__problem">{nameProblem}</span>}
+          </label>
+```
+
+- [ ] **Step 3: Editor fields**
+
+In `TaskEditor`, directly after `const set = (patch: Partial<ScheduleTask>): void => …;`, add:
+
+```ts
+  const promptRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const handOffs = placeholderChoices(p.schedule, t.id);
+  const needs = needChoices(p.schedule, t.id);
+  const current = workspaceValue(t.workspace);
+  const workspaces = workspaceOptions(p.schedule, t.id);
+  // A sameAs left pointing at a task this one no longer waits for stays visible; validation flags it next to the field.
+  if (!workspaces.some((o) => o.value === current)) workspaces.push({ value: current, label: "Same as a task it does not wait for" });
+  /** Insert a hand-off at the caret (R23: buttons, so arrowing never inserts), then put the caret after it. */
+  const insertHandOff = (token: string): void => {
+    const el = promptRef.current;
+    const { text, caret } = insertAt(t.prompt, el?.selectionStart ?? t.prompt.length, el?.selectionEnd ?? t.prompt.length, token);
+    set({ prompt: text });
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  };
+```
+
+After the `{field("Project", …)}` call, insert:
+
+```tsx
+      {field(
+        "Workspace",
+        "workspace",
+        <span className="sl-select">
+          <select className="sl-field__input" value={current} onChange={(e) => p.onChange(withWorkspace(t, e.target.value))}>
+            {workspaces.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </span>,
+      )}
+      {t.workspace.kind === "worktree" && (
+        <p className="spexr-sched__hint">
+          A new folder next to the repository, on branch <code className="spexr-sched__mono">spexr/{p.schedule.id}/{t.id}</code>,
+          made from the project's last commit: uncommitted changes stay behind. It is kept after the run for you to review
+          and merge.
+          {t.harness === "claude" &&
+            " Claude asks once whether to trust a new folder: the task shows Needs you until you choose “Yes” in its card. Its default answer ends the session."}
+        </p>
+      )}
+```
+
+After the `{field("Harness", …)}` call, insert:
+
+```tsx
+      {t.harness === "claude" &&
+        field(
+          "Account",
+          "configDir",
+          <span className="sl-select">
+            <select className="sl-field__input" value={t.configDir ?? ""} onChange={(e) => p.onChange(withAccount(t, e.target.value))}>
+              {accountOptions(p.configs, t.configDir).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </span>,
+        )}
+```
+
+Replace the `{field("Prompt", …)}` call with:
+
+```tsx
+      {field(
+        "Prompt",
+        "prompt",
+        <textarea
+          ref={promptRef}
+          className="sl-field__input spexr-sched__prompt"
+          rows={5}
+          value={t.prompt}
+          onChange={(e) => set({ prompt: e.target.value })}
+        />,
+      )}
+      {handOffs.length > 0 ? (
+        <div className="spexr-sched__handoff" role="group" aria-label="Insert a hand-off into the prompt">
+          <span className="spexr-sched__hint">Insert:</span>
+          {handOffs.map((h) => (
+            <button key={h.token} type="button" className="sl-btn sl-btn--ghost sl-btn--sm" onClick={() => insertHandOff(h.token)} title={h.token}>
+              {h.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="spexr-sched__hint">Once this task waits for another, you can hand it that task's reply or folder.</p>
+      )}
+```
+
+Directly before `<details className="spexr-sched__advanced">`, after Task 20's loop block, insert:
+
+```tsx
+      <fieldset className="spexr-sched__needs" data-invalid={problem("needs") ? "true" : undefined}>
+        <legend className="sl-field__label">Waits for</legend>
+        {needs.length === 0 ? (
+          <p className="spexr-sched__hint">Add another task to make this one wait for it.</p>
+        ) : (
+          needs.map((n) => (
+            <label key={n.id} className="sl-check">
+              <input
+                type="checkbox"
+                className="sl-check__input"
+                checked={n.checked}
+                disabled={!!n.blockedBy}
+                onChange={(e) => p.onChange(withNeed(t, n.id, e.target.checked))}
+              />
+              <span className="sl-check__box" aria-hidden="true" />
+              <span className="sl-check__label">
+                {n.name}
+                {n.blockedBy && <span className="spexr-sched__hint"> — {n.blockedBy}</span>}
+              </span>
+            </label>
+          ))
+        )}
+        {problem("needs") && <span className="spexr-sched__problem">{problem("needs")}</span>}
+      </fieldset>
+```
+
+- [ ] **Step 4: Wire the wall widget**
+
+In `darkfactory-wall-widget.tsx`, in `<ScheduleSidebar`, after the `projects={…}` prop, add `configs={this.configs}`.
+
+- [ ] **Step 5: Styles**
+
+In `src/browser/style/spexr.css`, change the selector `.spexr-sched__editor .sl-field[data-invalid="true"] .sl-field__input` to `.spexr-sched .sl-field[data-invalid="true"] .sl-field__input`, so the schedule name gets the same treatment. After the `.spexr-sched__mono` rule, add:
+
+```css
+/* "Waits for": one check per task; a choice that would close a cycle stays visible, disabled, with why. */
+.spexr-sched__needs { display: flex; flex-direction: column; gap: var(--sl-space-2); margin: 0; padding: 0; border: 0; }
+.spexr-sched__needs > legend { padding: 0; margin-bottom: var(--sl-space-1); }
+/* Hand-offs insert at the caret; one button each, in the mono face of the tokens they insert. */
+.spexr-sched__handoff { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-1); }
+.spexr-sched__handoff .sl-btn { font-family: var(--sl-font-mono); }
+```
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/ && pnpm run lint && pnpm run typecheck`
+Expected: PASS, clean.
+
+```bash
+git add src/browser/darkfactory/schedule/schedule-sidebar.tsx src/browser/darkfactory/darkfactory-wall-widget.tsx src/browser/style/spexr.css
+git commit -m "feat(schedule): editor gains waits-for, workspace, hand-off and account pickers with inline problems"
+```
+
+### Task 31: Sidebar run view — bands, selection, Retry/Skip, Duplicate, safe Delete
+
+**Files:**
+- Modify: `src/browser/darkfactory/schedule/schedule-sidebar.tsx`
+- Modify: `src/browser/darkfactory/darkfactory-wall-widget.tsx`
+- Modify: `src/browser/style/spexr.css`
+
+**Interfaces:**
+- Consumes: `bandsOf`, `upstreamHighlight`, `duplicateSchedule`, `TaskRow.canRetry/workspace/session` (Task 29); `SpexrScheduleService.retry/skip` (Task 26).
+- Produces: `ScheduleSidebarProps` gains `onRetry(scheduleId: string, taskId: string): Promise<ValidationProblem[]>` and `onSkip(scheduleId: string, taskId: string): Promise<ValidationProblem[]>`.
+
+- [ ] **Step 1: Props, imports, state**
+
+1. Change the `./schedule-view.js` import to also bring in `bandsOf`, `duplicateSchedule` and `upstreamHighlight`.
+2. In `ScheduleSidebarProps`, after `onResume(…)`, add:
+
+```ts
+  /** Start a failed or interrupted task again; resolves to the problems that refused it. */
+  onRetry(scheduleId: string, taskId: string): Promise<ValidationProblem[]>;
+  /** Let its dependents start without it; resolves to the problems that refused it. */
+  onSkip(scheduleId: string, taskId: string): Promise<ValidationProblem[]>;
+```
+
+3. After `const [confirmAbort, setConfirmAbort] = React.useState(false);`, add:
+
+```ts
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  // The selected row: aria-current, its card focused while running, and its upstream highlighted.
+  const [selected, setSelected] = React.useState<string | undefined>();
+```
+
+4. After `const rows = …;`, add `const upstream = schedule ? upstreamHighlight(schedule, selected) : new Set<string>();`.
+5. After `addSchedule`, add:
+
+```ts
+  const duplicate = (): void => {
+    if (!schedule) return;
+    const copy = duplicateSchedule(schedule, new Set(p.snapshot.schedules.map((x) => x.id)));
+    flush();
+    clearTimeout(saveTimer.current);
+    setDraft(undefined);
+    savedRef.current = undefined;
+    setRunProblems(undefined);
+    p.onSave(copy);
+    setSelectedId(copy.id);
+  };
+  /** Retry or Skip; a refusal joins the reasons above Run, like a refused run. */
+  const taskAction = (act: (sid: string, tid: string) => Promise<ValidationProblem[]>, taskId: string): void => {
+    if (!schedule) return;
+    const scheduleId = schedule.id;
+    void act(scheduleId, taskId).then((problems) => setRunProblems({ scheduleId, problems }));
+  };
+```
+
+6. In the schedule `<select>`'s `onChange`, add `setSelected(undefined);` and `setConfirmDelete(false);` next to `setRunProblems(undefined);`.
+
+- [ ] **Step 2: Duplicate and Delete with inline confirmation**
+
+Replace the trash `<button …>…codicon-trash…</button>` with:
+
+```tsx
+            <button className="sl-icon-btn" onClick={duplicate} aria-label="Duplicate this schedule" title="Duplicate this schedule">
+              <i className="codicon codicon-copy" />
+            </button>
+            {confirmDelete ? (
+              <span className="spexr-sched__confirm" role="group" aria-label="Confirm delete">
+                Delete “{schedule.name}”?
+                <button
+                  className="sl-btn sl-btn--sm"
+                  onClick={() => {
+                    setConfirmDelete(false);
+                    removeSchedule(schedule.id);
+                  }}
+                >
+                  Delete
+                </button>
+                <button className="sl-btn sl-btn--ghost sl-btn--sm" onClick={() => setConfirmDelete(false)}>
+                  Keep
+                </button>
+              </span>
+            ) : (
+              <button
+                className="sl-icon-btn"
+                onClick={() => setConfirmDelete(true)}
+                disabled={running}
+                aria-label="Delete this schedule"
+                title="Delete this schedule"
+              >
+                <i className="codicon codicon-trash" />
+              </button>
+            )}
+```
+
+- [ ] **Step 3: The layered list**
+
+Replace everything from `<ol className="spexr-sched__tasks">` through the closing `)}` of the `{!running && (<button … Add a task</button>)}` that follows it with:
+
+```tsx
+          {schedule.tasks.length === 0 ? (
+            <div className="sl-empty spexr-sched__empty">
+              <p>No tasks yet. A task is one agent session, with its own folder and prompt.</p>
+              <button className="sl-btn sl-btn--sm" onClick={addTask}>
+                <i className="codicon codicon-add" aria-hidden="true" /> Add a task
+              </button>
+            </div>
+          ) : (
+            <ol className="spexr-sched__bands" aria-label="Tasks, in the order they start">
+              {bandsOf(rows).map((band) => (
+                <li key={band.layer} className="spexr-sched__band">
+                  <span className="sl-eyebrow">{band.layer === 0 ? "Starts first" : `Then, step ${band.layer + 1}`}</span>
+                  <ol className="spexr-sched__tasks">
+                    {band.rows.map((row) => (
+                      <li
+                        key={row.id}
+                        className="spexr-sched__row"
+                        data-layer={row.layer}
+                        data-tone={row.tone}
+                        data-upstream={upstream.has(row.id) ? "true" : undefined}
+                        aria-current={selected === row.id ? "true" : undefined}
+                      >
+                        <button
+                          className="spexr-sched__rowmain"
+                          onClick={() => {
+                            setSelected(row.id);
+                            if (running) p.onFocusTask(schedule.id, row.id);
+                            else setEditing(row.id);
+                          }}
+                        >
+                          <span className="spexr-sched__name">{row.name}</span>
+                          <span className="sl-tag sl-tag--plain">{row.harness}</span>
+                          <span className="sl-tag sl-tag--plain">{row.workspace}</span>
+                          <span
+                            className={`sl-badge${row.tone !== "neutral" ? ` sl-badge--${row.tone}` : ""}${row.status === "running" ? " sl-badge--live" : ""}`}
+                          >
+                            <i className={`codicon ${row.icon}`} aria-hidden="true" /> {row.label}
+                            {row.iteration ? ` · ${row.iteration}` : ""}
+                          </span>
+                          {upstream.has(row.id) && (
+                            <span className="sl-tag">
+                              <i className="codicon codicon-arrow-up" aria-hidden="true" /> Upstream
+                            </span>
+                          )}
+                          {row.unattended && (
+                            <span className="sl-badge sl-badge--warning" title="Tools run without asking">
+                              <i className="codicon codicon-warning" aria-hidden="true" /> Unattended
+                            </span>
+                          )}
+                          {row.waitsFor.length > 0 && <span className="spexr-sched__waits">after {row.waitsFor.join(", ")}</span>}
+                          {row.session && <span className="spexr-sched__waits spexr-sched__mono">session {row.session}</span>}
+                          {row.error && <span className="spexr-sched__error">{row.error}</span>}
+                        </button>
+                        <span className="spexr-sched__rowactions">
+                          {row.canRetry && (
+                            <>
+                              <button
+                                className="sl-btn sl-btn--sm"
+                                onClick={() => taskAction(p.onRetry, row.id)}
+                                title="Start it again from iteration 1 in the same workspace. Its failed session is closed."
+                              >
+                                <i className="codicon codicon-debug-restart" aria-hidden="true" /> Retry
+                              </button>
+                              <button
+                                className="sl-btn sl-btn--ghost sl-btn--sm"
+                                onClick={() => taskAction(p.onSkip, row.id)}
+                                title="Let the tasks that wait for it start without it. Its hand-offs arrive empty; its session stays open."
+                              >
+                                <i className="codicon codicon-debug-step-over" aria-hidden="true" /> Skip
+                              </button>
+                            </>
+                          )}
+                          {!running && (
+                            <button
+                              className="sl-icon-btn"
+                              onClick={() => setEditing(editing === row.id ? undefined : row.id)}
+                              aria-label={`Edit ${row.name}`}
+                              aria-expanded={editing === row.id}
+                            >
+                              <i className="codicon codicon-edit" />
+                            </button>
+                          )}
+                        </span>
+                        {editing === row.id && !running && (
+                          <TaskEditor
+                            task={schedule.tasks.find((t) => t.id === row.id)!}
+                            schedule={schedule}
+                            projects={p.projects}
+                            configs={p.configs}
+                            problems={problems.filter((x) => x.task === row.id)}
+                            onChange={updateTask}
+                            onBlur={flush}
+                          />
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </li>
+              ))}
+            </ol>
+          )}
+          {!running && schedule.tasks.length > 0 && (
+            <button className="sl-btn sl-btn--ghost sl-btn--sm" onClick={addTask}>
+              <i className="codicon codicon-add" aria-hidden="true" /> Add a task
+            </button>
+          )}
+```
+
+- [ ] **Step 4: Wire the wall widget**
+
+In `darkfactory-wall-widget.tsx`:
+
+1. After `runSchedule`, add:
+
+```ts
+  /**
+   * Retry a task with its launch resolved again here (R22): the preferences
+   * or the active profile may have changed since Run.
+   */
+  private async retryTask(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
+    const task = this.scheduleSnapshot.schedules.find((s) => s.id === scheduleId)?.tasks.find((t) => t.id === taskId);
+    if (!task) return [{ field: "run", message: "Unknown task." }];
+    const launch = this.terminals.resolveLaunch(task.harness, task.configDir ?? "", task.project);
+    const problems = await this.schedules.retry(scheduleId, taskId, launch);
+    this.refreshSchedules();
+    return problems;
+  }
+```
+
+2. In `runSchedule`'s doc comment, change "a task with no usable launch command, a worktree workspace (Slice 4), or a run already in progress" to "a task with no usable launch command, or a run already in progress".
+3. In `<ScheduleSidebar`, after `onResume={…}`, add:
+
+```tsx
+              onRetry={(sid, tid) =>
+                this.retryTask(sid, tid).catch((): ValidationProblem[] => [{ field: "run", message: "Could not retry the task." }])
+              }
+              onSkip={(sid, tid) =>
+                this.schedules.skip(sid, tid).then(
+                  (problems) => {
+                    this.refreshSchedules();
+                    return problems;
+                  },
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not skip the task." }],
+                )
+              }
+```
+
+- [ ] **Step 5: Styles**
+
+In `src/browser/style/spexr.css`, replace the comment `/* Layers read as bands: … */`, the `.spexr-sched__row { … padding-left: … }` rule and the three `.spexr-sched__row[data-layer="…"]` rules with:
+
+```css
+.spexr-sched__row { display: grid; grid-template-columns: 1fr auto; gap: var(--sl-space-2); }
+/* The layered list: each depth is a band with its own label, and starts only once the bands above it have settled. */
+.spexr-sched__bands { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sl-space-3); }
+.spexr-sched__band { display: flex; flex-direction: column; gap: var(--sl-space-2); padding-left: var(--sl-space-3); border-left: 2px solid var(--sl-border-subtle); }
+.spexr-sched__rowactions { display: flex; align-items: flex-start; gap: var(--sl-space-1); }
+/* Upstream of the selected task: a dashed accent border and an "Upstream" tag — never colour alone. */
+.spexr-sched__row[data-upstream="true"] .spexr-sched__rowmain { border-style: dashed; border-color: var(--sl-accent-default); }
+```
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/ && pnpm run lint && pnpm run typecheck`
+Expected: PASS, clean.
+
+```bash
+git add src/browser/darkfactory/schedule/schedule-sidebar.tsx src/browser/darkfactory/darkfactory-wall-widget.tsx src/browser/style/spexr.css
+git commit -m "feat(schedule): layered bands, row selection with upstream highlight, Retry/Skip, Duplicate, confirmed Delete (AC-15, AC-17)"
+```
+
+### Task 32: Look-and-feel pass and the manual check (AC-12..AC-17)
+
+**Files:**
+- Modify only when a check below fails: the sidebar files from Tasks 30–31. Any logic fix goes into a `.ts` module with a failing test first, one `fix(schedule): …` commit per fix.
+
+**Interfaces:** none new.
+
+- [ ] **Step 1: Mechanical checks**
+
+Run, in `packages/theia-extensions`:
+
+```bash
+sed -n '/^\.spexr-sched {/,/^\.spexr-df-launcher {/p' src/browser/style/spexr.css | grep -nE "#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(" || echo "no raw colours"
+grep -c "sl-btn--primary" src/browser/darkfactory/schedule/schedule-sidebar.tsx
+grep -n "sl-fx" src/browser/darkfactory/schedule/schedule-sidebar.tsx || echo "no decorative effects"
+```
+
+Expected:
+- `no raw colours`: every value is a `--sl-*` token.
+- `1`: Run is the only primary button.
+- `no decorative effects`: under `power-save` nothing in the sidebar has to stand still. The live badge is status, and keeps running like the wall's cards.
+
+- [ ] **Step 2: Manual check in the app**
+
+Rebuild, then quit any running SPEXR first (`docs/memory/electron-single-instance-lock.md`). Use a scratch repository with one commit, e.g. `~/tmp/sched-demo`.
+
+1. **Graph and worktrees (AC-12, AC-13, AC-14).** Build this schedule:
+   - A: worktree, claude, "Create api.md with one line."
+   - B: worktree, waits for A, "Read this and create web.md: {{a.reply}}".
+   - C: worktree, waits for A.
+   - D: same as B, waits for B and C, "List the files in {{c.workspace}}."
+
+   Run it. A shows *Needs you* on the trust dialog; choose "Yes" in its card. When A converges, B and C start together. D starts only after both, in B's worktree folder, with C's folder in its prompt. Afterwards `git -C ~/tmp/sched-demo worktree list` shows three worktrees on `spexr/<schedule>/{a,b,c}`, and they are still there.
+2. **Failure, Retry, Skip (AC-15).**
+   - Type `/exit` into B's card. The run bar reads "Paused on a failure". C still finishes, and D does not start.
+   - Press Retry on B. Its old card's session ends, and a new card opens in the same worktree folder, with the work left there and no trust dialog this time.
+   - Make C fail, then press Skip. D starts, and `{{c.workspace}}` arrives empty.
+   - Pause and Resume while two tasks work: nothing new starts until Resume.
+   - The retried session shows in its **new** card, not in the failed attempt's card. Risk: a failed attempt's card that the wall never adopted (for example, it failed at the trust dialog before any transcript existed) is still in `launched` with the same `projectPath`. `matchLaunchedSession` could then hand it the retried session. If that happens, record it on the PR and fix it in its own commit: add the retried session to the old card's `knownBefore`, or drop the old card when its task is retried.
+3. **Rerun (R15).** Press Run again once the run is over. A fails with "left from an earlier run" and the cleanup commands. Press Retry on A: it continues on the old worktree.
+4. **Restart (AC-16).** Quit SPEXR mid-run and start it again. The run comes back paused, its active tasks *Interrupted*. Retry one: `ps` shows that no other process was killed. Skip another.
+5. **Editor.**
+   - A "waits for" choice that would close a cycle is disabled, with the reason next to it.
+   - Workspace offers "Same as" only for upstream tasks, and the hand-off buttons list only upstream tasks.
+   - A hand-off inserts at the caret.
+   - The account picker lists the launcher's accounts.
+   - Problems show next to their field as you type: clear a prompt; pick "Same as B", then untick B.
+6. **Look and feel (AC-17), in the light and the dark theme, and keyboard only.**
+   - Tab reaches, with a visible focus ring each time: the picker, New, Duplicate, Delete (then Keep or Delete), Run/Pause/Abort, every row, Retry, Skip, Edit, every editor control, each "waits for" check and each hand-off button.
+   - Selecting a row sets `aria-current` and tags its upstream rows "Upstream".
+   - VoiceOver announces task state changes through the polite live region.
+   - With reduced motion on, nothing unfolds. With power-save on, nothing decorative moves.
+   - With no schedule, and with a schedule that has no tasks, the pane shows an `sl-empty` with one sentence and one action.
+
+Record what you saw on the PR, one line per numbered item. Anything that fails gets its own fix commit, per the Files note above.
+
+- [ ] **Step 3: Verify the branch**
+
+Run: `npx vitest run --maxWorkers=2 src/common/schedule/ src/node/schedule/ src/browser/darkfactory/ && pnpm run lint && pnpm run typecheck`
+Expected: PASS, clean.
+
+**Slice 4 ends here.** Push to https://github.com/sondalab-ai/spexr-ide/pull/66, tick the slice, and mark the PR ready for review only after the final whole-branch review.
