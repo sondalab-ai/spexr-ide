@@ -65,9 +65,9 @@ export function watchOpencodeTask(
     for (const signal of tracker.update(turnOf(mine), deps.now())) {
       if (signal.type !== "turn-ended") listener(signal);
       else
-        void source
-          .scanEntries(sessionId)
-          .then((entries) => listener({ type: "turn-ended", reply: finalReply(entries as StateEntry[]) }));
+        void source.scanEntries(sessionId).then((entries) => {
+          if (!stopped) listener({ type: "turn-ended", reply: finalReply(entries as StateEntry[]) });
+        });
     }
   });
   function stop(): void {

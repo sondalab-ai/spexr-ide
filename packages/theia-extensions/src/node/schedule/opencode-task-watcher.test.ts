@@ -35,6 +35,32 @@ describe("watchOpencodeTask", () => {
     expect(events.at(-1)).toEqual({ type: "turn-ended", reply: "all set" });
   });
 
+  it("delivers nothing after stop(), even for a turn-end scan already in flight", async () => {
+    let emit: (t: AgentTile[]) => void = () => {};
+    let resolveEntries: (entries: unknown[]) => void = () => {};
+    const s: WallScanSource = {
+      onScanned: (l) => ((emit = l), () => (emit = () => {})),
+      requestScan: () => {},
+      knownSessionIds: () => new Set(["old"]),
+      scanEntries: async () => new Promise((resolve) => (resolveEntries = resolve)),
+    };
+    const now = 0;
+    const events: WatchEvent[] = [];
+    const stop = watchOpencodeTask({ workspace: "/repo" }, s, { now: () => now, every: () => () => {} }, (e) =>
+      events.push(e),
+    );
+    emit([tile("new", "/repo", {})]);
+    expect(events).toEqual([{ type: "session-found", sessionId: "new" }]);
+    emit([tile("new", "/repo", { state: "idle", needsYou: true })]);
+    stop();
+    resolveEntries([
+      { message: { role: "user", content: "p" } },
+      { message: { role: "assistant", content: [{ type: "text", text: "too late" }] } },
+    ]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(events).toEqual([{ type: "session-found", sessionId: "new" }]);
+  });
+
   it("asks for scans on its own clock and gives up after the wait", () => {
     const src = source();
     let now = 0;
