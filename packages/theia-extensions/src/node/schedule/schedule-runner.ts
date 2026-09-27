@@ -12,6 +12,7 @@ import { buildTaskArgs } from "../../common/schedule/task-args.js";
 import { startRun, step, type Effect, type EngineEvent } from "./schedule-engine.js";
 import type { ScheduleFile } from "./schedule-store.js";
 import type { TaskWatch, WatchEvent } from "./claude-task-watcher.js";
+import type { CheckRequest, CheckResult } from "./check-runner.js";
 
 /** Everything the runner does to the outside world; injected so every rule is testable. */
 export interface RunnerPorts {
@@ -24,6 +25,10 @@ export interface RunnerPorts {
   now(): number;
   save(file: ScheduleFile): Promise<void>;
   publish(file: ScheduleFile): void;
+  /** Bracketed paste, then Enter, into a task's pty. */
+  paste(terminalId: number, text: string): Promise<void>;
+  /** Queued backend-wide; resolves undefined when `stillWanted` said no once the check's turn came. */
+  check(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined>;
 }
 
 /**
@@ -37,6 +42,8 @@ export interface RunnerPorts {
 export class ScheduleRunner {
   private queue: Promise<void> = Promise.resolve();
   private readonly releases = new Map<string, (() => void)[]>();
+  /** Each active task's watch, so a paste can re-arm it. Dropped with the task's other registrations. */
+  private readonly watches = new Map<string, TaskWatch>();
 
   constructor(
     private readonly ports: RunnerPorts,
@@ -94,6 +101,16 @@ export class ScheduleRunner {
 
   abort(scheduleId: string): Promise<void> {
     return this.dispatch(scheduleId, { type: "abort" });
+  }
+
+  /** Operator pause: no new task starts and turn ends are held until resume(). */
+  pause(scheduleId: string): Promise<void> {
+    return this.dispatch(scheduleId, { type: "pause" });
+  }
+
+  /** Undo pause(): held turn ends are replayed in schedule order. */
+  resume(scheduleId: string): Promise<void> {
+    return this.dispatch(scheduleId, { type: "resume" });
   }
 
   /** On backend start: tasks that were running when the app went away are interrupted. */
@@ -159,6 +176,7 @@ export class ScheduleRunner {
     const key = `${scheduleId}/${taskId}`;
     for (const stop of this.releases.get(key) ?? []) stop();
     this.releases.delete(key);
+    this.watches.delete(key);
   }
 
   private registerReleases(scheduleId: string, taskId: string, stops: (() => void)[]): void {
@@ -171,7 +189,17 @@ export class ScheduleRunner {
       await this.ports.rename(e.sessionId, e.name).catch((err) => console.error("[schedule] renaming the session failed", err));
       return;
     }
-    // "paste" and "check" are Slice 3 loop effects: Task 19 wires their handling here.
+    if (e.type === "paste") {
+      // Re-armed first: the reply to this paste counts even if it lands between
+      // two reads, and the reply still on screen never counts twice (R1).
+      this.watches.get(`${scheduleId}/${e.task}`)?.arm();
+      await this.ports.paste(e.terminalId, e.text).catch((err) => console.error("[schedule] pasting the follow-up failed", err));
+      return;
+    }
+    if (e.type === "check") {
+      await this.check(scheduleId, runId, e);
+      return;
+    }
     if (e.type !== "start") return;
     const schedule = this.schedule(scheduleId);
     const task = schedule?.tasks.find((t) => t.id === e.task);
@@ -222,8 +250,9 @@ export class ScheduleRunner {
     if (!isCurrentRun()) return;
     const onWatch = (w: WatchEvent): void => send({ ...w, task: task.id } as EngineEvent);
     const registered: (() => void)[] = [];
+    let watch: TaskWatch;
     try {
-      const watch =
+      watch =
         task.harness === "claude"
           ? this.ports.watchClaude(
               {
@@ -243,6 +272,28 @@ export class ScheduleRunner {
       return;
     }
     this.registerReleases(scheduleId, task.id, registered);
+    this.watches.set(`${scheduleId}/${task.id}`, watch);
     send({ type: "started", task: task.id, ...terminal, workspace, ...(sessionId ? { sessionId } : {}) });
+  }
+
+  /**
+   * Queue the task's check. When its turn comes it runs only if the same run
+   * is still going and the task still waits on it (R9); its result goes back
+   * bound to that run. A check that throws counts as failed, with the reason
+   * as its output.
+   */
+  private async check(scheduleId: string, runId: string, e: Extract<Effect, { type: "check" }>): Promise<void> {
+    const stillWanted = (): boolean => {
+      const run = this.file.runs[scheduleId];
+      return run?.runId === runId && run.status === "running" && run.tasks[e.task]?.status === "checking";
+    };
+    let result: CheckResult | undefined;
+    try {
+      result = await this.ports.check({ command: e.command, cwd: e.cwd, timeoutMs: e.timeoutSec * 1000 }, stillWanted);
+    } catch (err) {
+      result = { ok: false, tail: `The check could not run: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    if (!result) return;
+    await this.dispatch(scheduleId, { type: "check-done", task: e.task, ok: result.ok, tail: result.tail }, runId);
   }
 }

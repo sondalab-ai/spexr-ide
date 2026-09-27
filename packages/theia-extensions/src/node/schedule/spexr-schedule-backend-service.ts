@@ -8,6 +8,7 @@ import { ScheduleRunner } from "./schedule-runner.js";
 import { SchedulePty } from "./schedule-pty.js";
 import { defaultClaudeWatchDeps, everyMs, watchClaudeTask } from "./claude-task-watcher.js";
 import { SCAN_EVERY_MS, watchOpencodeTask } from "./opencode-task-watcher.js";
+import { CheckQueue, runCheck } from "./check-runner.js";
 
 @injectable()
 export class SpexrScheduleBackendService implements SpexrScheduleService {
@@ -15,6 +16,8 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
   @inject(SpexrDarkfactoryBackendService) private readonly wall!: SpexrDarkfactoryBackendService;
   private client: SpexrScheduleClient | undefined;
   private runner!: Promise<ScheduleRunner>;
+  /** One queue for the whole backend (the service is a singleton): checks never overlap. */
+  private readonly checks = new CheckQueue((req) => runCheck(req));
 
   @postConstruct()
   protected init(): void {
@@ -50,6 +53,14 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
     await (await this.runner).abort(scheduleId);
   }
 
+  async pause(scheduleId: string): Promise<void> {
+    await (await this.runner).pause(scheduleId);
+  }
+
+  async resume(scheduleId: string): Promise<void> {
+    await (await this.runner).resume(scheduleId);
+  }
+
   private ports(): ConstructorParameters<typeof ScheduleRunner>[0] {
     return {
       launch: (line, cwd) => this.pty.launch(line, cwd),
@@ -62,6 +73,8 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
       now: () => Date.now(),
       save: (file: ScheduleFile) => saveSchedules(file),
       publish: (file: ScheduleFile) => this.client?.onSnapshot({ schedules: file.schedules, runs: file.runs }),
+      paste: (id, text) => this.pty.paste(id, text),
+      check: (req, stillWanted) => this.checks.run(req, stillWanted),
     };
   }
 }

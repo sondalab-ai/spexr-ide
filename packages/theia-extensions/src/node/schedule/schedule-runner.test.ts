@@ -3,6 +3,8 @@ import type { Schedule, TaskLaunch } from "../../common/schedule/schedule-types.
 import { ScheduleRunner, type RunnerPorts } from "./schedule-runner.js";
 import type { WatchEvent } from "./claude-task-watcher.js";
 import type { ScheduleFile } from "./schedule-store.js";
+import type { CheckRequest, CheckResult } from "./check-runner.js";
+import { followUpPrompt } from "../../common/schedule/schedule-prompt.js";
 
 const launch: TaskLaunch = { plan: { command: "claude", exportConfigDir: "", unquoted: true }, configDir: "" };
 const schedule: Schedule = {
@@ -14,21 +16,41 @@ const schedule: Schedule = {
 function fakes() {
   const lines: string[] = [];
   const names: [string, string][] = [];
+  const log: string[] = [];
+  const checks: CheckRequest[] = [];
+  let checkResult: CheckResult = { ok: true, tail: "" };
   let watch: ((e: WatchEvent) => void) | undefined;
   let exit: (() => void) | undefined;
   let saved: ScheduleFile | undefined;
   const ports: RunnerPorts = {
     launch: async (line) => (lines.push(line), { terminalId: 3, processId: 30 }),
     onExit: (_id, l) => ((exit = l), () => (exit = undefined)),
-    watchClaude: (_req, l) => ((watch = l), { stop: () => (watch = undefined), arm: () => {} }),
+    watchClaude: (_req, l) => ((watch = l), { stop: () => (watch = undefined), arm: () => void log.push("arm") }),
     watchOpencode: () => ({ stop: () => {}, arm: () => {} }),
     rename: async (id, name) => void names.push([id, name]),
     newSessionId: () => "u-1",
     now: () => 1,
     save: async (f) => void (saved = structuredClone(f)),
     publish: () => {},
+    paste: async (terminalId, text) => void log.push(`paste:${terminalId}:${text}`),
+    check: async (req, stillWanted) => {
+      if (!stillWanted()) return undefined;
+      checks.push(req);
+      return checkResult;
+    },
   };
-  return { ports, lines, names, emit: (e: WatchEvent) => watch!(e), exit: () => exit!(), saved: () => saved, watching: () => !!watch };
+  return {
+    ports,
+    lines,
+    names,
+    log,
+    checks,
+    setCheck: (r: CheckResult) => void (checkResult = r),
+    emit: (e: WatchEvent) => watch!(e),
+    exit: () => exit!(),
+    saved: () => saved,
+    watching: () => !!watch,
+  };
 }
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -322,5 +344,92 @@ describe("ScheduleRunner", () => {
     const run = f.saved()!.runs["s"]!;
     expect(run.tasks["a"]!.status).toBe("running"); // not "failed" from run 1's stale "exited"
     expect(run.tasks["a"]!.terminalId).toBe(2);
+  });
+
+  const looping: Schedule = {
+    ...schedule,
+    tasks: [
+      {
+        ...schedule.tasks[0]!,
+        loop: { stopCriteria: "tests pass", followUp: "Keep going.", maxIterations: 3, check: "pnpm test", checkTimeoutSec: 30 },
+      },
+    ],
+  };
+  const start = async (f: ReturnType<typeof fakes>): Promise<ScheduleRunner> => {
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [looping], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    f.emit({ type: "session-found", sessionId: "u-1" });
+    await settle();
+    return runner;
+  };
+
+  it("re-arms the watcher before pasting the follow-up, and renames the session each iteration", async () => {
+    const f = fakes();
+    await start(f);
+    f.emit({ type: "turn-ended", reply: "not yet" });
+    await settle();
+    expect(f.log).toEqual(["arm", `paste:3:${followUpPrompt(looping.tasks[0]!)}`]);
+    expect(f.names).toEqual([
+      ["u-1", "S · A (1/3)"],
+      ["u-1", "S · A (2/3)"],
+    ]);
+    expect(f.saved()!.runs["s"]!.tasks["a"]).toMatchObject({ status: "running", iteration: 2 });
+  });
+
+  it("runs the check in the workspace once the reply ends with the marker; a pass converges", async () => {
+    const f = fakes();
+    await start(f);
+    f.emit({ type: "turn-ended", reply: "done\nCONVERGED" });
+    await settle();
+    expect(f.checks).toEqual([{ command: "pnpm test", cwd: "/repo", timeoutMs: 30_000 }]);
+    expect(f.saved()!.runs["s"]!.status).toBe("finished");
+    expect(f.log).toEqual([]); // nothing pasted
+  });
+
+  it("a failed check pastes the follow-up with the check's output", async () => {
+    const f = fakes();
+    f.setCheck({ ok: false, tail: "FAIL a.test.ts" });
+    await start(f);
+    f.emit({ type: "turn-ended", reply: "done\nCONVERGED" });
+    await settle();
+    expect(f.log).toEqual([
+      "arm",
+      `paste:3:${followUpPrompt(looping.tasks[0]!, { command: "pnpm test", tail: "FAIL a.test.ts" })}`,
+    ]);
+  });
+
+  it("does not run a queued check once its run was aborted (R9)", async () => {
+    const f = fakes();
+    let release: () => void = () => {};
+    const wanted: boolean[] = [];
+    f.ports.check = (_req, stillWanted) =>
+      new Promise((resolve) => {
+        release = () => {
+          wanted.push(stillWanted());
+          resolve(undefined);
+        };
+      });
+    const runner = await start(f);
+    f.emit({ type: "turn-ended", reply: "done\nCONVERGED" });
+    await settle();
+    await runner.abort("s");
+    release();
+    await settle();
+    expect(wanted).toEqual([false]);
+    expect(f.saved()!.runs["s"]!.status).toBe("aborted");
+  });
+
+  it("pause holds a turn end and resume replays it", async () => {
+    const f = fakes();
+    const runner = await start(f);
+    await runner.pause("s");
+    f.emit({ type: "turn-ended", reply: "not yet" });
+    await settle();
+    expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("held");
+    expect(f.log).toEqual([]);
+    await runner.resume("s");
+    await settle();
+    expect(f.log).toEqual(["arm", `paste:3:${followUpPrompt(looping.tasks[0]!)}`]);
   });
 });
