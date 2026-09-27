@@ -45,7 +45,7 @@ function isRealMessage(e: StateEntry | undefined): boolean {
  * like it is still acting. Tolerant of both shapes so any harness that emits the
  * marker is classified correctly.
  */
-function isInterruptMarker(e: StateEntry | undefined): boolean {
+export function isInterruptMarker(e: StateEntry | undefined): boolean {
   if (!e) return false;
   const em = e as { role?: string; content?: unknown; message?: { role?: string; content?: unknown } };
   const role = em.message?.role ?? em.role;

@@ -1,4 +1,4 @@
-import { AUTO_APPROVE_MODES, type StateEntry, type Turn } from "../darkfactory/session-state.js";
+import { AUTO_APPROVE_MODES, isInterruptMarker, type StateEntry, type Turn } from "../darkfactory/session-state.js";
 
 export type TurnSignal = { type: "turn-ended" } | { type: "needs-you" } | { type: "resumed-working" };
 
@@ -10,11 +10,14 @@ export type TurnSignal = { type: "turn-ended" } | { type: "needs-you" } | { type
  * as a prompt (0 when the source already confirmed it, as the wall's tiles do).
  */
 export class TurnTracker {
-  private armed = false;
+  private armed: boolean;
   private blocked = false;
   private permissionSince: number | undefined;
 
-  constructor(private readonly o: { permissionMode?: string; settleMs: number }) {}
+  /** `armed`: true for a brand-new session, whose first reading is its own first turn. */
+  constructor(private readonly o: { permissionMode?: string; settleMs: number; armed?: boolean }) {
+    this.armed = o.armed ?? false;
+  }
 
   update(reading: Turn, nowMs: number): TurnSignal[] {
     const turn = reading === "permission" && AUTO_APPROVE_MODES.has(this.o.permissionMode ?? "") ? "acting" : reading;
@@ -47,10 +50,12 @@ export class TurnTracker {
   }
 }
 
+/** A genuine prompt: user text content, not the marker left when the human interrupts a turn. */
 function isPrompt(e: StateEntry): boolean {
+  if (isInterruptMarker(e)) return false;
   if (e.isMeta || e.message?.role !== "user") return false;
   const c = e.message.content;
-  if (typeof c === "string") return !c.trim().startsWith("[Request interrupted");
+  if (typeof c === "string") return true;
   return Array.isArray(c) && c.some((b) => (b as { type?: string })?.type === "text");
 }
 

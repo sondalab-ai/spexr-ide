@@ -33,6 +33,11 @@ describe("TurnTracker", () => {
     expect(t.update("permission", 0)).toEqual([{ type: "needs-you" }]); // settleMs 0: confirmed at once
     expect(t.update("ended", 1)).toEqual([{ type: "resumed-working" }, { type: "turn-ended" }]);
   });
+  it("counts a brand-new session's first turn even if it is already ended on the first reading", () => {
+    const t = new TurnTracker({ settleMs: 0, armed: true });
+    expect(t.update("ended", 0)).toEqual([{ type: "turn-ended" }]);
+    expect(t.update("ended", 1)).toEqual([]);
+  });
 });
 
 const user = (content: unknown) => ({ message: { role: "user", content } });
@@ -54,5 +59,21 @@ describe("finalReply", () => {
   });
   it("ignores meta entries and returns empty without a reply", () => {
     expect(finalReply([user("p"), { isMeta: true, message: { role: "user", content: "x" } }])).toBe("");
+  });
+  it("keeps the reply written before an interrupt (array-wrapped marker)", () => {
+    const entries = [
+      user("real prompt"),
+      assistant(text("partial reply")),
+      { message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] } },
+    ];
+    expect(finalReply(entries)).toBe("partial reply");
+  });
+  it("keeps the reply written before an interrupt (unwrapped marker)", () => {
+    const entries = [
+      user("real prompt"),
+      assistant(text("partial reply")),
+      { role: "user", content: "[Request interrupted by user]" },
+    ] as unknown as Parameters<typeof finalReply>[0];
+    expect(finalReply(entries)).toBe("partial reply");
   });
 });
