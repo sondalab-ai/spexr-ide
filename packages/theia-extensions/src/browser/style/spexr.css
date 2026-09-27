@@ -2485,7 +2485,17 @@ code {
 .spexr-sched__prompt { min-height: 6rem; resize: vertical; font-family: var(--sl-font-mono); }
 .spexr-sched__problem { color: var(--sl-status-danger); }
 .spexr-sched__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-@media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } }
+/* The loop settings unfold under their switch, stepped in so they read as belonging to it. */
+.spexr-sched__loop {
+  display: flex; flex-direction: column; gap: var(--sl-space-3);
+  margin: 0; padding: 0 0 0 var(--sl-space-3);
+  border: 0; border-left: 2px solid var(--sl-border-subtle);
+  animation: spexr-sched-unfold var(--sl-motion-fast, 120ms) var(--sl-motion-ease);
+}
+@keyframes spexr-sched-unfold { from { opacity: 0; transform: translateY(calc(var(--sl-space-1) * -1)); } }
+.spexr-sched__hint { margin: 0; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
+.spexr-sched__mono { font-family: var(--sl-font-mono); }
+@media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } .spexr-sched__loop { animation: none; } }
 
 /*
  * Head of the stack: a card that starts work rather than showing it. Dashed and

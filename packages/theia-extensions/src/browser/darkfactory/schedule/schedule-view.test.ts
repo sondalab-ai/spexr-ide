@@ -84,6 +84,20 @@ describe("runBar", () => {
     expect(refused.canRun).toBe(false);
     expect(refused.reasons).toEqual(["A task has no usable launch command."]);
   });
+  it("offers Pause while running, Resume only after an operator pause, and names a failure pause", () => {
+    expect(runBar(s, run("running", "pending"), [])).toMatchObject({ canPause: true, canResume: false, label: "Running" });
+    expect(runBar(s, run("running", "held", { pausedBy: "operator" }), [])).toMatchObject({
+      canPause: false,
+      canResume: true,
+      label: "Paused",
+    });
+    expect(runBar(s, run("failed", "running", { pausedBy: "failure" }), [])).toMatchObject({
+      canPause: true,
+      canResume: false,
+      label: "Paused on a failure",
+    });
+    expect(runBar(s, undefined, [])).toMatchObject({ canPause: false, canResume: false });
+  });
 });
 
 describe("newSchedule", () => {

@@ -1461,6 +1461,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
                 )
               }
               onAbort={(id) => void this.schedules.abort(id).catch(() => undefined)}
+              onPause={(id) => void this.schedules.pause(id).catch(() => undefined)}
+              onResume={(id) => void this.schedules.resume(id).catch(() => undefined)}
               onFocusTask={(sid, tid) => this.focusTask(sid, tid)}
               onClose={() => this.setSidebarOpen(false)}
             />

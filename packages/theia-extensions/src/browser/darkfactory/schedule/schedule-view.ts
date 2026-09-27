@@ -93,12 +93,30 @@ export function runBar(
   schedule: Schedule,
   run: RunState | undefined,
   problems: ValidationProblem[],
-): { canRun: boolean; canAbort: boolean; label: string; reasons: string[] } {
+): { canRun: boolean; canAbort: boolean; canPause: boolean; canResume: boolean; label: string; reasons: string[] } {
   const names = new Map(schedule.tasks.map((t) => [t.id, t.name]));
   const reasons = problems.map((p) => (p.task ? `${names.get(p.task) ?? p.task}: ${p.message}` : p.message));
   const running = run?.status === "running";
-  const label = !run ? "Not run yet" : running ? (run.pausedBy ? "Paused" : "Running") : run.status === "finished" ? "Finished" : "Aborted";
-  return { canRun: !running && reasons.length === 0, canAbort: running, label, reasons };
+  const operatorPaused = running && run?.pausedBy === "operator";
+  const label = !run
+    ? "Not run yet"
+    : running
+      ? operatorPaused
+        ? "Paused"
+        : run.pausedBy === "failure"
+          ? "Paused on a failure"
+          : "Running"
+      : run.status === "finished"
+        ? "Finished"
+        : "Aborted";
+  return {
+    canRun: !running && reasons.length === 0,
+    canAbort: running,
+    canPause: running && !operatorPaused,
+    canResume: operatorPaused,
+    label,
+    reasons,
+  };
 }
 
 /** A blank task in `project`, id unique in the schedule. */

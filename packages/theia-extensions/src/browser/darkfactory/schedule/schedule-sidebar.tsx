@@ -2,12 +2,16 @@ import * as React from "@theia/core/shared/react";
 import type { HarnessId } from "../../../common/harness/harness-types.js";
 import type { ScheduleSnapshot } from "../../../common/schedule/schedule-protocol.js";
 import {
+  DEFAULT_CHECK_TIMEOUT_SEC,
+  MAX_CHECK_TIMEOUT_SEC,
+  MAX_ITERATIONS,
   PERMISSION_MODES,
   type Schedule,
   type ScheduleTask,
   type ValidationProblem,
 } from "../../../common/schedule/schedule-types.js";
 import { validateSchedule } from "../../../common/schedule/schedule-validate.js";
+import { patchLoop, withCheck, withCheckTimeout, withLoop } from "./loop-edit.js";
 import { newSchedule, newTask, runBar, taskRows, taskTransitions, type TaskRow } from "./schedule-view.js";
 
 export interface ScheduleSidebarProps {
@@ -19,6 +23,9 @@ export interface ScheduleSidebarProps {
   /** Resolves to the problems that refused the run (empty on success), so they can join the reasons above Run. */
   onRun(schedule: Schedule): Promise<ValidationProblem[]>;
   onAbort(scheduleId: string): void;
+  /** No new task starts and no follow-up is pasted until onResume. */
+  onPause(scheduleId: string): void;
+  onResume(scheduleId: string): void;
   onFocusTask(scheduleId: string, taskId: string): void;
   onClose(): void;
 }
@@ -217,6 +224,20 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           )}
           <div className="spexr-sched__runbar">
             <span className="sl-tag">{bar!.label}</span>
+            {bar!.canPause && (
+              <button
+                className="sl-btn sl-btn--sm"
+                onClick={() => p.onPause(schedule.id)}
+                title="No new task starts and no follow-up is pasted until you resume"
+              >
+                <i className="codicon codicon-debug-pause" aria-hidden="true" /> Pause
+              </button>
+            )}
+            {bar!.canResume && (
+              <button className="sl-btn sl-btn--sm" onClick={() => p.onResume(schedule.id)}>
+                <i className="codicon codicon-debug-continue" aria-hidden="true" /> Resume
+              </button>
+            )}
             {bar!.canAbort ? (
               confirmAbort ? (
                 <span className="spexr-sched__confirm">
@@ -417,6 +438,89 @@ function TaskEditor(p: {
           value={t.prompt}
           onChange={(e) => set({ prompt: e.target.value })}
         />,
+      )}
+      <label className="sl-switch spexr-sched__loop-switch">
+        <input
+          type="checkbox"
+          role="switch"
+          className="sl-switch__input"
+          checked={!!t.loop}
+          onChange={(e) => p.onChange(withLoop(t, e.target.checked))}
+        />
+        <span className="sl-switch__track" aria-hidden="true" />
+        <span className="sl-switch__label">Loop until converged</span>
+      </label>
+      {t.loop && (
+        <fieldset className="spexr-sched__loop">
+          <legend className="spexr-sched__sr">Loop settings</legend>
+          {field(
+            "Stop criteria",
+            "loop.stopCriteria",
+            <textarea
+              className="sl-field__input"
+              rows={3}
+              value={t.loop.stopCriteria}
+              placeholder="All tests pass and the linter is clean."
+              onChange={(e) => p.onChange(patchLoop(t, { stopCriteria: e.target.value }))}
+            />,
+          )}
+          {field(
+            "Follow-up, pasted on every new iteration",
+            "loop.followUp",
+            <textarea
+              className="sl-field__input"
+              rows={3}
+              value={t.loop.followUp}
+              onChange={(e) => p.onChange(patchLoop(t, { followUp: e.target.value }))}
+            />,
+          )}
+          {field(
+            "Max iterations",
+            "loop.maxIterations",
+            <input
+              className="sl-field__input"
+              type="number"
+              min={1}
+              max={MAX_ITERATIONS}
+              value={t.loop.maxIterations}
+              onChange={(e) => p.onChange(patchLoop(t, { maxIterations: Number(e.target.value) }))}
+            />,
+          )}
+          {field(
+            "Check command (optional)",
+            "loop.check",
+            <input
+              className="sl-field__input spexr-sched__mono"
+              value={t.loop.check ?? ""}
+              placeholder="pnpm test"
+              onChange={(e) => p.onChange(withCheck(t, e.target.value))}
+            />,
+          )}
+          <p className="spexr-sched__hint">
+            Runs in the task's folder after a reply that ends with CONVERGED, one check at a time across all runs. If
+            it fails, its last 40 lines go into the next follow-up. It runs in a login shell without your .zshrc:
+            give full paths, or start with `source ~/.zshrc &&`. Placeholders are not filled in here.
+          </p>
+          {t.loop.check !== undefined &&
+            field(
+              "Check timeout (seconds)",
+              "loop.checkTimeoutSec",
+              <input
+                className="sl-field__input"
+                type="number"
+                min={1}
+                max={MAX_CHECK_TIMEOUT_SEC}
+                value={t.loop.checkTimeoutSec ?? ""}
+                placeholder={String(DEFAULT_CHECK_TIMEOUT_SEC)}
+                onChange={(e) => p.onChange(withCheckTimeout(t, e.target.value))}
+              />,
+            )}
+          {t.harness === "opencode" && (
+            <p className="spexr-sched__hint">
+              opencode turn ends are read from the wall's scan, so each iteration can start up to about 20 seconds late.
+            </p>
+          )}
+        </fieldset>
       )}
       <details className="spexr-sched__advanced">
         <summary>Model and permissions</summary>
