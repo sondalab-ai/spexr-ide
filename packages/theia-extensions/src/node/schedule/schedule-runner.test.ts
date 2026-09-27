@@ -20,8 +20,8 @@ function fakes() {
   const ports: RunnerPorts = {
     launch: async (line) => (lines.push(line), { terminalId: 3, processId: 30 }),
     onExit: (_id, l) => ((exit = l), () => (exit = undefined)),
-    watchClaude: (_req, l) => ((watch = l), () => (watch = undefined)),
-    watchOpencode: () => () => {},
+    watchClaude: (_req, l) => ((watch = l), { stop: () => (watch = undefined), arm: () => {} }),
+    watchOpencode: () => ({ stop: () => {}, arm: () => {} }),
     rename: async (id, name) => void names.push([id, name]),
     newSessionId: () => "u-1",
     now: () => 1,
@@ -107,7 +107,7 @@ describe("ScheduleRunner", () => {
     const stopped: string[] = [];
     f.ports.watchClaude = (req, _l) => {
       watchCalls.push(req.sessionId);
-      return () => stopped.push(req.sessionId);
+      return { stop: () => stopped.push(req.sessionId), arm: () => {} };
     };
     const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
 
@@ -190,7 +190,7 @@ describe("ScheduleRunner", () => {
   it("fails the task when registering its exit listener throws, releasing the watcher it already opened", async () => {
     const f = fakes();
     let watchStopped = false;
-    f.ports.watchClaude = () => () => (watchStopped = true);
+    f.ports.watchClaude = () => ({ stop: () => (watchStopped = true), arm: () => {} });
     f.ports.onExit = () => {
       throw new Error("boom");
     };
@@ -233,7 +233,7 @@ describe("ScheduleRunner", () => {
     const registrations: string[] = [];
     f.ports.watchClaude = (req, _l) => {
       registrations.push(`watch:${req.sessionId}`);
-      return () => registrations.push(`unwatch:${req.sessionId}`);
+      return { stop: () => registrations.push(`unwatch:${req.sessionId}`), arm: () => {} };
     };
     const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
 

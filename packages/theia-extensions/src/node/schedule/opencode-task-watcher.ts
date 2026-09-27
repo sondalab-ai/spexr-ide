@@ -1,7 +1,7 @@
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
 import type { Turn, StateEntry } from "../darkfactory/session-state.js";
 import { TurnTracker, finalReply } from "./turn-tracker.js";
-import type { WatchEvent } from "./claude-task-watcher.js";
+import type { TaskWatch, WatchEvent } from "./claude-task-watcher.js";
 
 export const OPENCODE_SESSION_WAIT_MS = 120_000;
 /** The wall's own poll interval: asking more often would re-run `opencode db` (see its memory note). */
@@ -29,13 +29,16 @@ function turnOf(t: AgentTile): Turn {
  * Watch an opencode task through the wall's scans: adopt the first session in
  * its folder that the wall did not know at launch, then report its turn
  * transitions. Asks for a scan every SCAN_EVERY_MS so it moves with no window open.
+ * After arm(), the next turn end counts once the tile's prompt count
+ * (`turnCount`) has gone up: with a scan every 20 s, the reply to a pasted
+ * follow-up usually lands without the agent ever being seen working.
  */
 export function watchOpencodeTask(
   req: { workspace: string; permissionMode?: string },
   source: WallScanSource,
   deps: { now(): number; every(fn: () => Promise<void>): () => void },
   listener: (e: WatchEvent) => void,
-): () => void {
+): TaskWatch {
   const known = source.knownSessionIds();
   const startedAt = deps.now();
   const tracker = new TurnTracker({
@@ -45,6 +48,8 @@ export function watchOpencodeTask(
   });
   let sessionId: string | undefined;
   let stopped = false;
+  let turnsSeen = 0;
+  let armAfter: number | undefined;
   const stopScans = deps.every(async () => source.requestScan());
   const stopListening = source.onScanned((tiles) => {
     if (stopped) return;
@@ -62,6 +67,11 @@ export function watchOpencodeTask(
     }
     const mine = tiles.find((t) => t.sessionId === sessionId);
     if (!mine) return;
+    turnsSeen = mine.turnCount ?? 0;
+    if (armAfter !== undefined && turnsSeen > armAfter) {
+      tracker.arm();
+      armAfter = undefined;
+    }
     for (const signal of tracker.update(turnOf(mine), deps.now())) {
       if (signal.type !== "turn-ended") listener(signal);
       else
@@ -75,5 +85,10 @@ export function watchOpencodeTask(
     stopScans();
     stopListening();
   }
-  return stop;
+  return {
+    stop,
+    arm: () => {
+      armAfter = turnsSeen;
+    },
+  };
 }

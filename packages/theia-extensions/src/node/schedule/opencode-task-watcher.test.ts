@@ -46,13 +46,13 @@ describe("watchOpencodeTask", () => {
     };
     const now = 0;
     const events: WatchEvent[] = [];
-    const stop = watchOpencodeTask({ workspace: "/repo" }, s, { now: () => now, every: () => () => {} }, (e) =>
+    const watch = watchOpencodeTask({ workspace: "/repo" }, s, { now: () => now, every: () => () => {} }, (e) =>
       events.push(e),
     );
     emit([tile("new", "/repo", {})]);
     expect(events).toEqual([{ type: "session-found", sessionId: "new" }]);
     emit([tile("new", "/repo", { state: "idle", needsYou: true })]);
-    stop();
+    watch.stop();
     resolveEntries([
       { message: { role: "user", content: "p" } },
       { message: { role: "assistant", content: [{ type: "text", text: "too late" }] } },
@@ -77,5 +77,28 @@ describe("watchOpencodeTask", () => {
     now = OPENCODE_SESSION_WAIT_MS + 1;
     src.emit([]);
     expect(events).toEqual([{ type: "session-missing" }]);
+  });
+
+  it("after a paste, counts the next turn end only once the scan shows a newer prompt (re-arm, R1)", async () => {
+    const src = source();
+    const events: WatchEvent[] = [];
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const turnEnds = () => events.filter((e) => e.type === "turn-ended").length;
+    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0, every: () => () => {} }, (e) =>
+      events.push(e),
+    );
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]);
+    await flush();
+    expect(turnEnds()).toBe(1);
+    watch.arm();
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]); // the old reply, still on screen
+    await flush();
+    expect(turnEnds()).toBe(1);
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 2 })]); // answered between two scans
+    await flush();
+    expect(turnEnds()).toBe(2);
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 2 })]);
+    await flush();
+    expect(turnEnds()).toBe(2);
   });
 });

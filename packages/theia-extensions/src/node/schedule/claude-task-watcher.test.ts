@@ -30,7 +30,7 @@ function harness(lines: () => string[] | undefined) {
   let now = 0;
   let tickFn: (() => Promise<void>) | undefined;
   const events: WatchEvent[] = [];
-  const stop = watchClaudeTask(
+  const watch = watchClaudeTask(
     { sessionId: "abc", configDir: "" },
     {
       now: () => now,
@@ -45,7 +45,7 @@ function harness(lines: () => string[] | undefined) {
   );
   return {
     events,
-    stop,
+    watch,
     advance: async (ms: number) => {
       now += ms;
       await tickFn?.();
@@ -85,5 +85,36 @@ describe("watchClaudeTask", () => {
     batch = [L({ message: { role: "assistant", content: [{ type: "text", text: "done" }] } })];
     await h.advance(1_000);
     expect(h.events.at(-1)).toEqual({ type: "turn-ended", reply: "done" });
+  });
+
+  const ends = (events: WatchEvent[]): string[] =>
+    events.flatMap((e) => (e.type === "turn-ended" ? [e.reply] : []));
+  const user = (content: string) => L({ message: { role: "user", content } });
+  const said = (text: string) => L({ message: { role: "assistant", content: [{ type: "text", text }] } });
+
+  it("after a paste, never counts the reply still on screen again (re-arm, R1)", async () => {
+    let batch: string[] | undefined = [user("p"), said("one")];
+    const h = harness(() => batch);
+    await h.advance(1_000);
+    batch = [];
+    expect(ends(h.events)).toEqual(["one"]);
+    h.watch.arm();
+    await h.advance(1_000);
+    await h.advance(1_000);
+    expect(ends(h.events)).toEqual(["one"]);
+  });
+
+  it("after a paste, counts a fast reply once even if the agent was never seen working (re-arm, R1)", async () => {
+    let batch: string[] | undefined = [user("p"), said("one")];
+    const h = harness(() => batch);
+    await h.advance(1_000);
+    batch = [];
+    h.watch.arm();
+    await h.advance(1_000);
+    batch = [user("follow-up"), said("two")]; // prompt and reply land between two reads
+    await h.advance(1_000);
+    batch = [];
+    await h.advance(1_000);
+    expect(ends(h.events)).toEqual(["one", "two"]);
   });
 });

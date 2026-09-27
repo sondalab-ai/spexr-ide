@@ -38,6 +38,15 @@ describe("TurnTracker", () => {
     expect(t.update("ended", 0)).toEqual([{ type: "turn-ended" }]);
     expect(t.update("ended", 1)).toEqual([]);
   });
+  it("arm() makes the next ended reading count, once", () => {
+    const t = new TurnTracker({ settleMs: 0 });
+    t.update("acting", 0);
+    expect(t.update("ended", 1)).toEqual([{ type: "turn-ended" }]);
+    expect(t.update("ended", 2)).toEqual([]);
+    t.arm();
+    expect(t.update("ended", 3)).toEqual([{ type: "turn-ended" }]);
+    expect(t.update("ended", 4)).toEqual([]);
+  });
 });
 
 const user = (content: unknown) => ({ message: { role: "user", content } });

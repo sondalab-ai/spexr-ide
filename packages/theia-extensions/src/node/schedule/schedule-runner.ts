@@ -11,14 +11,14 @@ import { buildLaunchLine } from "../../common/harness/launch-line.js";
 import { buildTaskArgs } from "../../common/schedule/task-args.js";
 import { startRun, step, type Effect, type EngineEvent } from "./schedule-engine.js";
 import type { ScheduleFile } from "./schedule-store.js";
-import type { WatchEvent } from "./claude-task-watcher.js";
+import type { TaskWatch, WatchEvent } from "./claude-task-watcher.js";
 
 /** Everything the runner does to the outside world; injected so every rule is testable. */
 export interface RunnerPorts {
   launch(line: string, cwd: string): Promise<{ terminalId: number; processId: number }>;
   onExit(terminalId: number, listener: () => void): () => void;
-  watchClaude(req: { sessionId: string; configDir: string; permissionMode?: string }, listener: (e: WatchEvent) => void): () => void;
-  watchOpencode(req: { workspace: string; permissionMode?: string }, listener: (e: WatchEvent) => void): () => void;
+  watchClaude(req: { sessionId: string; configDir: string; permissionMode?: string }, listener: (e: WatchEvent) => void): TaskWatch;
+  watchOpencode(req: { workspace: string; permissionMode?: string }, listener: (e: WatchEvent) => void): TaskWatch;
   rename(sessionId: string, name: string): Promise<void>;
   newSessionId(): string;
   now(): number;
@@ -221,7 +221,7 @@ export class ScheduleRunner {
     const onWatch = (w: WatchEvent): void => send({ ...w, task: task.id } as EngineEvent);
     const registered: (() => void)[] = [];
     try {
-      const stopWatch =
+      const watch =
         task.harness === "claude"
           ? this.ports.watchClaude(
               {
@@ -232,7 +232,7 @@ export class ScheduleRunner {
               onWatch,
             )
           : this.ports.watchOpencode({ workspace, ...(task.permissionMode ? { permissionMode: task.permissionMode } : {}) }, onWatch);
-      registered.push(stopWatch);
+      registered.push(() => watch.stop());
       const stopExit = this.ports.onExit(terminal.terminalId, () => send({ type: "exited", task: task.id }));
       registered.push(stopExit);
     } catch (err) {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { readFollowChunk, type FollowCursor } from "../darkfactory/follow-reader.js";
 import { projectsDirOf } from "../darkfactory/config-dirs.js";
 import { lastTurn, SETTLE_MS, type StateEntry } from "../darkfactory/session-state.js";
-import { TurnTracker, finalReply, type TurnSignal } from "./turn-tracker.js";
+import { TurnTracker, finalReply, isPrompt, type TurnSignal } from "./turn-tracker.js";
 
 /**
  * No transcript this long after launch: Claude is most likely at a startup
@@ -22,6 +22,18 @@ export type WatchEvent =
   | { type: "session-missing" }
   | { type: "turn-ended"; reply: string }
   | Exclude<TurnSignal, { type: "turn-ended" }>;
+
+/** A running task watch. */
+export interface TaskWatch {
+  stop(): void;
+  /**
+   * Call just before pasting a prompt. The next turn end counts once a prompt
+   * newer than this call shows up — even if the agent was never seen working
+   * (a reply that lands between two reads). The reply already on screen never
+   * counts again.
+   */
+  arm(): void;
+}
 
 /** The account dir as a path: "" is the default account, `~/…` is home-relative. */
 function accountDir(configDir: string, home: string): string {
@@ -85,13 +97,12 @@ export const defaultClaudeWatchDeps: ClaudeWatchDeps = {
  * Follow one scheduled Claude session: wait for its transcript (reporting
  * needs-you after CLAUDE_STARTUP_PROMPT_MS — the pty exiting is what fails the
  * task), then read what it gains every second and report turn transitions.
- * Returns a stop function.
  */
 export function watchClaudeTask(
   req: { sessionId: string; configDir: string; permissionMode?: string },
   deps: ClaudeWatchDeps,
   listener: (e: WatchEvent) => void,
-): () => void {
+): TaskWatch {
   const startedAt = deps.now();
   const tracker = new TurnTracker({
     ...(req.permissionMode !== undefined ? { permissionMode: req.permissionMode } : {}),
@@ -102,8 +113,11 @@ export function watchClaudeTask(
   let cursor: FollowCursor | undefined;
   let entries: StateEntry[] = [];
   let waitingAtStartup = false;
-  let stop = (): void => {};
-  stop = deps.every(async () => {
+  // Counted as lines arrive: `entries` is trimmed to KEEP_ENTRIES, so its
+  // length cannot serve as the baseline arm() compares against.
+  let promptsSeen = 0;
+  let armAfter: number | undefined;
+  const stop = deps.every(async () => {
     if (!path) {
       path = await deps.find(req.configDir, req.sessionId);
       if (!path) {
@@ -119,16 +133,28 @@ export function watchClaudeTask(
     const chunk = await deps.read(path, cursor, FIRST_READ_BYTES);
     cursor = chunk.cursor;
     for (const line of chunk.lines) {
+      let entry: StateEntry;
       try {
-        entries.push(JSON.parse(line) as StateEntry);
+        entry = JSON.parse(line) as StateEntry;
       } catch {
-        /* a torn line is skipped; the next read has the whole one */
+        continue; // a malformed line is dropped; readFollowChunk already holds back torn ones
       }
+      entries.push(entry);
+      if (entry && isPrompt(entry)) promptsSeen++;
     }
     if (entries.length > KEEP_ENTRIES) entries = entries.slice(-KEEP_ENTRIES);
+    if (armAfter !== undefined && promptsSeen > armAfter) {
+      tracker.arm();
+      armAfter = undefined;
+    }
     for (const signal of tracker.update(lastTurn(entries), deps.now())) {
       listener(signal.type === "turn-ended" ? { type: "turn-ended", reply: finalReply(entries) } : signal);
     }
   });
-  return () => stop();
+  return {
+    stop,
+    arm: () => {
+      armAfter = promptsSeen;
+    },
+  };
 }

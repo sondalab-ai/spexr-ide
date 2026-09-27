@@ -48,10 +48,19 @@ export class TurnTracker {
     }
     return out;
   }
+
+  /**
+   * Count the next ended reading as a turn end even if no work was seen
+   * before it. Only a caller that knows a new prompt has arrived may call
+   * this — the watchers do, once their prompt count has gone up after a paste.
+   */
+  arm(): void {
+    this.armed = true;
+  }
 }
 
 /** A genuine prompt: user text content, not the marker left when the human interrupts a turn. */
-function isPrompt(e: StateEntry): boolean {
+export function isPrompt(e: StateEntry): boolean {
   if (isInterruptMarker(e)) return false;
   if (e.isMeta || e.message?.role !== "user") return false;
   const c = e.message.content;
