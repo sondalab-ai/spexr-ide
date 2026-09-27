@@ -1,18 +1,21 @@
 import { randomUUID } from "node:crypto";
 import {
   ACTIVE_STATUSES,
+  RETRYABLE_STATUSES,
   type RunState,
   type Schedule,
+  type ScheduleTask,
   type TaskLaunch,
   type ValidationProblem,
 } from "../../common/schedule/schedule-types.js";
 import { validateSchedule } from "../../common/schedule/schedule-validate.js";
 import { buildLaunchLine } from "../../common/harness/launch-line.js";
 import { buildTaskArgs } from "../../common/schedule/task-args.js";
-import { startRun, step, type Effect, type EngineEvent } from "./schedule-engine.js";
+import { startRun, step, workspacePlan, type Effect, type EngineEvent } from "./schedule-engine.js";
 import type { ScheduleFile } from "./schedule-store.js";
 import type { TaskWatch, WatchEvent } from "./claude-task-watcher.js";
 import type { CheckRequest, CheckResult } from "./check-runner.js";
+import type { WorktreeRequest } from "./workspace.js";
 
 /** Everything the runner does to the outside world; injected so every rule is testable. */
 export interface RunnerPorts {
@@ -31,6 +34,14 @@ export interface RunnerPorts {
   check(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined>;
   /** End a pty, only while it still runs `processId` (R13, R14). */
   close(terminalId: number, processId: number): Promise<void>;
+  /** Make (or, with `reuse`, find again) a worktree task's worktree; resolves the folder the task runs in. */
+  prepareWorktree(req: WorktreeRequest): Promise<string>;
+}
+
+/** Why the backend will not use a launch the frontend resolved (spec, Security), or undefined. */
+function launchProblem(launch: TaskLaunch | undefined): ValidationProblem | undefined {
+  if (launch?.plan.command.trim() && !/[\n\r]/.test(launch.plan.command)) return undefined;
+  return { field: "run", message: "A task has no usable launch command." };
 }
 
 /**
@@ -86,12 +97,8 @@ export class ScheduleRunner {
       if (!schedule) return [{ field: "id", message: "Unknown schedule." }];
       const problems = validateSchedule(schedule);
       if (problems.length > 0) return problems;
-      if (schedule.tasks.some((t) => t.workspace.kind === "worktree")) {
-        return [{ field: "workspace", message: "Worktree workspaces arrive with the full graph (Slice 4)." }];
-      }
-      if (schedule.tasks.some((t) => !launches[t.id]?.plan.command.trim() || /[\n\r]/.test(launches[t.id]!.plan.command))) {
-        return [{ field: "run", message: "A task has no usable launch command." }];
-      }
+      const bad = schedule.tasks.map((t) => launchProblem(launches[t.id])).find((x) => x !== undefined);
+      if (bad) return [bad];
       if (this.file.runs[scheduleId]?.status === "running") {
         return [{ field: "run", message: "This schedule is already running." }];
       }
@@ -113,6 +120,55 @@ export class ScheduleRunner {
   /** Undo pause(): held turn ends are replayed in schedule order. */
   resume(scheduleId: string): Promise<void> {
     return this.dispatch(scheduleId, { type: "resume" });
+  }
+
+  /**
+   * Start a failed or interrupted task again from iteration 1 in the same
+   * workspace, with the launch the frontend resolved just now (R11–R13, R15,
+   * R22). Returns why not instead (R21).
+   */
+  retry(scheduleId: string, taskId: string, launch: TaskLaunch): Promise<ValidationProblem[]> {
+    return this.serial(async () => {
+      const problem = this.taskActionProblem(scheduleId, taskId) ?? launchProblem(launch);
+      if (problem) return [problem];
+      await this.stepNow(scheduleId, { type: "retry", task: taskId, launch });
+      return [];
+    });
+  }
+
+  /** Let a failed or interrupted task's dependents start without it; returns why not instead (R21). */
+  skip(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
+    return this.serial(async () => {
+      const problem = this.taskActionProblem(scheduleId, taskId);
+      if (problem) return [problem];
+      await this.stepNow(scheduleId, { type: "skip", task: taskId });
+      return [];
+    });
+  }
+
+  /** Why retry or skip cannot apply (R21); read inside the queue, against the state it would change. */
+  private taskActionProblem(scheduleId: string, taskId: string): ValidationProblem | undefined {
+    const run = this.file.runs[scheduleId];
+    if (!this.schedule(scheduleId) || run?.status !== "running") return { field: "run", message: "This schedule is not running." };
+    const state = run.tasks[taskId];
+    if (!state || !RETRYABLE_STATUSES.has(state.status)) {
+      return { task: taskId, field: "run", message: "Only a failed or interrupted task can be retried or skipped." };
+    }
+    return undefined;
+  }
+
+  /** Apply an operator event from inside the queue; dispatch() would queue behind the caller and never run. */
+  private async stepNow(scheduleId: string, event: EngineEvent): Promise<void> {
+    const { run, effects } = step(this.schedule(scheduleId)!, this.file.runs[scheduleId]!, event);
+    await this.commit(scheduleId, run, effects);
+  }
+
+  /** The folder a task runs in (R20): its project, its worktree (made or reused, R15), or its upstream's real folder. */
+  private async workspaceFor(schedule: Schedule, run: RunState, task: ScheduleTask, reuse: boolean): Promise<string> {
+    const plan = workspacePlan(schedule, run, task.id);
+    if (plan.kind === "path") return plan.path;
+    if (plan.kind === "missing") throw new Error(plan.reason);
+    return this.ports.prepareWorktree({ project: task.project, scheduleId: schedule.id, taskId: task.id, reuse });
   }
 
   /** On backend start: tasks that were running when the app went away are interrupted. */
@@ -246,8 +302,14 @@ export class ScheduleRunner {
       send({ type: "start-failed", task: e.task, error: "The task is no longer in the schedule." });
       return;
     }
-    const workspace =
-      task.workspace.kind === "sameAs" ? (run.tasks[task.workspace.task]?.workspace ?? task.project) : task.project;
+    let workspace: string;
+    try {
+      workspace = await this.workspaceFor(schedule, run, task, e.reuse === true);
+    } catch (err) {
+      if (isCurrentRun()) send({ type: "start-failed", task: task.id, error: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    if (!isCurrentRun()) return;
     const sessionId = task.harness === "claude" ? this.ports.newSessionId() : undefined;
     const line = buildLaunchLine({
       plan: launch.plan,

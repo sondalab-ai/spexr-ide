@@ -4,6 +4,7 @@ import { ScheduleRunner, type RunnerPorts } from "./schedule-runner.js";
 import type { WatchEvent } from "./claude-task-watcher.js";
 import type { ScheduleFile } from "./schedule-store.js";
 import type { CheckRequest, CheckResult } from "./check-runner.js";
+import type { WorktreeRequest } from "./workspace.js";
 import { followUpPrompt } from "../../common/schedule/schedule-prompt.js";
 
 const launch: TaskLaunch = { plan: { command: "claude", exportConfigDir: "", unquoted: true }, configDir: "" };
@@ -40,6 +41,7 @@ function fakes() {
       return checkResult;
     },
     close: async (id, pid) => void closes.push([id, pid]),
+    prepareWorktree: async (req) => `/wt/${req.taskId}`,
   };
   return {
     ports,
@@ -578,5 +580,149 @@ describe("ScheduleRunner", () => {
     await settle();
     expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("skipped");
     expect(f.closes).toEqual([]);
+  });
+});
+
+describe("ScheduleRunner — the graph (Slice 4)", () => {
+  type Terminal = { terminalId: number; processId: number };
+  const graph: Schedule = {
+    id: "s",
+    name: "S",
+    tasks: [
+      { id: "a", name: "A", needs: [], project: "/repo", workspace: { kind: "worktree" }, harness: "claude", prompt: "do a" },
+      { id: "b", name: "B", needs: [], project: "/repo", workspace: { kind: "worktree" }, harness: "claude", prompt: "do b" },
+      { id: "c", name: "C", needs: ["a"], project: "/repo", workspace: { kind: "sameAs", task: "a" }, harness: "claude", prompt: "review {{a.workspace}}" },
+    ],
+  };
+  const all = { a: launch, b: launch, c: launch };
+  const sessionIn = (line: string): string => /'--session-id' '([^']+)'/.exec(line)![1]!;
+
+  function graphFakes() {
+    const launched: { line: string; cwd: string; resolve: (t: Terminal) => void }[] = [];
+    const worktrees: WorktreeRequest[] = [];
+    const watchers = new Map<string, (e: WatchEvent) => void>();
+    const exits = new Map<number, () => void>();
+    const closes: [number, number][] = [];
+    let sessions = 0;
+    let saved: ScheduleFile | undefined;
+    const ports: RunnerPorts = {
+      launch: (line, cwd) => new Promise<Terminal>((resolve) => launched.push({ line, cwd, resolve })),
+      onExit: (id, l) => (exits.set(id, l), () => void exits.delete(id)),
+      watchClaude: (req, l) => (watchers.set(req.sessionId, l), { stop: () => void watchers.delete(req.sessionId), arm: () => {} }),
+      watchOpencode: () => ({ stop: () => {}, arm: () => {} }),
+      rename: async () => {},
+      newSessionId: () => `u-${++sessions}`,
+      now: () => 1,
+      save: async (f) => void (saved = structuredClone(f)),
+      publish: () => {},
+      paste: async () => {},
+      check: async () => ({ ok: true, tail: "" }),
+      close: async (id, pid) => void closes.push([id, pid]),
+      prepareWorktree: async (req) => (worktrees.push(req), `/wt/${req.taskId}`),
+    };
+    return {
+      ports,
+      launched,
+      worktrees,
+      exits,
+      closes,
+      /** Report a turn end on the session the launch `line` started. */
+      turnEnded: (line: string, reply: string) => watchers.get(sessionIn(line))!({ type: "turn-ended", reply }),
+      run: () => saved!.runs["s"]!,
+    };
+  }
+  /** Run the graph and let both roots start: a on terminal 1, b on terminal 2. */
+  async function running(f: ReturnType<typeof graphFakes>): Promise<ScheduleRunner> {
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [graph], runs: {} });
+    expect(await runner.run("s", all)).toEqual([]);
+    await settle();
+    f.launched[0]!.resolve({ terminalId: 1, processId: 10 });
+    f.launched[1]!.resolve({ terminalId: 2, processId: 20 });
+    await settle();
+    return runner;
+  }
+
+  it("starts two siblings in separate worktrees together, both launched before either has started (AC-12, AC-13)", async () => {
+    const f = graphFakes();
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [graph], runs: {} });
+    expect(await runner.run("s", all)).toEqual([]); // Slice 2's "worktree arrives in Slice 4" refusal is gone
+    await settle();
+    expect(f.worktrees).toEqual([
+      { project: "/repo", scheduleId: "s", taskId: "a", reuse: false },
+      { project: "/repo", scheduleId: "s", taskId: "b", reuse: false },
+    ]);
+    expect(f.launched.map((l) => l.cwd)).toEqual(["/wt/a", "/wt/b"]); // both in flight, neither resolved
+    expect(f.launched[0]!.line).toContain(`cd '/wt/a'`);
+    expect(f.run().tasks["a"]!.status).toBe("starting");
+    expect(f.run().tasks["b"]!.status).toBe("starting");
+  });
+
+  it("runs a sameAs task in its upstream's real worktree and makes none of its own (AC-13, R20)", async () => {
+    const f = graphFakes();
+    await running(f);
+    f.turnEnded(f.launched[0]!.line, "done");
+    await settle();
+    expect(f.launched[2]!.cwd).toBe("/wt/a");
+    expect(f.launched[2]!.line).toContain(`'review /wt/a'`);
+    expect(f.worktrees.map((w) => w.taskId)).toEqual(["a", "b"]);
+  });
+
+  it("retry reuses the task's worktree, closes the failed session and launches a new one (R13, R15)", async () => {
+    const f = graphFakes();
+    const runner = await running(f);
+    f.exits.get(2)!();
+    await settle();
+    expect(f.run()).toMatchObject({ pausedBy: "failure", tasks: { b: { status: "failed" } } });
+    expect(await runner.retry("s", "b", launch)).toEqual([]);
+    await settle();
+    expect(f.closes).toEqual([[2, 20]]);
+    expect(f.worktrees[f.worktrees.length - 1]).toEqual({ project: "/repo", scheduleId: "s", taskId: "b", reuse: true });
+    expect(f.launched[2]!.cwd).toBe("/wt/b");
+    expect(f.run().tasks["b"]!.status).toBe("starting");
+    expect(f.run().pausedBy).toBeUndefined();
+  });
+
+  it("skip lets the dependent start: it still shares the folder, but the placeholders arrive empty (AC-14)", async () => {
+    const f = graphFakes();
+    const runner = await running(f);
+    f.exits.get(1)!();
+    await settle();
+    expect(await runner.skip("s", "a")).toEqual([]);
+    await settle();
+    expect(f.run().tasks["a"]!.status).toBe("skipped");
+    expect(f.launched[2]!.cwd).toBe("/wt/a");
+    expect(f.launched[2]!.line).toContain(`'review '`);
+    expect(f.closes).toEqual([]); // R13: skip leaves the failed session open
+  });
+
+  it("fails a sameAs task whose upstream never got its worktree, instead of using the project folder (R20)", async () => {
+    const f = graphFakes();
+    f.ports.prepareWorktree = async (req) => {
+      if (req.taskId === "a") throw new Error("/repo is not inside a git repository");
+      return `/wt/${req.taskId}`;
+    };
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [graph], runs: {} });
+    await runner.run("s", all);
+    await settle();
+    expect(f.run().tasks["a"]).toMatchObject({ status: "failed", error: "/repo is not inside a git repository" });
+    await runner.skip("s", "a");
+    await settle();
+    expect(f.run().tasks["c"]).toMatchObject({ status: "failed", error: expect.stringContaining("never got its worktree") });
+    expect(f.launched.map((l) => l.cwd)).toEqual(["/wt/b"]);
+  });
+
+  it("refuses retry and skip on a task that is not failed or interrupted, a bad launch, or a run that is over (R21)", async () => {
+    const f = graphFakes();
+    const runner = await running(f);
+    const notFailed = [{ task: "a", field: "run", message: "Only a failed or interrupted task can be retried or skipped." }];
+    expect(await runner.retry("s", "a", launch)).toEqual(notFailed);
+    expect(await runner.skip("s", "a")).toEqual(notFailed);
+    f.exits.get(1)!();
+    await settle();
+    const bad: TaskLaunch = { ...launch, plan: { ...launch.plan, command: "claude\nrm -rf ~" } };
+    expect(await runner.retry("s", "a", bad)).toEqual([{ field: "run", message: "A task has no usable launch command." }]);
+    await runner.abort("s");
+    expect(await runner.skip("s", "a")).toEqual([{ field: "run", message: "This schedule is not running." }]);
+    expect(f.launched).toHaveLength(2);
   });
 });

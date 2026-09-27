@@ -9,6 +9,7 @@ import { SchedulePty } from "./schedule-pty.js";
 import { defaultClaudeWatchDeps, everyMs, watchClaudeTask } from "./claude-task-watcher.js";
 import { SCAN_EVERY_MS, watchOpencodeTask } from "./opencode-task-watcher.js";
 import { CheckQueue, runCheck } from "./check-runner.js";
+import { Workspaces } from "./workspace.js";
 
 @injectable()
 export class SpexrScheduleBackendService implements SpexrScheduleService {
@@ -18,6 +19,8 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
   private runner!: Promise<ScheduleRunner>;
   /** One queue for the whole backend (the service is a singleton): checks never overlap. */
   private readonly checks = new CheckQueue((req) => runCheck(req));
+  /** One per backend (the service is a singleton): worktree changes are serialized per repository (R17). */
+  private readonly workspaces = new Workspaces();
 
   @postConstruct()
   protected init(): void {
@@ -61,6 +64,14 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
     await (await this.runner).resume(scheduleId);
   }
 
+  async retry(scheduleId: string, taskId: string, launch: TaskLaunch): Promise<ValidationProblem[]> {
+    return (await this.runner).retry(scheduleId, taskId, launch);
+  }
+
+  async skip(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
+    return (await this.runner).skip(scheduleId, taskId);
+  }
+
   private ports(): ConstructorParameters<typeof ScheduleRunner>[0] {
     return {
       launch: (line, cwd) => this.pty.launch(line, cwd),
@@ -76,6 +87,7 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
       paste: (id, text) => this.pty.paste(id, text),
       check: (req, stillWanted) => this.checks.run(req, stillWanted),
       close: (id, pid) => this.pty.close(id, pid),
+      prepareWorktree: (req) => this.workspaces.prepareWorktree(req),
     };
   }
 }

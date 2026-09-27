@@ -20,6 +20,10 @@ export interface SpexrScheduleService {
   pause(scheduleId: string): Promise<void>;
   /** Undo pause: held turn ends are judged now, in schedule order. */
   resume(scheduleId: string): Promise<void>;
+  /** Start a failed or interrupted task again, from iteration 1, in the same workspace; returns why not instead. */
+  retry(scheduleId: string, taskId: string, launch: TaskLaunch): Promise<ValidationProblem[]>;
+  /** Let a failed or interrupted task's dependents start without it (its hand-offs arrive empty); returns why not instead. */
+  skip(scheduleId: string, taskId: string): Promise<ValidationProblem[]>;
 }
 
 /** Backend → frontend (reaches the most recently opened window, like the wall). */
