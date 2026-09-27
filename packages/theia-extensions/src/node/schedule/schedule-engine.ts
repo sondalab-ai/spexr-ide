@@ -1,6 +1,7 @@
 import {
   ACTIVE_STATUSES,
   DEFAULT_CHECK_TIMEOUT_SEC,
+  RETRYABLE_STATUSES,
   SETTLED_STATUSES,
   type RunState,
   type Schedule,
@@ -28,13 +29,16 @@ export type EngineEvent =
   | { type: "pause" }
   | { type: "resume" }
   | { type: "abort" }
-  | { type: "recover" };
+  | { type: "recover" }
+  | { type: "retry"; task: string; launch: TaskLaunch }
+  | { type: "skip"; task: string };
 
 export type Effect =
-  | { type: "start"; task: string; prompt: string }
+  | { type: "start"; task: string; prompt: string; reuse?: true }
   | { type: "name"; sessionId: string; name: string }
   | { type: "paste"; task: string; terminalId: number; text: string }
-  | { type: "check"; task: string; command: string; cwd: string; timeoutSec: number };
+  | { type: "check"; task: string; command: string; cwd: string; timeoutSec: number }
+  | { type: "close"; terminalId: number; processId: number };
 
 export interface StepResult {
   run: RunState;
@@ -143,6 +147,23 @@ export function step(schedule: Schedule, prev: RunState, event: EngineEvent): St
         else turnEnded(schedule, run, t.id, held.reply ?? "", effects);
       }
       break;
+    case "retry":
+      if (!task || !RETRYABLE_STATUSES.has(task.status)) break;
+      // R13: the failed attempt's session may still be open in the folder the
+      // retry works in. An interrupted one's terminal died with the old backend.
+      if (task.status === "failed" && task.terminalId !== undefined && task.processId !== undefined) {
+        effects.push({ type: "close", terminalId: task.terminalId, processId: task.processId });
+      }
+      run.launches[event.task] = event.launch;
+      // R11: started here, not left pending, so another task's failure pause cannot hold it back.
+      startTask(schedule, run, taskOf(schedule, event.task), effects, true);
+      recomputeFailurePause(run);
+      break;
+    case "skip":
+      if (!task || !RETRYABLE_STATUSES.has(task.status)) break;
+      task.status = "skipped";
+      recomputeFailurePause(run);
+      break;
     case "abort":
       run.status = "aborted";
       return { run, effects };
@@ -221,6 +242,27 @@ function hasFailure(run: RunState): boolean {
   return Object.values(run.tasks).some((t) => t.status === "failed" || t.status === "interrupted");
 }
 
+/** R3 for retry and skip: an operator pause stays; otherwise the run pauses only while a task is still failed or interrupted. */
+function recomputeFailurePause(run: RunState): void {
+  if (run.pausedBy === "operator") return;
+  if (hasFailure(run)) run.pausedBy = "failure";
+  else delete run.pausedBy;
+}
+
+/** Start one task from a bare state at iteration 1 (R12), its hand-offs filled from upstream. */
+function startTask(schedule: Schedule, run: RunState, t: ScheduleTask, effects: Effect[], reuse: boolean): void {
+  run.tasks[t.id] = { status: "starting", iteration: 1 };
+  const filled = fillPlaceholders(t.prompt, (id, field) => handOff(run, id, field));
+  effects.push({ type: "start", task: t.id, prompt: firstPrompt(t, filled), ...(reuse ? { reuse: true as const } : {}) });
+}
+
+/** What a placeholder receives: nothing from a skipped task (AC-14), else its reply without the marker, or its folder. */
+function handOff(run: RunState, taskId: string, field: "reply" | "workspace"): string | undefined {
+  const up = run.tasks[taskId];
+  if (!up || up.status === "skipped") return undefined;
+  return field === "reply" ? stripMarker(up.reply ?? "") : up.workspace;
+}
+
 /** Fail a task; the run pauses on the failure unless the operator's pause already holds it. */
 function fail(run: RunState, taskId: string, error: string): void {
   const t = run.tasks[taskId]!;
@@ -238,13 +280,7 @@ function ready(schedule: Schedule, run: RunState): ScheduleTask[] {
 /** Start what is ready (unless paused) and finish the run once everything has settled. */
 function advance(schedule: Schedule, run: RunState, effects: Effect[]): void {
   if (!run.pausedBy) {
-    for (const t of ready(schedule, run)) {
-      run.tasks[t.id] = { status: "starting", iteration: 1 };
-      const filled = fillPlaceholders(t.prompt, (id, field) =>
-        field === "reply" ? stripMarker(run.tasks[id]?.reply ?? "") : run.tasks[id]?.workspace,
-      );
-      effects.push({ type: "start", task: t.id, prompt: firstPrompt(t, filled) });
-    }
+    for (const t of ready(schedule, run)) startTask(schedule, run, t, effects, false);
   }
   if (schedule.tasks.every((t) => SETTLED_STATUSES.has(run.tasks[t.id]?.status ?? "pending"))) run.status = "finished";
 }

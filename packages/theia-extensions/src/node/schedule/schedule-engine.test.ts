@@ -302,3 +302,97 @@ describe("step — loop until converged (Slice 3)", () => {
     });
   });
 });
+
+describe("step — retry and skip (Slice 4)", () => {
+  const s = sched(task("a"), task("b"), task("c", { needs: ["a"], prompt: "after {{a.reply}} in [{{a.workspace}}]" }));
+  const other: TaskLaunch = { plan: { command: "claude-work", exportConfigDir: "", unquoted: true }, configDir: "/acct" };
+  const begin = (): RunState => {
+    let run = startRun(s, launches(s), "r1", 0).run;
+    run = step(s, run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a", sessionId: "u-a" }).run;
+    return step(s, run, { type: "started", task: "b", terminalId: 8, processId: 80, workspace: "/r-b", sessionId: "u-b" }).run;
+  };
+  const failed = (run: RunState, id: string): RunState => step(s, run, { type: "exited", task: id }).run;
+
+  it("retry starts the task again from iteration 1 in a bare state, closes the failed session, and takes the new launch (R12, R13, R22)", () => {
+    const { run, effects } = step(s, failed(begin(), "a"), { type: "retry", task: "a", launch: other });
+    expect(run.tasks["a"]).toEqual({ status: "starting", iteration: 1 });
+    expect(run.launches["a"]).toEqual(other);
+    expect(effects).toEqual([
+      { type: "close", terminalId: 7, processId: 70 },
+      { type: "start", task: "a", prompt: "do a", reuse: true },
+    ]);
+    expect(run.pausedBy).toBeUndefined();
+  });
+
+  it("retry of an interrupted task never closes a terminal: its id may belong to another process now (R13)", () => {
+    const recovered = step(s, begin(), { type: "recover" }).run;
+    const { run, effects } = step(s, recovered, { type: "retry", task: "a", launch });
+    expect(effects).toEqual([{ type: "start", task: "a", prompt: "do a", reuse: true }]);
+    expect(run.tasks["a"]!.status).toBe("starting");
+    expect(run.pausedBy).toBe("failure"); // b is still interrupted
+  });
+
+  it("a failure pause clears only when nothing else is failed or interrupted", () => {
+    let run = failed(failed(begin(), "a"), "b");
+    run = step(s, run, { type: "retry", task: "a", launch }).run;
+    expect(run.pausedBy).toBe("failure");
+    run = step(s, run, { type: "skip", task: "b" }).run;
+    expect(run.pausedBy).toBeUndefined();
+  });
+
+  it("skip lets dependents start, and the skipped task's placeholders render empty even when it replied (AC-14)", () => {
+    const s2 = sched(
+      task("a", { loop: { stopCriteria: "done", followUp: "more", maxIterations: 1 } }),
+      task("c", { needs: ["a"], prompt: "after {{a.reply}} in [{{a.workspace}}]" }),
+    );
+    let run = startRun(s2, launches(s2), "r1", 0).run;
+    run = step(s2, run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a" }).run;
+    run = step(s2, run, { type: "turn-ended", task: "a", reply: "half of it" }).run;
+    expect(run.tasks["a"]).toMatchObject({ status: "failed", reply: "half of it" });
+    const out = step(s2, run, { type: "skip", task: "a" });
+    expect(out.run.tasks["a"]!.status).toBe("skipped");
+    expect(out.run.pausedBy).toBeUndefined();
+    expect(out.effects).toEqual([{ type: "start", task: "c", prompt: "after  in []" }]); // no close: R13
+  });
+
+  it("a run finishes once every task has converged or been skipped", () => {
+    const s3 = sched(task("a"), task("b"));
+    let run = startRun(s3, launches(s3), "r1", 0).run;
+    run = step(s3, run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a" }).run;
+    run = step(s3, run, { type: "started", task: "b", terminalId: 8, processId: 80, workspace: "/r-b" }).run;
+    run = step(s3, run, { type: "turn-ended", task: "a", reply: "ok" }).run;
+    run = step(s3, run, { type: "exited", task: "b" }).run;
+    expect(run.status).toBe("running");
+    expect(step(s3, run, { type: "skip", task: "b" }).run.status).toBe("finished");
+  });
+
+  it("an operator pause survives retry and skip; a retried task starts at once and its turn end is held (R11, R4)", () => {
+    const paused = step(s, failed(begin(), "a"), { type: "pause" }).run;
+    const retried = step(s, paused, { type: "retry", task: "a", launch });
+    expect(retried.run.pausedBy).toBe("operator");
+    expect(retried.effects.map((e) => e.type)).toEqual(["close", "start"]);
+    let run = step(s, retried.run, { type: "started", task: "a", terminalId: 9, processId: 90, workspace: "/r-a" }).run;
+    run = step(s, run, { type: "turn-ended", task: "a", reply: "done" }).run;
+    expect(run.tasks["a"]!.status).toBe("held");
+    expect(run.tasks["c"]!.status).toBe("pending");
+    const skipped = step(s, failed(run, "b"), { type: "skip", task: "b" });
+    expect(skipped.run.pausedBy).toBe("operator");
+    expect(skipped.effects).toEqual([]);
+    const resumed = step(s, skipped.run, { type: "resume" });
+    expect(resumed.run.pausedBy).toBeUndefined();
+    expect(resumed.effects).toEqual([{ type: "start", task: "c", prompt: "after done in [/r-a]" }]);
+  });
+
+  it("retry and skip ignore a task that is not failed or interrupted", () => {
+    const run = begin();
+    for (const e of [
+      { type: "retry", task: "a", launch } as const,
+      { type: "skip", task: "a" } as const,
+      { type: "skip", task: "c" } as const,
+    ]) {
+      const out = step(s, run, e);
+      expect(out.run).toEqual(run);
+      expect(out.effects).toEqual([]);
+    }
+  });
+});

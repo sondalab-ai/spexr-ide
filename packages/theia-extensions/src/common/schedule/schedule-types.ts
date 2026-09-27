@@ -78,6 +78,8 @@ export const ACTIVE_STATUSES: ReadonlySet<TaskStatus> = new Set([
 ]);
 /** A dependent may start once every task it needs is in one of these. */
 export const SETTLED_STATUSES: ReadonlySet<TaskStatus> = new Set(["converged", "skipped"]);
+/** Retry and Skip apply to a task in one of these (spec, Engine; R21). */
+export const RETRYABLE_STATUSES: ReadonlySet<TaskStatus> = new Set(["failed", "interrupted"]);
 
 export interface TaskRunState {
   status: TaskStatus;
