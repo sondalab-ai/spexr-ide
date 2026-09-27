@@ -165,6 +165,15 @@ at a permission prompt: spec 0011's certain "needs you") and `interrupted`.
   no new task starts. The operator then retries the task (from iteration 1, in
   the same workspace), skips it (its dependents may start; a placeholder
   pointing at it renders empty), or aborts the run.
+- Retry starts the task at once, even while the run is paused; an operator
+  pause then holds its turn end like any other. Nothing of the failed attempt
+  is carried over (terminal, session, reply, error), and its session is closed
+  if it is still open, because the new session works in the same folder. An
+  interrupted task's session is never closed: its terminal id died with the old
+  backend and may now belong to another process. Skip leaves the failed session
+  open for the operator to read. After either, the run stays paused on a
+  failure only while another task is still failed or interrupted; an operator
+  pause is kept. Both apply only to a failed or interrupted task.
 - `waiting-on-you` is not a failure: it returns to `running` when the session
   moves again.
 - Pause (operator) stops new tasks from starting and stops follow-up pastes;
@@ -208,10 +217,24 @@ the task loops — the stop criteria, then a fixed instruction to end the reply
 with the line `CONVERGED` once they are met. Every argument is shell-quoted
 (spec 0011, Security).
 
-The workspace is prepared before launch: a `worktree` task runs
-`git worktree add -b spexr/<schedule>/<task> <path>` from the project's current
-`HEAD`, with `<path>` a sibling folder `<repo>-spexr-<schedule>-<task>`; an
-existing worktree for the same branch is reused on retry.
+The workspace is prepared before launch. A `worktree` task runs
+`git worktree add -b spexr/<schedule>/<task> <path> HEAD` in the project's
+repository (`git -C <project> rev-parse --show-toplevel`), with `<path>` a
+sibling folder `<repo>-spexr-<schedule>-<task>`, so it starts from the
+project's last commit; uncommitted changes stay behind. When the project is a
+folder inside its repository, the task works in the same folder inside the
+worktree. Git runs with an argument list, never through a shell, one worktree
+change at a time per repository. A retry reuses the task's worktree, or makes
+one for its branch when only the branch is left. A new run refuses a worktree
+or branch left from an earlier run and names the commands that remove them;
+Retry continues on them instead. A `sameAs` task runs in the folder its
+upstream actually used; when the upstream never got one (a worktree task
+skipped before it started), the task fails to start rather than fall back to
+the project folder.
+
+A pty that starts for a run that has meanwhile been aborted or replaced, or
+whose watcher cannot be registered, is closed: it has no card and nothing
+watches it.
 
 ### Turn end and convergence
 
@@ -431,6 +454,10 @@ Vitest, next to each module, with `--maxWorkers=2`
     "failed": the runner reports such a task as *Needs you* after 8 seconds
     without a transcript, and fails it only if the pty exits. Every new
     worktree (Slice 4) is a new folder and will ask once.
+    The operator answers it in the task's card: choose "Yes" (the default
+    answer ends the session and fails the task). The schedule never edits
+    Claude's own settings to skip the dialog; a schedule with Claude worktree
+    tasks is therefore not unattended.
   - `--permission-mode bypassPermissions` showed no extra dialog, but only
     because the account has `skipDangerousModePermissionPrompt: true`; other
     accounts get a first-use confirmation, handled by the same *Needs you* rule.
