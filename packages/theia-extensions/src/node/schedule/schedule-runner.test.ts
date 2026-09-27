@@ -32,6 +32,16 @@ function fakes() {
 }
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
+function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (err: unknown) => void } {
+  let resolve!: (v: T) => void;
+  let reject!: (err: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("ScheduleRunner", () => {
   it("launches a Claude task with its session id and prompt, and converges on its turn end", async () => {
     const f = fakes();
@@ -211,5 +221,106 @@ describe("ScheduleRunner", () => {
     await runner.removeSchedule("s");
     expect(f.saved()!.schedules).toEqual([]);
     expect(f.saved()!.runs["s"]).toBeUndefined();
+  });
+
+  it("drops a superseded run's late started event even when Abort/Run were queued behind a busy queue (reviewer repro)", async () => {
+    const f = fakes();
+    type Terminal = { terminalId: number; processId: number };
+    const pending: { resolve: (t: Terminal) => void }[] = [];
+    f.ports.launch = () => new Promise<Terminal>((resolve) => pending.push({ resolve }));
+    let nextSessionId = 0;
+    f.ports.newSessionId = () => `u-${++nextSessionId}`; // distinguishes run 1's session from run 2's
+    const registrations: string[] = [];
+    f.ports.watchClaude = (req, _l) => {
+      registrations.push(`watch:${req.sessionId}`);
+      return () => registrations.push(`unwatch:${req.sessionId}`);
+    };
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+
+    // Start run 1; its launch stays pending.
+    await runner.run("s", { a: launch });
+    await settle();
+    const run1Launch = pending.shift()!;
+
+    // Occupy the queue with a save that will not resolve until released.
+    const blockedSave = deferred<void>();
+    const originalSave = f.ports.save;
+    f.ports.save = (file) => blockedSave.promise.then(() => originalSave(file));
+    const blockingSave = runner.saveSchedule({ id: "t", name: "T", tasks: [] });
+
+    // Queue Abort and Run behind the blocked save: neither has been applied yet.
+    const abortDone = runner.abort("s");
+    const rerun = runner.run("s", { a: launch });
+
+    // Run 1's launch resolves now, while the queue is still blocked, so its
+    // perform() still reads run 1 as current: it registers a watcher for
+    // session u-1 (the busy queue lets this stale registration through — see
+    // schedule-runner.ts's isCurrentRun() comment) and queues a "started"
+    // dispatch bound to run 1's id, behind Abort and Run.
+    run1Launch.resolve({ terminalId: 1, processId: 10 });
+    await settle();
+    expect(pending.length).toBe(0); // run 2 has not launched yet — still queued behind the block
+    expect(registrations).toEqual(["watch:u-1"]);
+
+    // Release the queue: the blocked save, Abort, Run, then run 1's stale
+    // "started" all process in that order. Abort's own commit() releases run
+    // 1's registration (u-1 is stopped); run 2 then registers its own (u-2).
+    blockedSave.resolve();
+    await Promise.all([blockingSave, abortDone, rerun]);
+    await settle();
+
+    expect(pending.length).toBe(1); // run 2's own launch
+    const run2Launch = pending.shift()!;
+    run2Launch.resolve({ terminalId: 2, processId: 20 });
+    await settle();
+
+    expect(registrations).toEqual(["watch:u-1", "unwatch:u-1", "watch:u-2"]); // run 1's pair stopped, run 2's still live
+    const run = f.saved()!.runs["s"]!;
+    expect(run.tasks["a"]!.status).toBe("running");
+    expect(run.tasks["a"]!.terminalId).toBe(2); // never bound to run 1's terminal (1)
+    expect(run.tasks["a"]!.sessionId).toBe("u-2"); // never bound to run 1's session (u-1)
+  });
+
+  it("drops a late watcher/exit event from a run that Abort→Run already superseded", async () => {
+    const f = fakes();
+    type Terminal = { terminalId: number; processId: number };
+    const pending: { resolve: (t: Terminal) => void }[] = [];
+    f.ports.launch = () => new Promise<Terminal>((resolve) => pending.push({ resolve }));
+    let run1Exit: (() => void) | undefined;
+    f.ports.onExit = (_id, l) => {
+      run1Exit = l;
+      return () => {};
+    };
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+
+    await runner.run("s", { a: launch });
+    await settle();
+    pending.shift()!.resolve({ terminalId: 1, processId: 10 }); // run 1 launches and registers
+    await settle();
+    expect(run1Exit).toBeDefined();
+
+    // Occupy the queue the same way as the previous test.
+    const blockedSave = deferred<void>();
+    const originalSave = f.ports.save;
+    f.ports.save = (file) => blockedSave.promise.then(() => originalSave(file));
+    const blockingSave = runner.saveSchedule({ id: "t", name: "T", tasks: [] });
+    const abortDone = runner.abort("s");
+    const rerun = runner.run("s", { a: launch });
+
+    // Run 1's exit listener fires late — the race the ruling calls out —
+    // while Abort has been issued but not yet applied.
+    run1Exit!();
+
+    blockedSave.resolve();
+    await Promise.all([blockingSave, abortDone, rerun]);
+    await settle();
+
+    const run2Launch = pending.shift()!;
+    run2Launch.resolve({ terminalId: 2, processId: 20 });
+    await settle();
+
+    const run = f.saved()!.runs["s"]!;
+    expect(run.tasks["a"]!.status).toBe("running"); // not "failed" from run 1's stale "exited"
+    expect(run.tasks["a"]!.terminalId).toBe(2);
   });
 });

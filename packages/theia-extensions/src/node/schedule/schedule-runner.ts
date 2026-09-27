@@ -101,11 +101,22 @@ export class ScheduleRunner {
     for (const id of Object.keys(this.file.runs)) await this.dispatch(id, { type: "recover" });
   }
 
-  dispatch(scheduleId: string, event: EngineEvent): Promise<void> {
+  /**
+   * `runId`, when given, binds the event to the run that produced it: inside
+   * the same queued step that would otherwise apply it, a run that Abort→Run
+   * has since superseded makes the event a no-op. This is the guarantee — a
+   * caller cannot rely on the world still looking the way it did when the
+   * event was raised, since Abort and Run may have been queued (though not
+   * yet applied) in between. Operator events (abort, recover) carry no
+   * `runId`: they always apply to whatever run is current when their turn
+   * in the queue comes.
+   */
+  dispatch(scheduleId: string, event: EngineEvent, runId?: string): Promise<void> {
     return this.serial(async () => {
       const schedule = this.schedule(scheduleId);
       const prev = this.file.runs[scheduleId];
       if (!schedule || !prev) return;
+      if (runId !== undefined && prev.runId !== runId) return;
       const { run, effects } = step(schedule, prev, event);
       await this.commit(scheduleId, run, effects);
     });
@@ -164,8 +175,12 @@ export class ScheduleRunner {
     const task = schedule?.tasks.find((t) => t.id === e.task);
     const run = this.file.runs[scheduleId];
     const launch = task && run?.launches[task.id];
+    // Bound to this run: dispatch() drops it inside the queue if Abort→Run
+    // has since replaced run `runId` (see dispatch()) — that is what makes a
+    // superseded run's event harmless, even though a busy queue can still let
+    // this perform register a watcher/exit listener below before it notices.
     const send = (event: EngineEvent): void => {
-      void this.dispatch(scheduleId, event).catch((err) => console.error("[schedule] dispatch failed", err));
+      void this.dispatch(scheduleId, event, runId).catch((err) => console.error("[schedule] dispatch failed", err));
     };
     if (!schedule || !task || !run || !launch) {
       send({ type: "start-failed", task: e.task, error: "The task is no longer in the schedule." });
@@ -182,13 +197,14 @@ export class ScheduleRunner {
       keepShell: false,
     });
     // A rerun (Abort → Run) may replace this run while the launch is still
-    // pending, in either direction (it resolves or it rejects). Once that has
-    // happened this task no longer belongs to the run it was started for:
-    // "registered/opened" here means the watcher and the exit listener, which
-    // this perform has not registered yet by the time it checks, so there is
-    // nothing of its own left to release. The pty itself is not closed —
-    // SchedulePty has no kill, and a plain Abort leaves its session's pty
-    // running the same way, so a stale rerun is no different from that.
+    // pending. This is only an early-out, not the guarantee: it reads
+    // `this.file` outside the queue, so on a busy queue (Abort/Run already
+    // queued but not yet applied) it can still see this run as current and go
+    // on to register a watcher/exit listener for a task that no longer
+    // belongs to it. When that happens, Abort's own commit() releases that
+    // registration once it runs (the pty itself is never closed — no kill
+    // port — same as any plain Abort), and dispatch()'s `runId` check is what
+    // actually keeps the events those listeners raise from reaching run 2.
     const isCurrentRun = (): boolean => {
       const current = this.file.runs[scheduleId];
       return !!current && current.runId === runId && current.status === "running";
