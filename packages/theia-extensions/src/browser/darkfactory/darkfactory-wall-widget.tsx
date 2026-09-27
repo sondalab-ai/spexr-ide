@@ -23,6 +23,9 @@ import {
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+import { SpexrScheduleServiceProxy, SpexrScheduleClientDispatcher } from "./schedule/schedule-client.js";
+import { taskCardsToMount } from "./schedule/schedule-wall.js";
+import type { ScheduleSnapshot, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
 import { SpexrProjectTerminalService } from "../terminal/project-terminal-service.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 import { parseLaunchProfiles } from "../../common/claude-launch-profiles.js";
@@ -116,6 +119,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
+  @inject(SpexrScheduleServiceProxy) private readonly schedules!: SpexrScheduleService;
+  @inject(SpexrScheduleClientDispatcher) private readonly scheduleClient!: SpexrScheduleClientDispatcher;
   @inject(SpexrProjectTerminalService) private readonly projectTerminals!: SpexrProjectTerminalService;
   @inject(SpexrProjectSwitchService) private readonly projectSwitch!: SpexrProjectSwitchService;
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
@@ -205,6 +210,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }[] = [];
   private launchCounter = 0;
 
+  /** Latest snapshot pushed by the backend; empty until the first one lands. */
+  private scheduleSnapshot: ScheduleSnapshot = { schedules: [], runs: {} };
+  /** Task card keys already mounted this window, so a snapshot never mounts a terminal twice. */
+  private readonly mountedTasks = new Set<string>();
+
   /** When the wheel last scrolled the wall, anchoring {@link routeWheel}'s gesture window. */
   private lastWallWheelAt = 0;
 
@@ -281,6 +291,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       }),
     );
     this.toDispose.push({ dispose: () => this.stopAllFollows() });
+    this.toDispose.push(this.scheduleClient.onSnapshot$((s) => this.onScheduleSnapshot(s)));
+    void this.schedules.snapshot().then((s) => this.onScheduleSnapshot(s)).catch(() => undefined);
     this.restorePins();
     // ReactWidget renders only on update() — paint the loading state now, before
     // the first tiles land (without this the widget body stays blank until then).
@@ -570,6 +582,42 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.sessionLinks.set(sessionId, links);
     const current = this.browsers.get(sessionId);
     if (current) this.browsers.set(sessionId, applyLinks(current, links));
+    this.update();
+  }
+
+  /**
+   * A running task is a launched card: attach to its backend terminal and let
+   * the scan adopt it like any session started here. Each terminal is mounted
+   * once per window.
+   */
+  private onScheduleSnapshot(snapshot: ScheduleSnapshot): void {
+    this.scheduleSnapshot = snapshot;
+    const mounted = new Set<string>([
+      ...this.mountedTasks,
+      ...this.pinned,
+      ...this.launched.map((l) => l.key),
+    ]);
+    for (const card of taskCardsToMount(snapshot, mounted)) {
+      this.mountedTasks.add(card.key);
+      void this.terminals
+        .reattach(card.key, { terminalId: card.terminalId, processId: card.processId }, card.workspace)
+        .then((term) => {
+          if (!term) return;
+          const known = new Set(this.tiles.map((t) => t.sessionId).filter((id) => id !== card.sessionId));
+          this.launched = [
+            ...this.launched,
+            {
+              key: card.key,
+              projectPath: card.workspace,
+              projectName: card.workspace.split("/").filter(Boolean).pop() ?? card.workspace,
+              harness: card.harness,
+              knownBefore: known,
+            },
+          ];
+          this.update();
+        })
+        .catch(() => undefined);
+    }
     this.update();
   }
 
