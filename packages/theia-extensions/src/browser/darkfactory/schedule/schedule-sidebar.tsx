@@ -165,6 +165,15 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             </span>
           </label>
 
+          {bar!.reasons.length > 0 && (
+            <div className="sl-callout sl-callout--warning spexr-sched__reasons">
+              <ul>
+                {bar!.reasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="spexr-sched__runbar" aria-live="polite">
             <span className="sl-tag">{bar!.label}</span>
             {bar!.canAbort ? (
@@ -205,15 +214,6 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               </button>
             )}
           </div>
-          {bar!.reasons.length > 0 && (
-            <div className="sl-callout sl-callout--warning spexr-sched__reasons">
-              <ul>
-                {bar!.reasons.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           <ol className="spexr-sched__tasks">
             {taskRows(schedule, run).map((row) => (
@@ -333,6 +333,13 @@ function TaskEditor(p: {
             value={t.project}
             onChange={(e) => set({ project: e.target.value })}
           >
+            {/* The task's own folder may not be among the wall's current targets
+                (no sessions there yet, or it left tiles/recents after a reload);
+                without this, the select would silently show the first option
+                while the stored value stayed the one nobody sees. */}
+            {!p.projects.some((x) => x.path === t.project) && (
+              <option value={t.project}>{t.project || "Pick a project…"}</option>
+            )}
             {p.projects.map((x) => (
               <option key={x.path} value={x.path}>
                 {x.name}

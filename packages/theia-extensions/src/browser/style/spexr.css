@@ -2441,7 +2441,11 @@ code {
 
 /* The wall and the plant schedule side by side; the wall keeps the room it needs. */
 .spexr-df-shell { display: flex; align-items: flex-start; gap: var(--sl-space-5); }
-.spexr-df-shell > .spexr-df-root { flex: 1 1 auto; min-width: 0; }
+/* position: relative restores what .spexr-df-root lost when it stopped being
+   .spexr-life-bg's direct sibling: an absolutely positioned descendant must
+   still anchor to the wall alone, not to the wider shell (which now also
+   holds the sidebar). */
+.spexr-df-shell > .spexr-df-root { position: relative; flex: 1 1 auto; min-width: 0; }
 .spexr-df-shell__open { position: sticky; top: var(--sl-space-3); }
 
 .spexr-sched {
