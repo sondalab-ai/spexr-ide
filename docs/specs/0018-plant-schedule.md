@@ -108,9 +108,10 @@ interface ScheduleTask {
     | { kind: "sameAs"; task: string };        // an upstream task's workspace
   harness: HarnessId;          // "claude" | "opencode"
   configDir?: string;          // Claude account; ignored for opencode (spec 0013)
-  model?: string;
-  permissionMode?: string;     // claude --permission-mode; opencode: "auto" maps to --auto
-  prompt: string;
+  model?: string;              // [A-Za-z0-9._/:\[\]-]{1,100}
+  permissionMode?: string;     // claude: acceptEdits | auto | bypassPermissions | manual | dontAsk | plan;
+                               // opencode: auto (maps to --auto)
+  prompt: string;              // 1..20 000 characters, not starting with "-"
   loop?: {
     stopCriteria: string;      // appended to the first prompt
     followUp: string;          // pasted on every later iteration
@@ -133,7 +134,11 @@ It rejects:
   workspaces resolve to the same folder — this is what keeps each running
   session distinguishable, since Dark Factory liveness is per folder
   (spec 0011, non-goals);
-- a harness id outside the whitelist, and a `maxIterations` outside 1..50.
+- a harness id outside the whitelist, and a `maxIterations` outside 1..50;
+- a permission mode the task's harness does not offer, and a model name outside
+  its pattern;
+- an empty prompt, one longer than 20 000 characters, and one starting with `-`
+  (the harness would read it as an option).
 
 ### Store
 
@@ -177,15 +182,26 @@ schedule start sessions the same way and keep spec 0011's AC-8: the account
 (`CLAUDE_CONFIG_DIR` exported or unset) and `cd` into the folder happen inside
 the one quoted `-c` line of a login shell.
 
+**The frontend resolves how to launch.** Which binary runs and which account it
+runs under come from preferences (launch profiles, the executable preference,
+the active profile), and preferences live in the frontend. So when the operator
+presses Run or Retry, the frontend resolves each task's launch plan (command,
+config dir to export, whether the command is a shell word) and its account
+directory, exactly as it does for a wall session today, and sends them with the
+request. The backend stores them in the run state and uses them for that run.
+
 The runner starts a task's pty through Theia's `ShellTerminalServer` on the
-backend and records its terminal id and process id. The harness arguments:
+backend and records its terminal id and process id. A scheduled task's shell
+line ends when the harness does — it omits the `; exec "$SHELL" -i` the wall
+appends to keep a terminal open — so the harness exiting is seen as the pty
+exiting. The harness arguments:
 
 | | claude | opencode |
 |---|---|---|
 | First prompt | positional argument | `--prompt` |
 | Model | `--model` | `-m` |
 | Permissions | `--permission-mode` | `--auto` when set to `auto` |
-| Session id | `--session-id <uuid>` chosen by the runner | the newest session in the task's folder created after launch |
+| Session id | `--session-id <uuid>` chosen by the runner | the first session the wall's scan finds in the task's folder that it did not know at launch |
 
 The first prompt is the task prompt with placeholders filled in, then — when
 the task loops — the stop criteria, then a fixed instruction to end the reply
@@ -199,15 +215,37 @@ existing worktree for the same branch is reused on retry.
 
 ### Turn end and convergence
 
-The runner follows the task's transcript directly with the incremental reader
-the wall already uses (`node/darkfactory/follow-reader.ts`) and classifies it
-with `classifySession` (`node/darkfactory/session-state.ts`), so a turn end is
-seen as it is written, not on the wall's 20-second poll.
+**Claude.** The runner finds the transcript at
+`<account dir>/projects/*/<session id>.jsonl`, using the account directory the
+frontend resolved, and follows it with the incremental reader the wall already
+uses (`node/darkfactory/follow-reader.ts`). It reads the turn with the same
+rules as `classifySession` (`node/darkfactory/session-state.ts`), so a turn end
+is seen as it is written, not on the wall's 20-second poll. A transcript that
+does not appear within 60 seconds of launch fails the start.
+
+**opencode.** opencode cannot be given a session id and has no transcript file:
+its sessions are read with `opencode db` queries, and each query writes
+opencode's data folder, which the wall watches — polling it from the runner
+would restart the refresh loop the wall already throttles
+(`docs/memory/a-read-only-opencode-db-query-still-writes-its-data-dir-open.md`).
+The runner therefore reads opencode tasks from the wall's own scan results: the
+Dark Factory backend announces each scan to the runner, and the runner asks for
+a scan itself on the wall's 20-second poll interval when no window is open.
+A turn end on an opencode task is seen tens of seconds late.
+
+**A turn counts once.** After a paste, the transcript still ends with the
+previous reply until the new prompt is written; the runner only accepts a turn
+end after it has seen the agent working again. The final reply is the whole
+last assistant turn — every assistant entry after the last prompt — not only
+the last entry.
 
 When a turn ends:
 
 1. The final reply's last non-empty line is `CONVERGED`: run the check command
-   if there is one (in the workspace, in a login shell, with its timeout). It
+   if there is one (in the workspace, in a login shell, with its timeout; on
+   timeout its whole process group is killed). Checks run one at a time across
+   the backend, queued in order: parallel tasks all running `pnpm test` at once
+   would overload the machine. It
    passes, or there is none → `converged`. It fails → treated as "not
    converged", and its last 40 lines of output are appended to the follow-up.
 2. Not converged and iterations left → paste `followUp` as a bracketed paste,
@@ -250,7 +288,9 @@ Contents, top to bottom:
 A running task is a launched card on the wall, attached to the run's terminal
 by its terminal id (the path pinned cards use after a reload,
 `DarkfactoryTerminalManager.reattach`). Selecting a task row scrolls to and
-focuses its card; the card shows the task name and iteration.
+focuses its card. The card shows the task name and iteration because the runner
+names the session `<schedule> · <task> (<iteration>/<max>)` through the wall's
+session-rename store, and renames it on every iteration.
 
 ### Look and feel
 
@@ -297,13 +337,16 @@ The sidebar follows UX and visual-design practice, built on the
 ### Slice 2 — One task, end to end
 
 - **AC-4** The launch line is built by one shared builder used by both the wall
-  and the schedule; the wall's existing launch tests pass unchanged.
+  and the schedule; the wall's shell line stays byte-identical to today's,
+  pinned by tests written against the current code before the move.
 - **AC-5** Run on a one-task schedule starts the session in a backend pty with
   the prompt, model and permission mode given; it appears as a launched card on
   the wall within the time the wall takes today, and survives a window reload.
 - **AC-6** A Claude task's session is identified by the `--session-id` the
-  runner chose; an opencode task's by the newest session in its folder created
-  after launch.
+  runner chose, its transcript found under the account the frontend resolved;
+  an opencode task's session is the first one the wall's scan finds in its
+  folder that was not known at launch, read from the wall's scan without any
+  extra `opencode db` query.
 - **AC-7** The task becomes `converged` when its first turn ends, and
   `waiting-on-you` while the session stops at a permission prompt.
 - **AC-8** A minimal sidebar lists the schedule's tasks with their state and
@@ -348,8 +391,15 @@ The sidebar follows UX and visual-design practice, built on the
 - Check commands run with the operator's own rights, in the task's workspace,
   in a login shell, like the launch line; each has a timeout and is killed when
   it expires.
-- A permission mode that skips approval (`bypassPermissions`, opencode
-  `--auto`) is shown with a warning in the editor and on the task row.
+- A permission mode that approves tools without asking (claude `auto` and
+  `bypassPermissions` — the two `classifySession` already treats as
+  auto-approving — and opencode `auto`) is shown with a warning in the editor
+  and on the task row.
+- The launch plan reaches the backend over the frontend's RPC connection, and
+  the backend runs its command in a login shell. This is the same trust the
+  wall already places in the frontend (the frontend asks the backend's terminal
+  server to run exactly that line today); the backend still quotes every
+  argument and checks that the command is non-empty and has no newline.
 
 ## Testing
 
@@ -374,10 +424,17 @@ Vitest, next to each module, with `--maxWorkers=2`
   that probe; if it fails, the follow-up is sent through the harness's resume
   with a prompt instead (`--resume <id> "<follow-up>"`), which restarts the
   process but keeps the conversation.
-- **opencode session pick-up.** Matching "newest session in the folder after
-  launch" relies on the concurrency guard; if a session started outside the
-  schedule lands in the same folder at the same moment, the runner could adopt
-  it. The runner records the chosen id and shows it on the task row.
+- **opencode session pick-up.** Matching "first unknown session in the folder"
+  relies on the concurrency guard; if a session started outside the schedule
+  lands in the same folder at the same moment, the runner could adopt it. The
+  runner records the chosen id and shows it on the task row.
+- **opencode latency.** Turn ends on opencode tasks follow the wall's scan
+  throttle, so a looping opencode task spends tens of seconds between
+  iterations.
+- **Backend terminals without a window.** That Theia's terminal server creates
+  and runs a pty with no window connected, and that a window opened later
+  attaches to it through `reattach`, is expected from its code, not yet tried.
+  Slice 2 opens with that probe.
 - **Marker in quoted text.** An agent quoting its instructions could end a
   reply with the marker by accident; only the last non-empty line counts, and
   the check command is the stronger gate where the operator sets one.
