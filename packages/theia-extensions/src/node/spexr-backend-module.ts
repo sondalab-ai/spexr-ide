@@ -21,6 +21,9 @@ import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
 import { SpexrResourceBackendService } from "./resources/spexr-resource-backend-service.js";
 import { POWER_SERVICE_PATH, type SpexrPowerService } from "../common/power-protocol.js";
 import { SpexrPowerBackendService, followPowerSaving } from "./power/spexr-power-backend-service.js";
+import { SCHEDULE_SERVICE_PATH, type SpexrScheduleClient } from "../common/schedule/schedule-protocol.js";
+import { SpexrScheduleBackendService } from "./schedule/spexr-schedule-backend-service.js";
+import { SchedulePty } from "./schedule/schedule-pty.js";
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   // Guard Theia 1.75 against exiting on a double socket close; see the service doc.
@@ -90,6 +93,18 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     .toDynamicValue((ctx) => {
       const service = ctx.container.get(SpexrDarkfactoryBackendService);
       return new RpcConnectionHandler<SpexrDarkfactoryClient>(DARKFACTORY_SERVICE_PATH, (client) => {
+        service.setClient(client);
+        return service;
+      });
+    })
+    .inSingletonScope();
+
+  bind(SchedulePty).toSelf().inSingletonScope();
+  bind(SpexrScheduleBackendService).toSelf().inSingletonScope();
+  bind(ConnectionHandler)
+    .toDynamicValue((ctx) => {
+      const service = ctx.container.get(SpexrScheduleBackendService);
+      return new RpcConnectionHandler<SpexrScheduleClient>(SCHEDULE_SERVICE_PATH, (client) => {
         service.setClient(client);
         return service;
       });
