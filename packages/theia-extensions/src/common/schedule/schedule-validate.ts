@@ -1,4 +1,5 @@
 import {
+  MAX_CHECK_TIMEOUT_SEC,
   MAX_ITERATIONS,
   MAX_PROMPT_CHARS,
   MODEL_PATTERN,
@@ -79,12 +80,29 @@ function checkTask(
   else if (t.prompt.length > MAX_PROMPT_CHARS) add(t.id, "prompt", `Keep it under ${MAX_PROMPT_CHARS} characters.`);
   else if (prompt.startsWith("-")) add(t.id, "prompt", 'It cannot start with "-": the harness would read it as an option.');
   if (t.loop) {
-    const { maxIterations, stopCriteria, followUp } = t.loop;
+    const { maxIterations, stopCriteria, followUp, check, checkTimeoutSec } = t.loop;
     if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > MAX_ITERATIONS) {
       add(t.id, "loop.maxIterations", `Between 1 and ${MAX_ITERATIONS}.`);
     }
     if (!stopCriteria.trim()) add(t.id, "loop.stopCriteria", "Say when the task is done.");
     if (!followUp.trim()) add(t.id, "loop.followUp", "Write what to send on each new iteration.");
+    else if (placeholdersIn(followUp).length > 0) {
+      add(t.id, "loop.followUp", "Placeholders go in the prompt: the follow-up is pasted as written.");
+    } else if (/^[/!#]/.test(followUp.replace(/^\s+/, ""))) {
+      add(t.id, "loop.followUp", 'It cannot start with "/", "!" or "#": the agent\'s terminal would treat it as a command.');
+    }
+    if (check !== undefined) {
+      if (!check.trim()) add(t.id, "loop.check", "Write the command, or remove the check.");
+      else if (placeholdersIn(check).length > 0) {
+        add(t.id, "loop.check", "Placeholders are not filled in here: the check runs exactly as written.");
+      }
+    }
+    if (
+      checkTimeoutSec !== undefined &&
+      (!Number.isInteger(checkTimeoutSec) || checkTimeoutSec < 1 || checkTimeoutSec > MAX_CHECK_TIMEOUT_SEC)
+    ) {
+      add(t.id, "loop.checkTimeoutSec", `Between 1 and ${MAX_CHECK_TIMEOUT_SEC} seconds.`);
+    }
   }
 }
 

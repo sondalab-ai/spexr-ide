@@ -6,6 +6,8 @@ export const MODEL_PATTERN = /^[A-Za-z0-9._/:[\]-]{1,100}$/;
 export const MAX_ITERATIONS = 50;
 export const MAX_PROMPT_CHARS = 20_000;
 export const DEFAULT_CHECK_TIMEOUT_SEC = 600;
+/** A check longer than an hour is not a gate a loop should wait on. */
+export const MAX_CHECK_TIMEOUT_SEC = 3_600;
 export const SCHEDULE_HARNESSES: readonly HarnessId[] = ["claude", "opencode"];
 export const PERMISSION_MODES: Readonly<Record<HarnessId, readonly string[]>> = {
   claude: ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"],

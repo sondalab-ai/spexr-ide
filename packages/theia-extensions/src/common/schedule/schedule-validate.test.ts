@@ -71,6 +71,34 @@ describe("validateSchedule", () => {
       "a:loop.followUp",
     ]);
   });
+  it("rejects a blank check, placeholders in the check or the follow-up (R6), and a check timeout out of range (R7)", () => {
+    const loop = { stopCriteria: "tests pass", followUp: "keep going", maxIterations: 3 };
+    expect(fields(sched(task("a", { loop: { ...loop, check: "  " } })))).toEqual(["a:loop.check"]);
+    expect(
+      fields(sched(task("a"), task("b", { needs: ["a"], loop: { ...loop, check: "grep -q ok {{a.workspace}}/log" } }))),
+    ).toEqual(["b:loop.check"]);
+    expect(fields(sched(task("a"), task("b", { needs: ["a"], loop: { ...loop, followUp: "see {{a.reply}}" } })))).toEqual([
+      "b:loop.followUp",
+    ]);
+    expect(fields(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 0 } })))).toEqual([
+      "a:loop.checkTimeoutSec",
+    ]);
+    expect(fields(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 3_601 } })))).toEqual([
+      "a:loop.checkTimeoutSec",
+    ]);
+    expect(fields(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 1.5 } })))).toEqual([
+      "a:loop.checkTimeoutSec",
+    ]);
+    expect(validateSchedule(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 900 } })))).toEqual([]);
+  });
+  it("rejects a follow-up that starts with a slash, bang or hash — the agent's terminal would read it as a command", () => {
+    const loop = { stopCriteria: "tests pass", maxIterations: 3 };
+    expect(fields(sched(task("a", { loop: { ...loop, followUp: "/clear" } })))).toEqual(["a:loop.followUp"]);
+    expect(fields(sched(task("a", { loop: { ...loop, followUp: "!ls" } })))).toEqual(["a:loop.followUp"]);
+    expect(fields(sched(task("a", { loop: { ...loop, followUp: "#note" } })))).toEqual(["a:loop.followUp"]);
+    expect(fields(sched(task("a", { loop: { ...loop, followUp: "  /clear" } })))).toEqual(["a:loop.followUp"]);
+    expect(fields(sched(task("a", { loop: { ...loop, followUp: "see / for details" } })))).toEqual([]);
+  });
 
   describe("concurrency guard (AC-2)", () => {
     it("rejects two tasks that may run together in one folder", () => {
