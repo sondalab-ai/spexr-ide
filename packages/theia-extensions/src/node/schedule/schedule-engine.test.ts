@@ -188,6 +188,26 @@ describe("step — loop until converged (Slice 3)", () => {
     expect(step(s, checking(), { type: "exited", task: "a" }).run.tasks["a"]!.status).toBe("failed");
   });
 
+  it("a failure pause does not stop a running looping task from pasting its follow-up on a non-converged turn end", () => {
+    const failed = step(s, started(), { type: "exited", task: "b" }).run;
+    expect(failed.pausedBy).toBe("failure");
+    const { run, effects } = step(s, failed, { type: "turn-ended", task: "a", reply: "still going" });
+    expect(run.tasks["a"]).toMatchObject({ status: "running", iteration: 2 });
+    expect(effects.some((e) => e.type === "paste")).toBe(true);
+  });
+
+  it("check-done ok:false at the last iteration fails the task and pauses the run (AC-11)", () => {
+    let run = step(s, started(), { type: "turn-ended", task: "a", reply: "not yet 1" }).run; // iteration 1 -> 2
+    run = step(s, run, { type: "turn-ended", task: "a", reply: "not yet 2" }).run; // iteration 2 -> 3 (== maxIterations)
+    run = step(s, run, { type: "turn-ended", task: "a", reply: "done\nCONVERGED" }).run; // -> checking
+    expect(run.tasks["a"]!.status).toBe("checking");
+    const { run: failed, effects } = step(s, run, { type: "check-done", task: "a", ok: false, tail: "still red" });
+    expect(failed.tasks["a"]!.status).toBe("failed");
+    expect(failed.tasks["a"]!.error).toMatch(/3 iterations: the check still fails/);
+    expect(failed.pausedBy).toBe("failure");
+    expect(effects).toEqual([]);
+  });
+
   describe("operator pause (R3, R4)", () => {
     const paused = (): RunState => step(s, started(), { type: "pause" }).run;
 
@@ -249,6 +269,31 @@ describe("step — loop until converged (Slice 3)", () => {
       run = step(s, run, { type: "pause" }).run;
       expect(run.pausedBy).toBe("operator");
       expect(step(s, run, { type: "resume" }).run.pausedBy).toBe("failure");
+    });
+
+    it("recover after an operator pause keeps the operator pause; resume then falls back to failure (regression)", () => {
+      let run = step(s, started(), { type: "pause" }).run;
+      run = step(s, run, { type: "recover" }).run;
+      expect(run.tasks["a"]!.status).toBe("interrupted");
+      expect(run.tasks["b"]!.status).toBe("interrupted");
+      expect(run.pausedBy).toBe("operator");
+      const resumed = step(s, run, { type: "resume" });
+      expect(resumed.run.pausedBy).toBe("failure");
+      expect(resumed.effects).toEqual([]);
+    });
+
+    it("a resume replay that runs out of iterations fails the task, pauses on the failure, and starts no dependent", () => {
+      let run = started();
+      run = step(s, run, { type: "turn-ended", task: "a", reply: "not yet 1" }).run; // iteration 1 -> 2
+      run = step(s, run, { type: "turn-ended", task: "a", reply: "not yet 2" }).run; // iteration 2 -> 3 (== maxIterations)
+      run = step(s, run, { type: "pause" }).run;
+      const held = step(s, run, { type: "turn-ended", task: "a", reply: "still not there" }).run;
+      expect(held.tasks["a"]).toMatchObject({ status: "held", iteration: 3 });
+      const resumed = step(s, held, { type: "resume" });
+      expect(resumed.run.tasks["a"]!.status).toBe("failed");
+      expect(resumed.run.tasks["a"]!.error).toMatch(/3 iterations/);
+      expect(resumed.run.pausedBy).toBe("failure");
+      expect(resumed.effects.some((e) => e.type === "start")).toBe(false);
     });
 
     it("resume without a pause changes nothing", () => {

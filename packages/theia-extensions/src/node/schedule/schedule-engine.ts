@@ -106,6 +106,7 @@ export function step(schedule: Schedule, prev: RunState, event: EngineEvent): St
         delete task.checkTail;
         break;
       }
+      // A turn end while `checking` is ignored here (falls through this guard): the running check judges the earlier reply, not this one.
       if (task?.status !== "running" && task?.status !== "waiting-on-you") break;
       if (run.pausedBy === "operator") {
         task.status = "held";
@@ -147,7 +148,8 @@ export function step(schedule: Schedule, prev: RunState, event: EngineEvent): St
       return { run, effects };
     case "recover":
       for (const t of Object.values(run.tasks)) if (ACTIVE_STATUSES.has(t.status)) t.status = "interrupted";
-      if (Object.values(run.tasks).some((t) => t.status === "interrupted")) run.pausedBy = "failure";
+      // An operator pause wins over a failure (R3): never overwrite it here; resume() recomputes the failure pause.
+      if (run.pausedBy !== "operator" && Object.values(run.tasks).some((t) => t.status === "interrupted")) run.pausedBy = "failure";
       return { run, effects };
   }
   advance(schedule, run, effects);
