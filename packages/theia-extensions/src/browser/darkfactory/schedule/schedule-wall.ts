@@ -32,3 +32,14 @@ export function taskCardsToMount(snapshot: ScheduleSnapshot, mounted: ReadonlySe
   }
   return cards;
 }
+
+/**
+ * Whether closing a launched card should end its terminal's process. A task
+ * card (its key tracked in `taskKeys`) is scheduler-owned — the schedule spec
+ * ends a run only on Abort, so closing the card must only detach it, leaving
+ * the run's terminal live. Any other launched card's terminal is the card's
+ * only handle to that process, so it is disposed with the card, as before.
+ */
+export function closesDestructively(key: string, taskKeys: ReadonlySet<string>): boolean {
+  return !taskKeys.has(key);
+}

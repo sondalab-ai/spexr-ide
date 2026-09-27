@@ -24,7 +24,7 @@ import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrScheduleServiceProxy, SpexrScheduleClientDispatcher } from "./schedule/schedule-client.js";
-import { taskCardsToMount } from "./schedule/schedule-wall.js";
+import { closesDestructively, taskCardsToMount } from "./schedule/schedule-wall.js";
 import type { ScheduleSnapshot, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
 import { SpexrProjectTerminalService } from "../terminal/project-terminal-service.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
@@ -528,12 +528,6 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       });
   }
 
-  /**
-   * Close a card whose session the scan has not named yet. Its terminal IS
-   * disposed, unlike every other card: the placeholder key is the only handle to
-   * that process, so leaving it running would strand a session the wall could
-   * never re-attach — the very thing that made switching cards destructive.
-   */
   /** The browser props a card with this key renders; `sessionId` is absent on a launched card. */
   private browserProps(key: string, sessionId: string | undefined): CardBrowserProps {
     return {
@@ -602,7 +596,13 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       void this.terminals
         .reattach(card.key, { terminalId: card.terminalId, processId: card.processId }, card.workspace)
         .then((term) => {
-          if (!term) return;
+          if (!term) {
+            // The process ended, or someone else's, between the snapshot and the
+            // attach — let a later snapshot try again rather than leaving this
+            // card permanently unmountable.
+            this.mountedTasks.delete(card.key);
+            return;
+          }
           const known = new Set(this.tiles.map((t) => t.sessionId).filter((id) => id !== card.sessionId));
           this.launched = [
             ...this.launched,
@@ -616,13 +616,27 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           ];
           this.update();
         })
-        .catch(() => undefined);
+        .catch(() => {
+          this.mountedTasks.delete(card.key);
+        });
     }
     this.update();
   }
 
+  /**
+   * Close one launched card. A task card (its key tracked in
+   * {@link mountedTasks}) is scheduler-owned: the schedule spec ends a run
+   * only on Abort, sessions otherwise stay open, and the operator can take
+   * over at any point — so closing it only detaches the card, the way
+   * {@link unpin} does for a pinned one. The terminal stays live with the
+   * manager, and the key stays in `mountedTasks` so the next snapshot does
+   * not remount it in this window. Any other launched card's terminal IS
+   * disposed, as before: its placeholder key is the only handle to that
+   * process, so leaving it running would strand a session the wall could
+   * never re-attach.
+   */
   private closeLaunched(key: string): void {
-    this.terminals.live(key)?.dispose();
+    if (closesDestructively(key, this.mountedTasks)) this.terminals.live(key)?.dispose();
     this.browsers.delete(key);
     this.launched = this.launched.filter((l) => l.key !== key);
     this.update();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScheduleSnapshot } from "../../../common/schedule/schedule-protocol.js";
-import { taskCardsToMount } from "./schedule-wall.js";
+import { closesDestructively, taskCardsToMount } from "./schedule-wall.js";
 
 const snapshot = (status: string, runStatus = "running"): ScheduleSnapshot => ({
   schedules: [{ id: "s", name: "S", tasks: [{ id: "a", name: "A", needs: [], project: "/r", workspace: { kind: "folder" }, harness: "claude", prompt: "p" }] }],
@@ -29,5 +29,15 @@ describe("taskCardsToMount", () => {
     const noTerminal = snapshot("starting");
     delete noTerminal.runs["s"]!.tasks["a"]!.terminalId;
     expect(taskCardsToMount(noTerminal, new Set())).toEqual([]);
+  });
+});
+
+describe("closesDestructively", () => {
+  it("keeps a task card's terminal alive on close", () => {
+    expect(closesDestructively("spexr-task-4", new Set(["spexr-task-4"]))).toBe(false);
+  });
+  it("disposes any other launched card's terminal on close, as before", () => {
+    expect(closesDestructively("spexr-new-1", new Set(["spexr-task-4"]))).toBe(true);
+    expect(closesDestructively("spexr-task-4", new Set())).toBe(true);
   });
 });
