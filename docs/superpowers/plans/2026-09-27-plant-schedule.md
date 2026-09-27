@@ -5,9 +5,8 @@
 > **What is this file.** Implementation plan for spec 0018. Audience: whoever
 > implements it (human or agent). Owner: marcello.barile. The spec
 > (`docs/specs/0018-plant-schedule.md`) is the contract; this file is the order
-> of work. Slices 1 and 2 are planned task by task. Slices 3 and 4 are outlined
-> only: Slice 2 opens with probes whose results decide their details, so they
-> are planned in full once those results are in.
+> of work. Slices 1–3 are planned task by task. Slice 4 is outlined only: it is
+> planned in full once Slice 3 is in.
 
 **Goal:** Let the operator define a dependency graph of agent sessions in a Dark Factory sidebar and run it, each session a live wall card.
 
@@ -38,7 +37,8 @@
 2. **A reply split over several assistant entries.** The final reply is every assistant text block after the last genuine prompt, not the last entry. Pinned in Task 7 (`finalReply` "joins the whole last turn").
 3. **A damaged `schedules.json`.** Treating a parse failure as "no schedules" and then saving would erase the operator's work. The store moves the bad file aside before starting empty. Pinned in Task 4.
 4. **A transcript that never appears** — usually Claude's folder-trust dialog (probe, 2026-09-27). The task must show *Needs you*, not sit silently in `running`, and must fail when the pty exits. Pinned in Task 8 ("reports needs-you while no transcript exists") and Task 11 ("fails the task when the pty exits first").
-5. **Parallel check commands overloading the machine** (several `pnpm test` at once; the 18 GB machine crashed on 2026-09-24). Checks are serialized backend-wide and killed by process group on timeout — Slice 3 owns this; its outline below carries the required tests.
+5. **Parallel check commands overloading the machine** (several `pnpm test` at once; the 18 GB machine crashed on 2026-09-24). Checks are serialized backend-wide and killed by process group on timeout. Pinned in Task 15 ("kills the whole process group on timeout: a child sleep is gone too", "two tasks' real checks never overlap", "returns even when a process outside the group keeps the output open").
+6. **A check's output breaking out of the paste.** The follow-up carries check output written by agent-authored code; an embedded `ESC[201~` would end the bracketed paste and turn the rest into keystrokes. Pinned in Task 16 (`bracketedPaste` "cannot be broken out of"). Review Focus 1 extends to pastes: re-arming must not count the reply still on screen — pinned in Task 16 ("never counts the reply still on screen again", both watchers).
 
 ---
 
@@ -59,7 +59,8 @@
 | `src/node/schedule/claude-task-watcher.ts` | Find and follow a Claude task transcript |
 | `src/node/schedule/opencode-task-watcher.ts` | Read an opencode task from the wall's scans |
 | `src/node/schedule/schedule-runner.ts` | Serialized dispatch, effects, watcher lifetimes |
-| `src/node/schedule/schedule-pty.ts` | Backend pty via `ShellTerminalServer` + `ProcessManager` |
+| `src/node/schedule/schedule-pty.ts` | Backend pty via `ShellTerminalServer` + `ProcessManager`; bracketed paste then Enter |
+| `src/node/schedule/check-runner.ts` | Check command in a login shell, process-group kill on timeout, backend-wide FIFO queue |
 | `src/node/schedule/spexr-schedule-backend-service.ts` | RPC service |
 | `src/node/darkfactory/spexr-darkfactory-backend-service.ts` | + scan announcements for opencode tasks |
 | `src/node/darkfactory/session-state.ts` | export `lastTurn`, `AUTO_APPROVE_MODES`, `SETTLE_MS` |
@@ -68,6 +69,7 @@
 | `src/browser/darkfactory/schedule/schedule-view.ts` | Pure view model: rows, status labels, run bar |
 | `src/browser/darkfactory/schedule/schedule-wall.ts` | Pure: which task terminals the wall must mount |
 | `src/browser/darkfactory/schedule/sidebar-prefs.ts` | Sidebar width/open in localStorage |
+| `src/browser/darkfactory/schedule/loop-edit.ts` | Pure: switch the loop on/off, edit its fields and check |
 | `src/browser/darkfactory/schedule/schedule-sidebar.tsx` | Sidebar React component |
 | `src/browser/darkfactory/darkfactory-wall-widget.tsx` | Shell row layout, sidebar, mount task cards |
 | `src/browser/style/spexr.css` | Sidebar styles |
@@ -3483,17 +3485,2196 @@ git commit -m "feat(schedule): minimal plant-schedule sidebar in the Dark Factor
 
 ---
 
-# Slice 3 — Loop until converged (outline; plan in full after Task 5)
+# Slice 3 — Loop until converged
 
-- **Engine:** add events `check-done { ok, tail }`, `pause`, `resume`; effects `paste { terminalId, text }`, `check { command, cwd, timeoutSec }`; statuses `checking`, `held`. `turn-ended` on a looping task → marker? (check? `checking` + effect : `converged`) : iterate. Iterate → `iteration < max` ? (`iteration+1`, `name` effect, `paste` effect with `followUpPrompt`) : fail. Operator pause holds turn ends (`held`) and replays them on resume.
-- **Paste port:** `SchedulePty.write` with `\x1b[200~…\x1b[201~`, then `\r` after 100 ms — or the fallback the probe picked.
-- **Check runner** (`node/schedule/check-runner.ts`): spawn `$SHELL -l -c <command>` detached in the workspace; keep the last 40 lines; on timeout `process.kill(-pid, "SIGTERM")`, then `SIGKILL` after 5 s. A backend-wide FIFO queue runs one check at a time.
-- **Tests that must exist:** check killed by process group (a child `sleep` is gone after timeout); two parallel tasks' checks never overlap (queue); follow-up carries the check tail; max iterations fails; a turn end while held is replayed on resume; the name effect updates the iteration.
-- **UI:** loop switch that unfolds stop criteria, follow-up, max iterations, check command (+ timeout); Pause/Resume in the run bar.
+Planned in full on 2026-09-27, against the code as it stands after Task 13 (commit `538e17a`), not against the Slice 2 task text: where the two differ, the code wins. The rulings below were taken while planning; each names what it costs if it proves wrong.
+
+**Rulings for this slice**
+
+- **R1. `arm()` does not arm at once.** Right after a turn end, the transcript or tile still shows that reply. If `arm()` set the tracker's flag directly, the next read would count the old reply again (Review Focus 1). Instead, `arm()` records how many prompts the watcher has seen: genuine prompts parsed so far for Claude, the tile's `turnCount` for opencode. The tracker is armed only once that number goes up. The runner calls `arm()` **before** it writes the paste, so no read can parse the pasted prompt before the baseline exists. *Cost if wrong:* if a harness writes the pasted prompt in a form `isPrompt` does not recognise, a fast reply to it (one that lands between two reads) is missed and the task waits until the operator intervenes. A slow reply is still caught through the "seen working" path.
+- **R2. The pasted text is cleaned before it is wrapped.** A follow-up can carry a check's output, and that output comes from code the agent wrote. A tail containing `ESC[201~` would end the paste early and deliver the rest as keystrokes (a slash command, an Enter). So `bracketedPaste` turns CR into LF and drops ESC and every other C0/C1 control character except `\n` and `\t`. *Cost if wrong:* none known. Colour codes in check output arrive as plain text, and `LineTail` strips them before that point anyway.
+- **R3. The single `pausedBy` field carries both pauses.** An operator pause always wins: `pause` sets `"operator"`, and `fail()` never overwrites `"operator"`. `resume` does not store the failure pause separately; it works it out again, setting `"failure"` while any task is `failed` or `interrupted` and clearing it otherwise. It then replays every held task in schedule order. Slice 4's retry and skip use the same rule. *Cost if wrong:* none. Nothing is lost that cannot be read from the task statuses.
+- **R4. While the operator has paused the run, every turn end is held, not only looping ones.** No check starts, no follow-up is pasted, and even a non-looping task shows *Held* instead of *Converged* until Resume. A check that is already running finishes. If it passes, the task converges. If it fails, the task is held along with the check's output. A newer turn end on a held task (the operator typed into the card) replaces the held reply. The invariant is: "a paused run changes nothing on its own except failures." *Cost if wrong:* a task that finished during a pause reads *Held* until Resume.
+- **R5. After the shell exits, the check's process group is killed.** A check that ran for longer than its timeout gets SIGTERM, then SIGKILL after 5 s. Whatever a check leaves running in its group once its shell exits gets SIGKILL straight away. The result is taken on `exit` plus a 500 ms drain, not on `close`, because a grandchild that left the group can hold the pipe open forever and wedge the backend-wide queue. *Cost if wrong:* a check that deliberately leaves a background process running in its own group loses it when the shell exits.
+- **R6. Placeholders are rejected in `loop.check` and `loop.followUp`.** Validation refuses them, and the engine passes the check command through exactly as written. So an operator never believes `{{a.reply}}` is filled in where it is not, and model output never reaches a shell. *Cost if wrong:* a follow-up cannot quote an upstream reply; the operator puts it in the first prompt instead.
+- **R7. `checkTimeoutSec` must be an integer from 1 to 3600.** *Cost if wrong:* a check suite longer than an hour cannot be the gate. The constant can be raised in one line.
+- **R8. opencode takes follow-ups by paste too.** Evidence: a probe on 2026-09-27 against opencode 1.18.18 in a scripted pty. A 2-line bracketed paste lands in the input box, and a 60-line paste collapses into a `[Pasted ~60 lines]` chip. Neither submits mid-paste. That Enter then sends the paste as one message is still unverified; Task 14 Step 2 checks it. If it fails, looping opencode tasks are rejected in validation (Task 14 Step 3). The spec's fallback (`--resume <id> "<follow-up>"`) is **not** taken. It ends the pty, which the engine counts as `exited` → `failed`, and the new process gets a new terminal id, so the card is lost. *Cost if wrong:* until a later change, opencode tasks could not loop.
+- **R9. Aborting a run skips its queued checks.** They are not spawned once their turn comes, because the runner's `stillWanted` returns false. A check already running when the run is aborted finishes or times out; nothing kills it early. *Cost if wrong:* an aborted run's current check can use the machine for up to its timeout.
+- **R10. The check runs as `$SHELL -l -c`, not `-i -l -c` like the launch line.** An interactive shell with no terminal took 1.7 s against 24 ms in a measurement on 2026-09-27 (zsh, this machine), and it wrote `Saving session...completed.` to stderr, which would pollute every tail. The check keeps the backend's environment, which is the same one the task's pty inherits, plus the login files (`.zprofile`, `.zlogin`), but not `.zshrc`. The sidebar says so next to the field. *Cost if wrong:* a check command that is found only through `.zshrc` fails with "command not found". That message shows in the follow-up and in the failed row, and the operator fixes it with a full path or `source ~/.zshrc && …`.
+
+### Task 14: Probe — opencode takes a bracketed paste (input half DONE 2026-09-27)
+
+**Files:**
+- Modify: `docs/specs/0018-plant-schedule.md` (Risks → "Pasting into opencode", and the Probe results list)
+- Conditionally modify (Step 3 only): `src/common/schedule/schedule-validate.ts`, `src/common/schedule/schedule-validate.test.ts`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: a recorded probe result; if it fails, a validation problem `loop` on opencode tasks.
+
+- [x] **Step 1: Input half (DONE 2026-09-27, opencode 1.18.18)**
+
+A scripted pty (`python3`, `pty.fork`, 120×40, `TERM=xterm-256color`) started `opencode` in an empty folder and waited 8 s. It then wrote `ESC[200~…ESC[201~` without Enter:
+- 2 lines: both lines appear in the input box (`┃ ZZPROBE line one ZZPROBE line two`), and the home logo stays up, so nothing was submitted.
+- 60 lines: the input box shows `[Pasted ~60 lines]`, and nothing was submitted.
+
+No model call was made and no session was created.
+
+- [ ] **Step 2: Enter half (manual; costs one small model call)**
+
+In an empty scratch folder, save and run:
+
+```python
+# probe-opencode-paste.py — run from an empty scratch folder: python3 probe-opencode-paste.py
+import os, pty, time, select, struct, fcntl, termios
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ["TERM"] = "xterm-256color"
+    os.execvp("opencode", ["opencode"])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+
+def pump(sec):
+    end = time.time() + sec
+    while time.time() < end:
+        if select.select([fd], [], [], 0.2)[0]:
+            try:
+                d = os.read(fd, 65536)
+            except OSError:
+                return
+            if b"\x1b[6n" in d:
+                os.write(fd, b"\x1b[1;1R")
+
+pump(8)
+body = b"\n".join(b"PROBE line %d: when you have read every line, reply with the word pong" % i for i in range(1, 61))
+os.write(fd, b"\x1b[200~" + body + b"\x1b[201~")
+time.sleep(0.1)
+os.write(fd, b"\r")
+pump(30)
+os.kill(pid, 15)
+```
+
+Then find the new session with `opencode session list` and count its user messages:
+
+```bash
+opencode export <sessionID> | jq '[.messages[] | select(.info.role == "user")] | length'
+opencode export <sessionID> | jq -r '[.messages[] | select(.info.role == "user")][0].parts[] | select(.type == "text") | .text' | grep -c '^PROBE line'
+```
+
+Expected: `1` and `60`, meaning one user message that holds all 60 lines. Delete the session afterwards with `opencode session delete <sessionID>`.
+
+- [ ] **Step 3: Record the result; only if Step 2 failed, stop opencode tasks from looping**
+
+In the spec's Risks, replace the bullet "**Pasting into opencode.** …" with the result:
+
+> - **Pasting into opencode (probe, 2026-09-27, opencode 1.18.18).** A bracketed paste lands in the input box as one block (a 60-line paste shows as `[Pasted ~60 lines]`) and is not submitted mid-paste; Enter then sends it as one user message holding every line. The `--resume` fallback is not used.
+
+Also append the same line to the "Probe results" list. If Step 2 returned anything other than `1` / `60`, record that result instead, and in `checkTask` of `src/common/schedule/schedule-validate.ts`, inside `if (t.loop) {`, add as the first statement:
+
+```ts
+    if (t.harness === "opencode") {
+      add(t.id, "loop", "opencode tasks cannot loop yet: a pasted follow-up does not reach opencode as one prompt.");
+    }
+```
+
+with this test in `schedule-validate.test.ts`:
+
+```ts
+  it("rejects a looping opencode task (opencode paste probe failed)", () => {
+    const loop = { stopCriteria: "s", followUp: "f", maxIterations: 3 };
+    expect(fields(sched(task("a", { harness: "opencode", loop })))).toEqual(["a:loop"]);
+  });
+```
+
+Run `npx vitest run --maxWorkers=2 src/common/schedule/schedule-validate.test.ts`. Expected: PASS.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/specs/0018-plant-schedule.md src/common/schedule/schedule-validate.ts src/common/schedule/schedule-validate.test.ts
+git commit -m "docs(schedule): opencode takes a bracketed paste as one prompt (Slice 3 probe)"
+```
+
+### Task 15: Check runner and the backend-wide check queue
+
+**Files:**
+- Create: `src/node/schedule/check-runner.ts`
+- Test: `src/node/schedule/check-runner.test.ts`
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks.
+- Produces:
+
+```ts
+export const CHECK_TAIL_LINES = 40;
+export const CHECK_KILL_GRACE_MS = 5_000;
+export interface CheckRequest { command: string; cwd: string; timeoutMs: number }
+export interface CheckResult { ok: boolean; tail: string }
+export interface CheckOptions { shell?: string; killGraceMs?: number }
+export class LineTail { constructor(max: number); push(chunk: string): void; text(): string }
+export function runCheck(req: CheckRequest, o?: CheckOptions): Promise<CheckResult>;
+export class CheckQueue {
+  constructor(exec: (req: CheckRequest) => Promise<CheckResult>);
+  run(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined>;
+}
+```
+
+- [ ] **Step 1: Failing tests**
+
+The real-process tests use `/bin/sh`, because a login zsh reads the operator's rc files, which are slow and may print. They use a 200 ms kill grace. Each one finishes in about a second.
+
+```ts
+// src/node/schedule/check-runner.test.ts
+import { afterEach, describe, expect, it } from "vitest";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CheckQueue, LineTail, runCheck, type CheckRequest, type CheckResult } from "./check-runner.js";
+
+const dirs: string[] = [];
+const strays: number[] = [];
+afterEach(async () => {
+  for (const pid of strays.splice(0)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
+  }
+  await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
+});
+async function tmp(): Promise<string> {
+  const d = await mkdtemp(join(tmpdir(), "spexr-check-"));
+  dirs.push(d);
+  return d;
+}
+const sh = { shell: "/bin/sh", killGraceMs: 200 };
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+/** Polls: a killed process still answers `kill 0` until it has been reaped. */
+async function goneWithin(pid: number, ms: number): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (!alive(pid)) return true;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  return !alive(pid);
+}
+
+describe("LineTail", () => {
+  it("keeps the last lines, the unfinished one included", () => {
+    const t = new LineTail(3);
+    t.push("a\nb\nc\n");
+    t.push("d\ne");
+    expect(t.text()).toBe("c\nd\ne");
+  });
+  it("drops colour codes", () => {
+    const t = new LineTail(5);
+    t.push("\x1b[31mFAIL\x1b[0m x\n");
+    expect(t.text()).toBe("FAIL x");
+  });
+  it("bounds a line that never ends", () => {
+    const t = new LineTail(5);
+    for (let i = 0; i < 100; i++) t.push("x".repeat(1_000));
+    expect(t.text().length).toBeLessThanOrEqual(2_000);
+  });
+});
+
+describe("runCheck", () => {
+  it("passes on exit 0, in the workspace", async () => {
+    const cwd = await tmp();
+    expect(await runCheck({ command: "pwd -P", cwd, timeoutMs: 5_000 }, sh)).toEqual({ ok: true, tail: await realpath(cwd) });
+  });
+
+  it("fails on a non-zero exit and keeps the last 40 lines", async () => {
+    const cwd = await tmp();
+    const r = await runCheck(
+      { command: "i=0; while [ $i -lt 50 ]; do i=$((i+1)); echo line $i; done; exit 3", cwd, timeoutMs: 5_000 },
+      sh,
+    );
+    expect(r.ok).toBe(false);
+    const lines = r.tail.split("\n");
+    expect(lines).toHaveLength(40);
+    expect(lines[0]).toBe("line 11");
+    expect(lines.at(-1)).toBe("line 50");
+  });
+
+  it("keeps what the command wrote to stderr", async () => {
+    const cwd = await tmp();
+    expect(await runCheck({ command: "echo oops >&2; exit 1", cwd, timeoutMs: 5_000 }, sh)).toEqual({ ok: false, tail: "oops" });
+  });
+
+  it("kills the whole process group on timeout: a child sleep is gone too", async () => {
+    const cwd = await tmp();
+    const pidFile = join(cwd, "child.pid");
+    const r = await runCheck({ command: `sleep 30 & echo $! > '${pidFile}'; wait`, cwd, timeoutMs: 300 }, sh);
+    expect(r.ok).toBe(false);
+    expect(r.tail).toContain("timed out");
+    const pid = Number((await readFile(pidFile, "utf8")).trim());
+    strays.push(pid);
+    expect(await goneWithin(pid, 2_000)).toBe(true);
+  });
+
+  it("escalates to SIGKILL when the group ignores SIGTERM", async () => {
+    const cwd = await tmp();
+    const started = Date.now();
+    const r = await runCheck({ command: "trap '' TERM; sleep 30", cwd, timeoutMs: 200 }, sh);
+    expect(r.ok).toBe(false);
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+
+  it("kills what the shell left running in its group once it exits", async () => {
+    const cwd = await tmp();
+    const pidFile = join(cwd, "left.pid");
+    const r = await runCheck({ command: `sleep 30 & echo $! > '${pidFile}'; exit 0`, cwd, timeoutMs: 5_000 }, sh);
+    expect(r.ok).toBe(true);
+    const pid = Number((await readFile(pidFile, "utf8")).trim());
+    strays.push(pid);
+    expect(await goneWithin(pid, 2_000)).toBe(true);
+  });
+
+  it("returns even when a process outside the group keeps the output open", async () => {
+    const cwd = await tmp();
+    const pidFile = join(cwd, "escaped.pid");
+    const started = Date.now();
+    const r = await runCheck(
+      {
+        command: `perl -MPOSIX -e 'POSIX::setsid(); open(my $f, ">", "${pidFile}"); print $f $$; close $f; sleep 30' & sleep 0.5; exit 0`,
+        cwd,
+        timeoutMs: 5_000,
+      },
+      sh,
+    );
+    expect(r.ok).toBe(true);
+    expect(Date.now() - started).toBeLessThan(2_500);
+    strays.push(Number((await readFile(pidFile, "utf8")).trim()));
+  });
+
+  it("reports a check that cannot start instead of throwing", async () => {
+    const r = await runCheck({ command: "true", cwd: "/nonexistent-spexr-check", timeoutMs: 1_000 }, sh);
+    expect(r.ok).toBe(false);
+    expect(r.tail).toContain("could not start");
+  });
+});
+
+describe("CheckQueue", () => {
+  const req = (command: string): CheckRequest => ({ command, cwd: "/", timeoutMs: 1_000 });
+
+  it("runs one check at a time, in the order asked, and survives a check that throws", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const order: string[] = [];
+    const gates = new Map<string, () => void>();
+    const q = new CheckQueue(async (r): Promise<CheckResult> => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      order.push(r.command);
+      await new Promise<void>((resolve) => gates.set(r.command, resolve));
+      active--;
+      if (r.command === "b") throw new Error("spawn blew up");
+      return { ok: true, tail: r.command };
+    });
+    const a = q.run(req("a"), () => true);
+    const b = q.run(req("b"), () => true);
+    const c = q.run(req("c"), () => true);
+    await flush();
+    expect(order).toEqual(["a"]);
+    gates.get("a")!();
+    expect(await a).toEqual({ ok: true, tail: "a" });
+    await flush();
+    expect(order).toEqual(["a", "b"]);
+    gates.get("b")!();
+    await expect(b).rejects.toThrow("spawn blew up");
+    await flush();
+    gates.get("c")!();
+    expect(await c).toEqual({ ok: true, tail: "c" });
+    expect(order).toEqual(["a", "b", "c"]);
+    expect(maxActive).toBe(1);
+  });
+
+  it("skips a check nobody wants any more once its turn comes", async () => {
+    const ran: string[] = [];
+    const q = new CheckQueue(async (r) => (ran.push(r.command), { ok: true, tail: "" }));
+    let wanted = true;
+    const first = q.run(req("a"), () => true);
+    const second = q.run(req("b"), () => wanted);
+    wanted = false; // e.g. its run was aborted while "a" ran
+    await first;
+    expect(await second).toBeUndefined();
+    expect(ran).toEqual(["a"]);
+  });
+
+  it("two tasks' real checks never overlap (Review Focus 5)", async () => {
+    const cwd = await tmp();
+    const log = join(cwd, "order.log");
+    const q = new CheckQueue((r) => runCheck(r, sh));
+    const check = (name: string): CheckRequest => ({
+      command: `echo start-${name} >> '${log}'; sleep 0.2; echo end-${name} >> '${log}'`,
+      cwd,
+      timeoutMs: 5_000,
+    });
+    await Promise.all([q.run(check("a"), () => true), q.run(check("b"), () => true)]);
+    expect((await readFile(log, "utf8")).trim().split("\n")).toEqual(["start-a", "end-a", "start-b", "end-b"]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/check-runner.test.ts`
+Expected: FAIL. `Cannot find module './check-runner.js'`.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// src/node/schedule/check-runner.ts
+import { spawn, type ChildProcess } from "node:child_process";
+
+/** Lines of a failed check's output carried into the follow-up (spec, Turn end and convergence). */
+export const CHECK_TAIL_LINES = 40;
+/** Time a check's process group gets between SIGTERM and SIGKILL once it has timed out. */
+export const CHECK_KILL_GRACE_MS = 5_000;
+/** After the shell exits, how long its output may still drain before the result is taken. */
+const DRAIN_MS = 500;
+/** A longer line is cut: output with no newline must not grow without bound. */
+const MAX_LINE_CHARS = 2_000;
+const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+
+export interface CheckRequest {
+  command: string;
+  cwd: string;
+  timeoutMs: number;
+}
+
+export interface CheckResult {
+  ok: boolean;
+  /** The last CHECK_TAIL_LINES lines of stdout and stderr, in arrival order, colour codes removed. */
+  tail: string;
+}
+
+export interface CheckOptions {
+  /** Defaults to `$SHELL`, else `/bin/sh`. */
+  shell?: string;
+  killGraceMs?: number;
+}
+
+/** Keeps the last `max` lines of a text stream; the unfinished last line counts as one. */
+export class LineTail {
+  private lines: string[] = [];
+  private partial = "";
+
+  constructor(private readonly max: number) {}
+
+  push(chunk: string): void {
+    const parts = (this.partial + chunk).split(/\r?\n/);
+    this.partial = parts.pop()!.slice(-MAX_LINE_CHARS);
+    for (const p of parts) this.lines.push(p.slice(0, MAX_LINE_CHARS));
+    if (this.lines.length > this.max) this.lines = this.lines.slice(-this.max);
+  }
+
+  text(): string {
+    const all = this.partial ? [...this.lines, this.partial] : this.lines;
+    return all.slice(-this.max).join("\n").replace(ANSI, "");
+  }
+}
+
+/**
+ * Run a task's check command: `<shell> -l -c <command>` in the workspace, as
+ * the leader of its own process group. On timeout the whole group gets SIGTERM,
+ * then SIGKILL after the grace. Once the shell exits, whatever it left in its
+ * group is killed as well, so nothing overlaps the next check. The result is
+ * taken on exit plus a short drain, never on the pipes closing alone: a process
+ * that left the group can hold them open for ever. Never rejects.
+ */
+export function runCheck(req: CheckRequest, o: CheckOptions = {}): Promise<CheckResult> {
+  const shell = o.shell ?? process.env.SHELL ?? "/bin/sh";
+  const grace = o.killGraceMs ?? CHECK_KILL_GRACE_MS;
+  return new Promise((resolve) => {
+    const tail = new LineTail(CHECK_TAIL_LINES);
+    let child: ChildProcess;
+    try {
+      child = spawn(shell, ["-l", "-c", req.command], {
+        cwd: req.cwd,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      resolve({ ok: false, tail: `The check could not start: ${err instanceof Error ? err.message : String(err)}` });
+      return;
+    }
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let timedOut = false;
+    let settled = false;
+    const killGroup = (signal: NodeJS.Signals): void => {
+      if (child.pid === undefined) return;
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        /* ESRCH: the group is already gone */
+      }
+    };
+    const finish = (ok: boolean, note?: string): void => {
+      if (settled) return;
+      settled = true;
+      for (const t of timers) clearTimeout(t);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      if (note) tail.push(`\n${note}\n`);
+      resolve({ ok, tail: tail.text() });
+    };
+    child.stdout?.setEncoding("utf8").on("data", (d: string) => tail.push(d));
+    child.stderr?.setEncoding("utf8").on("data", (d: string) => tail.push(d));
+    child.once("error", (err) => finish(false, `The check could not start: ${err.message}`));
+    timers.push(
+      setTimeout(() => {
+        timedOut = true;
+        killGroup("SIGTERM");
+        timers.push(setTimeout(() => killGroup("SIGKILL"), grace));
+      }, req.timeoutMs),
+    );
+    child.once("exit", (code) => {
+      killGroup("SIGKILL");
+      const done = (): void =>
+        finish(
+          !timedOut && code === 0,
+          timedOut ? `[the check timed out after ${req.timeoutMs / 1000} s and was stopped]` : undefined,
+        );
+      child.once("close", done);
+      timers.push(setTimeout(done, DRAIN_MS));
+    });
+  });
+}
+
+/**
+ * Runs checks one at a time, in the order they were asked for. One instance
+ * serves the whole backend: parallel tasks each running `pnpm test` at once
+ * would overload the machine (it crashed on 2026-09-24). `stillWanted` is asked
+ * when a check's turn comes; false skips it (its run was aborted meanwhile).
+ */
+export class CheckQueue {
+  private last: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly exec: (req: CheckRequest) => Promise<CheckResult>) {}
+
+  run(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined> {
+    const next = this.last.then(() => (stillWanted() ? this.exec(req) : undefined));
+    this.last = next.catch(() => undefined);
+    return next;
+  }
+}
+```
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/check-runner.test.ts`
+Expected: PASS, about 11 tests in under 5 s.
+
+- [ ] **Step 5: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/node/schedule/check-runner.ts src/node/schedule/check-runner.test.ts
+git commit -m "feat(schedule): check runner killed by process group, one check at a time backend-wide"
+```
+
+### Task 16: Paste with Enter, and re-arming the watchers after a paste
+
+**Files:**
+- Modify: `src/node/schedule/schedule-pty.ts`, test `src/node/schedule/schedule-pty.test.ts`
+- Modify: `src/node/schedule/turn-tracker.ts`, test `src/node/schedule/turn-tracker.test.ts`
+- Modify: `src/node/schedule/claude-task-watcher.ts`, test `src/node/schedule/claude-task-watcher.test.ts`
+- Modify: `src/node/schedule/opencode-task-watcher.ts`, test `src/node/schedule/opencode-task-watcher.test.ts`
+- Modify: `src/node/schedule/schedule-runner.ts`, test `src/node/schedule/schedule-runner.test.ts` (return type of the watch ports only)
+
+**Interfaces:**
+- Consumes: `TurnTracker` and `finalReply` (Task 7), both watchers (Tasks 8–9), `RunnerPorts` (Task 11).
+- Produces:
+
+```ts
+// schedule-pty.ts
+export const PASTE_ENTER_DELAY_MS = 100;
+export function bracketedPaste(text: string): string;
+export function pasteInto(write: (data: string) => void, text: string, sleep: (ms: number) => Promise<void>): Promise<void>;
+// SchedulePty
+paste(terminalId: number, text: string): Promise<void>;
+// turn-tracker.ts
+export function isPrompt(e: StateEntry): boolean;   // was private
+// TurnTracker
+arm(): void;
+// claude-task-watcher.ts
+export interface TaskWatch { stop(): void; arm(): void }
+export function watchClaudeTask(req, deps, listener): TaskWatch;       // was () => void
+// opencode-task-watcher.ts
+export function watchOpencodeTask(req, source, deps, listener): TaskWatch; // was () => void
+// schedule-runner.ts — RunnerPorts
+watchClaude(req, listener): TaskWatch;
+watchOpencode(req, listener): TaskWatch;
+```
+
+- [ ] **Step 1: Failing tests for the paste**
+
+Append to `src/node/schedule/schedule-pty.test.ts`, and extend its import to `import { bracketedPaste, pasteInto, withoutClaudeSessionMarkers } from "./schedule-pty.js";`:
+
+```ts
+describe("bracketedPaste", () => {
+  it("wraps the text so the TUI takes it as one paste", () => {
+    expect(bracketedPaste("fix it\nthen test")).toBe("\x1b[200~fix it\nthen test\x1b[201~");
+  });
+  it("cannot be broken out of: control sequences in the text are dropped (R2)", () => {
+    const out = bracketedPaste("Check failed:\nFAIL\x1b[201~/exit\r\x1b[31mred\x07\ttab\r\nend");
+    expect(out).toBe("\x1b[200~Check failed:\nFAIL[201~/exit\n[31mred\ttab\nend\x1b[201~");
+    expect(out.indexOf("\x1b[201~")).toBe(out.length - 6);
+    expect(out).not.toContain("\r");
+  });
+});
+
+describe("pasteInto", () => {
+  it("pastes, waits, then presses Enter", async () => {
+    const writes: string[] = [];
+    const waits: number[] = [];
+    await pasteInto((d) => writes.push(d), "go", async (ms) => void waits.push(ms));
+    expect(writes).toEqual(["\x1b[200~go\x1b[201~", "\r"]);
+    expect(waits).toEqual([100]);
+  });
+});
+```
+
+- [ ] **Step 2: Failing tests for arm()**
+
+Append inside `describe("TurnTracker", …)` in `src/node/schedule/turn-tracker.test.ts`:
+
+```ts
+  it("arm() makes the next ended reading count, once", () => {
+    const t = new TurnTracker({ settleMs: 0 });
+    t.update("acting", 0);
+    expect(t.update("ended", 1)).toEqual([{ type: "turn-ended" }]);
+    expect(t.update("ended", 2)).toEqual([]);
+    t.arm();
+    expect(t.update("ended", 3)).toEqual([{ type: "turn-ended" }]);
+    expect(t.update("ended", 4)).toEqual([]);
+  });
+```
+
+In `src/node/schedule/claude-task-watcher.test.ts`, change the harness so it exposes the handle. Replace:
+
+```ts
+  const stop = watchClaudeTask(
+```
+with
+```ts
+  const watch = watchClaudeTask(
+```
+and, in the harness's returned object, replace `    stop,` with `    watch,`. Then append inside `describe("watchClaudeTask", …)`:
+
+```ts
+  const ends = (events: WatchEvent[]): string[] =>
+    events.flatMap((e) => (e.type === "turn-ended" ? [e.reply] : []));
+  const user = (content: string) => L({ message: { role: "user", content } });
+  const said = (text: string) => L({ message: { role: "assistant", content: [{ type: "text", text }] } });
+
+  it("after a paste, never counts the reply still on screen again (re-arm, R1)", async () => {
+    let batch: string[] | undefined = [user("p"), said("one")];
+    const h = harness(() => batch);
+    await h.advance(1_000);
+    batch = [];
+    expect(ends(h.events)).toEqual(["one"]);
+    h.watch.arm();
+    await h.advance(1_000);
+    await h.advance(1_000);
+    expect(ends(h.events)).toEqual(["one"]);
+  });
+
+  it("after a paste, counts a fast reply once even if the agent was never seen working (re-arm, R1)", async () => {
+    let batch: string[] | undefined = [user("p"), said("one")];
+    const h = harness(() => batch);
+    await h.advance(1_000);
+    batch = [];
+    h.watch.arm();
+    await h.advance(1_000);
+    batch = [user("follow-up"), said("two")]; // prompt and reply land between two reads
+    await h.advance(1_000);
+    batch = [];
+    await h.advance(1_000);
+    expect(ends(h.events)).toEqual(["one", "two"]);
+  });
+```
+
+In `src/node/schedule/opencode-task-watcher.test.ts`, in the test "delivers nothing after stop(), …", replace `const stop = watchOpencodeTask(` with `const watch = watchOpencodeTask(` and replace the line `    stop();` with `    watch.stop();`. Then append inside `describe("watchOpencodeTask", …)`:
+
+```ts
+  it("after a paste, counts the next turn end only once the scan shows a newer prompt (re-arm, R1)", async () => {
+    const src = source();
+    const events: WatchEvent[] = [];
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const turnEnds = () => events.filter((e) => e.type === "turn-ended").length;
+    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0, every: () => () => {} }, (e) =>
+      events.push(e),
+    );
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]);
+    await flush();
+    expect(turnEnds()).toBe(1);
+    watch.arm();
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]); // the old reply, still on screen
+    await flush();
+    expect(turnEnds()).toBe(1);
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 2 })]); // answered between two scans
+    await flush();
+    expect(turnEnds()).toBe(2);
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 2 })]);
+    await flush();
+    expect(turnEnds()).toBe(2);
+  });
+```
+
+- [ ] **Step 3: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-pty.test.ts src/node/schedule/turn-tracker.test.ts src/node/schedule/claude-task-watcher.test.ts src/node/schedule/opencode-task-watcher.test.ts`
+Expected: FAIL. `bracketedPaste`/`pasteInto` are not exported, `t.arm is not a function`, and `h.watch.arm` / `watch.arm` / `watch.stop` are not functions.
+
+- [ ] **Step 4: Implement the paste**
+
+In `src/node/schedule/schedule-pty.ts`, after `withoutClaudeSessionMarkers`, add:
+
+```ts
+/** Wait between a paste and the Enter that submits it, so the TUI has taken the paste in (probe, 2026-09-27). */
+export const PASTE_ENTER_DELAY_MS = 100;
+
+/**
+ * `text` as one bracketed paste. CR becomes LF, and every other control
+ * character but LF and tab is dropped first — above all ESC, so `ESC[201~`
+ * cannot end the paste early and turn the rest into keystrokes. The text can
+ * carry a check's output, which comes from code the agent wrote.
+ */
+export function bracketedPaste(text: string): string {
+  const clean = text.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
+  return `\x1b[200~${clean}\x1b[201~`;
+}
+
+/** Paste `text`, then press Enter once the TUI has taken the paste in. */
+export async function pasteInto(
+  write: (data: string) => void,
+  text: string,
+  sleep: (ms: number) => Promise<void>,
+): Promise<void> {
+  write(bracketedPaste(text));
+  await sleep(PASTE_ENTER_DELAY_MS);
+  write("\r");
+}
+```
+
+and in `class SchedulePty`, after `write(…)`:
+
+```ts
+  /** Paste a follow-up into a task's TUI and submit it as one prompt. */
+  paste(terminalId: number, text: string): Promise<void> {
+    return pasteInto(
+      (data) => this.write(terminalId, data),
+      text,
+      (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    );
+  }
+```
+
+- [ ] **Step 5: Implement arm() on the tracker**
+
+In `src/node/schedule/turn-tracker.ts`, change `function isPrompt(` to `export function isPrompt(`, and add this method to `TurnTracker`, after `update`:
+
+```ts
+  /**
+   * Count the next ended reading as a turn end even if no work was seen
+   * before it. Only a caller that knows a new prompt has arrived may call
+   * this — the watchers do, once their prompt count has gone up after a paste.
+   */
+  arm(): void {
+    this.armed = true;
+  }
+```
+
+- [ ] **Step 6: Implement the Claude watcher's handle**
+
+In `src/node/schedule/claude-task-watcher.ts`, change the import to `import { TurnTracker, finalReply, isPrompt, type TurnSignal } from "./turn-tracker.js";`. After the `WatchEvent` type, add:
+
+```ts
+/** A running task watch. */
+export interface TaskWatch {
+  stop(): void;
+  /**
+   * Call just before pasting a prompt. The next turn end counts once a prompt
+   * newer than this call shows up — even if the agent was never seen working
+   * (a reply that lands between two reads). The reply already on screen never
+   * counts again.
+   */
+  arm(): void;
+}
+```
+
+and replace the whole `watchClaudeTask` function with:
+
+```ts
+/**
+ * Follow one scheduled Claude session: wait for its transcript (reporting
+ * needs-you after CLAUDE_STARTUP_PROMPT_MS — the pty exiting is what fails the
+ * task), then read what it gains every second and report turn transitions.
+ */
+export function watchClaudeTask(
+  req: { sessionId: string; configDir: string; permissionMode?: string },
+  deps: ClaudeWatchDeps,
+  listener: (e: WatchEvent) => void,
+): TaskWatch {
+  const startedAt = deps.now();
+  const tracker = new TurnTracker({
+    ...(req.permissionMode !== undefined ? { permissionMode: req.permissionMode } : {}),
+    settleMs: SETTLE_MS,
+    armed: true,
+  });
+  let path: string | undefined;
+  let cursor: FollowCursor | undefined;
+  let entries: StateEntry[] = [];
+  let waitingAtStartup = false;
+  // Counted as lines arrive: `entries` is trimmed to KEEP_ENTRIES, so its
+  // length cannot serve as the baseline arm() compares against.
+  let promptsSeen = 0;
+  let armAfter: number | undefined;
+  const stop = deps.every(async () => {
+    if (!path) {
+      path = await deps.find(req.configDir, req.sessionId);
+      if (!path) {
+        if (!waitingAtStartup && deps.now() - startedAt >= CLAUDE_STARTUP_PROMPT_MS) {
+          waitingAtStartup = true;
+          listener({ type: "needs-you" });
+        }
+        return;
+      }
+      listener({ type: "session-found", sessionId: req.sessionId });
+      if (waitingAtStartup) listener({ type: "resumed-working" });
+    }
+    const chunk = await deps.read(path, cursor, FIRST_READ_BYTES);
+    cursor = chunk.cursor;
+    for (const line of chunk.lines) {
+      let entry: StateEntry;
+      try {
+        entry = JSON.parse(line) as StateEntry;
+      } catch {
+        continue; // a malformed line is dropped; readFollowChunk already holds back torn ones
+      }
+      entries.push(entry);
+      if (entry && isPrompt(entry)) promptsSeen++;
+    }
+    if (entries.length > KEEP_ENTRIES) entries = entries.slice(-KEEP_ENTRIES);
+    if (armAfter !== undefined && promptsSeen > armAfter) {
+      tracker.arm();
+      armAfter = undefined;
+    }
+    for (const signal of tracker.update(lastTurn(entries), deps.now())) {
+      listener(signal.type === "turn-ended" ? { type: "turn-ended", reply: finalReply(entries) } : signal);
+    }
+  });
+  return {
+    stop,
+    arm: () => {
+      armAfter = promptsSeen;
+    },
+  };
+}
+```
+
+- [ ] **Step 7: Implement the opencode watcher's handle**
+
+In `src/node/schedule/opencode-task-watcher.ts`, change the import to `import type { TaskWatch, WatchEvent } from "./claude-task-watcher.js";` and replace the whole `watchOpencodeTask` function with:
+
+```ts
+/**
+ * Watch an opencode task through the wall's scans: adopt the first session in
+ * its folder that the wall did not know at launch, then report its turn
+ * transitions. Asks for a scan every SCAN_EVERY_MS so it moves with no window open.
+ * After arm(), the next turn end counts once the tile's prompt count
+ * (`turnCount`) has gone up: with a scan every 20 s, the reply to a pasted
+ * follow-up usually lands without the agent ever being seen working.
+ */
+export function watchOpencodeTask(
+  req: { workspace: string; permissionMode?: string },
+  source: WallScanSource,
+  deps: { now(): number; every(fn: () => Promise<void>): () => void },
+  listener: (e: WatchEvent) => void,
+): TaskWatch {
+  const known = source.knownSessionIds();
+  const startedAt = deps.now();
+  const tracker = new TurnTracker({
+    ...(req.permissionMode !== undefined ? { permissionMode: req.permissionMode } : {}),
+    settleMs: 0,
+    armed: true,
+  });
+  let sessionId: string | undefined;
+  let stopped = false;
+  let turnsSeen = 0;
+  let armAfter: number | undefined;
+  const stopScans = deps.every(async () => source.requestScan());
+  const stopListening = source.onScanned((tiles) => {
+    if (stopped) return;
+    if (!sessionId) {
+      const found = tiles.find((t) => t.harness === "opencode" && norm(t.projectPath) === norm(req.workspace) && !known.has(t.sessionId));
+      if (!found) {
+        if (deps.now() - startedAt >= OPENCODE_SESSION_WAIT_MS) {
+          stop();
+          listener({ type: "session-missing" });
+        }
+        return;
+      }
+      sessionId = found.sessionId;
+      listener({ type: "session-found", sessionId });
+    }
+    const mine = tiles.find((t) => t.sessionId === sessionId);
+    if (!mine) return;
+    turnsSeen = mine.turnCount ?? 0;
+    if (armAfter !== undefined && turnsSeen > armAfter) {
+      tracker.arm();
+      armAfter = undefined;
+    }
+    for (const signal of tracker.update(turnOf(mine), deps.now())) {
+      if (signal.type !== "turn-ended") listener(signal);
+      else
+        void source.scanEntries(sessionId).then((entries) => {
+          if (!stopped) listener({ type: "turn-ended", reply: finalReply(entries as StateEntry[]) });
+        });
+    }
+  });
+  function stop(): void {
+    stopped = true;
+    stopScans();
+    stopListening();
+  }
+  return {
+    stop,
+    arm: () => {
+      armAfter = turnsSeen;
+    },
+  };
+}
+```
+
+- [ ] **Step 8: Carry the handle through the runner's ports**
+
+In `src/node/schedule/schedule-runner.ts`:
+- Replace `import type { WatchEvent } from "./claude-task-watcher.js";` with `import type { TaskWatch, WatchEvent } from "./claude-task-watcher.js";`.
+- In `RunnerPorts`, change the return type `(): () => void;` of both `watchClaude(…)` and `watchOpencode(…)` to `: TaskWatch;`.
+- In `perform`, replace `const stopWatch =` with `const watch =` and `registered.push(stopWatch);` with `registered.push(() => watch.stop());`.
+
+`spexr-schedule-backend-service.ts` needs no change: its ports already return what the watchers return.
+
+In `src/node/schedule/schedule-runner.test.ts`, make every fake return a handle:
+- In `fakes()`: replace `watchClaude: (_req, l) => ((watch = l), () => (watch = undefined)),` with `watchClaude: (_req, l) => ((watch = l), { stop: () => (watch = undefined), arm: () => {} }),`, and `watchOpencode: () => () => {},` with `watchOpencode: () => ({ stop: () => {}, arm: () => {} }),`.
+- In "does not bind a rerun's task…": replace `return () => stopped.push(req.sessionId);` with `return { stop: () => stopped.push(req.sessionId), arm: () => {} };`.
+- In "fails the task when registering its exit listener throws…": replace `f.ports.watchClaude = () => () => (watchStopped = true);` with `f.ports.watchClaude = () => ({ stop: () => (watchStopped = true), arm: () => {} });`.
+- In "drops a superseded run's late started event…": replace ``return () => registrations.push(`unwatch:${req.sessionId}`);`` with ``return { stop: () => registrations.push(`unwatch:${req.sessionId}`), arm: () => {} };``.
+
+- [ ] **Step 9: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/`
+Expected: PASS, including the existing Review Focus 1 test "does not report the same ended turn twice".
+
+- [ ] **Step 10: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/node/schedule/
+git commit -m "feat(schedule): paste-then-Enter port and watcher re-arm after a paste (one turn never counts twice)"
+```
+
+### Task 17: Loop validation (check command, timeout, placeholders)
+
+**Files:**
+- Modify: `src/common/schedule/schedule-types.ts`
+- Modify: `src/common/schedule/schedule-validate.ts`
+- Test: `src/common/schedule/schedule-validate.test.ts`
+
+**Interfaces:**
+- Consumes: `placeholdersIn` (Task 2).
+- Produces: `MAX_CHECK_TIMEOUT_SEC = 3_600`; new problems `loop.check`, `loop.checkTimeoutSec`, and `loop.followUp` (placeholders).
+
+- [ ] **Step 1: Failing test**
+
+Append inside `describe("validateSchedule", …)` in `schedule-validate.test.ts`:
+
+```ts
+  it("rejects a blank check, placeholders in the check or the follow-up (R6), and a check timeout out of range (R7)", () => {
+    const loop = { stopCriteria: "tests pass", followUp: "keep going", maxIterations: 3 };
+    expect(fields(sched(task("a", { loop: { ...loop, check: "  " } })))).toEqual(["a:loop.check"]);
+    expect(
+      fields(sched(task("a"), task("b", { needs: ["a"], loop: { ...loop, check: "grep -q ok {{a.workspace}}/log" } }))),
+    ).toEqual(["b:loop.check"]);
+    expect(fields(sched(task("a"), task("b", { needs: ["a"], loop: { ...loop, followUp: "see {{a.reply}}" } })))).toEqual([
+      "b:loop.followUp",
+    ]);
+    expect(fields(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 0 } })))).toEqual([
+      "a:loop.checkTimeoutSec",
+    ]);
+    expect(fields(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 3_601 } })))).toEqual([
+      "a:loop.checkTimeoutSec",
+    ]);
+    expect(fields(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 1.5 } })))).toEqual([
+      "a:loop.checkTimeoutSec",
+    ]);
+    expect(validateSchedule(sched(task("a", { loop: { ...loop, check: "pnpm test", checkTimeoutSec: 900 } })))).toEqual([]);
+  });
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+Run: `npx vitest run --maxWorkers=2 src/common/schedule/schedule-validate.test.ts`
+Expected: FAIL. The first assertion receives `[]`.
+
+- [ ] **Step 3: Implement**
+
+In `schedule-types.ts`, after `DEFAULT_CHECK_TIMEOUT_SEC`:
+
+```ts
+/** A check longer than an hour is not a gate a loop should wait on. */
+export const MAX_CHECK_TIMEOUT_SEC = 3_600;
+```
+
+In `schedule-validate.ts`, add `MAX_CHECK_TIMEOUT_SEC` to the import from `./schedule-types.js`, and in `checkTask` replace the `if (t.loop) { … }` block with:
+
+```ts
+  if (t.loop) {
+    const { maxIterations, stopCriteria, followUp, check, checkTimeoutSec } = t.loop;
+    if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > MAX_ITERATIONS) {
+      add(t.id, "loop.maxIterations", `Between 1 and ${MAX_ITERATIONS}.`);
+    }
+    if (!stopCriteria.trim()) add(t.id, "loop.stopCriteria", "Say when the task is done.");
+    if (!followUp.trim()) add(t.id, "loop.followUp", "Write what to send on each new iteration.");
+    else if (placeholdersIn(followUp).length > 0) {
+      add(t.id, "loop.followUp", "Placeholders go in the prompt: the follow-up is pasted as written.");
+    }
+    if (check !== undefined) {
+      if (!check.trim()) add(t.id, "loop.check", "Write the command, or remove the check.");
+      else if (placeholdersIn(check).length > 0) {
+        add(t.id, "loop.check", "Placeholders are not filled in here: the check runs exactly as written.");
+      }
+    }
+    if (
+      checkTimeoutSec !== undefined &&
+      (!Number.isInteger(checkTimeoutSec) || checkTimeoutSec < 1 || checkTimeoutSec > MAX_CHECK_TIMEOUT_SEC)
+    ) {
+      add(t.id, "loop.checkTimeoutSec", `Between 1 and ${MAX_CHECK_TIMEOUT_SEC} seconds.`);
+    }
+  }
+```
+
+(If Task 14 Step 3 added the opencode rule, keep it as the first statement of this block.)
+
+- [ ] **Step 4: Run to see it pass**
+
+Run: `npx vitest run --maxWorkers=2 src/common/schedule/`
+Expected: PASS.
+
+- [ ] **Step 5: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/common/schedule/schedule-types.ts src/common/schedule/schedule-validate.ts src/common/schedule/schedule-validate.test.ts
+git commit -m "feat(schedule): validate the loop's check command, its timeout, and placeholder-free follow-ups"
+```
+
+### Task 18: The engine loops — check, follow-up, iterations, pause and resume
+
+**Files:**
+- Modify: `src/common/schedule/schedule-types.ts` (`TaskRunState.checkTail`, doc of `pausedBy`)
+- Modify: `src/node/schedule/schedule-engine.ts`
+- Test: `src/node/schedule/schedule-engine.test.ts`
+
+**Interfaces:**
+- Consumes: `followUpPrompt`, `hasConverged` (Task 2); `DEFAULT_CHECK_TIMEOUT_SEC` (Task 1).
+- Produces:
+
+```ts
+export type EngineEvent =
+  | …Slice 2 events…
+  | { type: "check-done"; task: string; ok: boolean; tail: string }
+  | { type: "pause" }
+  | { type: "resume" }
+  | { type: "abort" }
+  | { type: "recover" };
+
+export type Effect =
+  | { type: "start"; task: string; prompt: string }
+  | { type: "name"; sessionId: string; name: string }
+  | { type: "paste"; task: string; terminalId: number; text: string }
+  | { type: "check"; task: string; command: string; cwd: string; timeoutSec: number };
+```
+
+- [ ] **Step 1: Failing tests**
+
+Change the imports at the top of `schedule-engine.test.ts` to:
+
+```ts
+import { describe, expect, it } from "vitest";
+import type { RunState, Schedule, ScheduleTask, TaskLaunch } from "../../common/schedule/schedule-types.js";
+import { firstPrompt, followUpPrompt } from "../../common/schedule/schedule-prompt.js";
+import { startRun, step } from "./schedule-engine.js";
+```
+
+and append:
+
+```ts
+describe("step — loop until converged (Slice 3)", () => {
+  const loop = { stopCriteria: "tests pass", followUp: "Keep going.", maxIterations: 3 };
+  const s = sched(
+    task("a", { loop: { ...loop, check: "pnpm test" } }),
+    task("b", { loop: { ...loop, maxIterations: 2 } }),
+    task("c", { needs: ["a"] }),
+  );
+  const [A, B] = s.tasks as [ScheduleTask, ScheduleTask, ScheduleTask];
+  const started = (): RunState => {
+    let run = startRun(s, launches(s), "r1", 0).run;
+    run = step(s, run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a", sessionId: "ua" }).run;
+    return step(s, run, { type: "started", task: "b", terminalId: 8, processId: 80, workspace: "/r-b", sessionId: "ub" }).run;
+  };
+  const checking = (): RunState => step(s, started(), { type: "turn-ended", task: "a", reply: "done\nCONVERGED" }).run;
+
+  it("starts a looping task with the stop criteria and the marker instruction (AC-9)", () => {
+    const { effects } = startRun(s, launches(s), "r1", 0);
+    expect(effects[0]).toEqual({ type: "start", task: "a", prompt: firstPrompt(A, "do a") });
+    expect((effects[0] as { prompt: string }).prompt).toContain("tests pass");
+    expect((effects[0] as { prompt: string }).prompt).toContain("CONVERGED");
+  });
+
+  it("a reply without the marker renames the session and pastes the follow-up (AC-9)", () => {
+    const { run, effects } = step(s, started(), { type: "turn-ended", task: "b", reply: "working on it" });
+    expect(run.tasks["b"]).toMatchObject({ status: "running", iteration: 2, reply: "working on it" });
+    expect(effects).toEqual([
+      { type: "name", sessionId: "ub", name: "Nightly · B (2/2)" },
+      { type: "paste", task: "b", terminalId: 8, text: followUpPrompt(B) },
+    ]);
+  });
+
+  it("the marker runs the check in the workspace, verbatim (AC-10)", () => {
+    const { run, effects } = step(s, started(), { type: "turn-ended", task: "a", reply: "done\nCONVERGED" });
+    expect(run.tasks["a"]!.status).toBe("checking");
+    expect(effects).toEqual([{ type: "check", task: "a", command: "pnpm test", cwd: "/r-a", timeoutSec: 600 }]);
+  });
+
+  it("never fills a placeholder into a check command, whatever an upstream reply holds (Security)", () => {
+    const h = sched(task("u"), task("d", { needs: ["u"], loop: { ...loop, check: "pnpm test -- {{u.reply}}" } }));
+    let run = startRun(h, launches(h), "r", 0).run;
+    run = step(h, run, { type: "started", task: "u", terminalId: 1, processId: 10, workspace: "/r-u" }).run;
+    run = step(h, run, { type: "turn-ended", task: "u", reply: "$(touch /tmp/pwned)" }).run;
+    run = step(h, run, { type: "started", task: "d", terminalId: 2, processId: 20, workspace: "/r-d" }).run;
+    const { effects } = step(h, run, { type: "turn-ended", task: "d", reply: "ok\nCONVERGED" });
+    expect(effects).toEqual([{ type: "check", task: "d", command: "pnpm test -- {{u.reply}}", cwd: "/r-d", timeoutSec: 600 }]);
+    expect(JSON.stringify(effects)).not.toContain("pwned");
+  });
+
+  it("the marker converges at once when there is no check", () => {
+    expect(step(s, started(), { type: "turn-ended", task: "b", reply: "CONVERGED" }).run.tasks["b"]!.status).toBe("converged");
+  });
+
+  it("a passing check converges the task and starts its dependent (AC-10)", () => {
+    const { run, effects } = step(s, checking(), { type: "check-done", task: "a", ok: true, tail: "" });
+    expect(run.tasks["a"]!.status).toBe("converged");
+    expect(effects).toEqual([{ type: "start", task: "c", prompt: "do c" }]);
+  });
+
+  it("a failing check goes round again, the follow-up carrying the command's output (AC-10)", () => {
+    const { run, effects } = step(s, checking(), { type: "check-done", task: "a", ok: false, tail: "FAIL src/x.test.ts" });
+    expect(run.tasks["a"]).toMatchObject({ status: "running", iteration: 2 });
+    const paste = effects.find((e) => e.type === "paste") as { text: string };
+    expect(paste.text).toBe(followUpPrompt(A, { command: "pnpm test", tail: "FAIL src/x.test.ts" }));
+    expect(paste.text).toContain("FAIL src/x.test.ts");
+    expect(effects[0]).toEqual({ type: "name", sessionId: "ua", name: "Nightly · A (2/3)" });
+  });
+
+  it("reaching maxIterations without converging fails the task and pauses the run (AC-11)", () => {
+    let run = step(s, started(), { type: "turn-ended", task: "b", reply: "not yet" }).run;
+    const last = step(s, run, { type: "turn-ended", task: "b", reply: "still not" });
+    run = last.run;
+    expect(run.tasks["b"]!.status).toBe("failed");
+    expect(run.tasks["b"]!.error).toMatch(/2 iterations/);
+    expect(run.pausedBy).toBe("failure");
+    expect(last.effects).toEqual([]);
+  });
+
+  it("ignores a check result for a task that is not checking", () => {
+    const run = started();
+    expect(step(s, run, { type: "check-done", task: "a", ok: true, tail: "" }).run.tasks["a"]!.status).toBe("running");
+  });
+
+  it("an exit while checking fails the task", () => {
+    expect(step(s, checking(), { type: "exited", task: "a" }).run.tasks["a"]!.status).toBe("failed");
+  });
+
+  describe("operator pause (R3, R4)", () => {
+    const paused = (): RunState => step(s, started(), { type: "pause" }).run;
+
+    it("holds a turn end, then replays it on resume", () => {
+      const held = step(s, paused(), { type: "turn-ended", task: "b", reply: "not yet" });
+      expect(held.run.tasks["b"]).toMatchObject({ status: "held", reply: "not yet", iteration: 1 });
+      expect(held.effects).toEqual([]);
+      const resumed = step(s, held.run, { type: "resume" });
+      expect(resumed.run.pausedBy).toBeUndefined();
+      expect(resumed.run.tasks["b"]).toMatchObject({ status: "running", iteration: 2 });
+      expect(resumed.effects).toContainEqual({ type: "paste", task: "b", terminalId: 8, text: followUpPrompt(B) });
+    });
+
+    it("holds a marker turn end without running the check, and starts no dependent until resume", () => {
+      const held = step(s, paused(), { type: "turn-ended", task: "a", reply: "done\nCONVERGED" });
+      expect(held.run.tasks["a"]!.status).toBe("held");
+      expect(held.effects).toEqual([]);
+      const resumed = step(s, held.run, { type: "resume" });
+      expect(resumed.effects).toEqual([{ type: "check", task: "a", command: "pnpm test", cwd: "/r-a", timeoutSec: 600 }]);
+      const done = step(s, resumed.run, { type: "check-done", task: "a", ok: true, tail: "" });
+      expect(done.effects).toEqual([{ type: "start", task: "c", prompt: "do c" }]);
+    });
+
+    it("lets a running check converge the task, but holds a failing one with its output", () => {
+      let run = step(s, checking(), { type: "pause" }).run;
+      const failed = step(s, run, { type: "check-done", task: "a", ok: false, tail: "boom" });
+      expect(failed.run.tasks["a"]).toMatchObject({ status: "held", checkTail: "boom" });
+      expect(failed.effects).toEqual([]);
+      const resumed = step(s, failed.run, { type: "resume" });
+      const paste = resumed.effects.find((e) => e.type === "paste") as { text: string };
+      expect(paste.text).toContain("boom");
+      expect(resumed.run.tasks["a"]!.checkTail).toBeUndefined();
+
+      run = step(s, checking(), { type: "pause" }).run;
+      const passed = step(s, run, { type: "check-done", task: "a", ok: true, tail: "" });
+      expect(passed.run.tasks["a"]!.status).toBe("converged");
+      expect(passed.effects).toEqual([]); // paused: c does not start yet
+    });
+
+    it("a newer turn end on a held task replaces the held reply", () => {
+      let run = step(s, paused(), { type: "turn-ended", task: "b", reply: "not yet" }).run;
+      run = step(s, run, { type: "turn-ended", task: "b", reply: "done\nCONVERGED" }).run;
+      const resumed = step(s, run, { type: "resume" });
+      expect(resumed.run.tasks["b"]!.status).toBe("converged");
+      expect(resumed.effects).toEqual([]);
+    });
+
+    it("survives a failure: resume falls back to the failure pause and still replays held turns", () => {
+      let run = step(s, paused(), { type: "turn-ended", task: "b", reply: "not yet" }).run;
+      run = step(s, run, { type: "exited", task: "a" }).run;
+      expect(run.pausedBy).toBe("operator");
+      const resumed = step(s, run, { type: "resume" });
+      expect(resumed.run.pausedBy).toBe("failure");
+      expect(resumed.effects).toContainEqual({ type: "paste", task: "b", terminalId: 8, text: followUpPrompt(B) });
+    });
+
+    it("pausing over a failure pause and resuming keeps the failure pause", () => {
+      let run = step(s, started(), { type: "exited", task: "b" }).run;
+      run = step(s, run, { type: "pause" }).run;
+      expect(run.pausedBy).toBe("operator");
+      expect(step(s, run, { type: "resume" }).run.pausedBy).toBe("failure");
+    });
+
+    it("resume without a pause changes nothing", () => {
+      const run = started();
+      expect(step(s, run, { type: "resume" })).toEqual({ run, effects: [] });
+    });
+  });
+});
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-engine.test.ts`
+Expected: FAIL. On the paste test, the looping task `converged` on its first turn end (Slice 2 behaviour), and `check-done`/`pause`/`resume` are not handled.
+
+- [ ] **Step 3: Types**
+
+In `schedule-types.ts`, in `TaskRunState`, after `reply?: string;` add:
+
+```ts
+  /** A failed check's output, kept while its follow-up is held by an operator pause. */
+  checkTail?: string;
+```
+
+and replace the doc comment of `RunState.pausedBy` with:
+
+```ts
+  /**
+   * Set while no new task may start. "operator": the operator paused the run
+   * (turn ends are held too); it wins over a failure and resume() recomputes
+   * the failure pause from the task statuses. "failure": a task is failed or
+   * interrupted.
+   */
+```
+
+- [ ] **Step 4: Implement the engine**
+
+Replace `src/node/schedule/schedule-engine.ts` with:
+
+```ts
+import {
+  ACTIVE_STATUSES,
+  DEFAULT_CHECK_TIMEOUT_SEC,
+  SETTLED_STATUSES,
+  type RunState,
+  type Schedule,
+  type ScheduleTask,
+  type TaskLaunch,
+} from "../../common/schedule/schedule-types.js";
+import {
+  fillPlaceholders,
+  firstPrompt,
+  followUpPrompt,
+  hasConverged,
+  stripMarker,
+} from "../../common/schedule/schedule-prompt.js";
+
+export type EngineEvent =
+  | { type: "started"; task: string; terminalId: number; processId: number; workspace: string; sessionId?: string }
+  | { type: "start-failed"; task: string; error: string }
+  | { type: "session-found"; task: string; sessionId: string }
+  | { type: "session-missing"; task: string }
+  | { type: "turn-ended"; task: string; reply: string }
+  | { type: "needs-you"; task: string }
+  | { type: "resumed-working"; task: string }
+  | { type: "exited"; task: string }
+  | { type: "check-done"; task: string; ok: boolean; tail: string }
+  | { type: "pause" }
+  | { type: "resume" }
+  | { type: "abort" }
+  | { type: "recover" };
+
+export type Effect =
+  | { type: "start"; task: string; prompt: string }
+  | { type: "name"; sessionId: string; name: string }
+  | { type: "paste"; task: string; terminalId: number; text: string }
+  | { type: "check"; task: string; command: string; cwd: string; timeoutSec: number };
+
+export interface StepResult {
+  run: RunState;
+  effects: Effect[];
+}
+
+/** The wall card's label for a task: `<schedule> · <task> (<iteration>/<max>)`. */
+export function sessionName(schedule: Schedule, taskId: string, iteration: number): string {
+  const t = schedule.tasks.find((x) => x.id === taskId);
+  return `${schedule.name} · ${t?.name ?? taskId} (${iteration}/${t?.loop?.maxIterations ?? 1})`;
+}
+
+/** A new run with every task pending, and the first ready tasks started. */
+export function startRun(schedule: Schedule, launches: Record<string, TaskLaunch>, runId: string, nowMs: number): StepResult {
+  const run: RunState = {
+    scheduleId: schedule.id,
+    runId,
+    status: "running",
+    startedAtMs: nowMs,
+    tasks: Object.fromEntries(schedule.tasks.map((t) => [t.id, { status: "pending" as const, iteration: 0 }])),
+    launches,
+  };
+  const effects: Effect[] = [];
+  advance(schedule, run, effects);
+  return { run, effects };
+}
+
+/**
+ * Apply one event to a run: pure, never mutates its input. Returns the new run
+ * and the effects the runner must perform. Events for a task in a state they
+ * do not apply to are ignored, so a late watcher signal cannot resurrect a task.
+ */
+export function step(schedule: Schedule, prev: RunState, event: EngineEvent): StepResult {
+  const run = structuredClone(prev);
+  const effects: Effect[] = [];
+  if (run.status !== "running") return { run, effects };
+  const task = "task" in event ? run.tasks[event.task] : undefined;
+  switch (event.type) {
+    case "started":
+      if (task?.status !== "starting") break;
+      Object.assign(task, {
+        status: "running",
+        terminalId: event.terminalId,
+        processId: event.processId,
+        workspace: event.workspace,
+      });
+      // Claude's id is chosen before launch: recording it now lets a window
+      // recognise the task's card from its first second (no duplicate card).
+      if (event.sessionId) task.sessionId = event.sessionId;
+      break;
+    case "session-found":
+      if (!task || !ACTIVE_STATUSES.has(task.status)) break;
+      task.sessionId = event.sessionId;
+      effects.push({ type: "name", sessionId: event.sessionId, name: sessionName(schedule, event.task, task.iteration) });
+      break;
+    case "start-failed":
+      if (task?.status === "starting") fail(run, event.task, event.error);
+      break;
+    case "session-missing":
+      if (task && ACTIVE_STATUSES.has(task.status)) fail(run, event.task, "The session's transcript never appeared.");
+      break;
+    case "exited":
+      if (task && ACTIVE_STATUSES.has(task.status)) fail(run, event.task, "The session ended before the task converged.");
+      break;
+    case "turn-ended":
+      if (task?.status === "held") {
+        // The operator typed into the card while paused: the newer reply is the one to judge.
+        task.reply = event.reply;
+        delete task.checkTail;
+        break;
+      }
+      if (task?.status !== "running" && task?.status !== "waiting-on-you") break;
+      if (run.pausedBy === "operator") {
+        task.status = "held";
+        task.reply = event.reply;
+        break;
+      }
+      turnEnded(schedule, run, event.task, event.reply, effects);
+      break;
+    case "check-done":
+      if (task?.status !== "checking") break;
+      if (event.ok) task.status = "converged";
+      else if (run.pausedBy === "operator") {
+        task.status = "held";
+        task.checkTail = event.tail;
+      } else iterate(schedule, run, event.task, event.tail, effects);
+      break;
+    case "needs-you":
+      if (task?.status === "running") task.status = "waiting-on-you";
+      break;
+    case "resumed-working":
+      if (task?.status === "waiting-on-you") task.status = "running";
+      break;
+    case "pause":
+      run.pausedBy = "operator";
+      break;
+    case "resume":
+      if (run.pausedBy !== "operator") return { run, effects };
+      if (hasFailure(run)) run.pausedBy = "failure";
+      else delete run.pausedBy;
+      for (const t of schedule.tasks) {
+        const held = run.tasks[t.id];
+        if (held?.status !== "held") continue;
+        if (held.checkTail !== undefined) iterate(schedule, run, t.id, held.checkTail, effects);
+        else turnEnded(schedule, run, t.id, held.reply ?? "", effects);
+      }
+      break;
+    case "abort":
+      run.status = "aborted";
+      return { run, effects };
+    case "recover":
+      for (const t of Object.values(run.tasks)) if (ACTIVE_STATUSES.has(t.status)) t.status = "interrupted";
+      if (Object.values(run.tasks).some((t) => t.status === "interrupted")) run.pausedBy = "failure";
+      return { run, effects };
+  }
+  advance(schedule, run, effects);
+  return { run, effects };
+}
+
+function taskOf(schedule: Schedule, taskId: string): ScheduleTask {
+  return schedule.tasks.find((t) => t.id === taskId)!;
+}
+
+/** Judge a finished turn: converge, run the check, or go round again. */
+function turnEnded(schedule: Schedule, run: RunState, taskId: string, reply: string, effects: Effect[]): void {
+  const t = taskOf(schedule, taskId);
+  const state = run.tasks[taskId]!;
+  state.reply = reply;
+  delete state.checkTail;
+  if (!t.loop) {
+    state.status = "converged";
+    return;
+  }
+  if (!hasConverged(reply)) {
+    iterate(schedule, run, taskId, undefined, effects);
+    return;
+  }
+  const check = t.loop.check;
+  if (!check?.trim()) {
+    state.status = "converged";
+    return;
+  }
+  state.status = "checking";
+  // Verbatim: placeholders are never filled into a check command (spec, Hand-off).
+  effects.push({
+    type: "check",
+    task: taskId,
+    command: check,
+    cwd: state.workspace ?? t.project,
+    timeoutSec: t.loop.checkTimeoutSec ?? DEFAULT_CHECK_TIMEOUT_SEC,
+  });
+}
+
+/** Paste the follow-up (with a failed check's output) for one more iteration, or fail once none are left. */
+function iterate(schedule: Schedule, run: RunState, taskId: string, checkTail: string | undefined, effects: Effect[]): void {
+  const t = taskOf(schedule, taskId);
+  const state = run.tasks[taskId]!;
+  delete state.checkTail;
+  const max = t.loop?.maxIterations ?? 1;
+  if (state.iteration >= max) {
+    fail(
+      run,
+      taskId,
+      `Not converged after ${max} iteration${max === 1 ? "" : "s"}${checkTail === undefined ? "" : ": the check still fails"}.`,
+    );
+    return;
+  }
+  state.iteration += 1;
+  state.status = "running";
+  if (state.sessionId) {
+    effects.push({ type: "name", sessionId: state.sessionId, name: sessionName(schedule, taskId, state.iteration) });
+  }
+  effects.push({
+    type: "paste",
+    task: taskId,
+    terminalId: state.terminalId!,
+    text: followUpPrompt(t, checkTail === undefined ? undefined : { command: t.loop!.check!, tail: checkTail }),
+  });
+}
+
+function hasFailure(run: RunState): boolean {
+  return Object.values(run.tasks).some((t) => t.status === "failed" || t.status === "interrupted");
+}
+
+/** Fail a task; the run pauses on the failure unless the operator's pause already holds it. */
+function fail(run: RunState, taskId: string, error: string): void {
+  const t = run.tasks[taskId]!;
+  t.status = "failed";
+  t.error = error;
+  if (run.pausedBy !== "operator") run.pausedBy = "failure";
+}
+
+function ready(schedule: Schedule, run: RunState): ScheduleTask[] {
+  return schedule.tasks.filter(
+    (t) => run.tasks[t.id]?.status === "pending" && t.needs.every((n) => SETTLED_STATUSES.has(run.tasks[n]?.status ?? "pending")),
+  );
+}
+
+/** Start what is ready (unless paused) and finish the run once everything has settled. */
+function advance(schedule: Schedule, run: RunState, effects: Effect[]): void {
+  if (!run.pausedBy) {
+    for (const t of ready(schedule, run)) {
+      run.tasks[t.id] = { status: "starting", iteration: 1 };
+      const filled = fillPlaceholders(t.prompt, (id, field) =>
+        field === "reply" ? stripMarker(run.tasks[id]?.reply ?? "") : run.tasks[id]?.workspace,
+      );
+      effects.push({ type: "start", task: t.id, prompt: firstPrompt(t, filled) });
+    }
+  }
+  if (schedule.tasks.every((t) => SETTLED_STATUSES.has(run.tasks[t.id]?.status ?? "pending"))) run.status = "finished";
+}
+```
+
+(`resume` without an operator pause returns the unchanged clone and skips `advance`, which is what "resume without a pause changes nothing" pins.)
+
+- [ ] **Step 5: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-engine.test.ts src/node/schedule/schedule-runner.test.ts`
+Expected: PASS. The Slice 2 engine and runner tests are unchanged and still pass: a task without `loop` converges on its first turn end.
+
+- [ ] **Step 6: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean.
+
+```bash
+git add src/common/schedule/schedule-types.ts src/node/schedule/schedule-engine.ts src/node/schedule/schedule-engine.test.ts
+git commit -m "feat(schedule): engine loops until converged — check, follow-up, iteration limit, pause and resume (AC-9..AC-11)"
+```
+
+### Task 19: Runner and service — paste, check, pause, resume
+
+**Files:**
+- Modify: `src/common/schedule/schedule-protocol.ts`
+- Modify: `src/node/schedule/schedule-runner.ts`
+- Test: `src/node/schedule/schedule-runner.test.ts`
+- Modify: `src/node/schedule/spexr-schedule-backend-service.ts`
+
+**Interfaces:**
+- Consumes: `CheckQueue`, `runCheck`, `CheckRequest`, `CheckResult` (Task 15); `SchedulePty.paste`, `TaskWatch` (Task 16); the engine's `paste`/`check` effects and `check-done`/`pause`/`resume` events (Task 18).
+- Produces:
+
+```ts
+// SpexrScheduleService (schedule-protocol.ts)
+pause(scheduleId: string): Promise<void>;
+resume(scheduleId: string): Promise<void>;
+// RunnerPorts
+paste(terminalId: number, text: string): Promise<void>;
+check(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined>;
+// ScheduleRunner
+pause(scheduleId: string): Promise<void>;
+resume(scheduleId: string): Promise<void>;
+```
+
+- [ ] **Step 1: Failing tests**
+
+In `schedule-runner.test.ts`, add these imports:
+
+```ts
+import type { CheckRequest, CheckResult } from "./check-runner.js";
+import { followUpPrompt } from "../../common/schedule/schedule-prompt.js";
+```
+
+and replace the whole `fakes()` function with:
+
+```ts
+function fakes() {
+  const lines: string[] = [];
+  const names: [string, string][] = [];
+  const log: string[] = [];
+  const checks: CheckRequest[] = [];
+  let checkResult: CheckResult = { ok: true, tail: "" };
+  let watch: ((e: WatchEvent) => void) | undefined;
+  let exit: (() => void) | undefined;
+  let saved: ScheduleFile | undefined;
+  const ports: RunnerPorts = {
+    launch: async (line) => (lines.push(line), { terminalId: 3, processId: 30 }),
+    onExit: (_id, l) => ((exit = l), () => (exit = undefined)),
+    watchClaude: (_req, l) => ((watch = l), { stop: () => (watch = undefined), arm: () => void log.push("arm") }),
+    watchOpencode: () => ({ stop: () => {}, arm: () => {} }),
+    rename: async (id, name) => void names.push([id, name]),
+    newSessionId: () => "u-1",
+    now: () => 1,
+    save: async (f) => void (saved = structuredClone(f)),
+    publish: () => {},
+    paste: async (terminalId, text) => void log.push(`paste:${terminalId}:${text}`),
+    check: async (req, stillWanted) => {
+      if (!stillWanted()) return undefined;
+      checks.push(req);
+      return checkResult;
+    },
+  };
+  return {
+    ports,
+    lines,
+    names,
+    log,
+    checks,
+    setCheck: (r: CheckResult) => void (checkResult = r),
+    emit: (e: WatchEvent) => watch!(e),
+    exit: () => exit!(),
+    saved: () => saved,
+    watching: () => !!watch,
+  };
+}
+```
+
+(This keeps the Task 16 handle shape and adds the two new ports; every existing test goes on using `fakes()` unchanged.) Then append inside `describe("ScheduleRunner", …)`:
+
+```ts
+  const looping: Schedule = {
+    ...schedule,
+    tasks: [
+      {
+        ...schedule.tasks[0]!,
+        loop: { stopCriteria: "tests pass", followUp: "Keep going.", maxIterations: 3, check: "pnpm test", checkTimeoutSec: 30 },
+      },
+    ],
+  };
+  const start = async (f: ReturnType<typeof fakes>): Promise<ScheduleRunner> => {
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [looping], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    f.emit({ type: "session-found", sessionId: "u-1" });
+    await settle();
+    return runner;
+  };
+
+  it("re-arms the watcher before pasting the follow-up, and renames the session each iteration", async () => {
+    const f = fakes();
+    await start(f);
+    f.emit({ type: "turn-ended", reply: "not yet" });
+    await settle();
+    expect(f.log).toEqual(["arm", `paste:3:${followUpPrompt(looping.tasks[0]!)}`]);
+    expect(f.names).toEqual([
+      ["u-1", "S · A (1/3)"],
+      ["u-1", "S · A (2/3)"],
+    ]);
+    expect(f.saved()!.runs["s"]!.tasks["a"]).toMatchObject({ status: "running", iteration: 2 });
+  });
+
+  it("runs the check in the workspace once the reply ends with the marker; a pass converges", async () => {
+    const f = fakes();
+    await start(f);
+    f.emit({ type: "turn-ended", reply: "done\nCONVERGED" });
+    await settle();
+    expect(f.checks).toEqual([{ command: "pnpm test", cwd: "/repo", timeoutMs: 30_000 }]);
+    expect(f.saved()!.runs["s"]!.status).toBe("finished");
+    expect(f.log).toEqual([]); // nothing pasted
+  });
+
+  it("a failed check pastes the follow-up with the check's output", async () => {
+    const f = fakes();
+    f.setCheck({ ok: false, tail: "FAIL a.test.ts" });
+    await start(f);
+    f.emit({ type: "turn-ended", reply: "done\nCONVERGED" });
+    await settle();
+    expect(f.log).toEqual([
+      "arm",
+      `paste:3:${followUpPrompt(looping.tasks[0]!, { command: "pnpm test", tail: "FAIL a.test.ts" })}`,
+    ]);
+  });
+
+  it("does not run a queued check once its run was aborted (R9)", async () => {
+    const f = fakes();
+    let release: () => void = () => {};
+    const wanted: boolean[] = [];
+    f.ports.check = (_req, stillWanted) =>
+      new Promise((resolve) => {
+        release = () => {
+          wanted.push(stillWanted());
+          resolve(undefined);
+        };
+      });
+    const runner = await start(f);
+    f.emit({ type: "turn-ended", reply: "done\nCONVERGED" });
+    await settle();
+    await runner.abort("s");
+    release();
+    await settle();
+    expect(wanted).toEqual([false]);
+    expect(f.saved()!.runs["s"]!.status).toBe("aborted");
+  });
+
+  it("pause holds a turn end and resume replays it", async () => {
+    const f = fakes();
+    const runner = await start(f);
+    await runner.pause("s");
+    f.emit({ type: "turn-ended", reply: "not yet" });
+    await settle();
+    expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("held");
+    expect(f.log).toEqual([]);
+    await runner.resume("s");
+    await settle();
+    expect(f.log).toEqual(["arm", `paste:3:${followUpPrompt(looping.tasks[0]!)}`]);
+  });
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/schedule-runner.test.ts`
+Expected: FAIL. `runner.pause is not a function`, and the paste and check effects are not performed (`f.log` and `f.checks` stay `[]`).
+
+- [ ] **Step 3: Protocol**
+
+In `schedule-protocol.ts`, add to `SpexrScheduleService` after `abort`:
+
+```ts
+  /** Operator pause: no new task starts, and turn ends wait (held) until resume. */
+  pause(scheduleId: string): Promise<void>;
+  /** Undo pause: held turn ends are judged now, in schedule order. */
+  resume(scheduleId: string): Promise<void>;
+```
+
+- [ ] **Step 4: Runner**
+
+In `schedule-runner.ts`:
+
+1. Add the import `import type { CheckRequest, CheckResult } from "./check-runner.js";`.
+2. In `RunnerPorts`, after `publish(…)`, add:
+
+```ts
+  /** Bracketed paste, then Enter, into a task's pty. */
+  paste(terminalId: number, text: string): Promise<void>;
+  /** Queued backend-wide; resolves undefined when `stillWanted` said no once the check's turn came. */
+  check(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined>;
+```
+
+3. After `private readonly releases = …;`, add:
+
+```ts
+  /** Each active task's watch, so a paste can re-arm it. Dropped with the task's other registrations. */
+  private readonly watches = new Map<string, TaskWatch>();
+```
+
+4. After `abort(…)`, add:
+
+```ts
+  /** Operator pause: no new task starts and turn ends are held until resume(). */
+  pause(scheduleId: string): Promise<void> {
+    return this.dispatch(scheduleId, { type: "pause" });
+  }
+
+  /** Undo pause(): held turn ends are replayed in schedule order. */
+  resume(scheduleId: string): Promise<void> {
+    return this.dispatch(scheduleId, { type: "resume" });
+  }
+```
+
+5. In `release(…)`, after `this.releases.delete(key);`, add `this.watches.delete(key);`.
+6. In `perform(…)`, right after the `if (e.type === "name") { … }` block, add:
+
+```ts
+    if (e.type === "paste") {
+      // Re-armed first: the reply to this paste counts even if it lands between
+      // two reads, and the reply still on screen never counts twice (R1).
+      this.watches.get(`${scheduleId}/${e.task}`)?.arm();
+      await this.ports.paste(e.terminalId, e.text).catch((err) => console.error("[schedule] pasting the follow-up failed", err));
+      return;
+    }
+    if (e.type === "check") {
+      await this.check(scheduleId, runId, e);
+      return;
+    }
+```
+
+7. In `perform(…)`, replace `const registered: (() => void)[] = [];` with:
+
+```ts
+    const registered: (() => void)[] = [];
+    let watch: TaskWatch;
+```
+
+replace `const watch =` with `watch =`, and replace `this.registerReleases(scheduleId, task.id, registered);` with:
+
+```ts
+    this.registerReleases(scheduleId, task.id, registered);
+    this.watches.set(`${scheduleId}/${task.id}`, watch);
+```
+
+8. Add this method after `perform`:
+
+```ts
+  /**
+   * Queue the task's check. When its turn comes it runs only if the same run
+   * is still going and the task still waits on it (R9); its result goes back
+   * bound to that run. A check that throws counts as failed, with the reason
+   * as its output.
+   */
+  private async check(scheduleId: string, runId: string, e: Extract<Effect, { type: "check" }>): Promise<void> {
+    const stillWanted = (): boolean => {
+      const run = this.file.runs[scheduleId];
+      return run?.runId === runId && run.status === "running" && run.tasks[e.task]?.status === "checking";
+    };
+    let result: CheckResult | undefined;
+    try {
+      result = await this.ports.check({ command: e.command, cwd: e.cwd, timeoutMs: e.timeoutSec * 1000 }, stillWanted);
+    } catch (err) {
+      result = { ok: false, tail: `The check could not run: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    if (!result) return;
+    await this.dispatch(scheduleId, { type: "check-done", task: e.task, ok: result.ok, tail: result.tail }, runId);
+  }
+```
+
+- [ ] **Step 5: Service**
+
+In `spexr-schedule-backend-service.ts`:
+- Add `import { CheckQueue, runCheck } from "./check-runner.js";`.
+- After `private runner!: Promise<ScheduleRunner>;`, add:
+
+```ts
+  /** One queue for the whole backend (the service is a singleton): checks never overlap. */
+  private readonly checks = new CheckQueue((req) => runCheck(req));
+```
+
+- After `abort(…)`, add:
+
+```ts
+  async pause(scheduleId: string): Promise<void> {
+    await (await this.runner).pause(scheduleId);
+  }
+
+  async resume(scheduleId: string): Promise<void> {
+    await (await this.runner).resume(scheduleId);
+  }
+```
+
+- In `ports()`, after `publish: …`, add:
+
+```ts
+      paste: (id, text) => this.pty.paste(id, text),
+      check: (req, stillWanted) => this.checks.run(req, stillWanted),
+```
+
+- [ ] **Step 6: Run to see them pass**
+
+Run: `npx vitest run --maxWorkers=2 src/node/schedule/`
+Expected: PASS.
+
+- [ ] **Step 7: Lint, typecheck, commit**
+
+Run: `pnpm run lint && pnpm run typecheck`
+Expected: clean. The frontend proxy picks up `pause`/`resume` through the interface; Task 20 wires the buttons.
+
+```bash
+git add src/common/schedule/schedule-protocol.ts src/node/schedule/schedule-runner.ts src/node/schedule/schedule-runner.test.ts src/node/schedule/spexr-schedule-backend-service.ts
+git commit -m "feat(schedule): runner pastes follow-ups, queues checks, pauses and resumes runs"
+```
+
+### Task 20: Sidebar — loop settings and Pause / Resume
+
+**Files:**
+- Create: `src/browser/darkfactory/schedule/loop-edit.ts`
+- Test: `src/browser/darkfactory/schedule/loop-edit.test.ts`
+- Modify: `src/browser/darkfactory/schedule/schedule-view.ts`, test `schedule-view.test.ts`
+- Modify: `src/browser/darkfactory/schedule/schedule-sidebar.tsx`
+- Modify: `src/browser/darkfactory/darkfactory-wall-widget.tsx`
+- Modify: `src/browser/style/spexr.css`
+
+**Interfaces:**
+- Consumes: `TaskLoop`, `DEFAULT_CHECK_TIMEOUT_SEC`, `MAX_CHECK_TIMEOUT_SEC`, `MAX_ITERATIONS` (Tasks 1, 17); `SpexrScheduleService.pause/resume` (Task 19).
+- Produces:
+
+```ts
+// loop-edit.ts
+export const DEFAULT_LOOP: TaskLoop;
+export function withLoop(task: ScheduleTask, on: boolean): ScheduleTask;
+export function patchLoop(task: ScheduleTask, patch: Partial<Pick<TaskLoop, "stopCriteria" | "followUp" | "maxIterations">>): ScheduleTask;
+export function withCheck(task: ScheduleTask, command: string): ScheduleTask;
+export function withCheckTimeout(task: ScheduleTask, input: string): ScheduleTask;
+// schedule-view.ts — runBar() gains
+canPause: boolean; canResume: boolean;
+// ScheduleSidebarProps gains
+onPause(scheduleId: string): void; onResume(scheduleId: string): void;
+```
+
+Write this task against `schedule-sidebar.tsx` as of commit `538e17a`, where `runProblems` carries a `scheduleId`. Use the targeted insertions below and never replace the whole file.
+
+- [ ] **Step 1: Failing tests**
+
+```ts
+// src/browser/darkfactory/schedule/loop-edit.test.ts
+import { describe, expect, it } from "vitest";
+import type { ScheduleTask } from "../../../common/schedule/schedule-types.js";
+import { DEFAULT_LOOP, patchLoop, withCheck, withCheckTimeout, withLoop } from "./loop-edit.js";
+
+const t: ScheduleTask = { id: "a", name: "A", needs: [], project: "/r", workspace: { kind: "folder" }, harness: "claude", prompt: "p" };
+
+describe("loop editing", () => {
+  it("switches the loop on with defaults, keeps it when already on, and drops every loop setting when off", () => {
+    const on = withLoop(t, true);
+    expect(on.loop).toEqual(DEFAULT_LOOP);
+    expect(withLoop(on, true)).toBe(on);
+    expect(withLoop(on, false)).toEqual(t);
+    expect("loop" in withLoop(on, false)).toBe(false);
+  });
+  it("patches loop fields, and ignores a task that does not loop", () => {
+    expect(patchLoop(withLoop(t, true), { maxIterations: 9 }).loop!.maxIterations).toBe(9);
+    expect(patchLoop(t, { maxIterations: 9 })).toBe(t);
+  });
+  it("a blank check command removes the check and its timeout", () => {
+    const checked = withCheckTimeout(withCheck(withLoop(t, true), "pnpm test"), "120");
+    expect(checked.loop).toMatchObject({ check: "pnpm test", checkTimeoutSec: 120 });
+    const cleared = withCheck(checked, "  ");
+    expect("check" in cleared.loop!).toBe(false);
+    expect("checkTimeoutSec" in cleared.loop!).toBe(false);
+  });
+  it("an empty timeout returns to the default", () => {
+    const checked = withCheckTimeout(withCheck(withLoop(t, true), "pnpm test"), "120");
+    expect("checkTimeoutSec" in withCheckTimeout(checked, "").loop!).toBe(false);
+  });
+});
+```
+
+Append to `schedule-view.test.ts`, inside `describe("runBar", …)`:
+
+```ts
+  it("offers Pause while running, Resume only after an operator pause, and names a failure pause", () => {
+    expect(runBar(s, run("running", "pending"), [])).toMatchObject({ canPause: true, canResume: false, label: "Running" });
+    expect(runBar(s, run("running", "held", { pausedBy: "operator" }), [])).toMatchObject({
+      canPause: false,
+      canResume: true,
+      label: "Paused",
+    });
+    expect(runBar(s, run("failed", "running", { pausedBy: "failure" }), [])).toMatchObject({
+      canPause: true,
+      canResume: false,
+      label: "Paused on a failure",
+    });
+    expect(runBar(s, undefined, [])).toMatchObject({ canPause: false, canResume: false });
+  });
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/schedule/`
+Expected: FAIL. `Cannot find module './loop-edit.js'`, and `canPause` is undefined.
+
+- [ ] **Step 3: Implement the view model**
+
+```ts
+// src/browser/darkfactory/schedule/loop-edit.ts
+import type { ScheduleTask, TaskLoop } from "../../../common/schedule/schedule-types.js";
+
+/** What "Loop until converged" starts from; the stop criteria are the operator's to write. */
+export const DEFAULT_LOOP: TaskLoop = {
+  stopCriteria: "",
+  followUp: "Continue: work on the stop criteria that are not met yet.",
+  maxIterations: 5,
+};
+
+/** Switch the loop on (with defaults, or as it is) or off (dropping every loop setting). */
+export function withLoop(task: ScheduleTask, on: boolean): ScheduleTask {
+  if (on) return task.loop ? task : { ...task, loop: { ...DEFAULT_LOOP } };
+  const { loop: _dropped, ...rest } = task;
+  return rest;
+}
+
+/** Change loop texts or the iteration limit; a task that does not loop is returned as is. */
+export function patchLoop(
+  task: ScheduleTask,
+  patch: Partial<Pick<TaskLoop, "stopCriteria" | "followUp" | "maxIterations">>,
+): ScheduleTask {
+  return task.loop ? { ...task, loop: { ...task.loop, ...patch } } : task;
+}
+
+/** Set the check command; a blank one removes the check and its timeout. */
+export function withCheck(task: ScheduleTask, command: string): ScheduleTask {
+  if (!task.loop) return task;
+  if (command.trim()) return { ...task, loop: { ...task.loop, check: command } };
+  const { check: _check, checkTimeoutSec: _timeout, ...loop } = task.loop;
+  return { ...task, loop };
+}
+
+/** Set the check timeout from a number input; empty input returns to the default. Range is validation's job. */
+export function withCheckTimeout(task: ScheduleTask, input: string): ScheduleTask {
+  if (!task.loop) return task;
+  const sec = Number(input);
+  if (!input.trim() || !Number.isFinite(sec)) {
+    const { checkTimeoutSec: _timeout, ...loop } = task.loop;
+    return { ...task, loop };
+  }
+  return { ...task, loop: { ...task.loop, checkTimeoutSec: sec } };
+}
+```
+
+In `schedule-view.ts`, replace the whole `runBar` function with:
+
+```ts
+/** What the run bar offers, and why Run is unavailable when it is. */
+export function runBar(
+  schedule: Schedule,
+  run: RunState | undefined,
+  problems: ValidationProblem[],
+): { canRun: boolean; canAbort: boolean; canPause: boolean; canResume: boolean; label: string; reasons: string[] } {
+  const names = new Map(schedule.tasks.map((t) => [t.id, t.name]));
+  const reasons = problems.map((p) => (p.task ? `${names.get(p.task) ?? p.task}: ${p.message}` : p.message));
+  const running = run?.status === "running";
+  const operatorPaused = running && run?.pausedBy === "operator";
+  const label = !run
+    ? "Not run yet"
+    : running
+      ? operatorPaused
+        ? "Paused"
+        : run.pausedBy === "failure"
+          ? "Paused on a failure"
+          : "Running"
+      : run.status === "finished"
+        ? "Finished"
+        : "Aborted";
+  return {
+    canRun: !running && reasons.length === 0,
+    canAbort: running,
+    canPause: running && !operatorPaused,
+    canResume: operatorPaused,
+    label,
+    reasons,
+  };
+}
+```
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/schedule/`
+Expected: PASS.
+
+- [ ] **Step 4: Sidebar**
+
+In `schedule-sidebar.tsx`:
+
+1. Change the types import to
+
+```ts
+import {
+  DEFAULT_CHECK_TIMEOUT_SEC,
+  MAX_CHECK_TIMEOUT_SEC,
+  MAX_ITERATIONS,
+  PERMISSION_MODES,
+  type Schedule,
+  type ScheduleTask,
+  type ValidationProblem,
+} from "../../../common/schedule/schedule-types.js";
+```
+
+and add `import { patchLoop, withCheck, withCheckTimeout, withLoop } from "./loop-edit.js";`.
+
+2. In `ScheduleSidebarProps`, after `onAbort(scheduleId: string): void;`, add:
+
+```ts
+  /** No new task starts and no follow-up is pasted until onResume. */
+  onPause(scheduleId: string): void;
+  onResume(scheduleId: string): void;
+```
+
+3. In the run bar, right after `<span className="sl-tag">{bar!.label}</span>`, insert:
+
+```tsx
+            {bar!.canPause && (
+              <button
+                className="sl-btn sl-btn--sm"
+                onClick={() => p.onPause(schedule.id)}
+                title="No new task starts and no follow-up is pasted until you resume"
+              >
+                <i className="codicon codicon-debug-pause" aria-hidden="true" /> Pause
+              </button>
+            )}
+            {bar!.canResume && (
+              <button className="sl-btn sl-btn--sm" onClick={() => p.onResume(schedule.id)}>
+                <i className="codicon codicon-debug-continue" aria-hidden="true" /> Resume
+              </button>
+            )}
+```
+
+(Both are secondary: Run stays the only primary button.)
+
+4. In `TaskEditor`, between the `{field("Prompt", …)}` call and `<details className="spexr-sched__advanced">`, insert:
+
+```tsx
+      <label className="sl-switch spexr-sched__loop-switch">
+        <input
+          type="checkbox"
+          role="switch"
+          className="sl-switch__input"
+          checked={!!t.loop}
+          onChange={(e) => p.onChange(withLoop(t, e.target.checked))}
+        />
+        <span className="sl-switch__track" aria-hidden="true" />
+        <span className="sl-switch__label">Loop until converged</span>
+      </label>
+      {t.loop && (
+        <fieldset className="spexr-sched__loop">
+          <legend className="spexr-sched__sr">Loop settings</legend>
+          {field(
+            "Stop criteria",
+            "loop.stopCriteria",
+            <textarea
+              className="sl-field__input"
+              rows={3}
+              value={t.loop.stopCriteria}
+              placeholder="All tests pass and the linter is clean."
+              onChange={(e) => p.onChange(patchLoop(t, { stopCriteria: e.target.value }))}
+            />,
+          )}
+          {field(
+            "Follow-up, pasted on every new iteration",
+            "loop.followUp",
+            <textarea
+              className="sl-field__input"
+              rows={3}
+              value={t.loop.followUp}
+              onChange={(e) => p.onChange(patchLoop(t, { followUp: e.target.value }))}
+            />,
+          )}
+          {field(
+            "Max iterations",
+            "loop.maxIterations",
+            <input
+              className="sl-field__input"
+              type="number"
+              min={1}
+              max={MAX_ITERATIONS}
+              value={t.loop.maxIterations}
+              onChange={(e) => p.onChange(patchLoop(t, { maxIterations: Number(e.target.value) }))}
+            />,
+          )}
+          {field(
+            "Check command (optional)",
+            "loop.check",
+            <input
+              className="sl-field__input spexr-sched__mono"
+              value={t.loop.check ?? ""}
+              placeholder="pnpm test"
+              onChange={(e) => p.onChange(withCheck(t, e.target.value))}
+            />,
+          )}
+          <p className="spexr-sched__hint">
+            Runs in the task's folder after a reply that ends with CONVERGED, one check at a time across all runs. If
+            it fails, its last 40 lines go into the next follow-up. It runs in a login shell without your .zshrc:
+            give full paths, or start with `source ~/.zshrc &&`. Placeholders are not filled in here.
+          </p>
+          {t.loop.check !== undefined &&
+            field(
+              "Check timeout (seconds)",
+              "loop.checkTimeoutSec",
+              <input
+                className="sl-field__input"
+                type="number"
+                min={1}
+                max={MAX_CHECK_TIMEOUT_SEC}
+                value={t.loop.checkTimeoutSec ?? ""}
+                placeholder={String(DEFAULT_CHECK_TIMEOUT_SEC)}
+                onChange={(e) => p.onChange(withCheckTimeout(t, e.target.value))}
+              />,
+            )}
+          {t.harness === "opencode" && (
+            <p className="spexr-sched__hint">
+              opencode turn ends are read from the wall's scan, so each iteration can start up to about 20 seconds late.
+            </p>
+          )}
+        </fieldset>
+      )}
+```
+
+- [ ] **Step 5: Wire the wall widget**
+
+In `darkfactory-wall-widget.tsx`, after the `onAbort={…}` prop of `<ScheduleSidebar`, add:
+
+```tsx
+              onPause={(id) => void this.schedules.pause(id).catch(() => undefined)}
+              onResume={(id) => void this.schedules.resume(id).catch(() => undefined)}
+```
+
+- [ ] **Step 6: Styles**
+
+In `src/browser/style/spexr.css`, after the `.spexr-sched__sr` rule, add:
+
+```css
+/* The loop settings unfold under their switch, stepped in so they read as belonging to it. */
+.spexr-sched__loop {
+  display: flex; flex-direction: column; gap: var(--sl-space-3);
+  margin: 0; padding: 0 0 0 var(--sl-space-3);
+  border: 0; border-left: 2px solid var(--sl-border-subtle);
+  animation: spexr-sched-unfold var(--sl-motion-fast, 120ms) var(--sl-motion-ease);
+}
+@keyframes spexr-sched-unfold { from { opacity: 0; transform: translateY(calc(var(--sl-space-1) * -1)); } }
+.spexr-sched__hint { margin: 0; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
+.spexr-sched__mono { font-family: var(--sl-font-mono); }
+```
+
+and extend the existing reduced-motion rule to
+`@media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } .spexr-sched__loop { animation: none; } }`.
+Every token above is already used by the Task 13 rules; `--sl-space-1` is used elsewhere in `spexr.css`.
+
+- [ ] **Step 7: Verify**
+
+Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/ src/common/schedule/ src/node/schedule/ && pnpm run lint && pnpm run typecheck`
+Expected: PASS.
+
+- [ ] **Step 8: Manual check in the app (AC-9, AC-10, AC-11)**
+
+Rebuild, and quit any running SPEXR first (`docs/memory/electron-single-instance-lock.md`). Then:
+1. **One Claude task in a scratch repo.** Set the prompt to "Create notes.md with one line.", switch on "Loop until converged", set the stop criteria to "notes.md has at least three lines", max iterations 4, check command `test $(wc -l < notes.md) -ge 3`, and permission mode `acceptEdits`. Run it. The row goes through Working → Checking → Working (2 / 4) and ends Converged. The card shows each follow-up arriving as **one** prompt; when a check failed, the follow-up quotes its output. The card's name shows `(n/4)` for the current iteration.
+2. **Max iterations.** Same task with max iterations 1 and stop criteria that cannot be met ("the file has 100 lines"). The row shows Failed with "Not converged after 1 iteration", and the run shows "Paused on a failure".
+3. **Pause and Resume.** Press Pause while a looping task is working. When its turn ends, the row shows Held and nothing is pasted. Press Resume: the follow-up is pasted, and the run bar goes back to Running.
+4. **Timeout.** Set the check to `sleep 30` with a timeout of 5. The follow-up says the check timed out, and no `sleep` is left running (`pgrep -f 'sleep 30'` is empty).
+5. **opencode.** One looping opencode task converges over two iterations (each tens of seconds late).
+6. **Both themes, and keyboard only.** Tab reaches the loop switch and every loop field with a visible focus ring; the fieldset unfolds; Held and Checking are announced.
+7. **A real check.** In a repo whose `pnpm` comes from nvm, a task with check `pnpm test` gets past "command not found". If it does not, the login shell is missing the PATH (R10): record that on the PR and change the sidebar hint to require full paths.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/browser/darkfactory/schedule/ src/browser/darkfactory/darkfactory-wall-widget.tsx src/browser/style/spexr.css
+git commit -m "feat(schedule): loop settings and Pause/Resume in the plant-schedule sidebar (AC-9..AC-11)"
+```
+
+**Slice 3 ends here.** Push to https://github.com/sondalab-ai/spexr-ide/pull/66 and tick the slice.
+
+---
 
 # Slice 4 — The graph (outline; plan in full after Slice 3)
 
-- **Engine:** `retry { task }` (from iteration 1, same workspace, new session; clears the failure pause when nothing else is failed/interrupted), `skip { task }` (placeholders render empty), Retry/Skip also for `interrupted`.
+- **Engine:** `retry { task }` (from iteration 1, same workspace, new session), `skip { task }` (placeholders render empty), Retry/Skip also for `interrupted`. Both recompute the failure pause the way `resume` does (Slice 3, R3): `pausedBy` stays `"operator"` while the operator has paused, else it is `"failure"` only while a task is still failed or interrupted.
 - **Workspaces** (`node/schedule/workspace.ts`): `git -C <project> rev-parse --show-toplevel`, worktree at `<parent>/<repo>-spexr-<schedule>-<task>` on `spexr/<schedule>/<task>`; reuse on retry; `execFile` only. Tests against a temporary git repo.
-- **Service:** `pause`, `resume`, `retry(scheduleId, taskId, launch)`, `skip`.
+- **Service:** `retry(scheduleId, taskId, launch)`, `skip` (`pause`/`resume` shipped in Slice 3, Task 19; AC-15's "Pause and Resume work at any time" is re-checked here across a multi-task graph).
 - **UI:** "waits for" multi-select, workspace picker (folder / worktree / same as …), placeholder picker listing upstream tasks, account picker, inline validation everywhere, row selection highlights upstream tasks, Retry/Skip on failed rows; full Look and feel pass in both themes and keyboard-only (AC-17).
