@@ -101,4 +101,47 @@ describe("watchOpencodeTask", () => {
     await flush();
     expect(turnEnds()).toBe(2);
   });
+
+  it("keeps the re-arm baseline monotonic when a scan reports a lower turnCount (e.g. `opencode export` failing)", async () => {
+    const src = source();
+    const events: WatchEvent[] = [];
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const turnEnds = () => events.filter((e) => e.type === "turn-ended").length;
+    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0, every: () => () => {} }, (e) =>
+      events.push(e),
+    );
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]);
+    await flush();
+    expect(turnEnds()).toBe(1);
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: false, turnCount: 0 })]); // a failed scan: not ended
+    await flush();
+    expect(turnEnds()).toBe(1);
+    watch.arm();
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]); // the old reply, still on screen
+    await flush();
+    expect(turnEnds()).toBe(1);
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 2 })]); // answered
+    await flush();
+    expect(turnEnds()).toBe(2);
+  });
+
+  it("after arm(), a normal new-prompt → acting → ended cycle counts exactly once", async () => {
+    const src = source();
+    const events: WatchEvent[] = [];
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const turnEnds = () => events.filter((e) => e.type === "turn-ended").length;
+    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0, every: () => () => {} }, (e) =>
+      events.push(e),
+    );
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]);
+    await flush();
+    expect(turnEnds()).toBe(1);
+    watch.arm();
+    src.emit([tile("new", "/repo", { state: "working", turnCount: 2 })]); // the pasted follow-up: agent acting
+    await flush();
+    expect(turnEnds()).toBe(1);
+    src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 2 })]); // its reply lands
+    await flush();
+    expect(turnEnds()).toBe(2);
+  });
 });

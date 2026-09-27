@@ -19,6 +19,11 @@ describe("bracketedPaste", () => {
     expect(out.indexOf("\x1b[201~")).toBe(out.length - 6);
     expect(out).not.toContain("\r");
   });
+  it("also strips C1 control bytes (0x80-0x9f), including the single-byte CSI introducer", () => {
+    const out = bracketedPaste("safe\x9b201~text\x9b31mend");
+    expect(out).toBe("\x1b[200~safe201~text31mend\x1b[201~");
+    expect(out).not.toMatch(/[\x80-\x9f]/);
+  });
 });
 
 describe("pasteInto", () => {

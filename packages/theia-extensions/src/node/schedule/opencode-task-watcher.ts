@@ -67,7 +67,10 @@ export function watchOpencodeTask(
     }
     const mine = tiles.find((t) => t.sessionId === sessionId);
     if (!mine) return;
-    turnsSeen = mine.turnCount ?? 0;
+    // Never lower the baseline: a scan whose `opencode export` failed can report
+    // turnCount 0 for a tile that is otherwise unchanged, and a dip here would
+    // let a later, healthy scan of the same stale reply look like a new prompt.
+    turnsSeen = Math.max(turnsSeen, mine.turnCount);
     if (armAfter !== undefined && turnsSeen > armAfter) {
       tracker.arm();
       armAfter = undefined;

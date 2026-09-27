@@ -117,4 +117,19 @@ describe("watchClaudeTask", () => {
     await h.advance(1_000);
     expect(ends(h.events)).toEqual(["one", "two"]);
   });
+
+  it("after arm(), a normal new-prompt → acting → ended cycle counts exactly once", async () => {
+    let batch: string[] | undefined = [user("p"), said("one")];
+    const h = harness(() => batch);
+    await h.advance(1_000);
+    batch = [];
+    expect(ends(h.events)).toEqual(["one"]);
+    h.watch.arm();
+    batch = [user("follow-up")]; // the pasted prompt lands: the transcript ends mid-turn
+    await h.advance(1_000);
+    expect(ends(h.events)).toEqual(["one"]);
+    batch = [said("two")]; // its reply lands
+    await h.advance(1_000);
+    expect(ends(h.events)).toEqual(["one", "two"]);
+  });
 });
