@@ -1564,7 +1564,7 @@ export function watchClaudeTask(
   listener: (e: WatchEvent) => void,
 ): () => void {
   const startedAt = deps.now();
-  const tracker = new TurnTracker({ permissionMode: req.permissionMode, settleMs: SETTLE_MS });
+  const tracker = new TurnTracker({ permissionMode: req.permissionMode, settleMs: SETTLE_MS, armed: true });
   let path: string | undefined;
   let cursor: FollowCursor | undefined;
   let entries: StateEntry[] = [];
@@ -1770,7 +1770,7 @@ export function watchOpencodeTask(
 ): () => void {
   const known = source.knownSessionIds();
   const startedAt = deps.now();
-  const tracker = new TurnTracker({ permissionMode: req.permissionMode, settleMs: 0 });
+  const tracker = new TurnTracker({ permissionMode: req.permissionMode, settleMs: 0, armed: true });
   let sessionId: string | undefined;
   let stopped = false;
   const stopScans = deps.every(async () => source.requestScan());
