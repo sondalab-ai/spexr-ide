@@ -75,6 +75,7 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
       publish: (file: ScheduleFile) => this.client?.onSnapshot({ schedules: file.schedules, runs: file.runs }),
       paste: (id, text) => this.pty.paste(id, text),
       check: (req, stillWanted) => this.checks.run(req, stillWanted),
+      close: (id, pid) => this.pty.close(id, pid),
     };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bracketedPaste, pasteInto, withoutClaudeSessionMarkers } from "./schedule-pty.js";
+import { bracketedPaste, pasteInto, SchedulePty, withoutClaudeSessionMarkers } from "./schedule-pty.js";
 
 describe("withoutClaudeSessionMarkers", () => {
   it("clears CLAUDECODE and CLAUDE_CODE_* but keeps the account", () => {
@@ -33,5 +33,31 @@ describe("pasteInto", () => {
     await pasteInto((d) => writes.push(d), "go", async (ms) => void waits.push(ms));
     expect(writes).toEqual(["\x1b[200~go\x1b[201~", "\r"]);
     expect(waits).toEqual([100]);
+  });
+});
+
+describe("SchedulePty.close", () => {
+  function pty(pids: Record<number, number>) {
+    const closed: number[] = [];
+    const p = new SchedulePty();
+    (p as unknown as { terminals: unknown }).terminals = {
+      getProcessId: async (id: number) => {
+        if (!(id in pids)) throw new Error("gone");
+        return pids[id]!;
+      },
+      close: async (id: number) => void closed.push(id),
+    };
+    return { p, closed };
+  }
+  it("closes a terminal that still runs the recorded process", async () => {
+    const { p, closed } = pty({ 4: 40 });
+    await p.close(4, 40);
+    expect(closed).toEqual([4]);
+  });
+  it("leaves alone a terminal id that now runs another process, or none (R13)", async () => {
+    const { p, closed } = pty({ 4: 99 });
+    await p.close(4, 40);
+    await p.close(5, 50);
+    expect(closed).toEqual([]);
   });
 });

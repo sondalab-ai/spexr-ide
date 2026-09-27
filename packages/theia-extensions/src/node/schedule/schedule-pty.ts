@@ -86,4 +86,14 @@ export class SchedulePty {
     const d = p.onExit(() => listener());
     return () => d.dispose();
   }
+
+  /**
+   * End a task's session, but only while `terminalId` still runs `processId`:
+   * terminal ids start over when the backend restarts, and another process's
+   * terminal must never be closed (R13). Resolves either way.
+   */
+  async close(terminalId: number, processId: number): Promise<void> {
+    const current = await this.terminals.getProcessId(terminalId).catch(() => -1);
+    if (current === processId) await this.terminals.close(terminalId);
+  }
 }

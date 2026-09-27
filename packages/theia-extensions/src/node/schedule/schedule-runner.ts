@@ -29,6 +29,8 @@ export interface RunnerPorts {
   paste(terminalId: number, text: string): Promise<void>;
   /** Queued backend-wide; resolves undefined when `stillWanted` said no once the check's turn came. */
   check(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined>;
+  /** End a pty, only while it still runs `processId` (R13, R14). */
+  close(terminalId: number, processId: number): Promise<void>;
 }
 
 /**
@@ -132,8 +134,14 @@ export class ScheduleRunner {
     return this.serial(async () => {
       const schedule = this.schedule(scheduleId);
       const prev = this.file.runs[scheduleId];
-      if (!schedule || !prev) return;
-      if (runId !== undefined && prev.runId !== runId) return;
+      if (!schedule || !prev) {
+        if (event.type === "started") await this.closeTerminal(event); // R14: its run and schedule are gone
+        return;
+      }
+      const stale = runId !== undefined && prev.runId !== runId;
+      // R14: a pty that started for a run that is gone has no card and nothing watching it.
+      if (event.type === "started" && (stale || prev.status !== "running")) await this.closeTerminal(event);
+      if (stale) return;
       const { run, effects } = step(schedule, prev, event);
       await this.commit(scheduleId, run, effects);
     });
@@ -185,32 +193,54 @@ export class ScheduleRunner {
   }
 
   private async perform(scheduleId: string, runId: string, e: Effect): Promise<void> {
-    if (e.type === "name") {
-      await this.ports.rename(e.sessionId, e.name).catch((err) => console.error("[schedule] renaming the session failed", err));
-      return;
+    switch (e.type) {
+      case "name":
+        await this.ports.rename(e.sessionId, e.name).catch((err) => console.error("[schedule] renaming the session failed", err));
+        return;
+      case "paste":
+        // Re-armed first: the reply to this paste counts even if it lands between
+        // two reads, and the reply still on screen never counts twice (R1).
+        this.watches.get(`${scheduleId}/${e.task}`)?.arm();
+        await this.ports.paste(e.terminalId, e.text).catch((err) => console.error("[schedule] pasting the follow-up failed", err));
+        return;
+      case "check":
+        await this.check(scheduleId, runId, e);
+        return;
+      case "close":
+        await this.closeTerminal(e);
+        return;
+      case "start":
+        await this.start(scheduleId, runId, e);
+        return;
+      default: {
+        const unknown: never = e;
+        throw new Error(`Unknown effect: ${JSON.stringify(unknown)}`);
+      }
     }
-    if (e.type === "paste") {
-      // Re-armed first: the reply to this paste counts even if it lands between
-      // two reads, and the reply still on screen never counts twice (R1).
-      this.watches.get(`${scheduleId}/${e.task}`)?.arm();
-      await this.ports.paste(e.terminalId, e.text).catch((err) => console.error("[schedule] pasting the follow-up failed", err));
-      return;
-    }
-    if (e.type === "check") {
-      await this.check(scheduleId, runId, e);
-      return;
-    }
-    if (e.type !== "start") return;
+  }
+
+  /** Close a pty the run no longer wants (R13, R14); the port checks the process id first. */
+  private async closeTerminal(t: { terminalId: number; processId: number }): Promise<void> {
+    await this.ports.close(t.terminalId, t.processId).catch((err) => console.error("[schedule] closing a session failed", err));
+  }
+
+  /** Launch a task's pty and register its watcher and exit listener; every outcome goes back through dispatch(), bound to `runId`. */
+  private async start(scheduleId: string, runId: string, e: Extract<Effect, { type: "start" }>): Promise<void> {
     const schedule = this.schedule(scheduleId);
     const task = schedule?.tasks.find((t) => t.id === e.task);
     const run = this.file.runs[scheduleId];
     const launch = task && run?.launches[task.id];
-    // Bound to this run: dispatch() drops it inside the queue if Abort→Run
-    // has since replaced run `runId` (see dispatch()) — that is what makes a
-    // superseded run's event harmless, even though a busy queue can still let
-    // this perform register a watcher/exit listener below before it notices.
+    // Bound to this run: dispatch() drops it inside the queue if Abort→Run has since replaced run `runId`.
     const send = (event: EngineEvent): void => {
       void this.dispatch(scheduleId, event, runId).catch((err) => console.error("[schedule] dispatch failed", err));
+    };
+    // An early-out only: it reads `this.file` outside the queue, so on a busy
+    // queue it can still see a superseded run as current and register a
+    // watcher for it. Abort's commit() releases that registration, and
+    // dispatch() drops the stale "started" and closes its pty (R14).
+    const isCurrentRun = (): boolean => {
+      const current = this.file.runs[scheduleId];
+      return !!current && current.runId === runId && current.status === "running";
     };
     if (!schedule || !task || !run || !launch) {
       send({ type: "start-failed", task: e.task, error: "The task is no longer in the schedule." });
@@ -226,19 +256,6 @@ export class ScheduleRunner {
       ownsAccount: task.harness === "claude",
       keepShell: false,
     });
-    // A rerun (Abort → Run) may replace this run while the launch is still
-    // pending. This is only an early-out, not the guarantee: it reads
-    // `this.file` outside the queue, so on a busy queue (Abort/Run already
-    // queued but not yet applied) it can still see this run as current and go
-    // on to register a watcher/exit listener for a task that no longer
-    // belongs to it. When that happens, Abort's own commit() releases that
-    // registration once it runs (the pty itself is never closed — no kill
-    // port — same as any plain Abort), and dispatch()'s `runId` check is what
-    // actually keeps the events those listeners raise from reaching run 2.
-    const isCurrentRun = (): boolean => {
-      const current = this.file.runs[scheduleId];
-      return !!current && current.runId === runId && current.status === "running";
-    };
     let terminal: { terminalId: number; processId: number };
     try {
       terminal = await this.ports.launch(line, workspace);
@@ -247,7 +264,11 @@ export class ScheduleRunner {
       send({ type: "start-failed", task: task.id, error: err instanceof Error ? err.message : String(err) });
       return;
     }
-    if (!isCurrentRun()) return;
+    if (!isCurrentRun()) {
+      // R14: the run was aborted or replaced while this pty started; it has no card and no watcher.
+      await this.closeTerminal(terminal);
+      return;
+    }
     const onWatch = (w: WatchEvent): void => send({ ...w, task: task.id } as EngineEvent);
     const registered: (() => void)[] = [];
     let watch: TaskWatch;
@@ -269,6 +290,7 @@ export class ScheduleRunner {
     } catch (err) {
       for (const stop of registered) stop();
       send({ type: "start-failed", task: task.id, error: err instanceof Error ? err.message : String(err) });
+      await this.closeTerminal(terminal); // R14: nothing would ever watch it
       return;
     }
     this.registerReleases(scheduleId, task.id, registered);

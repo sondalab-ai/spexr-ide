@@ -18,6 +18,7 @@ function fakes() {
   const names: [string, string][] = [];
   const log: string[] = [];
   const checks: CheckRequest[] = [];
+  const closes: [number, number][] = [];
   let checkResult: CheckResult = { ok: true, tail: "" };
   let watch: ((e: WatchEvent) => void) | undefined;
   let exit: (() => void) | undefined;
@@ -38,6 +39,7 @@ function fakes() {
       checks.push(req);
       return checkResult;
     },
+    close: async (id, pid) => void closes.push([id, pid]),
   };
   return {
     ports,
@@ -45,6 +47,7 @@ function fakes() {
     names,
     log,
     checks,
+    closes,
     setCheck: (r: CheckResult) => void (checkResult = r),
     emit: (e: WatchEvent) => watch!(e),
     exit: () => exit!(),
@@ -157,6 +160,7 @@ describe("ScheduleRunner", () => {
     expect(run.tasks["a"]!.terminalId).toBe(2); // bound to run 2's terminal, never run 1's
     expect(watchCalls).toEqual(["u-1"]); // only run 2 ever registered a watcher
     expect(stopped).toEqual([]); // nothing was registered for run 1, so nothing needed releasing
+    expect(f.closes).toEqual([[1, 10]]); // R14: run 1's pty had no card and nothing watching it
   });
 
   it("does not fail a rerun's task when the previous run's launch rejects late", async () => {
@@ -301,6 +305,44 @@ describe("ScheduleRunner", () => {
     expect(run.tasks["a"]!.status).toBe("running");
     expect(run.tasks["a"]!.terminalId).toBe(2); // never bound to run 1's terminal (1)
     expect(run.tasks["a"]!.sessionId).toBe("u-2"); // never bound to run 1's session (u-1)
+    expect(f.closes).toEqual([[1, 10]]); // R14: dispatch() dropped run 1's "started" and closed its pty
+  });
+
+  it("closes a stale started event whose run and schedule were removed while it was queued (R14)", async () => {
+    const f = fakes();
+    type Terminal = { terminalId: number; processId: number };
+    const pending: { resolve: (t: Terminal) => void }[] = [];
+    f.ports.launch = () => new Promise<Terminal>((resolve) => pending.push({ resolve }));
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+
+    await runner.run("s", { a: launch });
+    await settle();
+    const run1Launch = pending.shift()!;
+
+    // Occupy the queue the same way as the "reviewer repro" test above.
+    const blockedSave = deferred<void>();
+    const originalSave = f.ports.save;
+    f.ports.save = (file) => blockedSave.promise.then(() => originalSave(file));
+    const blockingSave = runner.saveSchedule({ id: "t", name: "T", tasks: [] });
+
+    // Queue Abort then removeSchedule behind the blocked save: by the time
+    // removeSchedule's own status check runs, Abort has already applied, so
+    // it deletes both the run and the schedule.
+    const abortDone = runner.abort("s");
+    const removeDone = runner.removeSchedule("s");
+
+    // Run 1's launch resolves while the queue is still blocked: it registers
+    // (reading `this.file` outside the queue) and queues a "started" dispatch
+    // bound to run 1, behind Abort and removeSchedule.
+    run1Launch.resolve({ terminalId: 1, processId: 10 });
+    await settle();
+
+    blockedSave.resolve();
+    await Promise.all([blockingSave, abortDone, removeDone]);
+    await settle();
+
+    expect(f.saved()!.runs["s"]).toBeUndefined(); // the run is gone, not merely superseded
+    expect(f.closes).toEqual([[1, 10]]); // R14: a stale "started" for a run/schedule that no longer exist still gets closed
   });
 
   it("drops a late watcher/exit event from a run that Abort→Run already superseded", async () => {
@@ -431,5 +473,49 @@ describe("ScheduleRunner", () => {
     await runner.resume("s");
     await settle();
     expect(f.log).toEqual(["arm", `paste:3:${followUpPrompt(looping.tasks[0]!)}`]);
+  });
+
+  it("closes a launch that resolves after its run was aborted: it would have no card (R14)", async () => {
+    const f = fakes();
+    type Terminal = { terminalId: number; processId: number };
+    const pending: ((t: Terminal) => void)[] = [];
+    f.ports.launch = () => new Promise<Terminal>((resolve) => pending.push(resolve));
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    await runner.abort("s");
+    pending.shift()!({ terminalId: 5, processId: 50 });
+    await settle();
+    expect(f.closes).toEqual([[5, 50]]);
+    expect(f.watching()).toBe(false);
+  });
+
+  it("closes the pty when its watcher cannot be registered (R14)", async () => {
+    const f = fakes();
+    f.ports.watchClaude = () => {
+      throw new Error("boom");
+    };
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("failed");
+    expect(f.closes).toEqual([[3, 30]]);
+  });
+
+  it("a retry closes the failed session and launches a new one; Abort closes nothing (R13)", async () => {
+    const f = fakes();
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    f.exit();
+    await settle();
+    await runner.dispatch("s", { type: "retry", task: "a", launch });
+    await settle();
+    expect(f.closes).toEqual([[3, 30]]);
+    expect(f.lines).toHaveLength(2);
+    expect(f.saved()!.runs["s"]!.tasks["a"]).toMatchObject({ status: "running", terminalId: 3 });
+    await runner.abort("s");
+    await settle();
+    expect(f.closes).toEqual([[3, 30]]); // Abort keeps sessions open (spec)
   });
 });
