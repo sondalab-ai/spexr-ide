@@ -2,7 +2,7 @@ import type { AgentState } from "../../common/darkfactory-protocol.js";
 
 const IDLE_WINDOW_MS = 12 * 3_600_000;
 /** A tool_use must sit unresolved this long before we call it a pending prompt. */
-const SETTLE_MS = 2_000;
+export const SETTLE_MS = 2_000;
 /**
  * A live session whose transcript has not been written for this long is dormant,
  * not working: real work (tools, inferences) writes far more often, so a longer
@@ -13,9 +13,9 @@ const STALE_MS = 10 * 60_000;
 /** Tools whose use pauses the agent on a permission prompt. */
 const PERMISSION_TOOLS = new Set(["Bash", "Edit", "Write", "WebFetch"]);
 /** Permission modes that auto-approve tools, so a pending tool_use is work, not a prompt. */
-const AUTO_APPROVE_MODES = new Set(["auto", "bypassPermissions"]);
+export const AUTO_APPROVE_MODES = new Set(["auto", "bypassPermissions"]);
 
-interface StateEntry {
+export interface StateEntry {
   isMeta?: boolean;
   message?: { role?: string; content?: unknown };
 }
@@ -30,7 +30,7 @@ export interface SessionStatus {
   needsYouCertain: boolean;
 }
 
-type Turn = "acting" | "permission" | "ended" | "unknown";
+export type Turn = "acting" | "permission" | "ended" | "unknown";
 
 /** A genuine conversation message (not injected meta, not a typed metadata record). */
 function isRealMessage(e: StateEntry | undefined): boolean {
@@ -74,7 +74,7 @@ function isInterruptMarker(e: StateEntry | undefined): boolean {
  * permission-mode, system). Without this, a finished turn's trailing metadata
  * masks the assistant's closing text and the session looks like it is still working.
  */
-function lastTurn(entries: StateEntry[]): Turn {
+export function lastTurn(entries: StateEntry[]): Turn {
   let i = entries.length - 1;
   while (i >= 0) {
     // An interrupt marker after the last real message means the turn was aborted
