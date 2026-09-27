@@ -1,4 +1,5 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
+import { Emitter } from "@theia/core/lib/common/event";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { stat, writeFile } from "node:fs/promises";
@@ -296,6 +297,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /** TTL cache of discovered config dirs (one $HOME readdir per TTL, not per scan). */
   private configDirsCache?: { at: number; value: string[] };
   private readonly index = new Map<string, SessionMeta>();
+  private readonly scanned = new Emitter<AgentTile[]>();
   /**
    * Metadata for sessions reached through search, not through the scan.
    * `listTiles` clears `index` on every poll, so a hit registered there would
@@ -598,7 +600,29 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // The names on disk get the same treatment, on a much longer clock. A failed
     // sweep must not fail the scan: the wall is what the user asked for.
     await this.pruneNames(allRefs).catch(() => {});
+    this.scanned.fire(tiles);
     return tiles;
+  }
+
+  /** Each finished scan's tiles, for backend consumers (the plant schedule's opencode tasks). */
+  onScanned(listener: (tiles: AgentTile[]) => void): () => void {
+    const d = this.scanned.event(listener);
+    return () => d.dispose();
+  }
+
+  /** Scan now, for a consumer that needs fresh tiles while no window is asking. */
+  requestScan(): void {
+    void this.listTiles().catch(() => undefined);
+  }
+
+  /** Session ids the last scan knew. */
+  knownSessionIds(): Set<string> {
+    return new Set(this.index.keys());
+  }
+
+  /** A scanned session's entries through the loader the scan kept; [] when unknown. */
+  async scanEntries(sessionId: string): Promise<unknown[]> {
+    return (await this.meta(sessionId)?.loadEntries?.().catch(() => [])) ?? [];
   }
 
   /**
