@@ -215,13 +215,15 @@ existing worktree for the same branch is reused on retry.
 
 ### Turn end and convergence
 
-**Claude.** The runner finds the transcript at
+**Claude.** Until the transcript exists, the session may be waiting at a
+startup dialog (folder trust, bypass-mode confirmation): after 8 seconds
+without one the task shows *Needs you*, and it fails only if its pty exits.
+The runner finds the transcript at
 `<account dir>/projects/*/<session id>.jsonl`, using the account directory the
 frontend resolved, and follows it with the incremental reader the wall already
 uses (`node/darkfactory/follow-reader.ts`). It reads the turn with the same
 rules as `classifySession` (`node/darkfactory/session-state.ts`), so a turn end
-is seen as it is written, not on the wall's 20-second poll. A transcript that
-does not appear within 60 seconds of launch fails the start.
+is seen as it is written, not on the wall's 20-second poll.
 
 **opencode.** opencode cannot be given a session id and has no transcript file:
 its sessions are read with `opencode db` queries, and each query writes
@@ -419,8 +421,33 @@ Vitest, next to each module, with `--maxWorkers=2`
 
 ## Risks
 
-- **Pasting into a TUI.** That both TUIs accept a bracketed paste followed by
-  Enter as one prompt while idle is expected, not yet tried. Slice 3 opens with
+- **Probe results (2026-09-27, Claude Code in a scripted pty).**
+  - `claude --session-id <uuid> '<prompt>'` writes
+    `<account dir>/projects/<encoded cwd>/<uuid>.jsonl` (seen under
+    `~/.claude-perso` with that account exported). Confirmed.
+  - **A folder Claude has not seen shows a trust dialog before anything is
+    written**, and its default answer is "No, exit". So a missing transcript
+    in the first seconds usually means "waiting for the operator", not
+    "failed": the runner reports such a task as *Needs you* after 8 seconds
+    without a transcript, and fails it only if the pty exits. Every new
+    worktree (Slice 4) is a new folder and will ask once.
+  - `--permission-mode bypassPermissions` showed no extra dialog, but only
+    because the account has `skipDangerousModePermissionPrompt: true`; other
+    accounts get a first-use confirmation, handled by the same *Needs you* rule.
+  - A bracketed paste (`ESC[200~…ESC[201~`) then Enter, sent to an idle
+    Claude TUI, arrives as one user message with both lines. Confirmed for
+    Claude; not tried for opencode.
+  - A Claude started with `CLAUDE_CODE_CHILD_SESSION` in its environment (a
+    SPEXR launched from inside a Claude Code session) runs with transcript
+    saving off. The backend terminal server merges the backend's own
+    environment into every pty, so scheduled ptys clear the `CLAUDECODE` and
+    `CLAUDE_CODE_*` variables.
+  - Theia's terminal server creates a pty with no window connected: every use
+    of its client is guarded (`base-terminal-server.js`), and `create` does
+    not touch it. Attaching a later window by terminal id is the path pinned
+    cards already use after a reload. Checked in code, not in the app.
+- **Pasting into opencode.** Only tried with Claude; Slice 3 checks opencode
+  before relying on it. Slice 3 opens with
   that probe; if it fails, the follow-up is sent through the harness's resume
   with a prompt instead (`--resume <id> "<follow-up>"`), which restarts the
   process but keeps the conversation.

@@ -28,7 +28,7 @@
 - Ids: `^[a-z0-9-]{1,32}$` (schedule and task). `maxIterations`: 1..50. Prompt: 1..20 000 characters, must not start with `-`. Model: `^[A-Za-z0-9._/:\[\]-]{1,100}$`.
 - Claude permission modes: `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan`. opencode: `auto` only. Warned modes: claude `auto`, `bypassPermissions`; opencode `auto`.
 - Marker: the literal line `CONVERGED`. Store: `~/.spexr/schedules.json`, override `SPEXR_SCHEDULES`.
-- Claude transcript must appear within 60 s of launch; opencode session within 120 s (scan-driven).
+- A Claude task with no transcript after 8 s shows *Needs you* (startup dialog) and fails only when its pty exits; an opencode session must appear within 120 s (scan-driven).
 - UI: kit components and `--sl-*` tokens only, no raw colours; both themes; Run is the only primary button (spec, Look and feel).
 - One commit per task; message style `feat(schedule): …` / `refactor(darkfactory): …`, ending with the `Co-Authored-By` line the session provides.
 
@@ -37,7 +37,7 @@
 1. **A pasted follow-up counted as a second turn end.** Right after a turn ends the transcript still ends with that reply; the tracker must not report "turn ended" again until it has seen the agent working. Pinned in Task 7 (`TurnTracker` "does not report the same ended turn twice").
 2. **A reply split over several assistant entries.** The final reply is every assistant text block after the last genuine prompt, not the last entry. Pinned in Task 7 (`finalReply` "joins the whole last turn").
 3. **A damaged `schedules.json`.** Treating a parse failure as "no schedules" and then saving would erase the operator's work. The store moves the bad file aside before starting empty. Pinned in Task 4.
-4. **A transcript that never appears** (wrong account dir, harness crashed before writing). The task must fail with a reason, not sit in `running` forever. Pinned in Task 8 ("reports session-missing after 60 s").
+4. **A transcript that never appears** — usually Claude's folder-trust dialog (probe, 2026-09-27). The task must show *Needs you*, not sit silently in `running`, and must fail when the pty exits. Pinned in Task 8 ("reports needs-you while no transcript exists") and Task 11 ("fails the task when the pty exits first").
 5. **Parallel check commands overloading the machine** (several `pnpm test` at once; the 18 GB machine crashed on 2026-09-24). Checks are serialized backend-wide and killed by process group on timeout — Slice 3 owns this; its outline below carries the required tests.
 
 ---
@@ -1019,7 +1019,9 @@ git commit -m "feat(schedule): atomic schedule store that sets a damaged file as
 
 # Slice 2 — One task, end to end
 
-### Task 5: Probes (manual, results recorded in the spec)
+### Task 5: Probes (manual, results recorded in the spec) — DONE 2026-09-27
+
+Results are in the spec under **Risks → Probe results**; Tasks 8 and 11 were amended for them (startup dialog → *Needs you*; ptys clear Claude session markers).
 
 No product code. Each probe answers a spec Risk; record each result under **Risks** in `docs/specs/0018-plant-schedule.md` with the date, and stop to re-plan if one fails.
 
@@ -1361,7 +1363,7 @@ git commit -m "feat(schedule): turn tracker that counts each turn once, and the 
 
 **Interfaces:**
 - Consumes: `readFollowChunk`, `FollowCursor` (`node/darkfactory/follow-reader.ts`); `projectsDirOf` (`node/darkfactory/config-dirs.ts`); `lastTurn`, `SETTLE_MS` (Task 7); `TurnTracker`, `finalReply` (Task 7).
-- Produces: `WatchEvent = { type: "session-found"; sessionId: string } | { type: "session-missing" } | { type: "turn-ended"; reply: string } | { type: "needs-you" } | { type: "resumed-working" }`; `CLAUDE_TRANSCRIPT_WAIT_MS = 60_000`; `everyMs(ms)`; `findClaudeTranscript(configDir, sessionId, home?): Promise<string | undefined>`; `watchClaudeTask(req, deps, listener): () => void`.
+- Produces: `WatchEvent = { type: "session-found"; sessionId: string } | { type: "session-missing" } | { type: "turn-ended"; reply: string } | { type: "needs-you" } | { type: "resumed-working" }`; `CLAUDE_STARTUP_PROMPT_MS = 8_000`; `everyMs(ms)`; `findClaudeTranscript(configDir, sessionId, home?): Promise<string | undefined>`; `watchClaudeTask(req, deps, listener): () => void`.
 
 - [ ] **Step 1: Write the failing tests (Review Focus 4)**
 
@@ -1371,7 +1373,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CLAUDE_TRANSCRIPT_WAIT_MS, findClaudeTranscript, watchClaudeTask, type WatchEvent } from "./claude-task-watcher.js";
+import { CLAUDE_STARTUP_PROMPT_MS, findClaudeTranscript, watchClaudeTask, type WatchEvent } from "./claude-task-watcher.js";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -1426,13 +1428,23 @@ function harness(lines: () => string[] | undefined) {
 const L = (o: unknown) => JSON.stringify(o);
 
 describe("watchClaudeTask", () => {
-  it("reports session-missing after the wait and stops", async () => {
-    const h = harness(() => undefined);
-    await h.advance(CLAUDE_TRANSCRIPT_WAIT_MS - 1);
+  it("reports needs-you while no transcript exists (a startup dialog), once, and keeps waiting", async () => {
+    let batch: string[] | undefined;
+    const h = harness(() => batch);
+    await h.advance(CLAUDE_STARTUP_PROMPT_MS - 1);
     expect(h.events).toEqual([]);
     await h.advance(2);
-    expect(h.events).toEqual([{ type: "session-missing" }]);
-    expect(h.stopped()).toBe(true);
+    expect(h.events).toEqual([{ type: "needs-you" }]);
+    await h.advance(60_000);
+    expect(h.events).toEqual([{ type: "needs-you" }]);
+    expect(h.stopped()).toBe(false);
+    batch = [L({ message: { role: "user", content: "p" } })];
+    await h.advance(1_000);
+    expect(h.events).toEqual([
+      { type: "needs-you" },
+      { type: "session-found", sessionId: "abc" },
+      { type: "resumed-working" },
+    ]);
   });
 
   it("reports the session, then a turn end with the whole reply", async () => {
@@ -1465,7 +1477,12 @@ import { projectsDirOf } from "../darkfactory/config-dirs.js";
 import { lastTurn, SETTLE_MS, type StateEntry } from "../darkfactory/session-state.js";
 import { TurnTracker, finalReply, type TurnSignal } from "./turn-tracker.js";
 
-export const CLAUDE_TRANSCRIPT_WAIT_MS = 60_000;
+/**
+ * No transcript this long after launch: Claude is most likely at a startup
+ * dialog (folder trust, bypass-mode confirmation), which it shows before it
+ * writes anything (probe, 2026-09-27). The task then needs the operator.
+ */
+export const CLAUDE_STARTUP_PROMPT_MS = 8_000;
 const TICK_MS = 1_000;
 const FIRST_READ_BYTES = 4 * 1024 * 1024;
 /** Entries kept in memory: enough for any one turn, bounded for long loops. */
@@ -1536,9 +1553,10 @@ export const defaultClaudeWatchDeps: ClaudeWatchDeps = {
 };
 
 /**
- * Follow one scheduled Claude session: wait for its transcript (failing after
- * CLAUDE_TRANSCRIPT_WAIT_MS), then read what it gains every second and report
- * turn transitions. Returns a stop function.
+ * Follow one scheduled Claude session: wait for its transcript (reporting
+ * needs-you after CLAUDE_STARTUP_PROMPT_MS — the pty exiting is what fails the
+ * task), then read what it gains every second and report turn transitions.
+ * Returns a stop function.
  */
 export function watchClaudeTask(
   req: { sessionId: string; configDir: string; permissionMode?: string },
@@ -1550,18 +1568,20 @@ export function watchClaudeTask(
   let path: string | undefined;
   let cursor: FollowCursor | undefined;
   let entries: StateEntry[] = [];
+  let waitingAtStartup = false;
   let stop = (): void => {};
   stop = deps.every(async () => {
     if (!path) {
       path = await deps.find(req.configDir, req.sessionId);
       if (!path) {
-        if (deps.now() - startedAt >= CLAUDE_TRANSCRIPT_WAIT_MS) {
-          stop();
-          listener({ type: "session-missing" });
+        if (!waitingAtStartup && deps.now() - startedAt >= CLAUDE_STARTUP_PROMPT_MS) {
+          waitingAtStartup = true;
+          listener({ type: "needs-you" });
         }
         return;
       }
       listener({ type: "session-found", sessionId: req.sessionId });
+      if (waitingAtStartup) listener({ type: "resumed-working" });
     }
     const chunk = await deps.read(path, cursor, FIRST_READ_BYTES);
     cursor = chunk.cursor;
@@ -1592,7 +1612,7 @@ Expected: PASS.
 
 ```bash
 git add src/node/schedule/claude-task-watcher.ts src/node/schedule/claude-task-watcher.test.ts
-git commit -m "feat(schedule): follow a Claude task's transcript, failing when it never appears"
+git commit -m "feat(schedule): follow a Claude task's transcript; a startup dialog shows as Needs you"
 ```
 
 ### Task 9: opencode task watcher over the wall's scans
@@ -2190,6 +2210,18 @@ import { ProcessManager } from "@theia/process/lib/node/process-manager";
 import { TerminalProcess } from "@theia/process/lib/node/terminal-process";
 
 /**
+ * The terminal server merges the backend's environment into every pty. A SPEXR
+ * started from inside a Claude Code session carries that session's markers, and
+ * a Claude started with `CLAUDE_CODE_CHILD_SESSION` saves no transcript (probe,
+ * 2026-09-27). A null value removes a variable in Theia's env merge.
+ */
+export function withoutClaudeSessionMarkers(env: NodeJS.ProcessEnv): Record<string, null> {
+  const cleared: Record<string, null> = {};
+  for (const key of Object.keys(env)) if (key === "CLAUDECODE" || key.startsWith("CLAUDE_CODE_")) cleared[key] = null;
+  return cleared;
+}
+
+/**
  * Backend ptys for scheduled tasks, through the same terminal server the
  * frontend's terminals use: a window attaches to one by its terminal id.
  */
@@ -2199,7 +2231,13 @@ export class SchedulePty {
   @inject(ProcessManager) private readonly processes!: ProcessManager;
 
   async launch(line: string, cwd: string): Promise<{ terminalId: number; processId: number }> {
-    const terminalId = await this.terminals.create({ args: ["-i", "-l", "-c", line], rootURI: `file://${cwd}`, cols: 120, rows: 40 });
+    const terminalId = await this.terminals.create({
+      args: ["-i", "-l", "-c", line],
+      rootURI: `file://${cwd}`,
+      cols: 120,
+      rows: 40,
+      env: withoutClaudeSessionMarkers(process.env),
+    });
     if (terminalId < 0) throw new Error("The terminal server could not start the session.");
     return { terminalId, processId: await this.terminals.getProcessId(terminalId) };
   }
@@ -2221,6 +2259,23 @@ export class SchedulePty {
   }
 }
 ```
+
+Add `src/node/schedule/schedule-pty.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { withoutClaudeSessionMarkers } from "./schedule-pty.js";
+
+describe("withoutClaudeSessionMarkers", () => {
+  it("clears CLAUDECODE and CLAUDE_CODE_* but keeps the account", () => {
+    expect(
+      withoutClaudeSessionMarkers({ CLAUDECODE: "1", CLAUDE_CODE_CHILD_SESSION: "x", CLAUDE_CONFIG_DIR: "/a", PATH: "/bin" }),
+    ).toEqual({ CLAUDECODE: null, CLAUDE_CODE_CHILD_SESSION: null });
+  });
+});
+```
+
+(If importing `schedule-pty.ts` in vitest fails on Theia's decorators or module loading, move `withoutClaudeSessionMarkers` to `src/node/schedule/pty-env.ts` and import it from both.)
 
 - [ ] **Step 2: Failing runner tests (fake ports)**
 
