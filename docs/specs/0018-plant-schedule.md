@@ -5,7 +5,7 @@ status: draft
 createdAt: 2026-09-27
 workflowStep: spec
 forcedSteps: []
-updatedAt: 2026-09-27
+updatedAt: 2026-09-28
 ---
 > **What is this file.** Implementation contract for the "plant schedule": a
 > sidebar in the Dark Factory where the operator lays out a set of agent
@@ -151,7 +151,8 @@ validated on every save; an invalid one is saved but cannot be run.
 
 `node/schedule/schedule-engine.ts` is a pure state machine: it takes the
 schedule, the run state and an event, and returns the new run state plus the
-effects to perform (start task, paste follow-up, run check, create worktree).
+effects to perform (start task, paste follow-up, run check, create worktree,
+close session).
 All input/output lives in a thin runner around it, so every rule is testable
 without a process.
 
@@ -164,7 +165,9 @@ at a permission prompt: spec 0011's certain "needs you") and `interrupted`.
 - A task that fails pauses the run: tasks already running go on to their end;
   no new task starts. The operator then retries the task (from iteration 1, in
   the same workspace), skips it (its dependents may start; a placeholder
-  pointing at it renders empty), or aborts the run.
+  pointing at it renders empty — but a `sameAs` dependent of a `worktree` task
+  skipped before it started fails to start instead, as under **Launch**), or
+  aborts the run.
 - Retry starts the task at once, even while the run is paused; an operator
   pause then holds its turn end like any other. Nothing of the failed attempt
   is carried over (terminal, session, reply, error), and its session is closed
@@ -303,7 +306,7 @@ Contents, top to bottom:
   one more than its deepest upstream task), each layer a band, each task a row
   with its name, harness, workspace, state chip and iteration count
   (`2 / 5`). A row lists the tasks it waits for; selecting a task highlights
-  them.
+  them. A `failed` or `interrupted` row also offers Retry and Skip.
 - The task editor, opened from a row: project, workspace, harness, account,
   model, permission mode, prompt (with a placeholder picker listing only
   upstream tasks), loop settings, "waits for" (a multi-select of the other
@@ -392,8 +395,13 @@ The sidebar follows UX and visual-design practice, built on the
 - **AC-12** Every ready task starts at once; a task starts only after all of
   its `needs` have converged or been skipped.
 - **AC-13** `worktree` tasks get a fresh worktree on
-  `spexr/<schedule>/<task>`; `sameAs` tasks run in their upstream's workspace;
-  worktrees remain after the run.
+  `spexr/<schedule>/<task>` from the project's `HEAD`, mapped to the project's
+  own subfolder inside it when the project sits inside its repository; a retry
+  reuses that worktree or rebuilds it from the branch when only the branch is
+  left; a new run refuses a worktree or branch left from an earlier run and
+  names the commands that remove them. `sameAs` tasks run in the folder their
+  upstream actually used, and fail to start if that upstream was skipped
+  before it got one; worktrees remain after the run.
 - **AC-14** `{{<task>.reply}}` and `{{<task>.workspace}}` are filled in at
   start; a skipped task's placeholders render empty.
 - **AC-15** A failed task pauses the run; running tasks finish; retry, skip and
