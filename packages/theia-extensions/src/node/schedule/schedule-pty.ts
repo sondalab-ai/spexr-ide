@@ -1,4 +1,5 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
+import { FileUri } from "@theia/core/lib/common/file-uri";
 import { IShellTerminalServer } from "@theia/terminal/lib/common/shell-terminal-protocol";
 import { ProcessManager } from "@theia/process/lib/node/process-manager";
 import { TerminalProcess } from "@theia/process/lib/node/terminal-process";
@@ -27,7 +28,7 @@ export class SchedulePty {
   async launch(line: string, cwd: string): Promise<{ terminalId: number; processId: number }> {
     const terminalId = await this.terminals.create({
       args: ["-i", "-l", "-c", line],
-      rootURI: `file://${cwd}`,
+      rootURI: FileUri.create(cwd).toString(),
       cols: 120,
       rows: 40,
       env: withoutClaudeSessionMarkers(process.env),

@@ -2,7 +2,6 @@ import { inject, injectable, postConstruct } from "@theia/core/shared/inversify"
 import { randomUUID } from "node:crypto";
 import type { Schedule, TaskLaunch, ValidationProblem } from "../../common/schedule/schedule-types.js";
 import type { ScheduleSnapshot, SpexrScheduleClient, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
-import { validateSchedule } from "../../common/schedule/schedule-validate.js";
 import { SpexrDarkfactoryBackendService } from "../darkfactory/spexr-darkfactory-backend-service.js";
 import { loadSchedules, saveSchedules, type ScheduleFile } from "./schedule-store.js";
 import { ScheduleRunner } from "./schedule-runner.js";
@@ -36,19 +35,11 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
   }
 
   async save(schedule: Schedule): Promise<ValidationProblem[]> {
-    const runner = await this.runner;
-    if (runner.current.runs[schedule.id]?.status === "running") {
-      return [{ field: "run", message: "Abort the run before editing its schedule." }];
-    }
-    const others = runner.current.schedules.filter((s) => s.id !== schedule.id);
-    await runner.setSchedules([...others, schedule]);
-    return validateSchedule(schedule);
+    return (await this.runner).saveSchedule(schedule);
   }
 
   async remove(scheduleId: string): Promise<void> {
-    const runner = await this.runner;
-    if (runner.current.runs[scheduleId]?.status === "running") throw new Error("Abort the run before deleting its schedule.");
-    await runner.setSchedules(runner.current.schedules.filter((s) => s.id !== scheduleId));
+    await (await this.runner).removeSchedule(scheduleId);
   }
 
   async run(scheduleId: string, launches: Record<string, TaskLaunch>): Promise<ValidationProblem[]> {
