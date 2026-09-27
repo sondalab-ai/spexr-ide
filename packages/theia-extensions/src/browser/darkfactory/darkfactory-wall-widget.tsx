@@ -1461,8 +1461,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
                 )
               }
               onAbort={(id) => void this.schedules.abort(id).catch(() => undefined)}
-              onPause={(id) => void this.schedules.pause(id).catch(() => undefined)}
-              onResume={(id) => void this.schedules.resume(id).catch(() => undefined)}
+              onPause={(id) =>
+                this.schedules.pause(id).then(
+                  (): ValidationProblem[] => [],
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not pause the run." }],
+                )
+              }
+              onResume={(id) =>
+                this.schedules.resume(id).then(
+                  (): ValidationProblem[] => [],
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not resume the run." }],
+                )
+              }
               onFocusTask={(sid, tid) => this.focusTask(sid, tid)}
               onClose={() => this.setSidebarOpen(false)}
             />

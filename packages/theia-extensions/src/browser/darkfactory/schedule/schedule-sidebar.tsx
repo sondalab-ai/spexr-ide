@@ -8,10 +8,11 @@ import {
   PERMISSION_MODES,
   type Schedule,
   type ScheduleTask,
+  type TaskLoop,
   type ValidationProblem,
 } from "../../../common/schedule/schedule-types.js";
 import { validateSchedule } from "../../../common/schedule/schedule-validate.js";
-import { patchLoop, withCheck, withCheckTimeout, withLoop } from "./loop-edit.js";
+import { patchLoop, withCheck, withCheckTimeout, withLoop, withMaxIterations } from "./loop-edit.js";
 import { newSchedule, newTask, runBar, taskRows, taskTransitions, type TaskRow } from "./schedule-view.js";
 
 export interface ScheduleSidebarProps {
@@ -23,9 +24,14 @@ export interface ScheduleSidebarProps {
   /** Resolves to the problems that refused the run (empty on success), so they can join the reasons above Run. */
   onRun(schedule: Schedule): Promise<ValidationProblem[]>;
   onAbort(scheduleId: string): void;
-  /** No new task starts and no follow-up is pasted until onResume. */
-  onPause(scheduleId: string): void;
-  onResume(scheduleId: string): void;
+  /**
+   * No new task starts and no follow-up is pasted until onResume. Resolves to
+   * the problems that refused pause/resume (empty on success), the same way
+   * onRun does, so a rejection surfaces above the run bar instead of being
+   * swallowed.
+   */
+  onPause(scheduleId: string): Promise<ValidationProblem[]>;
+  onResume(scheduleId: string): Promise<ValidationProblem[]>;
   onFocusTask(scheduleId: string, taskId: string): void;
   onClose(): void;
 }
@@ -227,14 +233,24 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             {bar!.canPause && (
               <button
                 className="sl-btn sl-btn--sm"
-                onClick={() => p.onPause(schedule.id)}
+                onClick={() => {
+                  const scheduleId = schedule.id;
+                  void p.onPause(scheduleId).then((problems) => setRunProblems({ scheduleId, problems }));
+                }}
                 title="No new task starts and no follow-up is pasted until you resume"
               >
                 <i className="codicon codicon-debug-pause" aria-hidden="true" /> Pause
               </button>
             )}
             {bar!.canResume && (
-              <button className="sl-btn sl-btn--sm" onClick={() => p.onResume(schedule.id)}>
+              <button
+                className="sl-btn sl-btn--sm"
+                onClick={() => {
+                  const scheduleId = schedule.id;
+                  void p.onResume(scheduleId).then((problems) => setRunProblems({ scheduleId, problems }));
+                }}
+                title="Pastes the held follow-up and lets the run continue"
+              >
                 <i className="codicon codicon-debug-continue" aria-hidden="true" /> Resume
               </button>
             )}
@@ -354,6 +370,12 @@ function TaskEditor(p: {
   onBlur(): void;
 }): React.ReactElement {
   const t = p.task;
+  // The last loop settings seen while `t.loop` was set, so switching the loop
+  // off and back on restores what the operator typed instead of the defaults.
+  const lastLoopRef = React.useRef<TaskLoop | undefined>(t.loop);
+  React.useEffect(() => {
+    if (t.loop) lastLoopRef.current = t.loop;
+  }, [t.loop]);
   const problem = (field: string): string | undefined =>
     p.problems.find((x) => x.field === field)?.message;
   const set = (patch: Partial<ScheduleTask>): void => p.onChange({ ...t, ...patch });
@@ -445,7 +467,7 @@ function TaskEditor(p: {
           role="switch"
           className="sl-switch__input"
           checked={!!t.loop}
-          onChange={(e) => p.onChange(withLoop(t, e.target.checked))}
+          onChange={(e) => p.onChange(withLoop(t, e.target.checked, lastLoopRef.current))}
         />
         <span className="sl-switch__track" aria-hidden="true" />
         <span className="sl-switch__label">Loop until converged</span>
@@ -483,7 +505,7 @@ function TaskEditor(p: {
               min={1}
               max={MAX_ITERATIONS}
               value={t.loop.maxIterations}
-              onChange={(e) => p.onChange(patchLoop(t, { maxIterations: Number(e.target.value) }))}
+              onChange={(e) => p.onChange(withMaxIterations(t, e.target.value))}
             />,
           )}
           {field(
@@ -493,13 +515,15 @@ function TaskEditor(p: {
               className="sl-field__input spexr-sched__mono"
               value={t.loop.check ?? ""}
               placeholder="pnpm test"
+              aria-describedby={`${t.id}-loop-check-hint`}
               onChange={(e) => p.onChange(withCheck(t, e.target.value))}
             />,
           )}
-          <p className="spexr-sched__hint">
+          <p className="spexr-sched__hint" id={`${t.id}-loop-check-hint`}>
             Runs in the task's folder after a reply that ends with CONVERGED, one check at a time across all runs. If
             it fails, its last 40 lines go into the next follow-up. It runs in a login shell without your .zshrc:
-            give full paths, or start with `source ~/.zshrc &&`. Placeholders are not filled in here.
+            give full paths, or start with <code className="spexr-sched__mono">source ~/.zshrc &amp;&amp;</code>.
+            Placeholders are not filled in here.
           </p>
           {t.loop.check !== undefined &&
             field(

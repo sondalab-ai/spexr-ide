@@ -7,9 +7,13 @@ export const DEFAULT_LOOP: TaskLoop = {
   maxIterations: 5,
 };
 
-/** Switch the loop on (with defaults, or as it is) or off (dropping every loop setting). */
-export function withLoop(task: ScheduleTask, on: boolean): ScheduleTask {
-  if (on) return task.loop ? task : { ...task, loop: { ...DEFAULT_LOOP } };
+/**
+ * Switch the loop on (as it is, or restored from `previous` — what was typed
+ * before an earlier switch-off — or the defaults when there is none) or off
+ * (dropping every loop setting; the caller keeps it to pass back as `previous`).
+ */
+export function withLoop(task: ScheduleTask, on: boolean, previous?: TaskLoop): ScheduleTask {
+  if (on) return task.loop ? task : { ...task, loop: previous ? { ...previous } : { ...DEFAULT_LOOP } };
   const { loop: _dropped, ...rest } = task;
   return rest;
 }
@@ -39,4 +43,16 @@ export function withCheckTimeout(task: ScheduleTask, input: string): ScheduleTas
     return { ...task, loop };
   }
   return { ...task, loop: { ...task.loop, checkTimeoutSec: sec } };
+}
+
+/**
+ * Set max iterations from a number input; unlike the check timeout, this
+ * field is required, so a blank or non-numeric input is ignored rather than
+ * writing 0. Range is validation's job.
+ */
+export function withMaxIterations(task: ScheduleTask, input: string): ScheduleTask {
+  if (!task.loop) return task;
+  const n = Number(input);
+  if (!input.trim() || !Number.isFinite(n)) return task;
+  return { ...task, loop: { ...task.loop, maxIterations: n } };
 }
