@@ -144,8 +144,10 @@ It rejects:
 
 `node/schedule/schedule-store.ts` keeps schedules and the state of their runs
 in `~/.spexr/schedules.json` (override: `SPEXR_SCHEDULES`), written atomically
-(temporary file then rename) like `project-names-store.ts`. A schedule is
-validated on every save; an invalid one is saved but cannot be run.
+(temporary file then rename) like `project-names-store.ts`. A schedule holds
+one run at a time; pressing Run again after a run has finished or been
+aborted replaces the stored run. A schedule is validated on every save; an
+invalid one is saved but cannot be run.
 
 ### Engine
 
@@ -179,8 +181,10 @@ at a permission prompt: spec 0011's certain "needs you") and `interrupted`.
   pause is kept. Both apply only to a failed or interrupted task.
 - `waiting-on-you` is not a failure: it returns to `running` when the session
   moves again.
-- Pause (operator) stops new tasks from starting and stops follow-up pastes;
-  Resume undoes it. Abort ends the run; its sessions stay open on the wall.
+- Pause (operator) stops new tasks from starting and stops follow-up pastes.
+  Resume lifts the operator's pause; the run stays paused on the failure while
+  a task is still failed or interrupted, until Retry or Skip clears it. Abort
+  ends the run; its sessions stay open on the wall.
 - If the backend starts with a run marked running (the app quit or crashed
   mid-run), its running tasks become `interrupted` and the run is paused. The
   operator retries or skips each one.
