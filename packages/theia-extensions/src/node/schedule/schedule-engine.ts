@@ -284,3 +284,36 @@ function advance(schedule: Schedule, run: RunState, effects: Effect[]): void {
   }
   if (schedule.tasks.every((t) => SETTLED_STATUSES.has(run.tasks[t.id]?.status ?? "pending"))) run.status = "finished";
 }
+
+export type WorkspacePlan = { kind: "path"; path: string } | { kind: "worktree" } | { kind: "missing"; reason: string };
+
+/**
+ * Where a task runs, from the schedule and what its run recorded: its project,
+ * a worktree to prepare, or — for `sameAs` — the folder its upstream actually
+ * used (R20). A worktree upstream that never got one is "missing", never the
+ * project folder: that would put two sessions in one folder behind the
+ * shared-folder guard's back.
+ */
+export function workspacePlan(schedule: Schedule, run: RunState, taskId: string): WorkspacePlan {
+  const seen = new Set<string>();
+  let id = taskId;
+  for (;;) {
+    const t = schedule.tasks.find((x) => x.id === id);
+    if (!t) return { kind: "missing", reason: `Unknown task: ${id}.` };
+    if (id !== taskId) {
+      const recorded = run.tasks[id]?.workspace;
+      if (recorded) return { kind: "path", path: recorded };
+    }
+    if (t.workspace.kind === "folder") return { kind: "path", path: t.project };
+    if (t.workspace.kind === "worktree") {
+      if (id === taskId) return { kind: "worktree" };
+      return {
+        kind: "missing",
+        reason: `"${t.name}" never got its worktree, so there is no workspace to share. Retry it, or give this task its own workspace.`,
+      };
+    }
+    if (seen.has(id)) return { kind: "missing", reason: "The shared workspaces point at each other." };
+    seen.add(id);
+    id = t.workspace.task;
+  }
+}

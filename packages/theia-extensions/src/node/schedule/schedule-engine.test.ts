@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunState, Schedule, ScheduleTask, TaskLaunch } from "../../common/schedule/schedule-types.js";
 import { firstPrompt, followUpPrompt } from "../../common/schedule/schedule-prompt.js";
-import { startRun, step } from "./schedule-engine.js";
+import { startRun, step, workspacePlan } from "./schedule-engine.js";
 
 const launch: TaskLaunch = { plan: { command: "claude", exportConfigDir: "", unquoted: true }, configDir: "" };
 function task(id: string, o: Partial<ScheduleTask> = {}): ScheduleTask {
@@ -394,5 +394,73 @@ describe("step — retry and skip (Slice 4)", () => {
       expect(out.run).toEqual(run);
       expect(out.effects).toEqual([]);
     }
+  });
+});
+
+describe("step — the graph (Slice 4)", () => {
+  const d = sched(
+    task("a"),
+    task("b", { needs: ["a"] }),
+    task("c", { needs: ["a"], workspace: { kind: "worktree" } }),
+    task("d", { needs: ["b", "c"], prompt: "b said {{b.reply}}; c worked in {{c.workspace}}" }),
+  );
+  const started = (id: string, n: number, workspace: string) =>
+    ({ type: "started", task: id, terminalId: n, processId: n * 10, workspace }) as const;
+
+  it("starts every ready task at once, and a task only once all its needs have converged (AC-12, AC-14)", () => {
+    const first = startRun(d, launches(d), "r1", 0);
+    expect(first.effects).toEqual([{ type: "start", task: "a", prompt: "do a" }]);
+    const afterA = step(d, step(d, first.run, started("a", 1, "/r-a")).run, { type: "turn-ended", task: "a", reply: "base ready" });
+    expect(afterA.effects).toEqual([
+      { type: "start", task: "b", prompt: "do b" },
+      { type: "start", task: "c", prompt: "do c" },
+    ]);
+    let run = step(d, afterA.run, started("b", 2, "/r-b")).run;
+    run = step(d, run, started("c", 3, "/wt/c")).run;
+    const afterB = step(d, run, { type: "turn-ended", task: "b", reply: "api done\nCONVERGED" });
+    expect(afterB.effects).toEqual([]);
+    expect(afterB.run.tasks["d"]!.status).toBe("pending");
+    const afterC = step(d, afterB.run, { type: "turn-ended", task: "c", reply: "client done" });
+    expect(afterC.effects).toEqual([{ type: "start", task: "d", prompt: "b said api done; c worked in /wt/c" }]);
+  });
+
+  it("lets running siblings finish during a failure pause, and starts the join only once the failure is skipped (AC-15)", () => {
+    let run = startRun(d, launches(d), "r1", 0).run;
+    run = step(d, run, started("a", 1, "/r-a")).run;
+    run = step(d, run, { type: "turn-ended", task: "a", reply: "ok" }).run;
+    run = step(d, run, started("b", 2, "/r-b")).run;
+    run = step(d, run, started("c", 3, "/wt/c")).run;
+    run = step(d, run, { type: "exited", task: "b" }).run;
+    expect(run.pausedBy).toBe("failure");
+    const cDone = step(d, run, { type: "turn-ended", task: "c", reply: "client done" });
+    expect(cDone.run.tasks["c"]!.status).toBe("converged");
+    expect(cDone.effects).toEqual([]);
+    const skipped = step(d, cDone.run, { type: "skip", task: "b" });
+    expect(skipped.effects).toEqual([{ type: "start", task: "d", prompt: "b said ; c worked in /wt/c" }]);
+  });
+});
+
+describe("workspacePlan (R20)", () => {
+  const w = sched(
+    task("a", { workspace: { kind: "worktree" } }),
+    task("f", { project: "/r-f" }),
+    task("b", { needs: ["a"], workspace: { kind: "sameAs", task: "a" } }),
+    task("c", { needs: ["b"], workspace: { kind: "sameAs", task: "b" } }),
+    task("g", { needs: ["f"], workspace: { kind: "sameAs", task: "f" } }),
+  );
+  const fresh = () => startRun(w, launches(w), "r1", 0).run;
+
+  it("gives a folder task its project and a worktree task a worktree to prepare", () => {
+    expect(workspacePlan(w, fresh(), "f")).toEqual({ kind: "path", path: "/r-f" });
+    expect(workspacePlan(w, fresh(), "a")).toEqual({ kind: "worktree" });
+  });
+  it("runs a sameAs task in the folder its upstream actually used, through a chain", () => {
+    const run = step(w, fresh(), { type: "started", task: "a", terminalId: 1, processId: 10, workspace: "/wt/app-spexr-s-a" }).run;
+    expect(workspacePlan(w, run, "b")).toEqual({ kind: "path", path: "/wt/app-spexr-s-a" });
+    expect(workspacePlan(w, run, "c")).toEqual({ kind: "path", path: "/wt/app-spexr-s-a" });
+  });
+  it("uses a folder upstream's project even before it ran, but never falls back to the project for a worktree nobody made", () => {
+    expect(workspacePlan(w, fresh(), "g")).toEqual({ kind: "path", path: "/r-f" });
+    expect(workspacePlan(w, fresh(), "b")).toEqual({ kind: "missing", reason: expect.stringContaining("never got its worktree") });
   });
 });
