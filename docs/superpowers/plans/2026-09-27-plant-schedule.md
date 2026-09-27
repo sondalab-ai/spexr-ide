@@ -3502,7 +3502,7 @@ Planned in full on 2026-09-27, against the code as it stands after Task 13 (comm
 - **R9. Aborting a run skips its queued checks.** They are not spawned once their turn comes, because the runner's `stillWanted` returns false. A check already running when the run is aborted finishes or times out; nothing kills it early. *Cost if wrong:* an aborted run's current check can use the machine for up to its timeout.
 - **R10. The check runs as `$SHELL -l -c`, not `-i -l -c` like the launch line.** An interactive shell with no terminal took 1.7 s against 24 ms in a measurement on 2026-09-27 (zsh, this machine), and it wrote `Saving session...completed.` to stderr, which would pollute every tail. The check keeps the backend's environment, which is the same one the task's pty inherits, plus the login files (`.zprofile`, `.zlogin`), but not `.zshrc`. The sidebar says so next to the field. *Cost if wrong:* a check command that is found only through `.zshrc` fails with "command not found". That message shows in the follow-up and in the failed row, and the operator fixes it with a full path or `source ~/.zshrc && …`.
 
-### Task 14: Probe — opencode takes a bracketed paste (input half DONE 2026-09-27)
+### Task 14: Probe — opencode takes a bracketed paste — DONE 2026-09-27 (paste + Enter → one message; Step 3 not needed)
 
 **Files:**
 - Modify: `docs/specs/0018-plant-schedule.md` (Risks → "Pasting into opencode", and the Probe results list)

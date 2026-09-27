@@ -446,11 +446,12 @@ Vitest, next to each module, with `--maxWorkers=2`
     of its client is guarded (`base-terminal-server.js`), and `create` does
     not touch it. Attaching a later window by terminal id is the path pinned
     cards already use after a reload. Checked in code, not in the app.
-- **Pasting into opencode.** Only tried with Claude; Slice 3 checks opencode
-  before relying on it. Slice 3 opens with
-  that probe; if it fails, the follow-up is sent through the harness's resume
-  with a prompt instead (`--resume <id> "<follow-up>"`), which restarts the
-  process but keeps the conversation.
+- **Pasting into opencode (probe, 2026-09-27, opencode 1.18.18, scripted
+  pty).** After a first turn, a bracketed paste of two lines then Enter
+  arrived as one user message and got one reply. Confirmed, so opencode tasks
+  loop by paste like Claude tasks. The earlier `--resume` fallback is dropped:
+  resuming ends the pty (the engine would read it as a failure) and gives the
+  task a new terminal, losing its card.
 - **opencode session pick-up.** Matching "first unknown session in the folder"
   relies on the concurrency guard; if a session started outside the schedule
   lands in the same folder at the same moment, the runner could adopt it. The
