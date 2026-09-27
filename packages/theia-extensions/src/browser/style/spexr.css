@@ -228,7 +228,7 @@ body {
   margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
 }
 
-.spexr-life-bg ~ :is(.spexr-df-root, .spexr-spec-panel) {
+.spexr-life-bg ~ :is(.spexr-df-shell, .spexr-spec-panel) {
   position: relative;
   z-index: 1;
 }
@@ -2438,6 +2438,50 @@ code {
   padding: var(--sl-space-5); color: var(--sl-text-muted); font-size: var(--sl-text-sm);
 }
 .spexr-df-root { display: flex; flex-direction: column; gap: var(--sl-space-5); }
+
+/* The wall and the plant schedule side by side; the wall keeps the room it needs. */
+.spexr-df-shell { display: flex; align-items: flex-start; gap: var(--sl-space-5); }
+.spexr-df-shell > .spexr-df-root { flex: 1 1 auto; min-width: 0; }
+.spexr-df-shell__open { position: sticky; top: var(--sl-space-3); }
+
+.spexr-sched {
+  position: sticky; top: 0; flex: none;
+  display: flex; flex-direction: column; gap: var(--sl-space-4);
+  max-height: 100vh; overflow-y: auto;
+  padding: var(--sl-space-4);
+  border-left: 1px solid var(--sl-border-subtle);
+  background: var(--sl-bg-surface-raised, var(--sl-bg-surface));
+}
+.spexr-sched__head, .spexr-sched__picker, .spexr-sched__runbar { display: flex; align-items: center; gap: var(--sl-space-2); }
+.spexr-sched__head { justify-content: space-between; }
+.spexr-sched__picker > .sl-field { flex: 1; }
+.spexr-sched__runbar { justify-content: space-between; }
+.spexr-sched__confirm { display: flex; align-items: center; gap: var(--sl-space-2); font-size: var(--sl-text-sm); }
+.spexr-sched__tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sl-space-2); }
+/* Layers read as bands: each depth steps in, so "after" is visible at a glance. */
+.spexr-sched__row { display: grid; grid-template-columns: 1fr auto; gap: var(--sl-space-2); padding-left: calc(var(--sl-space-4) * var(--layer, 0)); }
+.spexr-sched__row[data-layer="1"] { --layer: 1; }
+.spexr-sched__row[data-layer="2"] { --layer: 2; }
+.spexr-sched__row[data-layer="3"] { --layer: 3; }
+.spexr-sched__rowmain {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2);
+  padding: var(--sl-space-2) var(--sl-space-3);
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-md);
+  transition: border-color var(--sl-motion-fast, 120ms) var(--sl-motion-ease);
+}
+.spexr-sched__rowmain:hover { border-color: var(--sl-border-default); }
+.spexr-sched__rowmain:focus-visible { outline: 2px solid var(--sl-focus-ring); outline-offset: 2px; }
+.spexr-sched__row[aria-current="true"] .spexr-sched__rowmain { border-color: var(--sl-accent-default); }
+.spexr-sched__name { font-weight: 600; }
+.spexr-sched__waits, .spexr-sched__error { flex-basis: 100%; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
+.spexr-sched__error { color: var(--sl-status-danger); }
+.spexr-sched__editor { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
+.spexr-sched__editor .sl-field[data-invalid="true"] .sl-field__input { border-color: var(--sl-status-danger); }
+.spexr-sched__prompt { min-height: 6rem; resize: vertical; font-family: var(--sl-font-mono); }
+.spexr-sched__problem { color: var(--sl-status-danger); }
+.spexr-sched__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } }
 
 /*
  * Head of the stack: a card that starts work rather than showing it. Dashed and
