@@ -1,9 +1,34 @@
 import { execFileSync } from "node:child_process";
+import type * as ChildProcess from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Workspaces, parseWorktreeList, worktreeBranch, worktreePath } from "./workspace.js";
+
+// A pass-through wrapper around the real execFile, used only by the R17 ordering test below to
+// time-stamp each git call. Every other test sees ordinary git behavior; `state.recorder` is unset
+// outside that one test.
+const state = vi.hoisted(() => ({
+  recorder: undefined as ((gitArgs: string[], start: number, end: number) => void) | undefined,
+}));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof ChildProcess>();
+  return {
+    ...actual,
+    execFile: ((...args: unknown[]) => {
+      const gitArgs = args[1] as string[];
+      const cb = args[args.length - 1] as (...cbArgs: unknown[]) => void;
+      const start = performance.now();
+      const patched = [...args];
+      patched[args.length - 1] = (...cbArgs: unknown[]) => {
+        state.recorder?.(gitArgs, start, performance.now());
+        cb(...cbArgs);
+      };
+      return (actual.execFile as (...a: unknown[]) => unknown)(...patched);
+    }) as typeof actual.execFile,
+  };
+});
 
 const saved = { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM };
 beforeAll(() => {
@@ -40,7 +65,10 @@ beforeEach(() => {
   parent = realpathSync(mkdtempSync(join(tmpdir(), "spexr-ws-"))); // macOS: /var → /private/var, as git reports it
   repo = makeRepo(parent, "app");
 });
-afterEach(() => rmSync(parent, { recursive: true, force: true }));
+afterEach(() => {
+  state.recorder = undefined;
+  rmSync(parent, { recursive: true, force: true });
+});
 
 const fresh = () => ({ project: repo, scheduleId: "s", taskId: "t", reuse: false });
 
@@ -53,6 +81,15 @@ describe("worktree naming", () => {
     expect(parseWorktreeList("worktree /r\nHEAD abc\nbranch refs/heads/main\n\nworktree /r-x\nHEAD def\ndetached\n")).toEqual([
       { path: "/r", branch: "main" },
       { path: "/r-x" },
+    ]);
+  });
+  it("marks a worktree whose folder git can no longer find as prunable", () => {
+    const porcelain =
+      "worktree /r\nHEAD abc\nbranch refs/heads/main\n\n" +
+      "worktree /r-x\nHEAD def\nbranch refs/heads/x\nprunable gitdir file points to non-existent location\n\n";
+    expect(parseWorktreeList(porcelain)).toEqual([
+      { path: "/r", branch: "main" },
+      { path: "/r-x", branch: "x", prunable: true },
     ]);
   });
 });
@@ -84,16 +121,51 @@ describe("Workspaces.prepareWorktree", () => {
   it("a new run refuses a worktree left from an earlier run, and says how to clean up or continue (R15)", async () => {
     const w = new Workspaces();
     await w.prepareWorktree(fresh());
-    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/left from an earlier run.*Retry.*git worktree remove/s);
+    await expect(w.prepareWorktree(fresh())).rejects.toThrow(
+      /left from an earlier run.*Retry.*git -C .*worktree remove.*&&.*git -C .*branch -D.*--force/s,
+    );
   });
 
   it("a retry makes a worktree for a branch left without one; a new run refuses the branch (R15)", async () => {
     const w = new Workspaces();
     const first = await w.prepareWorktree(fresh());
     g(repo, "worktree", "remove", first); // the branch stays
-    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/branch spexr\/s\/t is left from an earlier run.*git branch -D/s);
+    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/branch spexr\/s\/t is left from an earlier run.*git -C .*branch -D/s);
     expect(await w.prepareWorktree({ ...fresh(), reuse: true })).toBe(first);
     expect(g(first, "rev-parse", "--abbrev-ref", "HEAD")).toBe("spexr/s/t");
+  });
+
+  it("a retry recovers after the operator deletes the worktree's folder by hand, leaving only git's stale record (R15)", async () => {
+    const w = new Workspaces();
+    const first = await w.prepareWorktree(fresh());
+    rmSync(first, { recursive: true, force: true }); // no `git worktree remove` involved — a bare rm -rf
+    expect(g(repo, "worktree", "list", "--porcelain")).toMatch(/prunable/);
+    const again = await w.prepareWorktree({ ...fresh(), reuse: true });
+    expect(again).toBe(first);
+    expect(existsSync(first)).toBe(true);
+    expect(g(again, "rev-parse", "--abbrev-ref", "HEAD")).toBe("spexr/s/t");
+    // only this task's entry is touched: still exactly the repo root plus this one worktree.
+    expect(g(repo, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(2);
+  });
+
+  it("a new run still refuses when the worktree's folder was deleted by hand (R15)", async () => {
+    const w = new Workspaces();
+    const first = await w.prepareWorktree(fresh());
+    rmSync(first, { recursive: true, force: true });
+    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/left from an earlier run.*Retry.*worktree remove/s);
+  });
+
+  it("never runs a repository-wide prune when recovering: an unrelated stale worktree is left alone (R15)", async () => {
+    const other = join(parent, "app-other");
+    g(repo, "worktree", "add", "-q", "-b", "other-task", other);
+    rmSync(other, { recursive: true, force: true }); // this one becomes prunable too, but isn't ours
+    const w = new Workspaces();
+    const first = await w.prepareWorktree(fresh());
+    rmSync(first, { recursive: true, force: true });
+    await w.prepareWorktree({ ...fresh(), reuse: true });
+    const stillThere = parseWorktreeList(g(repo, "worktree", "list", "--porcelain")).find((e) => e.branch === "other-task");
+    expect(stillThere).toBeDefined();
+    expect(stillThere?.prunable).toBe(true); // still prunable: nothing pruned it away
   });
 
   it("refuses a folder at the worktree path that is not this task's worktree, and leaves it alone (R19)", async () => {
@@ -135,6 +207,31 @@ describe("Workspaces.prepareWorktree", () => {
     expect([a, b]).toEqual([join(parent, "app-spexr-s-a"), join(parent, "app-spexr-s-b")]);
   });
 
+  it("serializes two concurrent prepares in one repository: their git critical sections never overlap (R17)", async () => {
+    const spans = new Map<string, { start: number; end: number }>();
+    state.recorder = (gitArgs, start, end) => {
+      const tag = gitArgs.some((a) => a.includes("spexr/s/a")) ? "a" : gitArgs.some((a) => a.includes("spexr/s/b")) ? "b" : undefined;
+      if (!tag) return; // the shared `worktree list` / repo-lookup calls don't name a task; only tagged calls count
+      const existing = spans.get(tag);
+      spans.set(tag, existing ? { start: Math.min(existing.start, start), end: Math.max(existing.end, end) } : { start, end });
+    };
+    try {
+      const w = new Workspaces();
+      await Promise.all([
+        w.prepareWorktree({ ...fresh(), taskId: "a" }),
+        w.prepareWorktree({ ...fresh(), taskId: "b" }),
+      ]);
+    } finally {
+      state.recorder = undefined;
+    }
+    const a = spans.get("a");
+    const b = spans.get("b");
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+    const overlap = a!.start < b!.end && b!.start < a!.end;
+    expect(overlap).toBe(false);
+  });
+
   it("never goes through a shell: a repository whose path is shell syntax works and runs nothing (Security)", async () => {
     const odd = makeRepo(parent, "it's $(touch PWNED) ;`touch PWNED2`");
     const ws = await new Workspaces().prepareWorktree({ ...fresh(), project: odd });
@@ -143,5 +240,15 @@ describe("Workspaces.prepareWorktree", () => {
       expect(existsSync(join(dir, "PWNED"))).toBe(false);
       expect(existsSync(join(dir, "PWNED2"))).toBe(false);
     }
+  });
+});
+
+describe("Workspaces id guards", () => {
+  it("rejects a schedule id that isn't a safe path/argument component", async () => {
+    await expect(new Workspaces().prepareWorktree({ ...fresh(), scheduleId: "../evil" })).rejects.toThrow(/schedule id/i);
+  });
+
+  it("rejects a task id that isn't a safe path/argument component", async () => {
+    await expect(new Workspaces().prepareWorktree({ ...fresh(), taskId: "bad id!" })).rejects.toThrow(/task id/i);
   });
 });
