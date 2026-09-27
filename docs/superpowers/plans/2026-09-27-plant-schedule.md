@@ -1013,7 +1013,7 @@ git add src/node/schedule/schedule-store.ts src/node/schedule/schedule-store.tes
 git commit -m "feat(schedule): atomic schedule store that sets a damaged file aside (AC-3)"
 ```
 
-**Slice 1 ends here: open a PR** (`feat(schedule): Slice 1 — model, validation and store`), linking the spec.
+**Slice 1 ends here.** All slices ship in one PR: https://github.com/sondalab-ai/spexr-ide/pull/66 — push to its branch and tick the slice in its description.
 
 ---
 
@@ -3424,7 +3424,7 @@ git add src/browser/darkfactory/schedule/ src/browser/darkfactory/darkfactory-wa
 git commit -m "feat(schedule): minimal plant-schedule sidebar in the Dark Factory (AC-8)"
 ```
 
-**Slice 2 ends here: open a PR** (`feat(schedule): Slice 2 — one task, end to end`).
+**Slice 2 ends here.** Push to https://github.com/sondalab-ai/spexr-ide/pull/66 and tick the slice.
 
 ---
 
