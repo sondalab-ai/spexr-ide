@@ -95,19 +95,25 @@ export function runCheck(req: CheckRequest, o: CheckOptions = {}): Promise<Check
     child.stdout?.setEncoding("utf8").on("data", (d: string) => tail.push(d));
     child.stderr?.setEncoding("utf8").on("data", (d: string) => tail.push(d));
     child.once("error", (err) => finish(false, `The check could not start: ${err.message}`));
-    timers.push(
-      setTimeout(() => {
-        timedOut = true;
-        killGroup("SIGTERM");
-        timers.push(setTimeout(() => killGroup("SIGKILL"), grace));
-      }, req.timeoutMs),
-    );
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      killGroup("SIGTERM");
+      timers.push(setTimeout(() => killGroup("SIGKILL"), grace));
+    }, req.timeoutMs);
+    timers.push(timeoutTimer);
     child.once("exit", (code) => {
+      // Clear before the drain starts: once the shell has exited, the timeout
+      // can no longer fire a late SIGTERM at a pid the OS may have reused, and
+      // `timedOut` is latched here rather than re-read after the drain, where
+      // it could otherwise be flipped true by a timeout that fires *during*
+      // the drain for a check that had already exited cleanly.
+      clearTimeout(timeoutTimer);
+      const exitTimedOut = timedOut;
       killGroup("SIGKILL");
       const done = (): void =>
         finish(
-          !timedOut && code === 0,
-          timedOut ? `[the check timed out after ${req.timeoutMs / 1000} s and was stopped]` : undefined,
+          !exitTimedOut && code === 0,
+          exitTimedOut ? `[the check timed out after ${req.timeoutMs / 1000} s and was stopped]` : undefined,
         );
       child.once("close", done);
       timers.push(setTimeout(done, DRAIN_MS));

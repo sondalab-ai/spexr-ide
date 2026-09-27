@@ -88,12 +88,28 @@ describe("runCheck", () => {
   it("kills the whole process group on timeout: a child sleep is gone too", async () => {
     const cwd = await tmp();
     const pidFile = join(cwd, "child.pid");
-    const r = await runCheck({ command: `sleep 30 & echo $! > '${pidFile}'; wait`, cwd, timeoutMs: 300 }, sh);
+    const r = await runCheck({ command: `sleep 30 & echo $! > '${pidFile}'; wait`, cwd, timeoutMs: 1_000 }, sh);
     expect(r.ok).toBe(false);
     expect(r.tail).toContain("timed out");
     const pid = Number((await readFile(pidFile, "utf8")).trim());
     strays.push(pid);
     expect(await goneWithin(pid, 2_000)).toBe(true);
+  });
+
+  it("does not report a check that exited cleanly as timed out, even with an escaped helper still holding the pipes open (regression)", async () => {
+    const cwd = await tmp();
+    const pidFile = join(cwd, "regression.pid");
+    const r = await runCheck(
+      {
+        command: `perl -MPOSIX -e 'POSIX::setsid(); open(my $f, ">", "${pidFile}"); print $f $$; close $f; sleep 30' & sleep 0.3; exit 0`,
+        cwd,
+        timeoutMs: 600,
+      },
+      sh,
+    );
+    strays.push(Number((await readFile(pidFile, "utf8")).trim()));
+    expect(r.ok).toBe(true);
+    expect(r.tail).not.toContain("timed out");
   });
 
   it("escalates to SIGKILL when the group ignores SIGTERM", async () => {
@@ -120,7 +136,9 @@ describe("runCheck", () => {
     const started = Date.now();
     const r = await runCheck(
       {
-        command: `perl -MPOSIX -e 'POSIX::setsid(); open(my $f, ">", "${pidFile}"); print $f $$; close $f; sleep 30' & sleep 0.5; exit 0`,
+        // Waits for the pidfile rather than a fixed sleep: a slow perl start
+        // under load must not race the shell's own exit past it.
+        command: `perl -MPOSIX -e 'POSIX::setsid(); open(my $f, ">", "${pidFile}"); print $f $$; close $f; sleep 30' & until [ -f '${pidFile}' ]; do sleep 0.02; done; exit 0`,
         cwd,
         timeoutMs: 5_000,
       },
