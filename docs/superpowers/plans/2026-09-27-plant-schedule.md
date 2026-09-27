@@ -1032,6 +1032,8 @@ ls ~/.claude/projects/*/"$U".jsonl
 ```
 Expected: exactly one path. Repeat with `CLAUDE_CONFIG_DIR=~/.claude-perso` exported (if that account exists) and confirm the file lands under `~/.claude-perso/projects/`.
 
+Also record **startup dialogs**: in a fresh `mktemp -d` folder, does Claude ask to trust the folder before handling the prompt argument? And with `--permission-mode bypassPermissions`, does it ask for a first-use confirmation? For each dialog, note whether the transcript file exists *before* you answer it (`ls` from another terminal). If a dialog can come before the transcript, Slice 2 needs a "pty alive, no transcript yet" reading that shows *Needs you* instead of failing at 60 s — and every Slice 4 worktree (a new path each time) would hit the trust prompt. Add the finding to the spec's Risks and re-plan Task 8 before continuing.
+
 - [ ] **Step 2: Backend pty with no window, and attaching later.** Temporarily add to `SpexrDarkfactoryBackendService` constructor path a throwaway call (do not commit): inject `IShellTerminalServer` in a scratch `BackendApplicationContribution` whose `onStart` runs `create({ args: ["-i", "-l", "-c", "sleep 300"], cols: 80, rows: 24 })` and logs the id and `getProcessId(id)`. Build, start SPEXR, close every window but keep the backend (or read the log before the window loads). Then, from the browser dev tools console of a window, confirm the wall's `reattach` path attaches: the easiest check is a scratch command calling `SpexrDarkfactoryTerminalManager.reattach("probe", { terminalId, processId }, "/tmp")` and opening the widget. Expected: no exception in the backend log when `create` runs with no client; the terminal shows `sleep` running. Revert the scratch code.
 
 - [ ] **Step 3: Bracketed paste into an idle Claude TUI** (for Slice 3). In a Theia terminal running `claude`, after a reply, run in the backend scratch contribution `process.write("\x1b[200~line one\nline two\x1b[201~")` then, 100 ms later, `write("\r")`. Expected: one user message containing both lines. Try the same with `opencode`.
@@ -1901,6 +1903,11 @@ describe("step", () => {
   const started = () =>
     step(s, first(), { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a" }).run;
 
+  it("records the session id a Claude task was launched with", () => {
+    const run = step(s, first(), { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a", sessionId: "u0" }).run;
+    expect(run.tasks["a"]!.sessionId).toBe("u0");
+  });
+
   it("records the terminal and names the session once it is found", () => {
     const run = started();
     expect(run.tasks["a"]).toMatchObject({ status: "running", terminalId: 7, processId: 70, workspace: "/r-a" });
@@ -1990,7 +1997,7 @@ import {
 import { fillPlaceholders, firstPrompt, stripMarker } from "../../common/schedule/schedule-prompt.js";
 
 export type EngineEvent =
-  | { type: "started"; task: string; terminalId: number; processId: number; workspace: string }
+  | { type: "started"; task: string; terminalId: number; processId: number; workspace: string; sessionId?: string }
   | { type: "start-failed"; task: string; error: string }
   | { type: "session-found"; task: string; sessionId: string }
   | { type: "session-missing"; task: string }
@@ -2050,6 +2057,9 @@ export function step(schedule: Schedule, prev: RunState, event: EngineEvent): St
         processId: event.processId,
         workspace: event.workspace,
       });
+      // Claude's id is chosen before launch: recording it now lets a window
+      // recognise the task's card from its first second (no duplicate card).
+      if (event.sessionId) task.sessionId = event.sessionId;
       break;
     case "session-found":
       if (!task || !ACTIVE_STATUSES.has(task.status)) break;
@@ -2434,10 +2444,14 @@ export class ScheduleRunner {
       await this.ports.rename(e.sessionId, e.name).catch(() => undefined);
       return;
     }
-    const schedule = this.schedule(scheduleId)!;
-    const task = schedule.tasks.find((t) => t.id === e.task)!;
-    const run = this.file.runs[scheduleId]!;
-    const launch = run.launches[task.id]!;
+    const schedule = this.schedule(scheduleId);
+    const task = schedule?.tasks.find((t) => t.id === e.task);
+    const run = this.file.runs[scheduleId];
+    const launch = task && run?.launches[task.id];
+    if (!schedule || !task || !run || !launch) {
+      void this.dispatch(scheduleId, { type: "start-failed", task: e.task, error: "The task is no longer in the schedule." });
+      return;
+    }
     const workspace =
       task.workspace.kind === "sameAs" ? (run.tasks[task.workspace.task]?.workspace ?? task.project) : task.project;
     const sessionId = task.harness === "claude" ? this.ports.newSessionId() : undefined;
@@ -2463,7 +2477,9 @@ export class ScheduleRunner {
         : this.ports.watchOpencode({ workspace, permissionMode: task.permissionMode }, onWatch);
     const stopExit = this.ports.onExit(terminal.terminalId, () => send({ type: "exited", task: task.id }));
     this.releases.set(`${scheduleId}/${task.id}`, [stopWatch, stopExit]);
-    send({ type: "started", task: task.id, ...terminal, workspace });
+    // If the run was aborted while `launch` was pending, this event is ignored and
+    // the commit that follows releases the watcher just registered.
+    send({ type: "started", task: task.id, ...terminal, workspace, ...(sessionId ? { sessionId } : {}) });
   }
 }
 ```
@@ -2518,6 +2534,9 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
 
   async save(schedule: Schedule): Promise<ValidationProblem[]> {
     const runner = await this.runner;
+    if (runner.current.runs[schedule.id]?.status === "running") {
+      return [{ field: "run", message: "Abort the run before editing its schedule." }];
+    }
     const others = runner.current.schedules.filter((s) => s.id !== schedule.id);
     await runner.setSchedules([...others, schedule]);
     return validateSchedule(schedule);
@@ -2598,7 +2617,7 @@ git commit -m "feat(schedule): backend runner, ptys and RPC service; runs surviv
 
 **Interfaces:**
 - Consumes: `ScheduleSnapshot`, `SpexrScheduleService`, `SpexrScheduleClient` (Task 11); `SpexrDarkfactoryTerminalManager.reattach(key, {terminalId, processId}, projectPath)` (existing).
-- Produces: `SpexrScheduleClientDispatcher` (`onSnapshot$: Event<ScheduleSnapshot>`), `SpexrScheduleServiceProxy` symbol; `taskCardsToMount(snapshot, mounted: ReadonlySet<string>): TaskCard[]` with `TaskCard = { key: string; terminalId: number; processId: number; workspace: string; harness: HarnessId; sessionId?: string }`.
+- Produces: `SpexrScheduleClientDispatcher` (`onSnapshot$: Event<ScheduleSnapshot>`), `SpexrScheduleServiceProxy` symbol; `taskCardsToMount(snapshot, mounted: ReadonlySet<string>): TaskCard[]` — `mounted` holds both card keys and session ids the wall already shows with `TaskCard = { key: string; terminalId: number; processId: number; workspace: string; harness: HarnessId; sessionId?: string }`.
 
 - [ ] **Step 1: Failing tests**
 
@@ -2624,6 +2643,9 @@ describe("taskCardsToMount", () => {
       { key: "spexr-task-4", terminalId: 4, processId: 40, workspace: "/r", harness: "claude", sessionId: "u" },
     ]);
     expect(taskCardsToMount(snapshot("running"), new Set(["spexr-task-4"]))).toEqual([]);
+  });
+  it("skips a task whose session the wall already shows (pinned after a reload)", () => {
+    expect(taskCardsToMount(snapshot("running"), new Set(["u"]))).toEqual([]);
   });
   it("skips settled tasks, tasks without a terminal yet, and ended runs", () => {
     expect(taskCardsToMount(snapshot("converged"), new Set())).toEqual([]);
@@ -2655,7 +2677,12 @@ export interface TaskCard {
   sessionId?: string;
 }
 
-/** Terminals of running tasks that this window has no card for yet. Keyed by terminal id. */
+/**
+ * Terminals of running tasks this window has no card for yet, keyed by
+ * terminal id. `mounted` holds card keys and session ids: after a reload the
+ * wall restores an adopted task as a pinned session, and a second card on the
+ * same pty must not appear.
+ */
 export function taskCardsToMount(snapshot: ScheduleSnapshot, mounted: ReadonlySet<string>): TaskCard[] {
   const cards: TaskCard[] = [];
   for (const schedule of snapshot.schedules) {
@@ -2665,7 +2692,7 @@ export function taskCardsToMount(snapshot: ScheduleSnapshot, mounted: ReadonlySe
       const t = run.tasks[task.id];
       if (!t || !ACTIVE_STATUSES.has(t.status) || t.terminalId === undefined || t.processId === undefined || !t.workspace) continue;
       const key = `spexr-task-${t.terminalId}`;
-      if (mounted.has(key)) continue;
+      if (mounted.has(key) || (t.sessionId !== undefined && mounted.has(t.sessionId))) continue;
       cards.push({ key, terminalId: t.terminalId, processId: t.processId, workspace: t.workspace, harness: task.harness, ...(t.sessionId ? { sessionId: t.sessionId } : {}) });
     }
   }
@@ -2730,7 +2757,12 @@ In `darkfactory-wall-widget.tsx`:
    */
   private onScheduleSnapshot(snapshot: ScheduleSnapshot): void {
     this.scheduleSnapshot = snapshot;
-    for (const card of taskCardsToMount(snapshot, this.mountedTasks)) {
+    const mounted = new Set<string>([
+      ...this.mountedTasks,
+      ...this.pinned,
+      ...this.launched.map((l) => l.key),
+    ]);
+    for (const card of taskCardsToMount(snapshot, mounted)) {
       this.mountedTasks.add(card.key);
       void this.terminals
         .reattach(card.key, { terminalId: card.terminalId, processId: card.processId }, card.workspace)
@@ -3022,7 +3054,7 @@ Run: `npx vitest run --maxWorkers=2 src/browser/darkfactory/schedule/` — PASS.
 
 - [ ] **Step 4: The sidebar component**
 
-The component renders only; every decision comes from `schedule-view.ts`. Slice 2 edits one task at a time with the fields name, project, harness, account, model, permission mode, prompt (no needs, workspace, loop — Slices 3–4).
+The component renders only; every decision comes from `schedule-view.ts`. Edits live in a local draft saved 600 ms after typing stops (and on blur, Run, or switching schedule); `validateSchedule` runs on the draft, so problems show as the operator types. Tasks are editable whenever the schedule is not running — also after a finished or aborted run. Slice 2 edits one task at a time with the fields name, project, harness, account, model, permission mode, prompt (no needs, workspace, loop — Slices 3–4).
 
 ```tsx
 // src/browser/darkfactory/schedule/schedule-sidebar.tsx
@@ -3050,8 +3082,25 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string | undefined>(p.snapshot.schedules[0]?.id);
   const [editing, setEditing] = React.useState<string | undefined>();
   const [confirmAbort, setConfirmAbort] = React.useState(false);
-  const schedule = p.snapshot.schedules.find((s) => s.id === selectedId) ?? p.snapshot.schedules[0];
+  // Edits go to a local draft and are saved after a pause in typing: saving
+  // every keystroke over RPC made controlled inputs lag and drop characters.
+  const [draft, setDraft] = React.useState<Schedule | undefined>();
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout>>();
+  const saved = p.snapshot.schedules.find((s) => s.id === selectedId) ?? p.snapshot.schedules[0];
+  const schedule = draft && draft.id === saved?.id ? draft : saved;
   const run = schedule ? p.snapshot.runs[schedule.id] : undefined;
+  const running = run?.status === "running";
+  const edit = (next: Schedule): void => {
+    setDraft(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => p.onSave(next), 600);
+  };
+  const flush = (): void => {
+    if (!draft) return;
+    clearTimeout(saveTimer.current);
+    p.onSave(draft);
+  };
+  React.useEffect(() => () => clearTimeout(saveTimer.current), []);
   const problems: ValidationProblem[] = schedule ? validateSchedule(schedule) : [];
   const bar = schedule ? runBar(schedule, run, problems) : undefined;
   const [announce, setAnnounce] = React.useState("");
@@ -3064,12 +3113,12 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   };
   const updateTask = (task: ScheduleTask): void => {
     if (!schedule) return;
-    p.onSave({ ...schedule, tasks: schedule.tasks.map((t) => (t.id === task.id ? task : t)) });
+    edit({ ...schedule, tasks: schedule.tasks.map((t) => (t.id === task.id ? task : t)) });
   };
   const addTask = (): void => {
     if (!schedule) return;
     const t = newTask(p.projects[0]?.path ?? "", new Set(schedule.tasks.map((x) => x.id)));
-    p.onSave({ ...schedule, tasks: [...schedule.tasks, t] });
+    edit({ ...schedule, tasks: [...schedule.tasks, t] });
     setEditing(t.id);
   };
 
@@ -3093,7 +3142,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               <span className="sl-field__label">Schedule</span>
               <span className="sl-field__control">
                 <span className="sl-select">
-                  <select className="sl-field__input" value={schedule.id} onChange={(e) => setSelectedId(e.target.value)}>
+                  <select className="sl-field__input" value={schedule.id} onChange={(e) => { flush(); setDraft(undefined); setSelectedId(e.target.value); }}>
                     {p.snapshot.schedules.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </span>
@@ -3105,7 +3154,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             <button
               className="sl-icon-btn"
               onClick={() => p.onRemove(schedule.id)}
-              disabled={run?.status === "running"}
+              disabled={running}
               aria-label="Delete this schedule"
               title="Delete this schedule"
             >
@@ -3115,7 +3164,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           <label className="sl-field">
             <span className="sl-field__label">Name</span>
             <span className="sl-field__control">
-              <input className="sl-field__input" value={schedule.name} onChange={(e) => p.onSave({ ...schedule, name: e.target.value })} />
+              <input className="sl-field__input" value={schedule.name} disabled={running} onChange={(e) => edit({ ...schedule, name: e.target.value })} onBlur={flush} />
             </span>
           </label>
 
@@ -3132,7 +3181,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                 <button className="sl-btn sl-btn--sm" onClick={() => setConfirmAbort(true)}>Abort</button>
               )
             ) : (
-              <button className="sl-btn sl-btn--primary sl-btn--sm" disabled={!bar!.canRun} onClick={() => p.onRun(schedule)}>
+              <button className="sl-btn sl-btn--primary sl-btn--sm" disabled={!bar!.canRun} onClick={() => { flush(); p.onRun(schedule); }}>
                 Run
               </button>
             )}
@@ -3146,7 +3195,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           <ol className="spexr-sched__tasks">
             {taskRows(schedule, run).map((row) => (
               <li key={row.id} className="spexr-sched__row" data-layer={row.layer} data-tone={row.tone} aria-current={editing === row.id ? "true" : undefined}>
-                <button className="spexr-sched__rowmain" onClick={() => (run ? p.onFocusTask(schedule.id, row.id) : setEditing(row.id))}>
+                <button className="spexr-sched__rowmain" onClick={() => (running ? p.onFocusTask(schedule.id, row.id) : setEditing(row.id))}>
                   <span className="spexr-sched__name">{row.name}</span>
                   <span className={`sl-badge spexr-sched__state spexr-sched__state--${row.tone}`}>
                     <i className={`codicon ${row.icon}`} aria-hidden="true" /> {row.label}
@@ -3160,23 +3209,25 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                   {row.waitsFor.length > 0 && <span className="spexr-sched__waits">after {row.waitsFor.join(", ")}</span>}
                   {row.error && <span className="spexr-sched__error">{row.error}</span>}
                 </button>
-                {!run && (
+                {!running && (
                   <button className="sl-icon-btn" onClick={() => setEditing(editing === row.id ? undefined : row.id)} aria-label={`Edit ${row.name}`}>
                     <i className="codicon codicon-edit" />
                   </button>
                 )}
-                {editing === row.id && !run && (
+                {editing === row.id && !running && (
+                  <div onBlur={flush}>
                   <TaskEditor
                     task={schedule.tasks.find((t) => t.id === row.id)!}
                     projects={p.projects}
                     problems={problems.filter((x) => x.task === row.id)}
                     onChange={updateTask}
                   />
+                  </div>
                 )}
               </li>
             ))}
           </ol>
-          {run?.status !== "running" && (
+          {!running && (
             <button className="sl-btn sl-btn--ghost sl-btn--sm" onClick={addTask}>
               <i className="codicon codicon-add" aria-hidden="true" /> Add a task
             </button>
