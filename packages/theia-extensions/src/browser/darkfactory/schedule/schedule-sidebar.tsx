@@ -43,11 +43,16 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const schedule = draft && draft.id === saved?.id ? draft : saved;
   const run = schedule ? p.snapshot.runs[schedule.id] : undefined;
   const running = run?.status === "running";
-  // What the backend refused the last Run for; cleared by the next edit or a
-  // run that started cleanly, so a stale refusal never outlives its cause.
-  const [runProblems, setRunProblems] = React.useState<ValidationProblem[]>([]);
+  // What the backend refused the last Run for, tagged with the schedule it
+  // was run against. Run is async: the operator can switch, add or remove a
+  // schedule before it resolves, so the result is only ever shown when
+  // `scheduleId` still matches the schedule on screen — otherwise a refusal
+  // (or the all-clear empty array) meant for one schedule would land on, or
+  // wipe, whatever the operator has since switched to. Cleared the same way
+  // on the next edit or a run that started cleanly.
+  const [runProblems, setRunProblems] = React.useState<{ scheduleId: string; problems: ValidationProblem[] } | undefined>(undefined);
   const edit = (next: Schedule): void => {
-    setRunProblems([]);
+    setRunProblems(undefined);
     setDraft(next);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
@@ -62,7 +67,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     savedRef.current = draft;
   };
   React.useEffect(() => () => clearTimeout(saveTimer.current), []);
-  const problems: ValidationProblem[] = schedule ? [...validateSchedule(schedule), ...runProblems] : [];
+  const problems: ValidationProblem[] = schedule
+    ? [...validateSchedule(schedule), ...(runProblems?.scheduleId === schedule.id ? runProblems.problems : [])]
+    : [];
   const bar = schedule ? runBar(schedule, run, problems) : undefined;
   const rows = schedule ? taskRows(schedule, run) : [];
   const [announce, setAnnounce] = React.useState("");
@@ -94,7 +101,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     clearTimeout(saveTimer.current);
     setDraft(undefined);
     savedRef.current = undefined;
-    setRunProblems([]);
+    setRunProblems(undefined);
     const s = newSchedule(new Set(p.snapshot.schedules.map((x) => x.id)));
     p.onSave(s);
     setSelectedId(s.id);
@@ -105,7 +112,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
       setDraft(undefined);
       savedRef.current = undefined;
     }
-    setRunProblems([]);
+    setRunProblems(undefined);
     setEditing(undefined);
     p.onRemove(id);
   };
@@ -155,7 +162,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                       clearTimeout(saveTimer.current);
                       setDraft(undefined);
                       savedRef.current = undefined;
-                      setRunProblems([]);
+                      setRunProblems(undefined);
                       setSelectedId(e.target.value);
                     }}
                   >
@@ -241,7 +248,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                 disabled={!bar!.canRun}
                 onClick={() => {
                   flush();
-                  void p.onRun(schedule).then((problems) => setRunProblems(problems));
+                  const scheduleId = schedule.id;
+                  void p.onRun(schedule).then((problems) => setRunProblems({ scheduleId, problems }));
                 }}
               >
                 Run
