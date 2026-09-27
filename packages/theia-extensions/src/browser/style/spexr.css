@@ -3182,6 +3182,14 @@ code {
 .spexr-df-card.sl-fx-aurora:not([data-sl-fx-live], [data-status="attn"], [data-status="error"]) {
   border-color: color-mix(in srgb, var(--tile-accent) 40%, var(--sl-border-subtle));
 }
+/* A card's light means an agent is working. The kit also lights an aurora's
+   glow on :focus-within, and its default light is the pillars, so pressing a
+   card or its delete button flashed them until focus moved on. While working,
+   the kit's canvas holds the light and hides this glow itself. */
+.sl-fx-aurora__glow[data-sl-fx-seated]:has(+ :is(.spexr-df-card, .spexr-df-pinned):not([data-sl-fx-live])),
+:is(.spexr-df-card, .spexr-df-pinned):not([data-sl-fx-live]) > .sl-fx-aurora__glow {
+  display: none;
+}
 /* The kit adds the light's canvas when work starts: fade it in rather than
    switching it on. */
 :is(.spexr-df-card, .spexr-df-pinned).sl-fx-aurora > .sl-fx-live__canvas {

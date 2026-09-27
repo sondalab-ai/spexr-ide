@@ -63,3 +63,18 @@ describe("a card leaving working", () => {
     expect(resting![2]).toMatch(/border-color:[^;]*var\(--tile-accent\)/);
   });
 });
+
+// A card's light means an agent is working. The kit also lights an aurora's
+// glow on :focus-within, and its default light is the pillars, so pressing a
+// card or its delete button flashed them until focus moved on.
+describe("a card that is not working", () => {
+  const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
+
+  it("hides the aurora glow in both of the kit's shapes", () => {
+    const hidden = css.match(
+      /\.sl-fx-aurora__glow\[data-sl-fx-seated\]:has\(\+ :is\(\.spexr-df-card, \.spexr-df-pinned\):not\(\[data-sl-fx-live\]\)\),\s*:is\(\.spexr-df-card, \.spexr-df-pinned\):not\(\[data-sl-fx-live\]\) > \.sl-fx-aurora__glow \{([^}]*)\}/,
+    );
+    expect(hidden, "a rule hides the seated and the child glow").not.toBeNull();
+    expect(hidden![1]).toMatch(/display:\s*none/);
+  });
+});
