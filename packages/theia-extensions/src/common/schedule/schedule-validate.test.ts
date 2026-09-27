@@ -97,4 +97,12 @@ describe("validateSchedule", () => {
       expect(fields(s)).toEqual(["c:workspace"]);
     });
   });
+
+  it("regression: reports all problems including id errors and workspace collisions", () => {
+    const s = { id: "Bad Id", name: "S", tasks: [task("a", { project: "/repo" }), task("b", { project: "/repo" })] };
+    const problems = validateSchedule(s);
+    const problemFields = problems.map((p) => `${p.task ?? "*"}:${p.field}`);
+    expect(problemFields).toContain("*:id");
+    expect(problemFields).toContain("b:workspace");
+  });
 });

@@ -14,8 +14,8 @@ import { placeholdersIn } from "./schedule-prompt.js";
 
 /**
  * Every problem that keeps a schedule from running, each naming the task and
- * field it concerns. A cycle stops the checks that walk the graph: with one
- * present, "upstream" has no meaning.
+ * field it concerns. Returns all problems found, including id validation errors.
+ * Only a cycle stops the graph-dependent checks: with one present, "upstream" has no meaning.
  */
 export function validateSchedule(s: Schedule): ValidationProblem[] {
   const problems: ValidationProblem[] = [];
@@ -40,21 +40,17 @@ export function validateSchedule(s: Schedule): ValidationProblem[] {
     return problems;
   }
 
-  // Only proceed with graph-dependent checks if all task ids are valid and unique
-  const hasIdProblems = problems.some((p) => p.field === "id");
-  if (!hasIdProblems) {
-    for (const t of s.tasks) {
-      const upstream = upstreamOf(s, t.id);
-      if (t.workspace.kind === "sameAs" && seen.has(t.workspace.task) && !upstream.has(t.workspace.task)) {
-        add(t.id, "workspace", `It can only share the workspace of a task it waits for.`);
-      }
-      const stray = placeholdersIn(t.prompt).filter((p) => !upstream.has(p.task));
-      if (stray.length > 0) {
-        add(t.id, "prompt", `Placeholders can only name tasks this one waits for: ${[...new Set(stray.map((p) => p.task))].join(", ")}.`);
-      }
+  for (const t of s.tasks) {
+    const upstream = upstreamOf(s, t.id);
+    if (t.workspace.kind === "sameAs" && seen.has(t.workspace.task) && !upstream.has(t.workspace.task)) {
+      add(t.id, "workspace", `It can only share the workspace of a task it waits for.`);
     }
-    checkSharedFolders(s, add);
+    const stray = placeholdersIn(t.prompt).filter((p) => !upstream.has(p.task));
+    if (stray.length > 0) {
+      add(t.id, "prompt", `Placeholders can only name tasks this one waits for: ${[...new Set(stray.map((p) => p.task))].join(", ")}.`);
+    }
   }
+  checkSharedFolders(s, add);
   return problems;
 }
 
@@ -100,6 +96,7 @@ function checkSharedFolders(s: Schedule, add: (task: string, field: string, mess
       const a = s.tasks[i]!;
       const b = s.tasks[j]!;
       if (flagged.has(b.id)) continue;
+      if (a.id === b.id) continue;
       if (staticFolder(s, a.id) !== staticFolder(s, b.id) || !mayRunTogether(s, a.id, b.id)) continue;
       add(b.id, "workspace", `It may run at the same time as "${a.name}" in the same folder. Give one a worktree, or make one wait for the other.`);
       flagged.add(b.id);
