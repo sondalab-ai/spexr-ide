@@ -26,7 +26,7 @@ import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.
 import { SpexrScheduleServiceProxy, SpexrScheduleClientDispatcher } from "./schedule/schedule-client.js";
 import { closesDestructively, taskCardsToMount } from "./schedule/schedule-wall.js";
 import type { ScheduleSnapshot, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
-import type { Schedule } from "../../common/schedule/schedule-types.js";
+import type { Schedule, ValidationProblem } from "../../common/schedule/schedule-types.js";
 import { ScheduleSidebar } from "./schedule/schedule-sidebar.js";
 import { readSidebarPrefs, writeSidebarPrefs } from "./schedule/sidebar-prefs.js";
 import { SpexrProjectTerminalService } from "../terminal/project-terminal-service.js";
@@ -633,13 +633,20 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     void this.schedules.snapshot().then((s) => this.onScheduleSnapshot(s)).catch(() => undefined);
   }
 
-  /** Resolve every task's launch here, where the preferences are, then hand the run to the backend. */
-  private async runSchedule(schedule: Schedule): Promise<void> {
+  /**
+   * Resolve every task's launch here, where the preferences are, then hand
+   * the run to the backend. Returns the problems that refused the run (empty
+   * on success) so the sidebar can show a backend-only refusal — a task with
+   * no usable launch command, a worktree workspace (Slice 4), or a run
+   * already in progress — the same way it shows a client-side one.
+   */
+  private async runSchedule(schedule: Schedule): Promise<ValidationProblem[]> {
     const launches = Object.fromEntries(
       schedule.tasks.map((t) => [t.id, this.terminals.resolveLaunch(t.harness, t.configDir ?? "", t.project)]),
     );
-    await this.schedules.run(schedule.id, launches);
+    const problems = await this.schedules.run(schedule.id, launches);
     this.refreshSchedules();
+    return problems;
   }
 
   /**
@@ -1448,7 +1455,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               width={this.sidebar.width}
               onSave={(s) => void this.schedules.save(s).then(() => this.refreshSchedules()).catch(() => undefined)}
               onRemove={(id) => void this.schedules.remove(id).then(() => this.refreshSchedules()).catch(() => undefined)}
-              onRun={(s) => void this.runSchedule(s).catch(() => undefined)}
+              onRun={(s) =>
+                this.runSchedule(s).catch(
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not start the run." }],
+                )
+              }
               onAbort={(id) => void this.schedules.abort(id).catch(() => undefined)}
               onFocusTask={(sid, tid) => this.focusTask(sid, tid)}
               onClose={() => this.setSidebarOpen(false)}

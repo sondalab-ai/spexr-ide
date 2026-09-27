@@ -7,7 +7,7 @@ import {
   type TaskStatus,
   type ValidationProblem,
 } from "../../../common/schedule/schedule-types.js";
-import { layersOf } from "../../../common/schedule/schedule-graph.js";
+import { findCycle, layersOf } from "../../../common/schedule/schedule-graph.js";
 
 type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 
@@ -40,29 +40,52 @@ export interface TaskRow {
   error?: string;
 }
 
-/** Rows in layer order (depth first, then schedule order), with their run state when there is a run. */
+/**
+ * Rows in layer order (depth first, then schedule order), with their run
+ * state when there is a run. A cyclic schedule has no layers — `layersOf`
+ * would have no base case to recurse from — so a cycle falls back to a flat
+ * list at layer 0, in schedule order; `validateSchedule` is what actually
+ * rejects the cycle, this just keeps the sidebar rendering rather than
+ * hanging the whole Dark Factory on a bad save.
+ */
 export function taskRows(schedule: Schedule, run?: RunState): TaskRow[] {
   const byId = new Map(schedule.tasks.map((t) => [t.id, t]));
-  return layersOf(schedule).flatMap((ids, layer) =>
-    ids.map((id) => {
-      const t = byId.get(id)!;
-      const state = run?.tasks[id];
-      const status = state?.status ?? "pending";
-      const max = t.loop?.maxIterations;
-      return {
-        id,
-        name: t.name,
-        harness: t.harness,
-        layer,
-        waitsFor: t.needs.map((n) => byId.get(n)?.name ?? n),
-        status,
-        ...STATUS_VIEW[status],
-        ...(state && max && state.iteration > 0 ? { iteration: `${state.iteration} / ${max}` } : {}),
-        unattended: !!t.permissionMode && UNATTENDED_MODES[t.harness].includes(t.permissionMode),
-        ...(state?.error ? { error: state.error } : {}),
-      };
-    }),
-  );
+  const cyclic = findCycle(schedule) !== undefined;
+  const order: [id: string, layer: number][] = cyclic
+    ? schedule.tasks.map((t): [string, number] => [t.id, 0])
+    : layersOf(schedule).flatMap((ids, layer) => ids.map((id): [string, number] => [id, layer]));
+  return order.map(([id, layer]) => {
+    const t = byId.get(id)!;
+    const state = run?.tasks[id];
+    const status = state?.status ?? "pending";
+    const max = t.loop?.maxIterations;
+    return {
+      id,
+      name: t.name,
+      harness: t.harness,
+      layer,
+      waitsFor: t.needs.map((n) => byId.get(n)?.name ?? n),
+      status,
+      ...STATUS_VIEW[status],
+      ...(state && max && state.iteration > 0 ? { iteration: `${state.iteration} / ${max}` } : {}),
+      unattended: !!t.permissionMode && UNATTENDED_MODES[t.harness].includes(t.permissionMode),
+      ...(state?.error ? { error: state.error } : {}),
+    };
+  });
+}
+
+/**
+ * One "<task>: <label>" line per task whose status changed between two
+ * `taskRows()` calls, in row order — for a screen-reader announcement.
+ * `undefined` `prev` (nothing rendered yet) announces nothing, so mounting
+ * the sidebar doesn't read out every task's initial state.
+ */
+export function taskTransitions(prev: readonly TaskRow[] | undefined, next: readonly TaskRow[]): string[] {
+  if (!prev) return [];
+  const prevStatus = new Map(prev.map((r) => [r.id, r.status]));
+  return next
+    .filter((r) => prevStatus.has(r.id) && prevStatus.get(r.id) !== r.status)
+    .map((r) => `${r.name}: ${r.label}`);
 }
 
 /** What the run bar offers, and why Run is unavailable when it is. */

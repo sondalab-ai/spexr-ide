@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunState, Schedule } from "../../../common/schedule/schedule-types.js";
-import { STATUS_VIEW, newSchedule, runBar, taskRows } from "./schedule-view.js";
+import { STATUS_VIEW, newSchedule, runBar, taskRows, taskTransitions } from "./schedule-view.js";
 
 const s: Schedule = {
   id: "s",
@@ -36,6 +36,36 @@ describe("taskRows", () => {
     expect(rows[0]!.unattended).toBe(true);
     expect(rows[1]!.iteration).toBe("2 / 5");
   });
+  it("falls back to a flat list at layer 0 on a cyclic schedule, instead of hanging", () => {
+    const cyclic: Schedule = {
+      id: "c",
+      name: "C",
+      tasks: [
+        { id: "a", name: "A", needs: ["b"], project: "/r", workspace: { kind: "folder" }, harness: "claude", prompt: "p" },
+        { id: "b", name: "B", needs: ["a"], project: "/r", workspace: { kind: "folder" }, harness: "claude", prompt: "p" },
+      ],
+    };
+    const rows = taskRows(cyclic);
+    expect(rows.map((r) => [r.id, r.layer])).toEqual([["a", 0], ["b", 0]]);
+  });
+});
+
+describe("taskTransitions", () => {
+  it("announces nothing on the first render", () => {
+    expect(taskTransitions(undefined, taskRows(s))).toEqual([]);
+  });
+  it("announces nothing when no status changed", () => {
+    const rows = taskRows(s, run("running", "pending"));
+    expect(taskTransitions(rows, taskRows(s, run("running", "pending")))).toEqual([]);
+  });
+  it("announces every task whose status changed, in row order", () => {
+    const before = taskRows(s, run("running", "pending"));
+    const after = taskRows(s, run("converged", "running"));
+    expect(taskTransitions(before, after)).toEqual([
+      `A: ${STATUS_VIEW.converged.label}`,
+      `B: ${STATUS_VIEW.running.label}`,
+    ]);
+  });
 });
 
 describe("runBar", () => {
@@ -48,6 +78,11 @@ describe("runBar", () => {
   it("offers Abort while running, and Run again after the run ended", () => {
     expect(runBar(s, run("running", "pending"), [])).toMatchObject({ canRun: false, canAbort: true });
     expect(runBar(s, run("converged", "converged", { status: "finished" }), [])).toMatchObject({ canRun: true, canAbort: false });
+  });
+  it("lists a schedule-level (backend) refusal by its message alone, with no task to name", () => {
+    const refused = runBar(s, undefined, [{ field: "run", message: "A task has no usable launch command." }]);
+    expect(refused.canRun).toBe(false);
+    expect(refused.reasons).toEqual(["A task has no usable launch command."]);
   });
 });
 

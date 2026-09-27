@@ -60,6 +60,16 @@ describe("layersOf", () => {
     const s = sched(task("a"), task("x"), task("b", ["a"]), task("c", ["a", "b"]));
     expect(layersOf(s)).toEqual([["a", "x"], ["b"], ["c"]]);
   });
+  it("terminates on a cycle instead of recursing forever", () => {
+    const s = sched(task("a", ["a"]));
+    expect(() => layersOf(s)).not.toThrow();
+    expect(layersOf(s)).toEqual([["a"]]);
+  });
+  it("terminates on a multi-task cycle", () => {
+    const s = sched(task("a", ["b"]), task("b", ["a"]));
+    expect(() => layersOf(s)).not.toThrow();
+    expect(layersOf(s).flat().sort()).toEqual(["a", "b"]);
+  });
 });
 
 describe("staticFolder", () => {

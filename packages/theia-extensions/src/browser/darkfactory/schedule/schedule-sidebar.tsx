@@ -8,7 +8,7 @@ import {
   type ValidationProblem,
 } from "../../../common/schedule/schedule-types.js";
 import { validateSchedule } from "../../../common/schedule/schedule-validate.js";
-import { newSchedule, newTask, runBar, taskRows } from "./schedule-view.js";
+import { newSchedule, newTask, runBar, taskRows, taskTransitions, type TaskRow } from "./schedule-view.js";
 
 export interface ScheduleSidebarProps {
   snapshot: ScheduleSnapshot;
@@ -16,7 +16,8 @@ export interface ScheduleSidebarProps {
   width: number;
   onSave(schedule: Schedule): void;
   onRemove(scheduleId: string): void;
-  onRun(schedule: Schedule): void;
+  /** Resolves to the problems that refused the run (empty on success), so they can join the reasons above Run. */
+  onRun(schedule: Schedule): Promise<ValidationProblem[]>;
   onAbort(scheduleId: string): void;
   onFocusTask(scheduleId: string, taskId: string): void;
   onClose(): void;
@@ -32,6 +33,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   // Edits go to a local draft and are saved after a pause in typing: saving
   // every keystroke over RPC made controlled inputs lag and drop characters.
   const [draft, setDraft] = React.useState<Schedule | undefined>();
+  // The draft object last handed to onSave (by the debounce or by flush()),
+  // so a blur with nothing new to say is a no-op instead of a duplicate save.
+  const savedRef = React.useRef<Schedule | undefined>(undefined);
   // React 19's useRef has no zero-argument overload, and exactOptionalPropertyTypes
   // rejects an implicit `undefined`, so the initial value is passed explicitly.
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -39,24 +43,48 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const schedule = draft && draft.id === saved?.id ? draft : saved;
   const run = schedule ? p.snapshot.runs[schedule.id] : undefined;
   const running = run?.status === "running";
+  // What the backend refused the last Run for; cleared by the next edit or a
+  // run that started cleanly, so a stale refusal never outlives its cause.
+  const [runProblems, setRunProblems] = React.useState<ValidationProblem[]>([]);
   const edit = (next: Schedule): void => {
+    setRunProblems([]);
     setDraft(next);
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => p.onSave(next), 600);
+    saveTimer.current = setTimeout(() => {
+      p.onSave(next);
+      savedRef.current = next;
+    }, 600);
   };
   const flush = (): void => {
-    if (!draft) return;
+    if (!draft || draft === savedRef.current) return;
     clearTimeout(saveTimer.current);
     p.onSave(draft);
+    savedRef.current = draft;
   };
   React.useEffect(() => () => clearTimeout(saveTimer.current), []);
-  const problems: ValidationProblem[] = schedule ? validateSchedule(schedule) : [];
+  const problems: ValidationProblem[] = schedule ? [...validateSchedule(schedule), ...runProblems] : [];
   const bar = schedule ? runBar(schedule, run, problems) : undefined;
+  const rows = schedule ? taskRows(schedule, run) : [];
   const [announce, setAnnounce] = React.useState("");
-  React.useEffect(
-    () => setAnnounce(bar ? `Schedule ${bar.label.toLowerCase()}` : ""),
-    [bar?.label],
-  );
+  const rowKey = rows.map((r) => `${r.id}:${r.status}`).join(",");
+  const prevRowsRef = React.useRef<TaskRow[] | undefined>(undefined);
+  const prevBarLabelRef = React.useRef<string | undefined>(undefined);
+  // One live region for the whole pane (see the aside's trailing span):
+  // schedule-level state changes and per-task transitions both funnel here,
+  // so a screen reader never hears two competing announcements at once.
+  React.useEffect(() => {
+    const lines: string[] = [];
+    if (bar && bar.label !== prevBarLabelRef.current) lines.push(`Schedule ${bar.label.toLowerCase()}`);
+    lines.push(...taskTransitions(prevRowsRef.current, rows));
+    prevBarLabelRef.current = bar?.label;
+    prevRowsRef.current = rows;
+    if (lines.length > 0) setAnnounce(lines.join(". "));
+    // Depends on rowKey (content), not rows (a new array every render) or bar
+    // (a new object every render) — only bar.label is read.
+  }, [rowKey, bar?.label]);
+  React.useEffect(() => {
+    if (!running) setConfirmAbort(false);
+  }, [running]);
 
   const addSchedule = (): void => {
     // Flush any pending edit to the schedule being left, and drop the local
@@ -65,6 +93,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     flush();
     clearTimeout(saveTimer.current);
     setDraft(undefined);
+    savedRef.current = undefined;
+    setRunProblems([]);
     const s = newSchedule(new Set(p.snapshot.schedules.map((x) => x.id)));
     p.onSave(s);
     setSelectedId(s.id);
@@ -73,7 +103,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     if (draft?.id === id) {
       clearTimeout(saveTimer.current);
       setDraft(undefined);
+      savedRef.current = undefined;
     }
+    setRunProblems([]);
     setEditing(undefined);
     p.onRemove(id);
   };
@@ -104,7 +136,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
       {!schedule ? (
         <div className="sl-empty spexr-sched__empty">
           <p>Lay out agent sessions, say which waits for which, and run them.</p>
-          <button className="sl-btn sl-btn--primary" onClick={addSchedule}>
+          <button className="sl-btn" onClick={addSchedule}>
             New schedule
           </button>
         </div>
@@ -122,6 +154,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                       flush();
                       clearTimeout(saveTimer.current);
                       setDraft(undefined);
+                      savedRef.current = undefined;
+                      setRunProblems([]);
                       setSelectedId(e.target.value);
                     }}
                   >
@@ -168,13 +202,13 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           {bar!.reasons.length > 0 && (
             <div className="sl-callout sl-callout--warning spexr-sched__reasons">
               <ul>
-                {bar!.reasons.map((r) => (
-                  <li key={r}>{r}</li>
+                {bar!.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
                 ))}
               </ul>
             </div>
           )}
-          <div className="spexr-sched__runbar" aria-live="polite">
+          <div className="spexr-sched__runbar">
             <span className="sl-tag">{bar!.label}</span>
             {bar!.canAbort ? (
               confirmAbort ? (
@@ -207,7 +241,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                 disabled={!bar!.canRun}
                 onClick={() => {
                   flush();
-                  p.onRun(schedule);
+                  void p.onRun(schedule).then((problems) => setRunProblems(problems));
                 }}
               >
                 Run
@@ -216,7 +250,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           </div>
 
           <ol className="spexr-sched__tasks">
-            {taskRows(schedule, run).map((row) => (
+            {rows.map((row) => (
               <li
                 key={row.id}
                 className="spexr-sched__row"
@@ -231,6 +265,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                   }
                 >
                   <span className="spexr-sched__name">{row.name}</span>
+                  <span className="sl-tag sl-tag--plain">{row.harness}</span>
                   <span
                     className={`sl-badge${row.tone !== "neutral" ? ` sl-badge--${row.tone}` : ""}${row.status === "running" ? " sl-badge--live" : ""}`}
                   >

@@ -59,16 +59,26 @@ export function mayRunTogether(s: Schedule, a: string, b: string): boolean {
 
 /**
  * Tasks grouped by depth: a task with no needs is at depth 0, any other one
- * level below its deepest upstream task. Assumes an acyclic graph.
+ * level below its deepest upstream task. Meant for an acyclic graph — a
+ * cycle has no well-defined depth — but a `visiting` guard keeps this total
+ * rather than recursing forever: a task revisited while still being walked
+ * is treated as depth 0 for that edge, so a cycle degrades to a shallow
+ * (wrong, but finite) layering instead of hanging the caller. Callers that
+ * must not show a cyclic schedule as if it were valid should check
+ * {@link findCycle} first.
  */
 export function layersOf(s: Schedule): string[][] {
   const tasks = byId(s);
   const depth = new Map<string, number>();
+  const visiting = new Set<string>();
   const depthOf = (id: string): number => {
     const known = depth.get(id);
     if (known !== undefined) return known;
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
     const needs = (tasks.get(id)?.needs ?? []).filter((n) => tasks.has(n));
     const d = needs.length === 0 ? 0 : 1 + Math.max(...needs.map(depthOf));
+    visiting.delete(id);
     depth.set(id, d);
     return d;
   };
