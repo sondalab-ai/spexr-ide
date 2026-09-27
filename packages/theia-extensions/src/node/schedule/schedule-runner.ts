@@ -171,6 +171,8 @@ export class ScheduleRunner {
       await this.ports.rename(e.sessionId, e.name).catch((err) => console.error("[schedule] renaming the session failed", err));
       return;
     }
+    // "paste" and "check" are Slice 3 loop effects: Task 19 wires their handling here.
+    if (e.type !== "start") return;
     const schedule = this.schedule(scheduleId);
     const task = schedule?.tasks.find((t) => t.id === e.task);
     const run = this.file.runs[scheduleId];

@@ -87,6 +87,8 @@ export interface TaskRunState {
   processId?: number;
   workspace?: string;
   reply?: string;
+  /** A failed check's output, kept while its follow-up is held by an operator pause. */
+  checkTail?: string;
   error?: string;
 }
 
@@ -103,7 +105,12 @@ export interface RunState {
   scheduleId: string;
   runId: string;
   status: RunStatus;
-  /** Set while no new task may start: by the operator, or by a failed/interrupted task. */
+  /**
+   * Set while no new task may start. "operator": the operator paused the run
+   * (turn ends are held too); it wins over a failure and resume() recomputes
+   * the failure pause from the task statuses. "failure": a task is failed or
+   * interrupted.
+   */
   pausedBy?: "operator" | "failure";
   startedAtMs: number;
   tasks: Record<string, TaskRunState>;

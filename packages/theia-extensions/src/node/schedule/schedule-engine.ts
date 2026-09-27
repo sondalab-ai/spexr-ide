@@ -1,12 +1,19 @@
 import {
   ACTIVE_STATUSES,
+  DEFAULT_CHECK_TIMEOUT_SEC,
   SETTLED_STATUSES,
   type RunState,
   type Schedule,
   type ScheduleTask,
   type TaskLaunch,
 } from "../../common/schedule/schedule-types.js";
-import { fillPlaceholders, firstPrompt, stripMarker } from "../../common/schedule/schedule-prompt.js";
+import {
+  fillPlaceholders,
+  firstPrompt,
+  followUpPrompt,
+  hasConverged,
+  stripMarker,
+} from "../../common/schedule/schedule-prompt.js";
 
 export type EngineEvent =
   | { type: "started"; task: string; terminalId: number; processId: number; workspace: string; sessionId?: string }
@@ -17,12 +24,17 @@ export type EngineEvent =
   | { type: "needs-you"; task: string }
   | { type: "resumed-working"; task: string }
   | { type: "exited"; task: string }
+  | { type: "check-done"; task: string; ok: boolean; tail: string }
+  | { type: "pause" }
+  | { type: "resume" }
   | { type: "abort" }
   | { type: "recover" };
 
 export type Effect =
   | { type: "start"; task: string; prompt: string }
-  | { type: "name"; sessionId: string; name: string };
+  | { type: "name"; sessionId: string; name: string }
+  | { type: "paste"; task: string; terminalId: number; text: string }
+  | { type: "check"; task: string; command: string; cwd: string; timeoutSec: number };
 
 export interface StepResult {
   run: RunState;
@@ -88,15 +100,47 @@ export function step(schedule: Schedule, prev: RunState, event: EngineEvent): St
       if (task && ACTIVE_STATUSES.has(task.status)) fail(run, event.task, "The session ended before the task converged.");
       break;
     case "turn-ended":
+      if (task?.status === "held") {
+        // The operator typed into the card while paused: the newer reply is the one to judge.
+        task.reply = event.reply;
+        delete task.checkTail;
+        break;
+      }
       if (task?.status !== "running" && task?.status !== "waiting-on-you") break;
-      task.reply = event.reply;
-      task.status = "converged";
+      if (run.pausedBy === "operator") {
+        task.status = "held";
+        task.reply = event.reply;
+        break;
+      }
+      turnEnded(schedule, run, event.task, event.reply, effects);
+      break;
+    case "check-done":
+      if (task?.status !== "checking") break;
+      if (event.ok) task.status = "converged";
+      else if (run.pausedBy === "operator") {
+        task.status = "held";
+        task.checkTail = event.tail;
+      } else iterate(schedule, run, event.task, event.tail, effects);
       break;
     case "needs-you":
       if (task?.status === "running") task.status = "waiting-on-you";
       break;
     case "resumed-working":
       if (task?.status === "waiting-on-you") task.status = "running";
+      break;
+    case "pause":
+      run.pausedBy = "operator";
+      break;
+    case "resume":
+      if (run.pausedBy !== "operator") return { run, effects };
+      if (hasFailure(run)) run.pausedBy = "failure";
+      else delete run.pausedBy;
+      for (const t of schedule.tasks) {
+        const held = run.tasks[t.id];
+        if (held?.status !== "held") continue;
+        if (held.checkTail !== undefined) iterate(schedule, run, t.id, held.checkTail, effects);
+        else turnEnded(schedule, run, t.id, held.reply ?? "", effects);
+      }
       break;
     case "abort":
       run.status = "aborted";
@@ -110,11 +154,77 @@ export function step(schedule: Schedule, prev: RunState, event: EngineEvent): St
   return { run, effects };
 }
 
+function taskOf(schedule: Schedule, taskId: string): ScheduleTask {
+  return schedule.tasks.find((t) => t.id === taskId)!;
+}
+
+/** Judge a finished turn: converge, run the check, or go round again. */
+function turnEnded(schedule: Schedule, run: RunState, taskId: string, reply: string, effects: Effect[]): void {
+  const t = taskOf(schedule, taskId);
+  const state = run.tasks[taskId]!;
+  state.reply = reply;
+  delete state.checkTail;
+  if (!t.loop) {
+    state.status = "converged";
+    return;
+  }
+  if (!hasConverged(reply)) {
+    iterate(schedule, run, taskId, undefined, effects);
+    return;
+  }
+  const check = t.loop.check;
+  if (!check?.trim()) {
+    state.status = "converged";
+    return;
+  }
+  state.status = "checking";
+  // Verbatim: placeholders are never filled into a check command (spec, Hand-off).
+  effects.push({
+    type: "check",
+    task: taskId,
+    command: check,
+    cwd: state.workspace ?? t.project,
+    timeoutSec: t.loop.checkTimeoutSec ?? DEFAULT_CHECK_TIMEOUT_SEC,
+  });
+}
+
+/** Paste the follow-up (with a failed check's output) for one more iteration, or fail once none are left. */
+function iterate(schedule: Schedule, run: RunState, taskId: string, checkTail: string | undefined, effects: Effect[]): void {
+  const t = taskOf(schedule, taskId);
+  const state = run.tasks[taskId]!;
+  delete state.checkTail;
+  const max = t.loop?.maxIterations ?? 1;
+  if (state.iteration >= max) {
+    fail(
+      run,
+      taskId,
+      `Not converged after ${max} iteration${max === 1 ? "" : "s"}${checkTail === undefined ? "" : ": the check still fails"}.`,
+    );
+    return;
+  }
+  state.iteration += 1;
+  state.status = "running";
+  if (state.sessionId) {
+    effects.push({ type: "name", sessionId: state.sessionId, name: sessionName(schedule, taskId, state.iteration) });
+  }
+  effects.push({
+    type: "paste",
+    task: taskId,
+    terminalId: state.terminalId!,
+    text: followUpPrompt(t, checkTail === undefined ? undefined : { command: t.loop!.check!, tail: checkTail }),
+  });
+}
+
+function hasFailure(run: RunState): boolean {
+  return Object.values(run.tasks).some((t) => t.status === "failed" || t.status === "interrupted");
+}
+
+/** Fail a task; the run pauses on the failure unless the operator's pause already holds it. */
 function fail(run: RunState, taskId: string, error: string): void {
   const t = run.tasks[taskId]!;
   t.status = "failed";
   t.error = error;
-  run.pausedBy = "failure";
+  if (run.pausedBy !== "operator") run.pausedBy = "failure";
 }
 
 function ready(schedule: Schedule, run: RunState): ScheduleTask[] {
