@@ -30,7 +30,11 @@ export async function loadSchedules(path: string = resolveSchedulesPath()): Prom
   let text: string;
   try {
     text = await readFile(path, "utf8");
-  } catch {
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ENOENT") return empty();
+    // Unreadable (EACCES, EISDIR, etc.) → move aside
+    await rename(path, `${path}.damaged-${Date.now()}`).catch(() => undefined);
     return empty();
   }
   try {

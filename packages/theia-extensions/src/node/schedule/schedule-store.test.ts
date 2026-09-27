@@ -55,4 +55,11 @@ describe("loadSchedules / saveSchedules", () => {
     expect((await loadSchedules(path)).schedules).toEqual([]);
     expect((await readdir(dirname(path))).some((f) => f.startsWith("schedules.json.damaged-"))).toBe(true);
   });
+  it("moves an unreadable file aside (directory case)", async () => {
+    const path = await tempPath();
+    await mkdir(dirname(path), { recursive: true });
+    await mkdir(path);
+    expect(await loadSchedules(path)).toEqual({ version: 1, schedules: [], runs: {} });
+    expect((await readdir(dirname(path))).some((f) => f.startsWith("schedules.json.damaged-"))).toBe(true);
+  });
 });
