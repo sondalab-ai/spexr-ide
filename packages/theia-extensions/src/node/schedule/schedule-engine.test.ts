@@ -332,6 +332,14 @@ describe("step — retry and skip (Slice 4)", () => {
     expect(run.pausedBy).toBe("failure"); // b is still interrupted
   });
 
+  it("recover drops a failed task's terminalId/processId, so a later retry closes nothing (a restart already killed the pty; low ids get reused)", () => {
+    const recovered = step(s, failed(begin(), "a"), { type: "recover" }).run;
+    expect(recovered.tasks["a"]).not.toHaveProperty("terminalId");
+    expect(recovered.tasks["a"]).not.toHaveProperty("processId");
+    const { effects } = step(s, recovered, { type: "retry", task: "a", launch });
+    expect(effects).toEqual([{ type: "start", task: "a", prompt: "do a", reuse: true }]);
+  });
+
   it("a failure pause clears only when nothing else is failed or interrupted", () => {
     let run = failed(failed(begin(), "a"), "b");
     run = step(s, run, { type: "retry", task: "a", launch }).run;

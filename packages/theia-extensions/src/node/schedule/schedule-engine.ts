@@ -168,7 +168,16 @@ export function step(schedule: Schedule, prev: RunState, event: EngineEvent): St
       run.status = "aborted";
       return { run, effects };
     case "recover":
-      for (const t of Object.values(run.tasks)) if (ACTIVE_STATUSES.has(t.status)) t.status = "interrupted";
+      for (const t of Object.values(run.tasks)) {
+        if (ACTIVE_STATUSES.has(t.status)) t.status = "interrupted";
+        // A backend restart kills its ptys anyway, and restarted terminal ids
+        // start over from low numbers: a failed task's old terminalId/processId
+        // must not survive to be handed to a later Retry's close effect (R13).
+        if (t.status === "failed") {
+          delete t.terminalId;
+          delete t.processId;
+        }
+      }
       // An operator pause wins over a failure (R3): never overwrite it here; resume() recomputes the failure pause.
       if (run.pausedBy !== "operator" && Object.values(run.tasks).some((t) => t.status === "interrupted")) run.pausedBy = "failure";
       return { run, effects };

@@ -504,6 +504,12 @@ describe("ScheduleRunner", () => {
 
   it("a retry closes the failed session and launches a new one; Abort closes nothing (R13)", async () => {
     const f = fakes();
+    let launchCount = 0;
+    f.ports.launch = async (line) => {
+      launchCount += 1;
+      f.lines.push(line);
+      return launchCount === 1 ? { terminalId: 3, processId: 30 } : { terminalId: 4, processId: 40 };
+    };
     const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
     await runner.run("s", { a: launch });
     await settle();
@@ -511,11 +517,66 @@ describe("ScheduleRunner", () => {
     await settle();
     await runner.dispatch("s", { type: "retry", task: "a", launch });
     await settle();
-    expect(f.closes).toEqual([[3, 30]]);
+    expect(f.closes).toEqual([[3, 30]]); // the failed session, never the new one
     expect(f.lines).toHaveLength(2);
-    expect(f.saved()!.runs["s"]!.tasks["a"]).toMatchObject({ status: "running", terminalId: 3 });
+    expect(f.saved()!.runs["s"]!.tasks["a"]).toMatchObject({ status: "running", terminalId: 4 }); // bound to the new terminal, not the closed one
     await runner.abort("s");
     await settle();
     expect(f.closes).toEqual([[3, 30]]); // Abort keeps sessions open (spec)
+  });
+
+  it("closes exactly one pty when only Abort (no rerun) is queued behind a busy queue while its launch resolves (R14)", async () => {
+    const f = fakes();
+    type Terminal = { terminalId: number; processId: number };
+    const pending: { resolve: (t: Terminal) => void }[] = [];
+    f.ports.launch = () => new Promise<Terminal>((resolve) => pending.push({ resolve }));
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+
+    await runner.run("s", { a: launch });
+    await settle();
+    const run1Launch = pending.shift()!;
+
+    // Occupy the queue the same way as the "reviewer repro" test above.
+    const blockedSave = deferred<void>();
+    const originalSave = f.ports.save;
+    f.ports.save = (file) => blockedSave.promise.then(() => originalSave(file));
+    const blockingSave = runner.saveSchedule({ id: "t", name: "T", tasks: [] });
+
+    // Only Abort is queued behind the block — no rerun this time, so the run
+    // itself is never superseded, only stopped.
+    const abortDone = runner.abort("s");
+
+    // The launch resolves while the queue is still blocked: isCurrentRun()
+    // still sees the run as "running" (Abort hasn't applied yet), so it
+    // registers a watcher/exit listener and queues a "started" dispatch bound
+    // to this run, behind the blocked save and Abort.
+    run1Launch.resolve({ terminalId: 1, processId: 10 });
+    await settle();
+
+    // Release the queue: the blocked save, then Abort, then the queued
+    // "started" all process in that order. Abort's own commit() releases the
+    // registration it never needed; the queued "started" then finds the same
+    // run no longer "running" (not stale — same runId, no rerun) and closes
+    // its pty (dispatch()'s plain-Abort branch, R14).
+    blockedSave.resolve();
+    await Promise.all([blockingSave, abortDone]);
+    await settle();
+
+    expect(f.closes).toEqual([[1, 10]]);
+    expect(f.watching()).toBe(false);
+  });
+
+  it("Skip closes nothing (spec) — only Retry's engine effect ever closes a session", async () => {
+    const f = fakes();
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [schedule], runs: {} });
+    await runner.run("s", { a: launch });
+    await settle();
+    f.exit();
+    await settle();
+    expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("failed");
+    await runner.dispatch("s", { type: "skip", task: "a" });
+    await settle();
+    expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("skipped");
+    expect(f.closes).toEqual([]);
   });
 });
