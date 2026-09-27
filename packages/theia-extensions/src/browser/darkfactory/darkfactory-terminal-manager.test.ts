@@ -15,7 +15,11 @@ interface FakeTerminal {
   /** The backend id `start` was asked to attach to, if any. */
   startedWith?: number;
   processId: Promise<number>;
+  /** Mirrors Theia's own guard: dispose() only closes the backend while this is true. */
+  closeOnDispose: boolean;
   start(id?: number): Promise<void>;
+  /** Mirrors `TerminalWidgetImpl.storeState()`: flips `closeOnDispose` off. */
+  storeState(): void;
   dispose(): void;
   onDidDispose(listener: () => void): void;
   onDidOpenFailure(listener: () => void): { dispose(): void };
@@ -23,20 +27,28 @@ interface FakeTerminal {
   failAttach(): void;
 }
 
-function fakeTerminal(): FakeTerminal {
+/** `onClose` mirrors `shellTerminalServer.close(id)`, called only when dispose() finds `closeOnDispose` still true. */
+function fakeTerminal(onClose: (id: number) => void = () => {}): FakeTerminal {
   const disposeListeners: (() => void)[] = [];
   const failureListeners: (() => void)[] = [];
   const term: FakeTerminal = {
     terminalId: 1,
     isDisposed: false,
     processId: Promise.resolve(4242),
+    closeOnDispose: true,
     start: async (id?: number) => {
       if (id !== undefined) {
         term.startedWith = id;
         term.terminalId = id;
       }
     },
+    storeState: () => {
+      term.closeOnDispose = false;
+    },
     dispose: () => {
+      // Mirrors TerminalWidgetImpl.dispose(): reaches the backend only while
+      // closeOnDispose is still true, exactly like the real widget.
+      if (term.closeOnDispose) onClose(term.terminalId);
       term.isDisposed = true;
       disposeListeners.forEach((l) => l());
     },
@@ -63,14 +75,17 @@ function makeManager(prefs: Record<string, unknown> = {}): {
   manager: SpexrDarkfactoryTerminalManager;
   calls: NewTerminalCall[];
   terms: FakeTerminal[];
+  /** Backend ids `shellTerminalServer.close` was called with, in order. */
+  closes: number[];
 } {
   const calls: NewTerminalCall[] = [];
   const terms: FakeTerminal[] = [];
+  const closes: number[] = [];
   const manager = new SpexrDarkfactoryTerminalManager();
   (manager as unknown as { terminalService: unknown }).terminalService = {
     newTerminal: (options: Record<string, unknown>) => {
       calls.push({ options });
-      const term = fakeTerminal();
+      const term = fakeTerminal((id) => closes.push(id));
       terms.push(term);
       return term;
     },
@@ -82,7 +97,7 @@ function makeManager(prefs: Record<string, unknown> = {}): {
     get: (key: string) => prefs[key] ?? "",
     inspect: (key: string) => ({ preferenceName: key, globalValue: prefs[key] }),
   };
-  return { manager, calls, terms };
+  return { manager, calls, terms, closes };
 }
 
 function shellLine(calls: NewTerminalCall[]): string {
@@ -329,6 +344,55 @@ describe("SpexrDarkfactoryTerminalManager across a window reload", () => {
     expect(term).toBe(terms[0]);
     expect(terms[0]!.startedWith).toBe(7);
     expect(manager.live(UUID)).toBe(term);
+  });
+
+  it("disposes the widget without closing the backend when the attach itself fails (id -1)", async () => {
+    const { manager, terms, closes } = withServer({ 7: 4242 });
+    const service = (
+      manager as unknown as { terminalService: { newTerminal: (o: Record<string, unknown>) => FakeTerminal } }
+    ).terminalService;
+    const make = service.newTerminal;
+    service.newTerminal = (o) => {
+      const t = make(o);
+      t.start = async () => {
+        t.terminalId = -1; // what attachTerminal leaves behind: the process is gone
+        throw new Error("gone");
+      };
+      return t;
+    };
+
+    expect(await manager.reattach(UUID, { terminalId: 7, processId: 4242 }, "/Users/x/proj")).toBeUndefined();
+
+    expect(terms[0]!.isDisposed).toBe(true);
+    expect(closes).toEqual([]);
+    expect(manager.live(UUID)).toBeUndefined();
+    expect((manager as unknown as { widgets: Map<string, unknown> }).widgets.size).toBe(0);
+  });
+
+  it("disposes the widget without closing the backend when a later bookkeeping call rejects after a real attach", async () => {
+    // The narrow case start() can still throw in: attachTerminal itself
+    // succeeded and term.terminalId already holds the real, connected backend
+    // id (the one the scheduler owns) when a later RPC round trip rejects.
+    const { manager, terms, closes } = withServer({ 7: 4242 });
+    const service = (
+      manager as unknown as { terminalService: { newTerminal: (o: Record<string, unknown>) => FakeTerminal } }
+    ).terminalService;
+    const make = service.newTerminal;
+    service.newTerminal = (o) => {
+      const t = make(o);
+      t.start = async () => {
+        t.terminalId = 7; // the attach succeeded; this is the real backend id
+        throw new Error("onAttachAttempted rejected");
+      };
+      return t;
+    };
+
+    expect(await manager.reattach(UUID, { terminalId: 7, processId: 4242 }, "/Users/x/proj")).toBeUndefined();
+
+    expect(terms[0]!.isDisposed).toBe(true);
+    expect(closes).toEqual([]); // must never reach the backend: this id is real
+    expect(manager.live(UUID)).toBeUndefined();
+    expect((manager as unknown as { widgets: Map<string, unknown> }).widgets.size).toBe(0);
   });
 
   it("leaves alone a terminal id that now belongs to another process", async () => {

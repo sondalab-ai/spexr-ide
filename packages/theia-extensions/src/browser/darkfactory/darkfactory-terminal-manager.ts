@@ -38,6 +38,20 @@ function baseName(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
+/** A terminal that can save its own inner state — Theia's `StatefulWidget` contract. */
+interface StorableTerminal {
+  storeState(): unknown;
+}
+
+/**
+ * Whether a terminal widget implements `storeState()`, checked structurally
+ * with an `in` guard (no cast) so this file needs no import of Theia's
+ * `StatefulWidget` type and a test fake can opt in without implementing it.
+ */
+function hasStoreState(term: object): term is StorableTerminal {
+  return "storeState" in term && typeof term.storeState === "function";
+}
+
 /** The harness that owns a session id (by shape: UUID → claude, `ses_…` → opencode). */
 function harnessForSessionId(sessionId: string): HarnessCore | undefined {
   if (claudeCore.isResumableId(sessionId)) return claudeCore;
@@ -247,7 +261,16 @@ export class SpexrDarkfactoryTerminalManager {
     try {
       await term.start(stored.terminalId);
     } catch {
-      return undefined; // the process ended in between; the widget holds no id to close
+      // `term`'s id here may be the real, attached backend id (attach can
+      // succeed and start() still throw on a later bookkeeping round trip).
+      // storeState() is the call Theia's reload path makes before dropping a
+      // widget; it turns off closeOnDispose, so the dispose() below can never
+      // reach the backend. If this widget somehow doesn't support it, leak
+      // rather than risk closing the scheduler's terminal.
+      if (!hasStoreState(term)) return undefined;
+      term.storeState();
+      term.dispose();
+      return undefined;
     }
     await this.register(key, term);
     return term;
