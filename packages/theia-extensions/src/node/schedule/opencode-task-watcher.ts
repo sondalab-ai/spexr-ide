@@ -4,13 +4,12 @@ import { TurnTracker, finalReply } from "./turn-tracker.js";
 import type { TaskWatch, WatchEvent } from "./claude-task-watcher.js";
 
 export const OPENCODE_SESSION_WAIT_MS = 120_000;
-/** The wall's own poll interval: asking more often would re-run `opencode db` (see its memory note). */
-export const SCAN_EVERY_MS = 20_000;
 
 /** What the runner needs from the Dark Factory backend: its scans, not its own `opencode db` queries. */
 export interface WallScanSource {
   onScanned(listener: (tiles: AgentTile[]) => void): () => void;
-  requestScan(): void;
+  /** Hold the wall's one shared periodic scan on (no window needed); returns the idempotent release. */
+  requestScans(): () => void;
   knownSessionIds(): Set<string>;
   scanEntries(sessionId: string): Promise<unknown[]>;
 }
@@ -28,7 +27,8 @@ function turnOf(t: AgentTile): Turn {
 /**
  * Watch an opencode task through the wall's scans: adopt the first session in
  * its folder that the wall did not know at launch, then report its turn
- * transitions. Asks for a scan every SCAN_EVERY_MS so it moves with no window open.
+ * transitions. Holds the wall's shared periodic scan while it watches, so it
+ * moves with no window open without a scan clock of its own.
  * After arm(), the next turn end counts once the tile's prompt count
  * (`turnCount`) has gone up: with a scan every 20 s, the reply to a pasted
  * follow-up usually lands without the agent ever being seen working.
@@ -36,7 +36,7 @@ function turnOf(t: AgentTile): Turn {
 export function watchOpencodeTask(
   req: { workspace: string; permissionMode?: string },
   source: WallScanSource,
-  deps: { now(): number; every(fn: () => Promise<void>): () => void },
+  deps: { now(): number },
   listener: (e: WatchEvent) => void,
 ): TaskWatch {
   const known = source.knownSessionIds();
@@ -50,7 +50,7 @@ export function watchOpencodeTask(
   let stopped = false;
   let turnsSeen = 0;
   let armAfter: number | undefined;
-  const stopScans = deps.every(async () => source.requestScan());
+  const stopScans = source.requestScans();
   const stopListening = source.onScanned((tiles) => {
     if (stopped) return;
     if (!sessionId) {

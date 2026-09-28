@@ -288,6 +288,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private poll: ReturnType<typeof setInterval> | undefined;
   /** Set while power saving: the periodic rescan stays off, the watchers keep working. */
   private pollPaused = false;
+  /** Backend consumers holding the periodic rescan on with no window open (see {@link requestScans}). */
+  private scanHolds = 0;
   private readonly wallWatchers: FSWatcher[] = [];
   /** Single-flight push state: while a scan runs, events mark it dirty for one follow-up scan. */
   private scanInFlight = false;
@@ -610,9 +612,23 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     return () => d.dispose();
   }
 
-  /** Scan now, for a consumer that needs fresh tiles while no window is asking. */
-  requestScan(): void {
-    void this.listTiles().catch(() => undefined);
+  /**
+   * Keep the periodic rescan running while a backend consumer (a scheduled
+   * opencode task) needs fresh tiles, even with no window open. Every holder
+   * shares the wall's one single-flight ticker, which still pauses for power
+   * saving; each extra `opencode db` query would re-trigger the wall's own
+   * watcher. Returns the release, which is idempotent.
+   */
+  requestScans(): () => void {
+    this.scanHolds++;
+    this.startPolling();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.scanHolds = Math.max(0, this.scanHolds - 1);
+      if (this.scanHolds === 0 && !this.watching) this.stopPolling();
+    };
   }
 
   /** Session ids the last scan knew. */
@@ -1028,15 +1044,22 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
   /**
    * Periodic full rescan, the safety net under the watchers (see
-   * {@link POLL_INTERVAL_MS}). It goes through pushTiles, so a tick landing on
-   * an in-flight scan coalesces instead of stacking another one.
+   * {@link POLL_INTERVAL_MS}), run while a window is watching or a backend
+   * consumer holds it ({@link requestScans}). A tick landing on an in-flight
+   * scan is skipped: that scan's tiles are fresh enough.
    */
   private startPolling(): void {
-    if (this.poll || this.pollPaused) return;
+    if (this.poll || this.pollPaused || (!this.watching && this.scanHolds === 0)) return;
     this.poll = setInterval(() => {
-      void this.pushTiles();
+      if (!this.scanInFlight) void this.pushTiles();
     }, POLL_INTERVAL_MS);
     this.poll.unref?.();
+  }
+
+  private stopPolling(): void {
+    if (!this.poll) return;
+    clearInterval(this.poll);
+    this.poll = undefined;
   }
 
   /**
@@ -1091,7 +1114,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * scan is queued no matter how many events land.
    */
   private async pushTiles(): Promise<void> {
-    if (!this.client) return;
+    if (!this.client && this.scanHolds === 0) return;
     this.scanDirty = true;
     if (this.scanInFlight) return;
     this.scanInFlight = true;
@@ -1099,7 +1122,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       while (this.scanDirty) {
         this.scanDirty = false;
         try {
-          this.client.onTilesChanged(await this.listTiles());
+          const tiles = await this.listTiles();
+          this.client?.onTilesChanged(tiles);
         } catch {
           /* transient scan failure → skip this tick */
         }
@@ -1173,21 +1197,15 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    */
   setPollingPaused(paused: boolean): void {
     this.pollPaused = paused;
-    if (paused && this.poll) {
-      clearInterval(this.poll);
-      this.poll = undefined;
-    } else if (!paused && this.watching) {
-      this.startPolling();
-    }
+    if (paused) this.stopPolling();
+    else this.startPolling();
   }
 
   dispose(): void {
     this.watching = false;
     if (this.loopMonitor) clearInterval(this.loopMonitor);
-    if (this.poll) {
-      clearInterval(this.poll);
-      this.poll = undefined;
-    }
+    this.scanHolds = 0;
+    this.stopPolling();
     for (const w of this.wallWatchers) w.close();
     this.wallWatchers.length = 0;
     for (const { watcher } of this.follows.values()) watcher.close();

@@ -6,8 +6,8 @@ import { SpexrDarkfactoryBackendService } from "../darkfactory/spexr-darkfactory
 import { loadSchedules, saveSchedules, type ScheduleFile } from "./schedule-store.js";
 import { ScheduleRunner } from "./schedule-runner.js";
 import { SchedulePty } from "./schedule-pty.js";
-import { defaultClaudeWatchDeps, everyMs, watchClaudeTask } from "./claude-task-watcher.js";
-import { SCAN_EVERY_MS, watchOpencodeTask } from "./opencode-task-watcher.js";
+import { defaultClaudeWatchDeps, watchClaudeTask } from "./claude-task-watcher.js";
+import { watchOpencodeTask } from "./opencode-task-watcher.js";
 import { CheckQueue, runCheck } from "./check-runner.js";
 import { Workspaces } from "./workspace.js";
 
@@ -77,8 +77,7 @@ export class SpexrScheduleBackendService implements SpexrScheduleService {
       launch: (line, cwd) => this.pty.launch(line, cwd),
       onExit: (id, l) => this.pty.onExit(id, l),
       watchClaude: (req, l) => watchClaudeTask(req, defaultClaudeWatchDeps, l),
-      watchOpencode: (req, l) =>
-        watchOpencodeTask(req, this.wall, { now: () => Date.now(), every: everyMs(SCAN_EVERY_MS) }, l),
+      watchOpencode: (req, l) => watchOpencodeTask(req, this.wall, { now: () => Date.now() }, l),
       rename: (id, name) => this.wall.renameSession(id, name),
       newSessionId: () => randomUUID(),
       now: () => Date.now(),

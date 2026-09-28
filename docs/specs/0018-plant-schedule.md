@@ -261,8 +261,9 @@ opencode's data folder, which the wall watches — polling it from the runner
 would restart the refresh loop the wall already throttles
 (`docs/memory/a-read-only-opencode-db-query-still-writes-its-data-dir-open.md`).
 The runner therefore reads opencode tasks from the wall's own scan results: the
-Dark Factory backend announces each scan to the runner, and the runner asks for
-a scan itself on the wall's 20-second poll interval when no window is open.
+Dark Factory backend announces each scan to the runner, and while an opencode
+task runs the runner holds the wall's one 20-second poll on, so scans continue
+with no window open (paused for power saving, like the wall's own).
 A turn end on an opencode task is seen tens of seconds late.
 
 **A turn counts once.** After a paste, the transcript still ends with the

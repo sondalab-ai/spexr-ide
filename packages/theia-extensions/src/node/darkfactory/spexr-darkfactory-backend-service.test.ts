@@ -742,6 +742,101 @@ describe("wall polling", () => {
   });
 });
 
+describe("requestScans (the plant schedule's shared scan ticker)", () => {
+  const counting = () => {
+    const c = { scans: 0, gate: undefined as Promise<void> | undefined };
+    const s = svc({
+      configDirs: [],
+      detect: () => false,
+      watchDir: fakeWatch([]),
+      listTranscripts: async () => {
+        c.scans++;
+        await c.gate;
+        return [];
+      },
+    });
+    return { s, c };
+  };
+
+  it("two holders share one ticker that scans every poll interval with no window open, until both release", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      const releaseA = s.requestScans();
+      const releaseB = s.requestScans();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(1);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(2);
+      releaseA();
+      releaseA(); // idempotent: it must not release B's hold too
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(3);
+      releaseB();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(c.scans).toBe(3);
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with a window open, a hold adds no second ticker, and releasing it leaves the wall's poll running", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      s.setClient(fakeClient);
+      const release = s.requestScans();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(1);
+      release();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(2);
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stays quiet while polling is paused and resumes after", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      s.setPollingPaused(true);
+      const release = s.requestScans();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(c.scans).toBe(0);
+      s.setPollingPaused(false);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(1);
+      release();
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips a tick while a scan is still in flight", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      let open!: () => void;
+      c.gate = new Promise<void>((r) => (open = r));
+      const release = s.requestScans();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(c.scans).toBe(1);
+      c.gate = undefined;
+      open();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(2);
+      release();
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("setPollingPaused", () => {
   it("stops the rescan while paused and restarts it after", async () => {
     vi.useFakeTimers();

@@ -9,17 +9,24 @@ function tile(sessionId: string, projectPath: string, o: Partial<AgentTile>): Ag
 
 function source() {
   let emit: (t: AgentTile[]) => void = () => {};
-  let scans = 0;
+  let holds = 0;
   const s: WallScanSource = {
     onScanned: (l) => ((emit = l), () => (emit = () => {})),
-    requestScan: () => void (scans += 1),
+    requestScans: () => {
+      holds += 1;
+      let released = false;
+      return () => {
+        if (!released) holds -= 1;
+        released = true;
+      };
+    },
     knownSessionIds: () => new Set(["old"]),
     scanEntries: async () => [
       { message: { role: "user", content: "p" } },
       { message: { role: "assistant", content: [{ type: "text", text: "all set" }] } },
     ],
   };
-  return { s, emit: (t: AgentTile[]) => emit(t), scans: () => scans };
+  return { s, emit: (t: AgentTile[]) => emit(t), holds: () => holds };
 }
 
 describe("watchOpencodeTask", () => {
@@ -27,7 +34,7 @@ describe("watchOpencodeTask", () => {
     const src = source();
     let now = 0;
     const events: WatchEvent[] = [];
-    watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => now, every: () => () => {} }, (e) => events.push(e));
+    watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => now }, (e) => events.push(e));
     src.emit([tile("old", "/repo", {}), tile("other", "/elsewhere", {}), tile("new", "/repo/", {})]);
     expect(events).toEqual([{ type: "session-found", sessionId: "new" }]);
     src.emit([tile("new", "/repo", { state: "idle", needsYou: true })]);
@@ -40,13 +47,13 @@ describe("watchOpencodeTask", () => {
     let resolveEntries: (entries: unknown[]) => void = () => {};
     const s: WallScanSource = {
       onScanned: (l) => ((emit = l), () => (emit = () => {})),
-      requestScan: () => {},
+      requestScans: () => () => {},
       knownSessionIds: () => new Set(["old"]),
       scanEntries: async () => new Promise((resolve) => (resolveEntries = resolve)),
     };
     const now = 0;
     const events: WatchEvent[] = [];
-    const watch = watchOpencodeTask({ workspace: "/repo" }, s, { now: () => now, every: () => () => {} }, (e) =>
+    const watch = watchOpencodeTask({ workspace: "/repo" }, s, { now: () => now }, (e) =>
       events.push(e),
     );
     emit([tile("new", "/repo", {})]);
@@ -61,22 +68,28 @@ describe("watchOpencodeTask", () => {
     expect(events).toEqual([{ type: "session-found", sessionId: "new" }]);
   });
 
-  it("asks for scans on its own clock and gives up after the wait", () => {
+  it("holds the wall's shared scans while it waits, and releases them when it gives up after the wait", () => {
     const src = source();
     let now = 0;
-    let tick: () => void = () => {};
     const events: WatchEvent[] = [];
-    watchOpencodeTask(
-      { workspace: "/repo" },
-      src.s,
-      { now: () => now, every: (fn) => ((tick = () => void fn()), () => (tick = () => {})) },
-      (e) => events.push(e),
-    );
-    tick();
-    expect(src.scans()).toBe(1);
+    watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => now }, (e) => events.push(e));
+    expect(src.holds()).toBe(1);
     now = OPENCODE_SESSION_WAIT_MS + 1;
     src.emit([]);
     expect(events).toEqual([{ type: "session-missing" }]);
+    expect(src.holds()).toBe(0);
+  });
+
+  it("releases the shared scans on stop(), and two watchers hold them only while both run", () => {
+    const src = source();
+    const a = watchOpencodeTask({ workspace: "/a" }, src.s, { now: () => 0 }, () => {});
+    const b = watchOpencodeTask({ workspace: "/b" }, src.s, { now: () => 0 }, () => {});
+    expect(src.holds()).toBe(2);
+    a.stop();
+    a.stop();
+    expect(src.holds()).toBe(1);
+    b.stop();
+    expect(src.holds()).toBe(0);
   });
 
   it("after a paste, counts the next turn end only once the scan shows a newer prompt (re-arm, R1)", async () => {
@@ -84,7 +97,7 @@ describe("watchOpencodeTask", () => {
     const events: WatchEvent[] = [];
     const flush = () => new Promise((r) => setTimeout(r, 0));
     const turnEnds = () => events.filter((e) => e.type === "turn-ended").length;
-    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0, every: () => () => {} }, (e) =>
+    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0 }, (e) =>
       events.push(e),
     );
     src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]);
@@ -107,7 +120,7 @@ describe("watchOpencodeTask", () => {
     const events: WatchEvent[] = [];
     const flush = () => new Promise((r) => setTimeout(r, 0));
     const turnEnds = () => events.filter((e) => e.type === "turn-ended").length;
-    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0, every: () => () => {} }, (e) =>
+    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0 }, (e) =>
       events.push(e),
     );
     src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]);
@@ -130,7 +143,7 @@ describe("watchOpencodeTask", () => {
     const events: WatchEvent[] = [];
     const flush = () => new Promise((r) => setTimeout(r, 0));
     const turnEnds = () => events.filter((e) => e.type === "turn-ended").length;
-    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0, every: () => () => {} }, (e) =>
+    const watch = watchOpencodeTask({ workspace: "/repo" }, src.s, { now: () => 0 }, (e) =>
       events.push(e),
     );
     src.emit([tile("new", "/repo", { state: "idle", needsYou: true, turnCount: 1 })]);
