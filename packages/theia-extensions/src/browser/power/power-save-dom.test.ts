@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { POWER_SAVE_ATTRIBUTE, applyPowerSave, isPowerSaving, powerSaveMessage } from "./power-save-dom.js";
+import {
+  KIT_STILL_ATTRIBUTE,
+  MOTION_ATTRIBUTE,
+  POWER_SAVE_ATTRIBUTE,
+  applyMotionPaused,
+  applyPowerSave,
+  isMotionPaused,
+  isPowerSaving,
+  powerSaveMessage,
+} from "./power-save-dom.js";
 
 /** The slice of an Element the helpers touch, recording every write. */
 class FakeElement {
@@ -65,11 +74,58 @@ describe("applyPowerSave", () => {
     expect(host.writes).toEqual(["data-sl-fx-live"]);
   });
 
+  it("does not give back a data-sl-fx-live the host lost while saving", () => {
+    const host = new FakeElement({ "data-sl-fx-live": "run" });
+    const { asDocument } = fakeDocument([host]);
+    applyPowerSave(true, asDocument);
+    host.removeAttribute("data-sl-fx-live");
+    applyPowerSave(false, asDocument);
+    expect(host.hasAttribute("data-sl-fx-live")).toBe(false);
+    expect(host.hasAttribute("data-sl-fx")).toBe(false);
+  });
+
   it("leaves a host that opted out on its own opted out after power returns", () => {
     const host = new FakeElement({ "data-sl-fx-live": "run", "data-sl-fx": "off" });
     const { asDocument } = fakeDocument([host]);
     applyPowerSave(true, asDocument);
     applyPowerSave(false, asDocument);
+    expect(host.getAttribute("data-sl-fx")).toBe("off");
+  });
+});
+
+describe("applyMotionPaused", () => {
+  it("sets SPEXR's and the kit's root flags while paused and clears both on resume", () => {
+    const { doc, asDocument } = fakeDocument();
+    applyMotionPaused(true, asDocument);
+    expect(isMotionPaused(asDocument)).toBe(true);
+    expect(doc.documentElement.getAttribute(MOTION_ATTRIBUTE)).toBe("paused");
+    expect(doc.documentElement.hasAttribute(KIT_STILL_ATTRIBUTE)).toBe(true);
+    applyMotionPaused(false, asDocument);
+    expect(isMotionPaused(asDocument)).toBe(false);
+    expect(doc.documentElement.hasAttribute(MOTION_ATTRIBUTE)).toBe(false);
+    expect(doc.documentElement.hasAttribute(KIT_STILL_ATTRIBUTE)).toBe(false);
+  });
+
+  it("leaves live hosts alone: the kit freezes them in place", () => {
+    const host = new FakeElement({ "data-sl-fx-live": "run" });
+    const { asDocument } = fakeDocument([host]);
+    applyMotionPaused(true, asDocument);
+    applyMotionPaused(false, asDocument);
+    expect(host.hasAttribute("data-sl-fx")).toBe(false);
+    expect(host.writes).toEqual([]);
+  });
+
+  it("is independent of power saving", () => {
+    const host = new FakeElement({ "data-sl-fx-live": "run" });
+    const { doc, asDocument } = fakeDocument([host]);
+    applyMotionPaused(true, asDocument);
+    applyPowerSave(true, asDocument);
+    applyPowerSave(false, asDocument);
+    expect(doc.documentElement.hasAttribute(KIT_STILL_ATTRIBUTE)).toBe(true);
+    expect(host.hasAttribute("data-sl-fx")).toBe(false);
+    applyPowerSave(true, asDocument);
+    applyMotionPaused(false, asDocument);
+    expect(isPowerSaving(asDocument)).toBe(true);
     expect(host.getAttribute("data-sl-fx")).toBe("off");
   });
 });

@@ -187,6 +187,26 @@ body {
   animation: none;
 }
 
+/* Still blobs keep their 70px blur under the veil's 60px backdrop blur, a
+   full-viewport filter chain on every repaint. Without the blobs the veil
+   has nothing to frost, so it keeps only its tint. */
+:root[data-spexr-power-save] .spexr-welcome-bg__blob {
+  display: none;
+}
+
+:root[data-spexr-power-save] .spexr-welcome-bg::after {
+  backdrop-filter: none;
+}
+
+/* An unfocused or idle window (motion-idle.ts): SPEXR's decorative loops
+   freeze in place and resume where they were. The kit freezes its own under
+   data-sl-fx-still, set alongside. Status animations keep running. */
+:root[data-spexr-motion="paused"] .spexr-welcome-bg__blob::before,
+:root[data-spexr-motion="paused"] .spexr-smart-search__map-cta,
+:root[data-spexr-motion="paused"] .spexr-smart-search__map-glyph {
+  animation-play-state: paused !important;
+}
+
 /* The Game of Life under the Spec and Darkfactory panels: a zero-height
    sticky strip at the top of the scrolling node, holding a canvas that
    life-background.tsx sizes to that node. Negative margins cancel the node's

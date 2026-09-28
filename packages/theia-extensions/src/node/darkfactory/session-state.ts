@@ -1,15 +1,9 @@
 import type { AgentState } from "../../common/darkfactory-protocol.js";
+import { STALE_MS } from "../../common/session-timing.js";
 
 const IDLE_WINDOW_MS = 12 * 3_600_000;
 /** A tool_use must sit unresolved this long before we call it a pending prompt. */
 export const SETTLE_MS = 2_000;
-/**
- * A live session whose transcript has not been written for this long is dormant,
- * not working: real work (tools, inferences) writes far more often, so a longer
- * silence means the process is stuck at a prompt or was abandoned mid-turn. This
- * caps the "working" state so a leftover `claude` process does not pulse forever.
- */
-const STALE_MS = 10 * 60_000;
 /** Tools whose use pauses the agent on a permission prompt. */
 const PERMISSION_TOOLS = new Set(["Bash", "Edit", "Write", "WebFetch"]);
 /** Permission modes that auto-approve tools, so a pending tool_use is work, not a prompt. */

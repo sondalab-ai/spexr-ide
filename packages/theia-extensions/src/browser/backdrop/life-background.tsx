@@ -1,7 +1,7 @@
 import * as React from "@theia/core/shared/react";
 import { LifeGrid, SPECIES, gridSizeFor } from "./life-grid.js";
 import { advanceTrail } from "./life-trail.js";
-import { POWER_SAVE_ATTRIBUTE, isPowerSaving } from "../power/power-save-dom.js";
+import { MOTION_ATTRIBUTE, POWER_SAVE_ATTRIBUTE, isMotionPaused, isPowerSaving } from "../power/power-save-dom.js";
 
 /** Cell pitch, generation period, and the share of brightness a dead cell keeps per generation. */
 const CELL_PX = 4;
@@ -19,8 +19,9 @@ const FADE = 0.72;
  * smoothing off, so drawing costs the same however many cells are lit, and the
  * lensed panes re-filter once per tick rather than every frame. It pauses while
  * the window or the panel is hidden, draws a single still frame under reduced
- * motion or while saving power, and draws nothing in high contrast. Strength comes from CSS, and
- * each species' colour from the canvas's `--sl-life-species-<n>` properties.
+ * motion, while saving power or while motion is paused (motion-idle.ts), and
+ * draws nothing in high contrast. Strength comes from CSS, and each species'
+ * colour from the canvas's `--sl-life-species-<n>` properties.
  */
 export const LifeBackground = React.memo(function LifeBackground(): React.ReactElement {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -104,7 +105,7 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
     };
 
     const running = (): boolean =>
-      onScreen && !document.hidden && !reduced.matches && !highContrast() && !isPowerSaving();
+      onScreen && !document.hidden && !reduced.matches && !highContrast() && !isPowerSaving() && !isMotionPaused();
     const sync = (): void => {
       if (running() && timer === undefined) {
         timer = setInterval(() => {
@@ -132,7 +133,7 @@ export const LifeBackground = React.memo(function LifeBackground(): React.ReactE
     });
     visibility.observe(host);
     const theme = new MutationObserver(restyle);
-    theme.observe(root, { attributes: true, attributeFilter: ["data-sl-theme", POWER_SAVE_ATTRIBUTE] });
+    theme.observe(root, { attributes: true, attributeFilter: ["data-sl-theme", POWER_SAVE_ATTRIBUTE, MOTION_ATTRIBUTE] });
     document.addEventListener("visibilitychange", sync);
     reduced.addEventListener("change", restyle);
 

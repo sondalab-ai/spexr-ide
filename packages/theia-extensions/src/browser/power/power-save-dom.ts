@@ -3,6 +3,16 @@ import { POWER_SAVE_LEAVE_PERCENT } from "../../common/power-protocol.js";
 /** Set on `<html>` while SPEXR saves power; features and CSS key on it. */
 export const POWER_SAVE_ATTRIBUTE = "data-spexr-power-save";
 
+/** Set to "paused" on `<html>` while the window is unfocused or idle (motion-idle.ts). */
+export const MOTION_ATTRIBUTE = "data-spexr-motion";
+
+/**
+ * The effects kit's own stillness flag on `<html>`: it freezes the live
+ * light's frame loop in place (canvas and context kept) and pauses the kit's
+ * decorative animations, so nothing is detached or re-dressed.
+ */
+export const KIT_STILL_ATTRIBUTE = "data-sl-fx-still";
+
 /** Marks a live-light host this module switched off, so only those are switched back. */
 const SWITCHED_OFF = "data-spexr-fx-off";
 
@@ -14,6 +24,23 @@ const watchers = new WeakMap<Document, MutationObserver>();
 /** Whether SPEXR is saving power in this window. */
 export function isPowerSaving(doc: Document = document): boolean {
   return doc.documentElement.hasAttribute(POWER_SAVE_ATTRIBUTE);
+}
+
+/** Whether decorative motion is paused in this window. */
+export function isMotionPaused(doc: Document = document): boolean {
+  return doc.documentElement.getAttribute(MOTION_ATTRIBUTE) === "paused";
+}
+
+/**
+ * Pause or resume decorative motion. SPEXR's CSS and backdrops key on
+ * {@link MOTION_ATTRIBUTE}; the kit freezes its own under
+ * {@link KIT_STILL_ATTRIBUTE}. Power saving is left to {@link applyPowerSave}.
+ */
+export function applyMotionPaused(paused: boolean, doc: Document = document): void {
+  const root = doc.documentElement;
+  if (paused) root.setAttribute(MOTION_ATTRIBUTE, "paused");
+  else root.removeAttribute(MOTION_ATTRIBUTE);
+  root.toggleAttribute(KIT_STILL_ATTRIBUTE, paused);
 }
 
 /**
@@ -65,8 +92,14 @@ function switchOff(host: Element): void {
   nudge(host);
 }
 
+/**
+ * Make the kit re-check a host. A host that lost the attribute meanwhile is
+ * left without it: its removal was already a change the kit saw, and an empty
+ * value would defeat `:not([data-sl-fx-live])` rules on idle cards.
+ */
 function nudge(host: Element): void {
-  host.setAttribute("data-sl-fx-live", host.getAttribute("data-sl-fx-live") ?? "");
+  const live = host.getAttribute("data-sl-fx-live");
+  if (live !== null) host.setAttribute("data-sl-fx-live", live);
 }
 
 /** What the user is told when power saving starts or ends. */
