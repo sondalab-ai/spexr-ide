@@ -47,6 +47,20 @@ export function workspaceValue(ws: TaskWorkspace): string {
   return ws.kind === "sameAs" ? `sameAs:${ws.task}` : ws.kind;
 }
 
+/**
+ * The extra option to show when a task's stored workspace choice fell out of
+ * `workspaceOptions` (it no longer waits for that task): named when the
+ * target still exists in the schedule ("not waited for"), or flagged as
+ * unknown when it was deleted. `undefined` for a value `workspaceOptions`
+ * already offers.
+ */
+export function staleWorkspaceOption(schedule: Schedule, value: string): Choice | undefined {
+  if (!value.startsWith("sameAs:")) return undefined;
+  const id = value.slice("sameAs:".length);
+  const target = schedule.tasks.find((x) => x.id === id);
+  return { value, label: target ? `Same as ${target.name} (not waited for)` : `Unknown task: ${id}` };
+}
+
 export function withWorkspace(task: ScheduleTask, value: string): ScheduleTask {
   const workspace: TaskWorkspace =
     value === "worktree"

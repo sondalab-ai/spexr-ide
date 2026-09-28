@@ -44,10 +44,6 @@ describe("validateSchedule", () => {
     ).toContain("b:workspace");
   });
   it("rejects a not-upstream sameAs regardless of which task is declared first", () => {
-    // "seen" is filled from every task before the sameAs check runs, so a
-    // forward reference (the target declared after the one pointing at it)
-    // is caught exactly like a backward one — pinning that array order never
-    // hides the problem the sidebar's editor relies on to flag it inline.
     expect(fields(sched(task("c", { workspace: { kind: "sameAs", task: "d" } }), task("d")))).toContain("c:workspace");
     expect(fields(sched(task("d"), task("c", { workspace: { kind: "sameAs", task: "d" } })))).toContain("c:workspace");
   });

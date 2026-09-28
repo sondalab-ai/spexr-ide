@@ -32,6 +32,7 @@ import {
   insertAt,
   needChoices,
   placeholderChoices,
+  staleWorkspaceOption,
   withAccount,
   withNeed,
   withWorkspace,
@@ -574,7 +575,8 @@ function TaskEditor(p: {
   const current = workspaceValue(t.workspace);
   const workspaces = workspaceOptions(p.schedule, t.id);
   // A sameAs left pointing at a task this one no longer waits for stays visible; validation flags it next to the field.
-  if (!workspaces.some((o) => o.value === current)) workspaces.push({ value: current, label: "Same as a task it does not wait for" });
+  const stale = staleWorkspaceOption(p.schedule, current);
+  if (stale && !workspaces.some((o) => o.value === current)) workspaces.push(stale);
   /** Insert a hand-off at the caret (R23: buttons, so arrowing never inserts), then put the caret after it. */
   const insertHandOff = (token: string): void => {
     const el = promptRef.current;

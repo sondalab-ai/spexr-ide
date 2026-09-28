@@ -5,6 +5,7 @@ import {
   insertAt,
   needChoices,
   placeholderChoices,
+  staleWorkspaceOption,
   withAccount,
   withNeed,
   withWorkspace,
@@ -46,6 +47,11 @@ describe("workspace", () => {
   it("round-trips the choice", () => {
     for (const v of ["folder", "worktree", "sameAs:a"]) expect(workspaceValue(withWorkspace(t("c"), v).workspace)).toBe(v);
     expect(withWorkspace(t("c"), "sameAs:a").workspace).toEqual({ kind: "sameAs", task: "a" });
+  });
+  it("names a stale sameAs that still exists, and flags one that does not", () => {
+    expect(staleWorkspaceOption(s, "sameAs:d")).toEqual({ value: "sameAs:d", label: "Same as D (not waited for)" });
+    expect(staleWorkspaceOption(s, "sameAs:zz")).toEqual({ value: "sameAs:zz", label: "Unknown task: zz" });
+    expect(staleWorkspaceOption(s, "folder")).toBeUndefined();
   });
 });
 
