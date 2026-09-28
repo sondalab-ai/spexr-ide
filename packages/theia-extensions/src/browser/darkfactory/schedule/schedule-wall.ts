@@ -87,3 +87,27 @@ export function adoptedSession(
   for (const other of launched) if (other !== card && other.sessionId !== undefined) excluded.add(other.sessionId);
   return matchLaunchedSession(card.projectPath, excluded, tiles);
 }
+
+/**
+ * Bring launched cards in step with the runs. Only task cards (keys in
+ * `taskKeys`) are judged: one missing from `live` is dropped (the caller
+ * detaches it, never disposes it); a live one learns its task's session id
+ * once the engine has it. Launcher cards pass through untouched.
+ */
+export function syncLaunchedTasks<T extends { key: string; sessionId?: string }>(
+  launched: readonly T[],
+  taskKeys: ReadonlySet<string>,
+  live: ReadonlyMap<string, string | undefined>,
+): { kept: T[]; dropped: string[] } {
+  const kept: T[] = [];
+  const dropped: string[] = [];
+  for (const l of launched) {
+    if (!taskKeys.has(l.key)) kept.push(l);
+    else if (!live.has(l.key)) dropped.push(l.key);
+    else {
+      const sessionId = live.get(l.key);
+      kept.push(sessionId !== undefined && sessionId !== l.sessionId ? { ...l, sessionId } : l);
+    }
+  }
+  return { kept, dropped };
+}

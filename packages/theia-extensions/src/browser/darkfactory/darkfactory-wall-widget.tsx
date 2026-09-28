@@ -24,7 +24,7 @@ import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrScheduleServiceProxy, SpexrScheduleClientDispatcher } from "./schedule/schedule-client.js";
-import { adoptedSession, closesDestructively, liveTaskCards, taskCardsToMount } from "./schedule/schedule-wall.js";
+import { adoptedSession, closesDestructively, liveTaskCards, syncLaunchedTasks, taskCardsToMount } from "./schedule/schedule-wall.js";
 import type { ScheduleSnapshot, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
 import type { Schedule, ValidationProblem } from "../../common/schedule/schedule-types.js";
 import { ScheduleSidebar } from "./schedule/schedule-sidebar.js";
@@ -643,17 +643,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * never adopt the session of the attempt after it.
    */
   private syncTaskCards(snapshot: ScheduleSnapshot): void {
-    const live = liveTaskCards(snapshot);
-    const next: typeof this.launched = [];
-    for (const l of this.launched) {
-      if (!this.mountedTasks.has(l.key)) next.push(l);
-      else if (!live.has(l.key)) this.browsers.delete(l.key);
-      else {
-        const sessionId = live.get(l.key) ?? l.sessionId;
-        next.push(sessionId !== undefined && sessionId !== l.sessionId ? { ...l, sessionId } : l);
-      }
-    }
-    this.launched = next;
+    const { kept, dropped } = syncLaunchedTasks(this.launched, this.mountedTasks, liveTaskCards(snapshot));
+    for (const key of dropped) this.browsers.delete(key);
+    this.launched = kept;
   }
 
   private refreshSchedules(): void {
