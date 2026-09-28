@@ -174,3 +174,21 @@ export function upstreamHighlight(schedule: Schedule, selected: string | undefin
 export function duplicateSchedule(s: Schedule, taken: ReadonlySet<string>): Schedule {
   return { ...structuredClone(s), id: newSchedule(taken).id, name: `${s.name} (copy)` };
 }
+
+/**
+ * A task's key in a Retry/Skip in-flight set: task ids are only unique
+ * within their schedule, and `duplicateSchedule` keeps a copy's task ids
+ * identical to the source, so a bare task id would make an in-flight Retry
+ * on one schedule disable the same-named task in a running copy.
+ */
+export function pendingKey(scheduleId: string, taskId: string): string {
+  return `${scheduleId}/${taskId}`;
+}
+
+/** Add or drop `key` from a pending-call set, without mutating `prev`. */
+export function withPending(prev: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
+  const next = new Set(prev);
+  if (on) next.add(key);
+  else next.delete(key);
+  return next;
+}

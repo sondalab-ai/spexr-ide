@@ -5,10 +5,12 @@ import {
   bandsOf,
   duplicateSchedule,
   newSchedule,
+  pendingKey,
   runBar,
   taskRows,
   taskTransitions,
   upstreamHighlight,
+  withPending,
 } from "./schedule-view.js";
 
 const s: Schedule = {
@@ -162,5 +164,20 @@ describe("rows for the graph (Slice 4)", () => {
     expect(copy).toMatchObject({ id: "schedule-2", name: "G (copy)" });
     expect(copy.tasks).toEqual(g.tasks);
     expect(copy.tasks[0]).not.toBe(g.tasks[0]);
+  });
+});
+
+describe("pendingKey and withPending", () => {
+  it("keys a task by its schedule, so a duplicate's same-named task is a different key", () => {
+    expect(pendingKey("g", "a")).not.toBe(pendingKey("schedule-2", "a"));
+  });
+  it("adds and drops a key without mutating the set handed in", () => {
+    const empty = new Set<string>();
+    const added = withPending(empty, pendingKey("g", "a"), true);
+    expect(empty.size).toBe(0);
+    expect(added.has(pendingKey("g", "a"))).toBe(true);
+    const removed = withPending(added, pendingKey("g", "a"), false);
+    expect(added.has(pendingKey("g", "a"))).toBe(true);
+    expect(removed.size).toBe(0);
   });
 });

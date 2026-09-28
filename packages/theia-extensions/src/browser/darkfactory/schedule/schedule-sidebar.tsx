@@ -19,10 +19,12 @@ import {
   duplicateSchedule,
   newSchedule,
   newTask,
+  pendingKey,
   runBar,
   taskRows,
   taskTransitions,
   upstreamHighlight,
+  withPending,
   type TaskRow,
 } from "./schedule-view.js";
 import {
@@ -74,6 +76,10 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   // The selected row: aria-current, its card focused while running, and its upstream highlighted.
   const [selected, setSelected] = React.useState<string | undefined>();
+  // Task ids with a Retry or Skip call in flight: their buttons are disabled
+  // for that stretch, so a double click cannot queue a second call that
+  // resolves after the first and overwrites its (possibly empty) result.
+  const [pendingTasks, setPendingTasks] = React.useState<ReadonlySet<string>>(new Set());
   // Edits go to a local draft and are saved after a pause in typing: saving
   // every keystroke over RPC made controlled inputs lag and drop characters.
   const [draft, setDraft] = React.useState<Schedule | undefined>();
@@ -83,6 +89,15 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   // React 19's useRef has no zero-argument overload, and exactOptionalPropertyTypes
   // rejects an implicit `undefined`, so the initial value is passed explicitly.
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Keyboard focus around the two inline confirms (AC-17): opening one moves
+  // focus to its "Keep" button; keeping returns it to the button that opened
+  // it; deleting moves it on to the schedule picker, since the trash button
+  // it came from is gone once the schedule is removed.
+  const deleteBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const deleteKeepBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const abortBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const abortKeepBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const scheduleSelectRef = React.useRef<HTMLSelectElement | null>(null);
   const saved = p.snapshot.schedules.find((s) => s.id === selectedId) ?? p.snapshot.schedules[0];
   const schedule = draft && draft.id === saved?.id ? draft : saved;
   const run = schedule ? p.snapshot.runs[schedule.id] : undefined;
@@ -136,6 +151,12 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     // (a new object every render) — only bar.label is read.
   }, [rowKey, bar?.label]);
   React.useEffect(() => {
+    // A run ending (or starting) leaves no refusal worth keeping: a stale
+    // Retry/Skip rejection from mid-run must not go on disabling Run once
+    // the run itself is over. A refusal from Run happens while `running`
+    // stays false throughout, so this effect does not fire for it and the
+    // reasons above Run are left alone.
+    setRunProblems(undefined);
     if (!running) setConfirmAbort(false);
     else setConfirmDelete(false);
   }, [running]);
@@ -168,11 +189,20 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     p.onSave(copy);
     setSelectedId(copy.id);
   };
-  /** Retry or Skip; a refusal joins the reasons above Run, like a refused run. */
+  /**
+   * Retry or Skip; a refusal joins the reasons above Run, like a refused run.
+   * The task stays pending (its Retry/Skip buttons disabled) for the length
+   * of the call, so a double click cannot start a second one that resolves
+   * after the first and clobbers its result with a stale refusal.
+   */
   const taskAction = (act: (sid: string, tid: string) => Promise<ValidationProblem[]>, taskId: string): void => {
     if (!schedule) return;
     const scheduleId = schedule.id;
-    void act(scheduleId, taskId).then((problems) => setRunProblems({ scheduleId, problems }));
+    const key = pendingKey(scheduleId, taskId);
+    setPendingTasks((prev) => withPending(prev, key, true));
+    void act(scheduleId, taskId)
+      .then((problems) => setRunProblems({ scheduleId, problems }))
+      .finally(() => setPendingTasks((prev) => withPending(prev, key, false)));
   };
   const removeSchedule = (id: string): void => {
     if (draft?.id === id) {
@@ -211,7 +241,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
         </button>
       </header>
       {!schedule ? (
-        <div className="sl-empty spexr-sched__empty">
+        <div className="sl-empty">
           <p>Lay out agent sessions, say which waits for which, and run them.</p>
           <button className="sl-btn" onClick={addSchedule}>
             New schedule
@@ -225,6 +255,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               <span className="sl-field__control">
                 <span className="sl-select">
                   <select
+                    ref={scheduleSelectRef}
                     className="sl-field__input"
                     value={schedule.id}
                     onChange={(e) => {
@@ -266,18 +297,30 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                   onClick={() => {
                     setConfirmDelete(false);
                     removeSchedule(schedule.id);
+                    requestAnimationFrame(() => scheduleSelectRef.current?.focus());
                   }}
                 >
                   Delete
                 </button>
-                <button className="sl-btn sl-btn--ghost sl-btn--sm" onClick={() => setConfirmDelete(false)}>
+                <button
+                  ref={deleteKeepBtnRef}
+                  className="sl-btn sl-btn--ghost sl-btn--sm"
+                  onClick={() => {
+                    setConfirmDelete(false);
+                    requestAnimationFrame(() => deleteBtnRef.current?.focus());
+                  }}
+                >
                   Keep
                 </button>
               </span>
             ) : (
               <button
+                ref={deleteBtnRef}
                 className="sl-icon-btn"
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => {
+                  setConfirmDelete(true);
+                  requestAnimationFrame(() => deleteKeepBtnRef.current?.focus());
+                }}
                 disabled={running}
                 aria-label="Delete this schedule"
                 title="Delete this schedule"
@@ -350,14 +393,25 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                     Abort
                   </button>
                   <button
+                    ref={abortKeepBtnRef}
                     className="sl-btn sl-btn--ghost sl-btn--sm"
-                    onClick={() => setConfirmAbort(false)}
+                    onClick={() => {
+                      setConfirmAbort(false);
+                      requestAnimationFrame(() => abortBtnRef.current?.focus());
+                    }}
                   >
                     Keep running
                   </button>
                 </span>
               ) : (
-                <button className="sl-btn sl-btn--sm" onClick={() => setConfirmAbort(true)}>
+                <button
+                  ref={abortBtnRef}
+                  className="sl-btn sl-btn--sm"
+                  onClick={() => {
+                    setConfirmAbort(true);
+                    requestAnimationFrame(() => abortKeepBtnRef.current?.focus());
+                  }}
+                >
                   Abort
                 </button>
               )
@@ -377,7 +431,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           </div>
 
           {schedule.tasks.length === 0 ? (
-            <div className="sl-empty spexr-sched__empty">
+            <div className="sl-empty">
               <p>No tasks yet. A task is one agent session, with its own folder and prompt.</p>
               <button className="sl-btn sl-btn--sm" onClick={addTask}>
                 <i className="codicon codicon-add" aria-hidden="true" /> Add a task
@@ -435,6 +489,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                               <button
                                 className="sl-btn sl-btn--sm"
                                 onClick={() => taskAction(p.onRetry, row.id)}
+                                disabled={pendingTasks.has(pendingKey(schedule.id, row.id))}
+                                aria-label={`Retry ${row.name}`}
                                 title="Start it again from iteration 1 in the same workspace. Its failed session is closed."
                               >
                                 <i className="codicon codicon-debug-restart" aria-hidden="true" /> Retry
@@ -442,6 +498,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                               <button
                                 className="sl-btn sl-btn--ghost sl-btn--sm"
                                 onClick={() => taskAction(p.onSkip, row.id)}
+                                disabled={pendingTasks.has(pendingKey(schedule.id, row.id))}
+                                aria-label={`Skip ${row.name}`}
                                 title="Let the tasks that wait for it start without it. Its hand-offs arrive empty; its session stays open."
                               >
                                 <i className="codicon codicon-debug-step-over" aria-hidden="true" /> Skip
