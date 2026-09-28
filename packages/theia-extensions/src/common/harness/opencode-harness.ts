@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { HarnessAdapter, HarnessSessionRef, ParsedTranscript, FollowHandle } from "./harness-types.js";
 import { opencodeCore } from "./opencode-harness-core.js";
 import { once } from "./once.js";
+import { STALE_MS } from "../session-timing.js";
 
 /** One row of the `opencode db` session query. */
 interface SessionRow {
@@ -129,68 +130,121 @@ export function opencodeMessageToEntry(msg: ExportMessage): { message: { role: s
   return { message: { role, content: blocks } };
 }
 
+type Entries = Array<{ message: { role: string; content: unknown[] } }>;
+
+/** Exports kept per harness; the Dark Factory wall reads at most 60 sessions a scan. */
+const EXPORT_CACHE_MAX = 100;
+
+/** Runs the opencode CLI and resolves its stdout; injected in tests. */
+export type OpencodeRunner = (args: string[], timeoutMs?: number) => Promise<string>;
+
 /**
  * The opencode harness. Sessions live in one SQLite database exposed through the
  * `opencode db` CLI (spike R1); transcripts come from `opencode export`. Live-
  * follow is Slice 5 — `followSession` fails fast until then.
  */
-export const opencodeHarness: HarnessAdapter = {
-  ...opencodeCore,
+export function createOpencodeHarness(run: OpencodeRunner = runOpencode, now: () => number = Date.now): HarnessAdapter {
+  const exports = exportCache(run, now);
+  return {
+    ...opencodeCore,
 
-  async listSessions(): Promise<HarnessSessionRef[]> {
-    let stdout: string;
-    try {
-      stdout = await runOpencode(["db", "--format", "json", SESSION_QUERY]);
-    } catch {
-      return []; // enumeration unavailable → modified-time-only liveness backstop
-    }
-    let rows: SessionRow[];
-    try {
-      rows = JSON.parse(stdout) as SessionRow[];
-    } catch {
-      return [];
-    }
-    if (!Array.isArray(rows)) return [];
-    return rows.map((r) => ({
-      sessionId: r.id,
-      projectPath: r.directory,
-      mtimeMs: r.time_updated,
-      loadEntries: once(async () => opencodeExportToEntries(await exportSession(r.id))),
-    }));
-  },
-
-  async parseTranscript(ref: HarnessSessionRef): Promise<ParsedTranscript> {
-    const entries = (await ref.loadEntries()) as Array<{ message: { role: string; content: unknown[] } }>;
-    const out: ParsedTranscript = { cwd: ref.projectPath, userTurns: 0, goal: "", lastPrompt: "", interactive: true };
-    for (const e of entries) {
-      const role = e.message.role;
-      const text = entryText(e.message.content);
-      if (role === "user" && text.trim()) {
-        out.userTurns++;
-        const clean = text.replace(/\s+/g, " ").trim();
-        out.lastPrompt = clean.slice(0, 200);
-        if (!out.goal) out.goal = clean.slice(0, 2000);
-      } else if (role === "assistant") {
-        const tool = lastToolName(e.message.content);
-        if (tool) out.lastTool = tool;
+    async listSessions(): Promise<HarnessSessionRef[]> {
+      let stdout: string;
+      try {
+        stdout = await run(["db", "--format", "json", SESSION_QUERY]);
+      } catch {
+        return []; // enumeration unavailable → modified-time-only liveness backstop
       }
-    }
-    return out;
-  },
+      let rows: SessionRow[];
+      try {
+        rows = JSON.parse(stdout) as SessionRow[];
+      } catch {
+        return [];
+      }
+      if (!Array.isArray(rows)) return [];
+      exports.keepOnly(new Set(rows.map((r) => r.id)));
+      return rows.map((r) => ({
+        sessionId: r.id,
+        projectPath: r.directory,
+        mtimeMs: r.time_updated,
+        loadEntries: once(() => exports.load(r.id, r.time_updated)),
+      }));
+    },
 
-  followSession(): FollowHandle {
-    throw new Error("opencode followSession is not implemented yet (Slice 5)");
-  },
-};
+    async parseTranscript(ref: HarnessSessionRef): Promise<ParsedTranscript> {
+      const entries = (await ref.loadEntries()) as Array<{ message: { role: string; content: unknown[] } }>;
+      const out: ParsedTranscript = { cwd: ref.projectPath, userTurns: 0, goal: "", lastPrompt: "", interactive: true };
+      for (const e of entries) {
+        const role = e.message.role;
+        const text = entryText(e.message.content);
+        if (role === "user" && text.trim()) {
+          out.userTurns++;
+          const clean = text.replace(/\s+/g, " ").trim();
+          out.lastPrompt = clean.slice(0, 200);
+          if (!out.goal) out.goal = clean.slice(0, 2000);
+        } else if (role === "assistant") {
+          const tool = lastToolName(e.message.content);
+          if (tool) out.lastTool = tool;
+        }
+      }
+      return out;
+    },
 
-async function exportSession(sessionId: string): Promise<ExportMessage[]> {
-  try {
-    const stdout = await runOpencode(["export", sessionId], 30_000);
-    const doc = JSON.parse(stdout) as { messages?: ExportMessage[] };
-    return Array.isArray(doc.messages) ? doc.messages : [];
-  } catch {
-    return []; // export failed → empty transcript, tile still shows from the db row
-  }
+    followSession(): FollowHandle {
+      throw new Error("opencode followSession is not implemented yet (Slice 5)");
+    },
+  };
+}
+
+export const opencodeHarness: HarnessAdapter = createOpencodeHarness();
+
+/**
+ * `opencode export` costs a full CPU for seconds, and the wall re-lists every
+ * few seconds. opencode bumps a session's `time_updated` once per step, not
+ * per message, so a session updated within {@link STALE_MS} (the window in
+ * which the wall reads a live session's transcript) is exported on every
+ * read. A dormant one's export is kept while its `time_updated` stays the
+ * same, so it is exported once. Failures are not kept: a finished session
+ * never changes again, and would otherwise stay empty. Least recently read
+ * sessions go first past {@link EXPORT_CACHE_MAX}.
+ */
+function exportCache(run: OpencodeRunner, now: () => number): {
+  load(sessionId: string, updated: number): Promise<Entries>;
+  keepOnly(listed: Set<string>): void;
+} {
+  const cache = new Map<string, { updated: number; entries: Promise<Entries> }>();
+  return {
+    load(sessionId, updated) {
+      if (now() - updated <= STALE_MS) {
+        cache.delete(sessionId);
+        return exportSession(run, sessionId).then(opencodeExportToEntries, () => []);
+      }
+      let hit = cache.get(sessionId);
+      cache.delete(sessionId);
+      if (hit?.updated !== updated) {
+        const entry = { updated, entries: exportSession(run, sessionId).then(opencodeExportToEntries) };
+        entry.entries.catch(() => {
+          if (cache.get(sessionId) === entry) cache.delete(sessionId);
+        });
+        hit = entry;
+      }
+      cache.set(sessionId, hit);
+      for (const oldest of cache.keys()) {
+        if (cache.size <= EXPORT_CACHE_MAX) break;
+        cache.delete(oldest);
+      }
+      return hit.entries.catch(() => []);
+    },
+    keepOnly(listed) {
+      for (const id of cache.keys()) if (!listed.has(id)) cache.delete(id);
+    },
+  };
+}
+
+/** One session's export; rejects when the CLI fails or prints something that is not JSON. */
+async function exportSession(run: OpencodeRunner, sessionId: string): Promise<ExportMessage[]> {
+  const doc = JSON.parse(await run(["export", sessionId], 30_000)) as { messages?: ExportMessage[] };
+  return Array.isArray(doc.messages) ? doc.messages : [];
 }
 
 export function opencodeExportToEntries(messages: ExportMessage[]): Array<{ message: { role: string; content: unknown[] } }> {

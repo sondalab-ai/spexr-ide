@@ -4,7 +4,8 @@ import { writeSync } from "node:fs";
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
 import { spawn } from "node:child_process";
-import { opencodeHarness, opencodeMessageToEntry, opencodeExportToEntries } from "./opencode-harness.js";
+import { createOpencodeHarness, opencodeHarness, opencodeMessageToEntry, opencodeExportToEntries } from "./opencode-harness.js";
+import { STALE_MS } from "../session-timing.js";
 
 const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>;
 
@@ -248,5 +249,114 @@ describe("opencodeHarness.listSessions (mocked opencode db)", () => {
   it("resolves to [] when the query yields a non-array", async () => {
     mockCli(() => ({ stdout: JSON.stringify({ error: "bad schema" }) }));
     expect(await opencodeHarness.listSessions()).toEqual([]);
+  });
+});
+
+describe("opencode export cache (injected runner)", () => {
+  /** Far past every `time_updated` below except where a test sets it near: all dormant. */
+  const NOW = 1_000_000_000_000;
+  type Row = { id: string; time_updated: number };
+  const row = (id: string, time_updated: number) => ({
+    id, directory: `/p/${id}`, parent_id: null, title: "t", agent: "x", model: "m", time_created: 1, time_updated,
+  });
+
+  /** A runner answering `db` with the current rows and counting `export` spawns per session. */
+  function fakeRunner(initial: Row[]) {
+    const state = { rows: initial, exports: [] as string[], failNext: false, dbCalls: 0 };
+    const run = async (args: string[]): Promise<string> => {
+      if (args[0] === "db") {
+        state.dbCalls++;
+        return JSON.stringify(state.rows.map((r) => row(r.id, r.time_updated)));
+      }
+      state.exports.push(args[1]!);
+      if (state.failNext) {
+        state.failNext = false;
+        throw new Error("opencode export timed out");
+      }
+      return JSON.stringify({ messages: [{ info: { role: "user" }, parts: [{ type: "text", text: `hi ${args[1]}` }] }] });
+    };
+    return { state, run };
+  }
+
+  async function scan(harness: ReturnType<typeof createOpencodeHarness>) {
+    const refs = await harness.listSessions();
+    return Promise.all(refs.map((r) => r.loadEntries()));
+  }
+
+  it("exports an unchanged session once across scans", async () => {
+    const { state, run } = fakeRunner([{ id: "ses_a", time_updated: 20 }]);
+    const harness = createOpencodeHarness(run, () => NOW);
+    const [first] = await scan(harness);
+    const [second] = await scan(harness);
+    expect(state.exports).toEqual(["ses_a"]);
+    expect(second).toBe(first);
+    expect(state.dbCalls).toBe(2);
+  });
+
+  it("re-exports a session whose last update moved", async () => {
+    const { state, run } = fakeRunner([{ id: "ses_a", time_updated: 20 }]);
+    const harness = createOpencodeHarness(run, () => NOW);
+    await scan(harness);
+    state.rows = [{ id: "ses_a", time_updated: 21 }];
+    await scan(harness);
+    await scan(harness);
+    expect(state.exports).toEqual(["ses_a", "ses_a"]);
+  });
+
+  it("forgets a session that is no longer listed", async () => {
+    const { state, run } = fakeRunner([{ id: "ses_a", time_updated: 20 }, { id: "ses_b", time_updated: 10 }]);
+    const harness = createOpencodeHarness(run, () => NOW);
+    await scan(harness);
+    state.rows = [{ id: "ses_b", time_updated: 10 }];
+    await scan(harness);
+    state.rows = [{ id: "ses_a", time_updated: 20 }, { id: "ses_b", time_updated: 10 }];
+    await scan(harness);
+    expect(state.exports.sort()).toEqual(["ses_a", "ses_a", "ses_b"]);
+  });
+
+  it("retries a failed export on the next scan instead of keeping it empty", async () => {
+    const { state, run } = fakeRunner([{ id: "ses_a", time_updated: 20 }]);
+    const harness = createOpencodeHarness(run, () => NOW);
+    state.failNext = true;
+    const [failed] = await scan(harness);
+    expect(failed).toEqual([]);
+    const [retried] = await scan(harness);
+    expect(retried).toHaveLength(1);
+    await scan(harness);
+    expect(state.exports).toEqual(["ses_a", "ses_a"]);
+  });
+
+  it("keeps at most 100 sessions, dropping the least recently read", async () => {
+    const rows = Array.from({ length: 101 }, (_, i) => ({ id: `ses_${i}`, time_updated: 1 }));
+    const { state, run } = fakeRunner(rows);
+    const harness = createOpencodeHarness(run, () => NOW);
+    await scan(harness);
+    expect(state.exports).toHaveLength(101);
+    const refs = await harness.listSessions();
+    await refs.find((r) => r.sessionId === "ses_100")!.loadEntries();
+    await refs.find((r) => r.sessionId === "ses_0")!.loadEntries();
+    expect(state.exports.slice(101)).toEqual(["ses_0"]);
+  });
+
+  it("re-exports a session updated within the live window on every scan", async () => {
+    const { state, run } = fakeRunner([{ id: "ses_a", time_updated: NOW - STALE_MS }]);
+    const harness = createOpencodeHarness(run, () => NOW);
+    await scan(harness);
+    await scan(harness);
+    await scan(harness);
+    expect(state.exports).toEqual(["ses_a", "ses_a", "ses_a"]);
+  });
+
+  it("starts caching a session once it has been quiet past the live window", async () => {
+    let now = NOW;
+    const { state, run } = fakeRunner([{ id: "ses_a", time_updated: NOW }]);
+    const harness = createOpencodeHarness(run, () => now);
+    await scan(harness);
+    await scan(harness);
+    now = NOW + STALE_MS + 1;
+    await scan(harness);
+    await scan(harness);
+    await scan(harness);
+    expect(state.exports).toEqual(["ses_a", "ses_a", "ses_a"]);
   });
 });
