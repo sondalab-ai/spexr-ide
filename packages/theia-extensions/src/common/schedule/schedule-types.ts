@@ -19,6 +19,11 @@ export const UNATTENDED_MODES: Readonly<Record<HarnessId, readonly string[]>> = 
   opencode: ["auto"],
 };
 
+/** Whether `mode` approves tools without asking (spec, Security): the editor and the task row both warn about it. */
+export function isUnattended(harness: HarnessId, mode: string | undefined): boolean {
+  return !!mode && UNATTENDED_MODES[harness].includes(mode);
+}
+
 export type TaskWorkspace = { kind: "folder" } | { kind: "worktree" } | { kind: "sameAs"; task: string };
 
 export interface TaskLoop {

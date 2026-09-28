@@ -7,6 +7,7 @@ import {
   MAX_CHECK_TIMEOUT_SEC,
   MAX_ITERATIONS,
   PERMISSION_MODES,
+  isUnattended,
   type Schedule,
   type ScheduleTask,
   type TaskLoop,
@@ -582,6 +583,8 @@ function TaskEditor(p: {
   // A sameAs left pointing at a task this one no longer waits for stays visible; validation flags it next to the field.
   const stale = staleWorkspaceOption(p.schedule, current);
   if (stale && !workspaces.some((o) => o.value === current)) workspaces.push(stale);
+  const unattended = isUnattended(t.harness, t.permissionMode);
+  const permWarningId = `${t.id}-perm-warning`;
   /** Insert a hand-off at the caret (R23: buttons, so arrowing never inserts), then put the caret after it. */
   const insertHandOff = (token: string): void => {
     const el = promptRef.current;
@@ -837,7 +840,14 @@ function TaskEditor(p: {
         {problem("needs") && <span className="spexr-sched__problem">{problem("needs")}</span>}
       </fieldset>
       <details className="spexr-sched__advanced">
-        <summary>Model and permissions</summary>
+        <summary className={unattended ? "spexr-sched__advanced-summary" : undefined}>
+          Model and permissions
+          {unattended && (
+            <span className="sl-badge sl-badge--warning" title="This mode approves tools without asking">
+              <i className="codicon codicon-warning" aria-hidden="true" /> Unattended
+            </span>
+          )}
+        </summary>
         {field(
           "Model",
           "model",
@@ -855,6 +865,7 @@ function TaskEditor(p: {
             <select
               className="sl-field__input"
               value={t.permissionMode ?? ""}
+              aria-describedby={unattended ? permWarningId : undefined}
               onChange={(e) => setOrClear("permissionMode", e.target.value)}
             >
               <option value="">ask (default)</option>
@@ -865,6 +876,12 @@ function TaskEditor(p: {
               ))}
             </select>
           </span>,
+        )}
+        {unattended && (
+          <div className="sl-callout sl-callout--warning spexr-sched__perm-warning" id={permWarningId}>
+            <i className="codicon codicon-warning" aria-hidden="true" /> This mode approves tools without asking: the
+            session will edit and run commands without stopping for you.
+          </div>
         )}
       </details>
     </div>

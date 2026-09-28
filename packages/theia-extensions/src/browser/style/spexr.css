@@ -2502,6 +2502,9 @@ code {
 .spexr-sched__needs > legend { padding: 0; margin-bottom: var(--sl-space-1); }
 /* Hand-offs insert at the caret; one button each, its token in the title. */
 .spexr-sched__handoff { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-1); }
+/* Auto-approving permission modes: flagged where the summary is collapsed, and again next to the field. */
+.spexr-sched__advanced-summary { display: flex; align-items: center; gap: var(--sl-space-2); }
+.spexr-sched__perm-warning { display: flex; align-items: center; gap: var(--sl-space-2); padding: var(--sl-space-2) var(--sl-space-3); font-size: var(--sl-text-xs); }
 @media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } .spexr-sched__loop { animation: none; } }
 
 /*

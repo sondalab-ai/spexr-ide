@@ -1,7 +1,7 @@
 import type { HarnessId } from "../../../common/harness/harness-types.js";
 import {
   RETRYABLE_STATUSES,
-  UNATTENDED_MODES,
+  isUnattended,
   type RunState,
   type Schedule,
   type ScheduleTask,
@@ -77,7 +77,7 @@ export function taskRows(schedule: Schedule, run?: RunState): TaskRow[] {
       status,
       ...STATUS_VIEW[status],
       ...(state && max && state.iteration > 0 ? { iteration: `${state.iteration} / ${max}` } : {}),
-      unattended: !!t.permissionMode && UNATTENDED_MODES[t.harness].includes(t.permissionMode),
+      unattended: isUnattended(t.harness, t.permissionMode),
       canRetry: live && RETRYABLE_STATUSES.has(status),
       ...(t.harness === "opencode" && state?.sessionId ? { session: state.sessionId } : {}),
       ...(state?.error ? { error: state.error } : {}),
