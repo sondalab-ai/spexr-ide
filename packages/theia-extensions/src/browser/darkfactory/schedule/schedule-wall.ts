@@ -5,6 +5,8 @@ import { matchLaunchedSession, type MatchableTile } from "../new-session-match.j
 
 export interface TaskCard {
   key: string;
+  /** The run the card was mounted for; a new run replaces it even on a reused terminal id. */
+  runId: string;
   terminalId: number;
   processId: number;
   workspace: string;
@@ -28,7 +30,15 @@ export function taskCardsToMount(snapshot: ScheduleSnapshot, mounted: ReadonlySe
       if (!t || !ACTIVE_STATUSES.has(t.status) || t.terminalId === undefined || t.processId === undefined || !t.workspace) continue;
       const key = `spexr-task-${t.terminalId}`;
       if (mounted.has(key) || (t.sessionId !== undefined && mounted.has(t.sessionId))) continue;
-      cards.push({ key, terminalId: t.terminalId, processId: t.processId, workspace: t.workspace, harness: task.harness, ...(t.sessionId ? { sessionId: t.sessionId } : {}) });
+      cards.push({
+        key,
+        runId: run.runId,
+        terminalId: t.terminalId,
+        processId: t.processId,
+        workspace: t.workspace,
+        harness: task.harness,
+        ...(t.sessionId ? { sessionId: t.sessionId } : {}),
+      });
     }
   }
   return cards;
@@ -46,10 +56,10 @@ export function closesDestructively(key: string, taskKeys: ReadonlySet<string>):
 }
 
 /**
- * Card keys of the task terminals still running an active task, each with the
- * session it runs when known. A launched task card missing here was superseded
- * (a retry gives its task a new terminal) or its task or run is over, so the
- * wall drops it rather than let it adopt the session of the attempt after it.
+ * Card keys of the task terminals still running an active task in a running
+ * run, each with the session it runs when known: the cards the wall mounts
+ * ({@link taskCardsToMount} applies the same filter). Whether a mounted card
+ * stays is {@link currentTaskCards}'s call, not this.
  */
 export function liveTaskCards(snapshot: ScheduleSnapshot): Map<string, string | undefined> {
   const live = new Map<string, string | undefined>();
@@ -63,6 +73,47 @@ export function liveTaskCards(snapshot: ScheduleSnapshot): Map<string, string | 
     }
   }
   return live;
+}
+
+/** A task terminal of a schedule's current run: the run's id and the task's session when known. */
+export interface CurrentTaskCard {
+  runId: string;
+  sessionId?: string;
+}
+
+/**
+ * Card keys of every task terminal in each schedule's current run, whatever
+ * the task or run status. A key can list several runs: terminal ids start
+ * over when the backend restarts, so an older run of another schedule may
+ * name the same terminal id. A task card stays on the wall while its key
+ * lists the run it was mounted for: a failed, converged or aborted task's
+ * session is still open for the operator. It goes once a retry gives the
+ * task a new terminal, a new run replaces the run, recovery clears the
+ * terminal, or the schedule is deleted.
+ */
+export function currentTaskCards(snapshot: ScheduleSnapshot): Map<string, CurrentTaskCard[]> {
+  const current = new Map<string, CurrentTaskCard[]>();
+  for (const schedule of snapshot.schedules) {
+    const run = snapshot.runs[schedule.id];
+    if (!run) continue;
+    for (const task of schedule.tasks) {
+      const t = run.tasks[task.id];
+      if (t?.terminalId === undefined) continue;
+      const key = `spexr-task-${t.terminalId}`;
+      const entry = { runId: run.runId, ...(t.sessionId !== undefined ? { sessionId: t.sessionId } : {}) };
+      current.set(key, [...(current.get(key) ?? []), entry]);
+    }
+  }
+  return current;
+}
+
+/** The current-run entry of the task card `key` mounted for `runId`, or undefined once it is no longer part of that run. */
+export function currentTaskCard(
+  current: ReadonlyMap<string, readonly CurrentTaskCard[]>,
+  key: string,
+  runId: string | undefined,
+): CurrentTaskCard | undefined {
+  return current.get(key)?.find((c) => c.runId === runId);
 }
 
 export interface AdoptableCard {
@@ -90,22 +141,27 @@ export function adoptedSession(
 
 /**
  * Bring launched cards in step with the runs. Only task cards (keys in
- * `taskKeys`) are judged: one missing from `live` is dropped (the caller
- * detaches it, never disposes it); a live one learns its task's session id
- * once the engine has it. Launcher cards pass through untouched.
+ * `taskKeys`) are judged: one no longer part of its current run
+ * ({@link currentTaskCard}) is dropped — the caller detaches it, never
+ * disposes it, and frees its key for a later remount; a kept one learns its
+ * task's session id once the engine has it. Launcher cards pass through.
  */
-export function syncLaunchedTasks<T extends { key: string; sessionId?: string }>(
+export function syncLaunchedTasks<T extends { key: string; runId?: string; sessionId?: string }>(
   launched: readonly T[],
   taskKeys: ReadonlySet<string>,
-  live: ReadonlyMap<string, string | undefined>,
+  current: ReadonlyMap<string, readonly CurrentTaskCard[]>,
 ): { kept: T[]; dropped: string[] } {
   const kept: T[] = [];
   const dropped: string[] = [];
   for (const l of launched) {
-    if (!taskKeys.has(l.key)) kept.push(l);
-    else if (!live.has(l.key)) dropped.push(l.key);
+    if (!taskKeys.has(l.key)) {
+      kept.push(l);
+      continue;
+    }
+    const entry = currentTaskCard(current, l.key, l.runId);
+    if (!entry) dropped.push(l.key);
     else {
-      const sessionId = live.get(l.key);
+      const sessionId = entry.sessionId;
       kept.push(sessionId !== undefined && sessionId !== l.sessionId ? { ...l, sessionId } : l);
     }
   }

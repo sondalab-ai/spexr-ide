@@ -24,7 +24,14 @@ import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrScheduleServiceProxy, SpexrScheduleClientDispatcher } from "./schedule/schedule-client.js";
-import { adoptedSession, closesDestructively, liveTaskCards, syncLaunchedTasks, taskCardsToMount } from "./schedule/schedule-wall.js";
+import {
+  adoptedSession,
+  closesDestructively,
+  currentTaskCard,
+  currentTaskCards,
+  syncLaunchedTasks,
+  taskCardsToMount,
+} from "./schedule/schedule-wall.js";
 import type { ScheduleSnapshot, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
 import type { Schedule, ValidationProblem } from "../../common/schedule/schedule-types.js";
 import { ScheduleSidebar } from "./schedule/schedule-sidebar.js";
@@ -203,10 +210,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * what the wall knew at launch, which is how `matchLaunchedSession`
    * recognises the session once it appears. A task card also carries the
    * session its task runs, once known, and adopts only that one
-   * ({@link adoptedSession}).
+   * ({@link adoptedSession}), and the run it was mounted for.
    */
   private launched: {
     key: string;
+    runId?: string;
     projectPath: string;
     projectName: string;
     harness: HarnessId;
@@ -612,13 +620,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             this.mountedTasks.delete(card.key);
             return;
           }
-          // A later snapshot may already have superseded this terminal (a retry).
-          if (!liveTaskCards(this.scheduleSnapshot).has(card.key)) return;
+          // A later snapshot may already have superseded this terminal (a retry,
+          // a new run). Free the key so a fresher snapshot can still mount it.
+          if (!currentTaskCard(currentTaskCards(this.scheduleSnapshot), card.key, card.runId)) {
+            this.mountedTasks.delete(card.key);
+            return;
+          }
           const known = new Set(this.tiles.map((t) => t.sessionId).filter((id) => id !== card.sessionId));
           this.launched = [
             ...this.launched,
             {
               key: card.key,
+              runId: card.runId,
               projectPath: card.workspace,
               projectName: card.workspace.split("/").filter(Boolean).pop() ?? card.workspace,
               harness: card.harness,
@@ -637,14 +650,19 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   /**
    * Keep launched task cards in step with the runs: a card learns its task's
-   * session id once the engine has it, and a card whose terminal no longer
-   * runs an active task (a retry replaced it, or the task or run is over) is
-   * dropped the way closing it would — detached, never disposed — so it can
-   * never adopt the session of the attempt after it.
+   * session id once the engine has it, and stays while its terminal is part
+   * of the run it was mounted for, whatever the task or run status (Abort
+   * leaves sessions open). One no longer part of it (a retry, a new run, a
+   * deleted schedule) is dropped — detached, never disposed — and its key is
+   * freed, unlike a user close, so a fresher snapshot can mount it again if a
+   * stale one dropped it.
    */
   private syncTaskCards(snapshot: ScheduleSnapshot): void {
-    const { kept, dropped } = syncLaunchedTasks(this.launched, this.mountedTasks, liveTaskCards(snapshot));
-    for (const key of dropped) this.browsers.delete(key);
+    const { kept, dropped } = syncLaunchedTasks(this.launched, this.mountedTasks, currentTaskCards(snapshot));
+    for (const key of dropped) {
+      this.browsers.delete(key);
+      this.mountedTasks.delete(key);
+    }
     this.launched = kept;
   }
 
