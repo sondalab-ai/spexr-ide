@@ -821,20 +821,26 @@ function TaskEditor(p: {
           <p className="spexr-sched__hint">Add another task to make this one wait for it.</p>
         ) : (
           needs.map((n) => (
-            <label key={n.id} className="sl-check">
-              <input
-                type="checkbox"
-                className="sl-check__input"
-                checked={n.checked}
-                disabled={!!n.blockedBy}
-                onChange={(e) => p.onChange(withNeed(t, n.id, e.target.checked))}
-              />
-              <span className="sl-check__box" aria-hidden="true" />
-              <span className="sl-check__label">
-                {n.name}
-                {n.blockedBy && <span className="spexr-sched__hint"> — {n.blockedBy}</span>}
-              </span>
-            </label>
+            <div key={n.id} className="spexr-sched__need">
+              <label className="sl-check">
+                <input
+                  type="checkbox"
+                  className="sl-check__input"
+                  checked={n.checked}
+                  disabled={!!n.blockedBy}
+                  aria-describedby={n.blockedBy ? `${t.id}-need-${n.id}-why` : undefined}
+                  onChange={(e) => p.onChange(withNeed(t, n.id, e.target.checked))}
+                />
+                <span className="sl-check__box" aria-hidden="true" />
+                <span className="sl-check__label">{n.name}</span>
+              </label>
+              {/* Outside the .sl-check row: the kit dims that row to 50% opacity when its checkbox is disabled. */}
+              {n.blockedBy && (
+                <span className="spexr-sched__hint" id={`${t.id}-need-${n.id}-why`}>
+                  {n.blockedBy}
+                </span>
+              )}
+            </div>
           ))
         )}
         {problem("needs") && <span className="spexr-sched__problem">{problem("needs")}</span>}
