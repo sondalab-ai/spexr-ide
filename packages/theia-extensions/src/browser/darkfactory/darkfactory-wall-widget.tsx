@@ -1452,6 +1452,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             <ScheduleSidebar
               snapshot={this.scheduleSnapshot}
               projects={launchTargets(this.tiles, currentProject, this.recentProjects).map((t) => ({ path: t.path, name: t.name }))}
+              configs={this.configs}
               width={this.sidebar.width}
               onSave={(s) => void this.schedules.save(s).then(() => this.refreshSchedules()).catch(() => undefined)}
               onRemove={(id) => void this.schedules.remove(id).then(() => this.refreshSchedules()).catch(() => undefined)}

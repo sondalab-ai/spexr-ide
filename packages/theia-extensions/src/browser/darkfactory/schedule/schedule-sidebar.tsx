@@ -1,4 +1,5 @@
 import * as React from "@theia/core/shared/react";
+import type { ClaudeConfigDir } from "../../../common/darkfactory-protocol.js";
 import type { HarnessId } from "../../../common/harness/harness-types.js";
 import type { ScheduleSnapshot } from "../../../common/schedule/schedule-protocol.js";
 import {
@@ -14,10 +15,23 @@ import {
 import { validateSchedule } from "../../../common/schedule/schedule-validate.js";
 import { patchLoop, withCheck, withCheckTimeout, withLoop, withMaxIterations } from "./loop-edit.js";
 import { newSchedule, newTask, runBar, taskRows, taskTransitions, type TaskRow } from "./schedule-view.js";
+import {
+  accountOptions,
+  insertAt,
+  needChoices,
+  placeholderChoices,
+  withAccount,
+  withNeed,
+  withWorkspace,
+  workspaceOptions,
+  workspaceValue,
+} from "./task-edit.js";
 
 export interface ScheduleSidebarProps {
   snapshot: ScheduleSnapshot;
   projects: readonly { path: string; name: string }[];
+  /** The Claude accounts the wall's launcher knows; a task picks one. */
+  configs: readonly ClaudeConfigDir[];
   width: number;
   onSave(schedule: Schedule): void;
   onRemove(scheduleId: string): void;
@@ -84,6 +98,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     ? [...validateSchedule(schedule), ...(runProblems?.scheduleId === schedule.id ? runProblems.problems : [])]
     : [];
   const bar = schedule ? runBar(schedule, run, problems) : undefined;
+  const nameProblem = problems.find((x) => !x.task && x.field === "name")?.message;
   const rows = schedule ? taskRows(schedule, run) : [];
   const [announce, setAnnounce] = React.useState("");
   const rowKey = rows.map((r) => `${r.id}:${r.status}`).join(",");
@@ -206,17 +221,19 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               <i className="codicon codicon-trash" />
             </button>
           </div>
-          <label className="sl-field">
+          <label className="sl-field" data-invalid={nameProblem ? "true" : undefined}>
             <span className="sl-field__label">Name</span>
             <span className="sl-field__control">
               <input
                 className="sl-field__input"
                 value={schedule.name}
                 disabled={running}
+                aria-invalid={nameProblem ? true : undefined}
                 onChange={(e) => edit({ ...schedule, name: e.target.value })}
                 onBlur={flush}
               />
             </span>
+            {nameProblem && <span className="spexr-sched__problem">{nameProblem}</span>}
           </label>
 
           {bar!.reasons.length > 0 && (
@@ -339,7 +356,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                 {editing === row.id && !running && (
                   <TaskEditor
                     task={schedule.tasks.find((t) => t.id === row.id)!}
+                    schedule={schedule}
                     projects={p.projects}
+                    configs={p.configs}
                     problems={problems.filter((x) => x.task === row.id)}
                     onChange={updateTask}
                     onBlur={flush}
@@ -364,7 +383,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
 
 function TaskEditor(p: {
   task: ScheduleTask;
+  schedule: Schedule;
   projects: readonly { path: string; name: string }[];
+  configs: readonly ClaudeConfigDir[];
   problems: ValidationProblem[];
   onChange(task: ScheduleTask): void;
   onBlur(): void;
@@ -379,6 +400,23 @@ function TaskEditor(p: {
   const problem = (field: string): string | undefined =>
     p.problems.find((x) => x.field === field)?.message;
   const set = (patch: Partial<ScheduleTask>): void => p.onChange({ ...t, ...patch });
+  const promptRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const handOffs = placeholderChoices(p.schedule, t.id);
+  const needs = needChoices(p.schedule, t.id);
+  const current = workspaceValue(t.workspace);
+  const workspaces = workspaceOptions(p.schedule, t.id);
+  // A sameAs left pointing at a task this one no longer waits for stays visible; validation flags it next to the field.
+  if (!workspaces.some((o) => o.value === current)) workspaces.push({ value: current, label: "Same as a task it does not wait for" });
+  /** Insert a hand-off at the caret (R23: buttons, so arrowing never inserts), then put the caret after it. */
+  const insertHandOff = (token: string): void => {
+    const el = promptRef.current;
+    const { text, caret } = insertAt(t.prompt, el?.selectionStart ?? t.prompt.length, el?.selectionEnd ?? t.prompt.length, token);
+    set({ prompt: text });
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  };
   // exactOptionalPropertyTypes rejects an explicit `undefined` for an optional
   // string field (`model?`/`permissionMode?`), so clearing one drops the key
   // by destructuring instead of assigning it, the way `renamedTile` does in
@@ -435,6 +473,28 @@ function TaskEditor(p: {
         </span>,
       )}
       {field(
+        "Workspace",
+        "workspace",
+        <span className="sl-select">
+          <select className="sl-field__input" value={current} onChange={(e) => p.onChange(withWorkspace(t, e.target.value))}>
+            {workspaces.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </span>,
+      )}
+      {t.workspace.kind === "worktree" && (
+        <p className="spexr-sched__hint">
+          A new folder next to the repository, on branch <code className="spexr-sched__mono">spexr/{p.schedule.id}/{t.id}</code>,
+          made from the project's last commit: uncommitted changes stay behind. It is kept after the run for you to review
+          and merge.
+          {t.harness === "claude" &&
+            " Claude asks once whether to trust a new folder: the task shows Needs you until you choose “Yes” in its card. Its default answer ends the session."}
+        </p>
+      )}
+      {field(
         "Harness",
         "harness",
         <span className="sl-select">
@@ -451,15 +511,42 @@ function TaskEditor(p: {
           </select>
         </span>,
       )}
+      {t.harness === "claude" &&
+        field(
+          "Account",
+          "configDir",
+          <span className="sl-select">
+            <select className="sl-field__input" value={t.configDir ?? ""} onChange={(e) => p.onChange(withAccount(t, e.target.value))}>
+              {accountOptions(p.configs, t.configDir).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </span>,
+        )}
       {field(
         "Prompt",
         "prompt",
         <textarea
+          ref={promptRef}
           className="sl-field__input spexr-sched__prompt"
           rows={5}
           value={t.prompt}
           onChange={(e) => set({ prompt: e.target.value })}
         />,
+      )}
+      {handOffs.length > 0 ? (
+        <div className="spexr-sched__handoff" role="group" aria-label="Insert a hand-off into the prompt">
+          <span className="spexr-sched__hint">Insert:</span>
+          {handOffs.map((h) => (
+            <button key={h.token} type="button" className="sl-btn sl-btn--ghost sl-btn--sm" onClick={() => insertHandOff(h.token)} title={h.token}>
+              {h.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="spexr-sched__hint">Once this task waits for another, you can hand it that task's reply or folder.</p>
       )}
       <label className="sl-switch spexr-sched__loop-switch">
         <input
@@ -546,6 +633,30 @@ function TaskEditor(p: {
           )}
         </fieldset>
       )}
+      <fieldset className="spexr-sched__needs" data-invalid={problem("needs") ? "true" : undefined}>
+        <legend className="sl-field__label">Waits for</legend>
+        {needs.length === 0 ? (
+          <p className="spexr-sched__hint">Add another task to make this one wait for it.</p>
+        ) : (
+          needs.map((n) => (
+            <label key={n.id} className="sl-check">
+              <input
+                type="checkbox"
+                className="sl-check__input"
+                checked={n.checked}
+                disabled={!!n.blockedBy}
+                onChange={(e) => p.onChange(withNeed(t, n.id, e.target.checked))}
+              />
+              <span className="sl-check__box" aria-hidden="true" />
+              <span className="sl-check__label">
+                {n.name}
+                {n.blockedBy && <span className="spexr-sched__hint"> — {n.blockedBy}</span>}
+              </span>
+            </label>
+          ))
+        )}
+        {problem("needs") && <span className="spexr-sched__problem">{problem("needs")}</span>}
+      </fieldset>
       <details className="spexr-sched__advanced">
         <summary>Model and permissions</summary>
         {field(

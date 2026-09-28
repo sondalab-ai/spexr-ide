@@ -2481,7 +2481,7 @@ code {
 .spexr-sched__waits, .spexr-sched__error { flex-basis: 100%; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
 .spexr-sched__error { color: var(--sl-status-danger); }
 .spexr-sched__editor { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
-.spexr-sched__editor .sl-field[data-invalid="true"] .sl-field__input { border-color: var(--sl-status-danger); }
+.spexr-sched .sl-field[data-invalid="true"] .sl-field__input { border-color: var(--sl-status-danger); }
 .spexr-sched__prompt { min-height: 6rem; resize: vertical; font-family: var(--sl-font-mono); }
 .spexr-sched__problem { color: var(--sl-status-danger); }
 .spexr-sched__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -2495,6 +2495,12 @@ code {
 @keyframes spexr-sched-unfold { from { opacity: 0; transform: translateY(calc(var(--sl-space-1) * -1)); } }
 .spexr-sched__hint { margin: 0; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
 .spexr-sched__mono { font-family: var(--sl-font-mono); }
+/* "Waits for": one check per task; a choice that would close a cycle stays visible, disabled, with why. */
+.spexr-sched__needs { display: flex; flex-direction: column; gap: var(--sl-space-2); margin: 0; padding: 0; border: 0; }
+.spexr-sched__needs > legend { padding: 0; margin-bottom: var(--sl-space-1); }
+/* Hand-offs insert at the caret; one button each, in the mono face of the tokens they insert. */
+.spexr-sched__handoff { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-1); }
+.spexr-sched__handoff .sl-btn { font-family: var(--sl-font-mono); }
 @media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } .spexr-sched__loop { animation: none; } }
 
 /*
