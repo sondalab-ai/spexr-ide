@@ -198,19 +198,9 @@ body {
   backdrop-filter: none;
 }
 
-/* An unfocused or idle window (motion-idle.ts): decorative loops freeze in
-   place and resume where they were. Each running frame re-composites the
-   whole window through the glass layers. Status animations keep running.
-   The kit's own loops are listed too until the installed kit pauses them
-   under data-sl-fx-still (ui-kit 0.18.0). */
-:root[data-spexr-motion="paused"] .sl-fx-aurora::after,
-:root[data-spexr-motion="paused"] .sl-fx-aurora > .sl-fx-aurora__glow,
-:root[data-spexr-motion="paused"] .sl-fx-aurora > .sl-fx-aurora__glow::before,
-:root[data-spexr-motion="paused"] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora),
-:root[data-spexr-motion="paused"] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora)::before,
-:root[data-spexr-motion="paused"] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora)::after,
-:root[data-spexr-motion="paused"] .sl-fx-glass::before,
-:root[data-spexr-motion="paused"] .sl-fx-glass::after,
+/* An unfocused or idle window (motion-idle.ts): SPEXR's decorative loops
+   freeze in place and resume where they were. The kit freezes its own under
+   data-sl-fx-still, set alongside. Status animations keep running. */
 :root[data-spexr-motion="paused"] .spexr-welcome-bg__blob::before,
 :root[data-spexr-motion="paused"] .spexr-smart-search__map-cta,
 :root[data-spexr-motion="paused"] .spexr-smart-search__map-glyph {

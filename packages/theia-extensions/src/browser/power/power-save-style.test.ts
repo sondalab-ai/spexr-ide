@@ -47,8 +47,10 @@ describe("power saving CSS", () => {
 describe("paused motion CSS", () => {
   const paused = (): string[] => pausedUnder(':root[data-spexr-motion="paused"]');
 
-  it("freezes everything the kit pauses off-screen", () => {
-    expect(paused()).toEqual(expect.arrayContaining(kitOffScreenGate()));
+  it("leaves the kit's loops to the kit's still flag", () => {
+    const css = readFileSync(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.css"), "utf8");
+    expect(css).toMatch(/:root\[data-sl-fx-still\] :is\(\.sl-fx-aurora, \.sl-fx-aurora__glow, \.sl-fx-glass\)::before/);
+    expect(paused().filter((s) => s.includes(".sl-fx-"))).toEqual([]);
   });
 
   it("freezes SPEXR's own decorative loops", () => {
