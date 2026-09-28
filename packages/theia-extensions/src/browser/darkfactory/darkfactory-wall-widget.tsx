@@ -24,7 +24,7 @@ import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
 import { SpexrScheduleServiceProxy, SpexrScheduleClientDispatcher } from "./schedule/schedule-client.js";
-import { closesDestructively, taskCardsToMount } from "./schedule/schedule-wall.js";
+import { adoptedSession, closesDestructively, liveTaskCards, taskCardsToMount } from "./schedule/schedule-wall.js";
 import type { ScheduleSnapshot, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
 import type { Schedule, ValidationProblem } from "../../common/schedule/schedule-types.js";
 import { ScheduleSidebar } from "./schedule/schedule-sidebar.js";
@@ -54,7 +54,6 @@ import {
   type TileMatch,
 } from "./agent-tile.js";
 import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
-import { matchLaunchedSession } from "./new-session-match.js";
 import { keepPinnedTiles } from "./pinned-tiles.js";
 import { resolveForks, type PendingFork } from "./fork-adoption.js";
 import { readPins, writePins, type StoredPin } from "./pinned-store.js";
@@ -201,8 +200,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   /**
    * Sessions started from the launcher, still keyed by a placeholder: a new
    * session has no id until its harness writes a transcript. `knownBefore` is
-   * what the wall knew at launch, which is how {@link matchLaunchedSession}
-   * recognises the session once it appears.
+   * what the wall knew at launch, which is how `matchLaunchedSession`
+   * recognises the session once it appears. A task card also carries the
+   * session its task runs, once known, and adopts only that one
+   * ({@link adoptedSession}).
    */
   private launched: {
     key: string;
@@ -210,6 +211,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     projectName: string;
     harness: HarnessId;
     knownBefore: ReadonlySet<string>;
+    sessionId?: string;
   }[] = [];
   private launchCounter = 0;
 
@@ -592,6 +594,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    */
   private onScheduleSnapshot(snapshot: ScheduleSnapshot): void {
     this.scheduleSnapshot = snapshot;
+    this.syncTaskCards(snapshot);
     const mounted = new Set<string>([
       ...this.mountedTasks,
       ...this.pinned,
@@ -609,6 +612,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             this.mountedTasks.delete(card.key);
             return;
           }
+          // A later snapshot may already have superseded this terminal (a retry).
+          if (!liveTaskCards(this.scheduleSnapshot).has(card.key)) return;
           const known = new Set(this.tiles.map((t) => t.sessionId).filter((id) => id !== card.sessionId));
           this.launched = [
             ...this.launched,
@@ -618,6 +623,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               projectName: card.workspace.split("/").filter(Boolean).pop() ?? card.workspace,
               harness: card.harness,
               knownBefore: known,
+              ...(card.sessionId ? { sessionId: card.sessionId } : {}),
             },
           ];
           this.update();
@@ -627,6 +633,27 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         });
     }
     this.update();
+  }
+
+  /**
+   * Keep launched task cards in step with the runs: a card learns its task's
+   * session id once the engine has it, and a card whose terminal no longer
+   * runs an active task (a retry replaced it, or the task or run is over) is
+   * dropped the way closing it would — detached, never disposed — so it can
+   * never adopt the session of the attempt after it.
+   */
+  private syncTaskCards(snapshot: ScheduleSnapshot): void {
+    const live = liveTaskCards(snapshot);
+    const next: typeof this.launched = [];
+    for (const l of this.launched) {
+      if (!this.mountedTasks.has(l.key)) next.push(l);
+      else if (!live.has(l.key)) this.browsers.delete(l.key);
+      else {
+        const sessionId = live.get(l.key) ?? l.sessionId;
+        next.push(sessionId !== undefined && sessionId !== l.sessionId ? { ...l, sessionId } : l);
+      }
+    }
+    this.launched = next;
   }
 
   private refreshSchedules(): void {
@@ -708,7 +735,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private adoptLaunched(tiles: AgentTile[]): void {
     const adopted: string[] = [];
     for (const launch of this.launched) {
-      const sessionId = matchLaunchedSession(launch.projectPath, launch.knownBefore, tiles);
+      const sessionId = adoptedSession(launch, this.launched, tiles);
       if (!sessionId || this.pinned.includes(sessionId)) continue;
       this.terminals.rekey(launch.key, sessionId);
       const browser = this.browsers.get(launch.key);
