@@ -30,7 +30,7 @@ Everything below is **Planned**.
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `spexr.backdrop.kind` | `"life"` \| `"photo"` | `"life"` | Which backdrop the Spec and Dark Factory panels draw. |
-| `spexr.backdrop.photos` | `string[]` | `[]` | Picture URLs to cycle instead of the curated set. Empty uses the curated set. A URL on another origin must allow CORS, or it is skipped. |
+| `spexr.backdrop.photos` | `string[]` | `[]` | Picture URLs to cycle instead of the curated set. Empty uses the curated set. A URL on another origin must allow cross-origin resource sharing (CORS), or it is skipped. |
 
 A change applies live, without reopening a panel.
 
@@ -95,19 +95,21 @@ subject as a hole (seen in the headless check on the light theme).
 | High contrast | Nothing is drawn (the Life backdrop's rule, and the kit's). |
 | Panel or window hidden | The clock stops. |
 
-The approved chat design said the canvas unmounts while saving power. Holding the frame instead
+The design approved in chat said the canvas unmounts while saving power. Holding the frame instead
 matches what the Life backdrop does while saving and costs nothing, since no timer runs.
 
 ## Testing
 
 - `photo-set.test.ts`: the picker never repeats with two or more photos, returns the only one with
   one, handles an empty list; the curated set has 18 entries.
-- `backdrop.test.tsx` (or the geometry helper's test): the square's side and offset for wide, tall
-  and square hosts.
+- `photo-geometry.test.ts`: the square's side and offset for wide, tall, square and empty hosts.
+- `backdrop.test.ts`: the preference values map to the Game of Life by default, and to the curated
+  set when no URL is given.
 - `pnpm build:dev` for the desktop bundle (the `.jpg` data-URL path), then the running app.
 
 ## Out of scope
 
 - Local file paths in `spexr.backdrop.photos` (only URLs).
 - A picker UI; the preference editor is enough.
-- Photo credits shown in the UI (they are in `CREDITS.md`; NASA material needs none on screen).
+- Photo credits shown in the UI. They are in `backdrop/photos/CREDITS.md`, per
+  [NASA's media usage guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/).
