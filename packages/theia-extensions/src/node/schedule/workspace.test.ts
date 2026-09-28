@@ -121,16 +121,19 @@ describe("Workspaces.prepareWorktree", () => {
   it("a new run refuses a worktree left from an earlier run, and says how to clean up or continue (R15)", async () => {
     const w = new Workspaces();
     await w.prepareWorktree(fresh());
-    await expect(w.prepareWorktree(fresh())).rejects.toThrow(
-      /left from an earlier run.*Retry.*git -C .*worktree remove.*&&.*git -C .*branch -D.*--force/s,
-    );
+    const err = (await w.prepareWorktree(fresh()).catch((e: unknown) => e)) as Error;
+    expect(err.message).toMatch(/left from an earlier run.*Retry.*--force.*\ngit -C .*worktree remove.*&&.*git -C .*branch -D/s);
+    // the command stands alone on the last line, so copying it never picks up trailing prose or a period.
+    expect(err.message.split("\n").at(-1)).toMatch(/^git -C \S+ worktree remove \S+ && git -C \S+ branch -D 'spexr\/s\/t'$/);
   });
 
   it("a retry makes a worktree for a branch left without one; a new run refuses the branch (R15)", async () => {
     const w = new Workspaces();
     const first = await w.prepareWorktree(fresh());
     g(repo, "worktree", "remove", first); // the branch stays
-    await expect(w.prepareWorktree(fresh())).rejects.toThrow(/branch spexr\/s\/t is left from an earlier run.*git -C .*branch -D/s);
+    const err = (await w.prepareWorktree(fresh()).catch((e: unknown) => e)) as Error;
+    expect(err.message).toMatch(/branch spexr\/s\/t is left from an earlier run.*\ngit -C .*branch -D/s);
+    expect(err.message.split("\n").at(-1)).toMatch(/^git -C \S+ branch -D 'spexr\/s\/t'$/);
     expect(await w.prepareWorktree({ ...fresh(), reuse: true })).toBe(first);
     expect(g(first, "rev-parse", "--abbrev-ref", "HEAD")).toBe("spexr/s/t");
   });

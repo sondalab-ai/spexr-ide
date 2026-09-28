@@ -124,16 +124,17 @@ export class Workspaces {
   private async ensure(repo: Repo, req: WorktreeRequest): Promise<string> {
     const branch = worktreeBranch(req.scheduleId, req.taskId);
     const path = worktreePath(repo.toplevel, req.scheduleId, req.taskId);
+    // Each command ends the message on a line of its own, so copying it never picks up prose or a period.
     const leftoverWorktree = (): Error =>
       new Error(
-        `The worktree ${path} is left from an earlier run. Press Retry to continue on it, or remove it first: ` +
-          `${worktreeRemoveCmd(repo.toplevel, path)} && ${branchDeleteCmd(repo.toplevel, branch)} ` +
-          `(add --force to worktree remove if it has uncommitted changes).`,
+        `The worktree ${path} is left from an earlier run. Press Retry to continue on it, or remove it first ` +
+          `(add --force to worktree remove if it has uncommitted changes):\n` +
+          `${worktreeRemoveCmd(repo.toplevel, path)} && ${branchDeleteCmd(repo.toplevel, branch)}`,
       );
     const leftoverBranch = (): Error =>
       new Error(
-        `The branch ${branch} is left from an earlier run. Press Retry to continue on it, or remove it first: ` +
-          `${branchDeleteCmd(repo.toplevel, branch)}.`,
+        `The branch ${branch} is left from an earlier run. Press Retry to continue on it, or remove it first:\n` +
+          `${branchDeleteCmd(repo.toplevel, branch)}`,
       );
     const onBranch = parseWorktreeList(await git(repo.toplevel, ["worktree", "list", "--porcelain"])).find(
       (w) => w.branch === branch,
