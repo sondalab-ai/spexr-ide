@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunState, Schedule, ScheduleTask, TaskLaunch } from "../../common/schedule/schedule-types.js";
 import { firstPrompt, followUpPrompt } from "../../common/schedule/schedule-prompt.js";
+import { buildTaskArgs } from "../../common/schedule/task-args.js";
 import { startRun, step, workspacePlan } from "./schedule-engine.js";
 
 const launch: TaskLaunch = { plan: { command: "claude", exportConfigDir: "", unquoted: true }, configDir: "" };
@@ -46,6 +47,17 @@ describe("step", () => {
     const { run, effects } = step(s, started(), { type: "turn-ended", task: "a", reply: "shipped\nCONVERGED" });
     expect(run.tasks["a"]).toMatchObject({ status: "converged", reply: "shipped\nCONVERGED" });
     expect(effects).toEqual([{ type: "start", task: "c", prompt: "after: shipped in /r-a" }]);
+  });
+
+  it("a hand-off that makes the prompt start with '-' reaches the start effect, and its launch args stay safe", () => {
+    const s2 = sched(task("a"), task("c", { needs: ["a"], prompt: "{{a.reply}}" }));
+    const run = step(s2, startRun(s2, launches(s2), "r1", 0).run, { type: "started", task: "a", terminalId: 7, processId: 70, workspace: "/r-a" }).run;
+    const { effects } = step(s2, run, { type: "turn-ended", task: "a", reply: "- Changed the API\nCONVERGED" });
+    expect(effects).toEqual([{ type: "start", task: "c", prompt: "- Changed the API" }]);
+    const start = effects[0] as { prompt: string };
+    const c = s2.tasks[1]!;
+    expect(buildTaskArgs(c, start.prompt, "u-1").at(-1)).toBe(" - Changed the API");
+    expect(buildTaskArgs({ ...c, harness: "opencode" }, start.prompt)).toEqual(["--prompt", " - Changed the API"]);
   });
 
   it("finishes the run when every task has converged", () => {
