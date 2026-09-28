@@ -120,3 +120,25 @@ export function withAccount(task: ScheduleTask, configDir: string): ScheduleTask
   const { configDir: _dropped, ...rest } = task;
   return rest;
 }
+
+/**
+ * The schedule without one task. Every link to it goes too: the others stop
+ * waiting for it, and a task that shared its workspace falls back to the
+ * project folder (a placeholder naming it is left for validation to flag).
+ */
+export function withoutTask(schedule: Schedule, taskId: string): Schedule {
+  if (!schedule.tasks.some((x) => x.id === taskId)) return schedule;
+  const tasks = schedule.tasks
+    .filter((x) => x.id !== taskId)
+    .map((x) => {
+      const waits = x.needs.includes(taskId);
+      const shares = x.workspace.kind === "sameAs" && x.workspace.task === taskId;
+      if (!waits && !shares) return x;
+      return {
+        ...x,
+        ...(waits ? { needs: x.needs.filter((n) => n !== taskId) } : {}),
+        ...(shares ? { workspace: { kind: "folder" as const } } : {}),
+      };
+    });
+  return { ...schedule, tasks };
+}

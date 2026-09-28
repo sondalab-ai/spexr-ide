@@ -39,6 +39,7 @@ import {
   withAccount,
   withNeed,
   withWorkspace,
+  withoutTask,
   workspaceOptions,
   workspaceValue,
 } from "./task-edit.js";
@@ -125,6 +126,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const runBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const runBarRef = React.useRef<HTMLDivElement | null>(null);
   const rowBtnRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  // Whichever "Add a task" button is showing: where focus goes once a removed task's editor is gone.
+  const addTaskBtnRef = React.useRef<HTMLButtonElement | null>(null);
   // Only worth requesting a focus recovery while focus is still somewhere we
   // can reason about: inside the sidebar (about to unmount) or already
   // reverted to the body. If it's already elsewhere — a card the wall just
@@ -299,6 +302,13 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const updateTask = (task: ScheduleTask): void => {
     if (!schedule) return;
     edit({ ...schedule, tasks: schedule.tasks.map((t) => (t.id === task.id ? task : t)) });
+  };
+  const removeTask = (taskId: string): void => {
+    if (!schedule || running) return;
+    edit(withoutTask(schedule, taskId));
+    setEditing(undefined);
+    if (selected === taskId) setSelected(undefined);
+    requestAnimationFrame(() => addTaskBtnRef.current?.focus());
   };
   const addTask = (): void => {
     if (!schedule) return;
@@ -521,7 +531,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           {schedule.tasks.length === 0 ? (
             <div className="sl-empty">
               <p>No tasks yet. A task is one agent session, with its own folder and prompt.</p>
-              <button className="sl-btn sl-btn--sm" onClick={addTask}>
+              <button ref={addTaskBtnRef} className="sl-btn sl-btn--sm" onClick={addTask}>
                 <i className="codicon codicon-add" aria-hidden="true" /> Add a task
               </button>
             </div>
@@ -618,6 +628,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                             problems={problems.filter((x) => x.task === row.id)}
                             onChange={updateTask}
                             onBlur={flush}
+                            onRemove={() => removeTask(row.id)}
                           />
                         )}
                       </li>
@@ -628,7 +639,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             </ol>
           )}
           {!running && schedule.tasks.length > 0 && (
-            <button className="sl-btn sl-btn--ghost sl-btn--sm" onClick={addTask}>
+            <button ref={addTaskBtnRef} className="sl-btn sl-btn--ghost sl-btn--sm" onClick={addTask}>
               <i className="codicon codicon-add" aria-hidden="true" /> Add a task
             </button>
           )}
@@ -649,8 +660,12 @@ function TaskEditor(p: {
   problems: ValidationProblem[];
   onChange(task: ScheduleTask): void;
   onBlur(): void;
+  onRemove(): void;
 }): React.ReactElement {
   const t = p.task;
+  const [confirmRemove, setConfirmRemove] = React.useState(false);
+  const removeBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const removeKeepBtnRef = React.useRef<HTMLButtonElement | null>(null);
   // The last loop settings seen while `t.loop` was set, so switching the loop
   // off and back on restores what the operator typed instead of the defaults.
   const lastLoopRef = React.useRef<TaskLoop | undefined>(t.loop);
@@ -986,6 +1001,38 @@ function TaskEditor(p: {
           </div>
         )}
       </details>
+      <div className="spexr-sched__editor-actions">
+        {confirmRemove ? (
+          <span className="spexr-sched__confirm" role="group" aria-label="Confirm remove task">
+            Remove “{t.name}”?
+            <button className="sl-btn sl-btn--sm" onClick={p.onRemove}>
+              Remove
+            </button>
+            <button
+              ref={removeKeepBtnRef}
+              className="sl-btn sl-btn--ghost sl-btn--sm"
+              onClick={() => {
+                setConfirmRemove(false);
+                requestAnimationFrame(() => removeBtnRef.current?.focus());
+              }}
+            >
+              Keep
+            </button>
+          </span>
+        ) : (
+          <button
+            ref={removeBtnRef}
+            className="sl-btn sl-btn--ghost sl-btn--sm"
+            onClick={() => {
+              setConfirmRemove(true);
+              requestAnimationFrame(() => removeKeepBtnRef.current?.focus());
+            }}
+            title="Remove this task. Tasks that wait for it stop waiting; one that shared its workspace uses the project folder."
+          >
+            <i className="codicon codicon-trash" aria-hidden="true" /> Remove task
+          </button>
+        )}
+      </div>
     </div>
   );
 }

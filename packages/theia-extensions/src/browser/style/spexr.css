@@ -2485,6 +2485,7 @@ code {
 .spexr-sched__waits, .spexr-sched__error { flex-basis: 100%; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
 .spexr-sched__error { color: var(--sl-status-danger); white-space: pre-line; overflow-wrap: anywhere; }
 .spexr-sched__editor { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
+.spexr-sched__editor-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sl-space-2); }
 .spexr-sched .sl-field[data-invalid="true"] .sl-field__input { border-color: var(--sl-status-danger); }
 .spexr-sched__prompt { min-height: 6rem; resize: vertical; font-family: var(--sl-font-mono); }
 .spexr-sched__problem { color: var(--sl-status-danger); }

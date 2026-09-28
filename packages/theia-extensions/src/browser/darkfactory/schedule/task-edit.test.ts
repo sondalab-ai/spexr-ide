@@ -10,6 +10,7 @@ import {
   withAccount,
   withNeed,
   withWorkspace,
+  withoutTask,
   workspaceOptions,
   workspaceValue,
 } from "./task-edit.js";
@@ -91,5 +92,23 @@ describe("account", () => {
   it("the default account drops the setting instead of storing an empty path", () => {
     expect(withAccount(t("a"), "/u/.claude-work").configDir).toBe("/u/.claude-work");
     expect("configDir" in withAccount({ ...t("a"), configDir: "/x" }, "")).toBe(false);
+  });
+});
+
+describe("remove a task", () => {
+  it("drops the task and every link to it: others stop waiting for it, and sharing its workspace falls back to the project folder", () => {
+    const sched: Schedule = {
+      id: "s",
+      name: "S",
+      tasks: [t("a"), { ...t("b", ["a", "d"]), workspace: { kind: "sameAs", task: "a" } }, t("c", ["b"]), t("d")],
+    };
+    const out = withoutTask(sched, "a");
+    expect(out.tasks.map((x) => x.id)).toEqual(["b", "c", "d"]);
+    expect(out.tasks[0]).toMatchObject({ id: "b", needs: ["d"], workspace: { kind: "folder" } });
+    expect(out.tasks[1]).toBe(sched.tasks[2]); // untouched tasks keep their identity
+    expect(sched.tasks).toHaveLength(4); // the input is not mutated
+  });
+  it("an unknown id leaves the schedule as it was", () => {
+    expect(withoutTask(s, "zz")).toBe(s);
   });
 });
