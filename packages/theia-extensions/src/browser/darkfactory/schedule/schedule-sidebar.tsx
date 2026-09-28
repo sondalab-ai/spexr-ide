@@ -916,14 +916,21 @@ function TaskEditor(p: {
                   type="checkbox"
                   className="sl-check__input"
                   checked={n.checked}
-                  disabled={!!n.blockedBy}
+                  aria-disabled={n.blockedBy ? true : undefined}
                   aria-describedby={n.blockedBy ? `${t.id}-need-${n.id}-why` : undefined}
-                  onChange={(e) => p.onChange(withNeed(t, n.id, e.target.checked))}
+                  onChange={(e) => {
+                    // aria-disabled, not disabled: a disabled input leaves the
+                    // tab order, which would make its reason unreachable by
+                    // keyboard (AC-17). It stays focusable and just ignores
+                    // the change; the controlled `checked` reverts it.
+                    if (n.blockedBy) return;
+                    p.onChange(withNeed(t, n.id, e.target.checked));
+                  }}
                 />
                 <span className="sl-check__box" aria-hidden="true" />
                 <span className="sl-check__label">{n.name}</span>
               </label>
-              {/* Outside the .sl-check row: the kit dims that row to 50% opacity when its checkbox is disabled. */}
+              {/* Outside the .sl-check row: the dimming rule below targets aria-disabled specifically, not the row generally. */}
               {n.blockedBy && (
                 <span className="spexr-sched__hint" id={`${t.id}-need-${n.id}-why`}>
                   {n.blockedBy}
@@ -935,10 +942,10 @@ function TaskEditor(p: {
         {problem("needs") && <span className="spexr-sched__problem">{problem("needs")}</span>}
       </fieldset>
       <details className="spexr-sched__advanced">
-        <summary className={unattended ? "spexr-sched__advanced-summary" : undefined}>
+        <summary>
           Model and permissions
           {unattended && (
-            <span className="sl-badge sl-badge--warning" title="This mode approves tools without asking">
+            <span className="sl-badge sl-badge--warning spexr-sched__advanced-badge" title="This mode approves tools without asking">
               <i className="codicon codicon-warning" aria-hidden="true" /> Unattended
             </span>
           )}
