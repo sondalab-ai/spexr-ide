@@ -1,5 +1,6 @@
 import type { HarnessId } from "../../../common/harness/harness-types.js";
 import {
+  RETRYABLE_STATUSES,
   UNATTENDED_MODES,
   type RunState,
   type Schedule,
@@ -7,7 +8,7 @@ import {
   type TaskStatus,
   type ValidationProblem,
 } from "../../../common/schedule/schedule-types.js";
-import { findCycle, layersOf } from "../../../common/schedule/schedule-graph.js";
+import { findCycle, layersOf, upstreamOf } from "../../../common/schedule/schedule-graph.js";
 
 type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 
@@ -31,12 +32,18 @@ export interface TaskRow {
   harness: HarnessId;
   layer: number;
   waitsFor: string[];
+  /** Where it works: "Project folder", "Worktree" or "Same as <task>". */
+  workspace: string;
   status: TaskStatus;
   label: string;
   icon: string;
   tone: Tone;
   iteration?: string;
   unattended: boolean;
+  /** Failed or interrupted in a running run: Retry and Skip apply (R21). */
+  canRetry: boolean;
+  /** The opencode session the runner adopted, shown so a wrong pick-up is visible (spec, Risks). */
+  session?: string;
   error?: string;
 }
 
@@ -54,6 +61,7 @@ export function taskRows(schedule: Schedule, run?: RunState): TaskRow[] {
   const order: [id: string, layer: number][] = cyclic
     ? schedule.tasks.map((t): [string, number] => [t.id, 0])
     : layersOf(schedule).flatMap((ids, layer) => ids.map((id): [string, number] => [id, layer]));
+  const live = run?.status === "running";
   return order.map(([id, layer]) => {
     const t = byId.get(id)!;
     const state = run?.tasks[id];
@@ -65,13 +73,27 @@ export function taskRows(schedule: Schedule, run?: RunState): TaskRow[] {
       harness: t.harness,
       layer,
       waitsFor: t.needs.map((n) => byId.get(n)?.name ?? n),
+      workspace: workspaceLabel(t, byId),
       status,
       ...STATUS_VIEW[status],
       ...(state && max && state.iteration > 0 ? { iteration: `${state.iteration} / ${max}` } : {}),
       unattended: !!t.permissionMode && UNATTENDED_MODES[t.harness].includes(t.permissionMode),
+      canRetry: live && RETRYABLE_STATUSES.has(status),
+      ...(t.harness === "opencode" && state?.sessionId ? { session: state.sessionId } : {}),
       ...(state?.error ? { error: state.error } : {}),
     };
   });
+}
+
+function workspaceLabel(t: ScheduleTask, byId: ReadonlyMap<string, ScheduleTask>): string {
+  switch (t.workspace.kind) {
+    case "folder":
+      return "Project folder";
+    case "worktree":
+      return "Worktree";
+    case "sameAs":
+      return `Same as ${byId.get(t.workspace.task)?.name ?? t.workspace.task}`;
+  }
 }
 
 /**
@@ -130,4 +152,25 @@ export function newSchedule(taken: ReadonlySet<string>): Schedule {
   let n = 1;
   while (taken.has(`schedule-${n}`)) n++;
   return { id: `schedule-${n}`, name: `Schedule ${n}`, tasks: [] };
+}
+
+/** Rows grouped into their layer's band, in order; taskRows() already sorts them by layer. */
+export function bandsOf(rows: readonly TaskRow[]): { layer: number; rows: TaskRow[] }[] {
+  const bands: { layer: number; rows: TaskRow[] }[] = [];
+  for (const r of rows) {
+    const last = bands[bands.length - 1];
+    if (last?.layer === r.layer) last.rows.push(r);
+    else bands.push({ layer: r.layer, rows: [r] });
+  }
+  return bands;
+}
+
+/** The tasks the selected one waits for, directly or not: the rows to highlight. */
+export function upstreamHighlight(schedule: Schedule, selected: string | undefined): ReadonlySet<string> {
+  return selected ? upstreamOf(schedule, selected) : new Set<string>();
+}
+
+/** A deep copy under a free id, named "<name> (copy)"; its worktrees get their own branches, since those carry the id. */
+export function duplicateSchedule(s: Schedule, taken: ReadonlySet<string>): Schedule {
+  return { ...structuredClone(s), id: newSchedule(taken).id, name: `${s.name} (copy)` };
 }

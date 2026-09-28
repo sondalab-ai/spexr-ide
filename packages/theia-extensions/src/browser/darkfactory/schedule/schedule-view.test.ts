@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { RunState, Schedule } from "../../../common/schedule/schedule-types.js";
-import { STATUS_VIEW, newSchedule, runBar, taskRows, taskTransitions } from "./schedule-view.js";
+import {
+  STATUS_VIEW,
+  bandsOf,
+  duplicateSchedule,
+  newSchedule,
+  runBar,
+  taskRows,
+  taskTransitions,
+  upstreamHighlight,
+} from "./schedule-view.js";
 
 const s: Schedule = {
   id: "s",
@@ -103,5 +112,55 @@ describe("runBar", () => {
 describe("newSchedule", () => {
   it("picks an id not taken yet", () => {
     expect(newSchedule(new Set(["schedule-1"])).id).toBe("schedule-2");
+  });
+});
+
+describe("rows for the graph (Slice 4)", () => {
+  const g: Schedule = {
+    id: "g",
+    name: "G",
+    tasks: [
+      { id: "a", name: "A", needs: [], project: "/r", workspace: { kind: "worktree" }, harness: "claude", prompt: "p" },
+      { id: "b", name: "B", needs: ["a"], project: "/r", workspace: { kind: "sameAs", task: "a" }, harness: "opencode", prompt: "p" },
+      { id: "c", name: "C", needs: [], project: "/q", workspace: { kind: "folder" }, harness: "claude", prompt: "p" },
+    ],
+  };
+  const runOf = (tasks: RunState["tasks"], status: RunState["status"] = "running"): RunState => ({
+    scheduleId: "g", runId: "r", status, startedAtMs: 0, launches: {}, tasks,
+  });
+
+  it("names each row's workspace", () => {
+    expect(taskRows(g).map((r) => [r.id, r.workspace])).toEqual([["a", "Worktree"], ["c", "Project folder"], ["b", "Same as A"]]);
+  });
+  it("offers Retry and Skip only on a failed or interrupted task of a running run (R21)", () => {
+    const tasks: RunState["tasks"] = {
+      a: { status: "failed", iteration: 1 },
+      b: { status: "pending", iteration: 0 },
+      c: { status: "interrupted", iteration: 1 },
+    };
+    expect(taskRows(g, runOf(tasks)).map((r) => [r.id, r.canRetry])).toEqual([["a", true], ["c", true], ["b", false]]);
+    expect(taskRows(g, runOf(tasks, "aborted")).some((r) => r.canRetry)).toBe(false);
+  });
+  it("shows the opencode session the runner adopted (spec, Risks)", () => {
+    const rows = taskRows(g, runOf({
+      a: { status: "converged", iteration: 1, sessionId: "u-a" },
+      b: { status: "running", iteration: 1, sessionId: "ses_42" },
+      c: { status: "pending", iteration: 0 },
+    }));
+    expect(rows.find((r) => r.id === "b")!.session).toBe("ses_42");
+    expect("session" in rows.find((r) => r.id === "a")!).toBe(false);
+  });
+  it("groups rows into layer bands", () => {
+    expect(bandsOf(taskRows(g)).map((b) => [b.layer, b.rows.map((r) => r.id)])).toEqual([[0, ["a", "c"]], [1, ["b"]]]);
+  });
+  it("highlights every task upstream of the selection, and nothing without one", () => {
+    expect([...upstreamHighlight(g, "b")]).toEqual(["a"]);
+    expect(upstreamHighlight(g, undefined).size).toBe(0);
+  });
+  it("duplicates a schedule under a free id, as a deep copy", () => {
+    const copy = duplicateSchedule(g, new Set(["g", "schedule-1"]));
+    expect(copy).toMatchObject({ id: "schedule-2", name: "G (copy)" });
+    expect(copy.tasks).toEqual(g.tasks);
+    expect(copy.tasks[0]).not.toBe(g.tasks[0]);
   });
 });
