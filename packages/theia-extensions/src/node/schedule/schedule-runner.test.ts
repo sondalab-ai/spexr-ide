@@ -682,6 +682,34 @@ describe("ScheduleRunner — the graph (Slice 4)", () => {
     expect(f.run().pausedBy).toBeUndefined();
   });
 
+  it("an Abort while the worktree is still being made launches nothing once it arrives (R14)", async () => {
+    const f = graphFakes();
+    const pending: { req: WorktreeRequest; resolve: (path: string) => void }[] = [];
+    f.ports.prepareWorktree = (req) => new Promise<string>((resolve) => pending.push({ req, resolve }));
+    const runner = new ScheduleRunner(f.ports, { version: 1, schedules: [graph], runs: {} });
+    expect(await runner.run("s", all)).toEqual([]);
+    await settle();
+    expect(pending.map((x) => x.req.taskId)).toEqual(["a", "b"]);
+    await runner.abort("s");
+    for (const x of pending) x.resolve(`/wt/${x.req.taskId}`);
+    await settle();
+    expect(f.launched).toEqual([]);
+    expect(f.run().status).toBe("aborted");
+  });
+
+  it("Retry launches with the launch passed to it, not the one the run started with (R22)", async () => {
+    const f = graphFakes();
+    const runner = await running(f);
+    f.exits.get(2)!();
+    await settle();
+    const fresh: TaskLaunch = { plan: { command: "claude-next", exportConfigDir: "", unquoted: true }, configDir: "" };
+    expect(await runner.retry("s", "b", fresh)).toEqual([]);
+    await settle();
+    expect(f.launched).toHaveLength(3);
+    expect(f.launched[2]!.line).toContain("claude-next '--session-id'");
+    expect(f.launched[0]!.line).not.toContain("claude-next");
+  });
+
   it("skip lets the dependent start: it still shares the folder, but the placeholders arrive empty (AC-14)", async () => {
     const f = graphFakes();
     const runner = await running(f);
