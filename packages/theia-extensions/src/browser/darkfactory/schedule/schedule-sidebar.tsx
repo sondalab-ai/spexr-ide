@@ -42,6 +42,9 @@ import {
   workspaceValue,
 } from "./task-edit.js";
 
+/** Where focus goes once its target mounts, after a change that unmounts whatever was focused. */
+type FocusTarget = { kind: "new-schedule" } | { kind: "run-bar" } | { kind: "row"; taskId: string };
+
 export interface ScheduleSidebarProps {
   snapshot: ScheduleSnapshot;
   projects: readonly { path: string; name: string }[];
@@ -101,6 +104,16 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const abortBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const abortKeepBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const scheduleSelectRef = React.useRef<HTMLSelectElement | null>(null);
+  // The same recovery, for changes that arrive from the backend rather than
+  // from a local click: deleting the last schedule, a confirmed or a
+  // run-ended Abort, and a Retry/Skip whose buttons are about to disappear.
+  // Consumed once its target has mounted, so it survives a render or two of
+  // lag between setting the intent and the DOM catching up.
+  const [focusTarget, setFocusTarget] = React.useState<FocusTarget | undefined>(undefined);
+  const newScheduleBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const runBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const runBarRef = React.useRef<HTMLDivElement | null>(null);
+  const rowBtnRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const saved = p.snapshot.schedules.find((s) => s.id === selectedId) ?? p.snapshot.schedules[0];
   const schedule = draft && draft.id === saved?.id ? draft : saved;
   const run = schedule ? p.snapshot.runs[schedule.id] : undefined;
@@ -160,9 +173,31 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     // stays false throughout, so this effect does not fire for it and the
     // reasons above Run are left alone.
     setRunProblems(undefined);
-    if (!running) setConfirmAbort(false);
-    else setConfirmDelete(false);
+    if (!running) {
+      // The abort confirm was still open when the run ended on its own
+      // (not from that confirm's own Abort button, which sets its own
+      // intent): its buttons are about to unmount under the pointer or
+      // the keyboard focus that was on one of them.
+      if (confirmAbort) setFocusTarget({ kind: "run-bar" });
+      setConfirmAbort(false);
+    } else setConfirmDelete(false);
   }, [running]);
+  React.useEffect(() => {
+    if (!focusTarget) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const el: HTMLElement | null =
+      focusTarget.kind === "new-schedule"
+        ? newScheduleBtnRef.current
+        : focusTarget.kind === "row"
+          ? (rowBtnRefs.current.get(focusTarget.taskId) ?? null)
+          : runBtnRef.current && !runBtnRef.current.disabled
+            ? runBtnRef.current
+            : runBarRef.current;
+    if (!el) return;
+    el.focus();
+    setFocusTarget(undefined);
+  }, [focusTarget, running, rowKey, schedule?.id]);
 
   const addSchedule = (): void => {
     // Flush any pending edit to the schedule being left, and drop the local
@@ -204,7 +239,13 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     const key = pendingKey(scheduleId, taskId);
     setPendingTasks((prev) => withPending(prev, key, true));
     void act(scheduleId, taskId)
-      .then((problems) => setRunProblems({ scheduleId, problems }))
+      .then((problems) => {
+        setRunProblems({ scheduleId, problems });
+        // Its own Retry/Skip buttons are about to unmount once the run's
+        // next snapshot marks the task no longer retryable; land on the
+        // row itself instead of losing focus to the body.
+        if (problems.length === 0) setFocusTarget({ kind: "row", taskId });
+      })
       .finally(() => setPendingTasks((prev) => withPending(prev, key, false)));
   };
   const removeSchedule = (id: string): void => {
@@ -246,7 +287,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
       {!schedule ? (
         <div className="sl-empty">
           <p>Lay out agent sessions, say which waits for which, and run them.</p>
-          <button className="sl-btn" onClick={addSchedule}>
+          <button ref={newScheduleBtnRef} className="sl-btn" onClick={addSchedule}>
             New schedule
           </button>
         </div>
@@ -298,9 +339,13 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                 <button
                   className="sl-btn sl-btn--sm"
                   onClick={() => {
+                    const wasLast = p.snapshot.schedules.length <= 1;
                     setConfirmDelete(false);
                     removeSchedule(schedule.id);
-                    requestAnimationFrame(() => scheduleSelectRef.current?.focus());
+                    // The last schedule's delete takes the picker down with
+                    // it, into the empty state's "New schedule" button.
+                    if (wasLast) setFocusTarget({ kind: "new-schedule" });
+                    else requestAnimationFrame(() => scheduleSelectRef.current?.focus());
                   }}
                 >
                   Delete
@@ -356,7 +401,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               </ul>
             </div>
           )}
-          <div className="spexr-sched__runbar">
+          <div className="spexr-sched__runbar" ref={runBarRef} tabIndex={-1}>
             <span className="sl-tag">{bar!.label}</span>
             {bar!.canPause && (
               <button
@@ -391,6 +436,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                     onClick={() => {
                       p.onAbort(schedule.id);
                       setConfirmAbort(false);
+                      // Run is disabled until the run actually ends, so this
+                      // lands on the run bar itself until then.
+                      setFocusTarget({ kind: "run-bar" });
                     }}
                   >
                     Abort
@@ -420,6 +468,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               )
             ) : (
               <button
+                ref={runBtnRef}
                 className="sl-btn sl-btn--primary sl-btn--sm"
                 disabled={!bar!.canRun}
                 onClick={() => {
@@ -456,6 +505,10 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                         aria-current={selected === row.id ? "true" : undefined}
                       >
                         <button
+                          ref={(el) => {
+                            if (el) rowBtnRefs.current.set(row.id, el);
+                            else rowBtnRefs.current.delete(row.id);
+                          }}
                           className="spexr-sched__rowmain"
                           onClick={() => {
                             setSelected(row.id);
