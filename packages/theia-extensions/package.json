@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -b && pnpm copy-assets",
     "dev": "tsc -b --watch",
-    "copy-assets": "node -e \"const{mkdirSync,readdirSync,copyFileSync}=require('fs');mkdirSync('lib/browser/style',{recursive:true});readdirSync('src/browser/style').filter(f=>f.endsWith('.css')).forEach(f=>copyFileSync('src/browser/style/'+f,'lib/browser/style/'+f))\"",
+    "copy-assets": "node -e \"const{mkdirSync,readdirSync,copyFileSync}=require('fs');mkdirSync('lib/browser/style',{recursive:true});readdirSync('src/browser/style').filter(f=>f.endsWith('.css')).forEach(f=>copyFileSync('src/browser/style/'+f,'lib/browser/style/'+f));mkdirSync('lib/browser/backdrop/photos',{recursive:true});readdirSync('src/browser/backdrop/photos').filter(f=>f.endsWith('.jpg')).forEach(f=>copyFileSync('src/browser/backdrop/photos/'+f,'lib/browser/backdrop/photos/'+f))\"",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --maxWorkers=2",

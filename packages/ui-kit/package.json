@@ -8,6 +8,9 @@
     "*": {
       "effects": [
         "./dist/effects.d.ts"
+      ],
+      "halftone": [
+        "./dist/halftone.d.ts"
       ]
     }
   },
@@ -29,6 +32,12 @@
       "require": "./dist/effects.js",
       "import": "./dist/effects.js",
       "default": "./dist/effects.js"
+    },
+    "./halftone": {
+      "types": "./dist/halftone.d.ts",
+      "require": "./dist/halftone.js",
+      "import": "./dist/halftone.js",
+      "default": "./dist/halftone.js"
     },
     "./tokens.css": "./src/tokens/tokens.css",
     "./fonts.css": "./src/fonts.css",
