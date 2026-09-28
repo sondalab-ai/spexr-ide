@@ -61,3 +61,26 @@ describe("paused motion CSS", () => {
     );
   });
 });
+
+/** Declarations of every spexr.css rule whose selector list names `selector`. */
+function declarationsFor(selector: string): string {
+  const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
+  return [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .filter((m) => m[1]!.replace(/\/\*[\s\S]*?\*\//g, "").split(",").some((s) => s.trim() === selector))
+    .map((m) => m[2]!)
+    .join("\n");
+}
+
+// The welcome backdrop is five 42vmax blobs blurred by 70px under a 60px
+// backdrop blur: stilling the drift left both filters repainting.
+describe("power saving the welcome background", () => {
+  it("drops the blurred blobs", () => {
+    expect(declarationsFor(":root[data-spexr-power-save] .spexr-welcome-bg__blob")).toMatch(/display:\s*none/);
+  });
+
+  it("keeps the veil's tint but not its backdrop blur", () => {
+    const veil = declarationsFor(":root[data-spexr-power-save] .spexr-welcome-bg::after");
+    expect(veil).toMatch(/backdrop-filter:\s*none/);
+    expect(veil).not.toMatch(/background:\s*none/);
+  });
+});
