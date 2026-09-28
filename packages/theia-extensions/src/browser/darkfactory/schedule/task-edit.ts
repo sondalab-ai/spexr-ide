@@ -82,6 +82,21 @@ export function placeholderChoices(schedule: Schedule, taskId: string): { token:
     ]);
 }
 
+/**
+ * Where a hand-off should land: at the real caret once the prompt field has
+ * been focused, or at the end of its text otherwise. An untouched textarea
+ * reports its selection as 0..0, which would insert at the start instead of
+ * where the operator is about to keep typing.
+ */
+export function handOffRange(
+  textLength: number,
+  focused: boolean,
+  selectionStart: number,
+  selectionEnd: number,
+): { start: number; end: number } {
+  return focused ? { start: selectionStart, end: selectionEnd } : { start: textLength, end: textLength };
+}
+
 /** Put `token` in place of the selection `start..end`; returns the text and where the caret goes. */
 export function insertAt(text: string, start: number, end: number, token: string): { text: string; caret: number } {
   const a = Math.max(0, Math.min(start, text.length));

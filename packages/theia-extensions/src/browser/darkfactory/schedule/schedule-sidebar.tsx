@@ -29,6 +29,7 @@ import {
 } from "./schedule-view.js";
 import {
   accountOptions,
+  handOffRange,
   insertAt,
   needChoices,
   placeholderChoices,
@@ -570,6 +571,10 @@ function TaskEditor(p: {
     p.problems.find((x) => x.field === field)?.message;
   const set = (patch: Partial<ScheduleTask>): void => p.onChange({ ...t, ...patch });
   const promptRef = React.useRef<HTMLTextAreaElement | null>(null);
+  // Whether the prompt field has ever had focus: an untouched textarea
+  // reports its selection as 0..0, which would put a hand-off at the start
+  // of the prompt instead of the end, where the operator is about to type.
+  const promptFocusedRef = React.useRef(false);
   const handOffs = placeholderChoices(p.schedule, t.id);
   const needs = needChoices(p.schedule, t.id);
   const current = workspaceValue(t.workspace);
@@ -580,7 +585,8 @@ function TaskEditor(p: {
   /** Insert a hand-off at the caret (R23: buttons, so arrowing never inserts), then put the caret after it. */
   const insertHandOff = (token: string): void => {
     const el = promptRef.current;
-    const { text, caret } = insertAt(t.prompt, el?.selectionStart ?? t.prompt.length, el?.selectionEnd ?? t.prompt.length, token);
+    const { start, end } = handOffRange(t.prompt.length, promptFocusedRef.current, el?.selectionStart ?? 0, el?.selectionEnd ?? 0);
+    const { text, caret } = insertAt(t.prompt, start, end, token);
     set({ prompt: text });
     requestAnimationFrame(() => {
       el?.focus();
@@ -704,6 +710,9 @@ function TaskEditor(p: {
           rows={5}
           value={t.prompt}
           onChange={(e) => set({ prompt: e.target.value })}
+          onFocus={() => {
+            promptFocusedRef.current = true;
+          }}
         />,
       )}
       {handOffs.length > 0 ? (

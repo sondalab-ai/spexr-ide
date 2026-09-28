@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Schedule, ScheduleTask } from "../../../common/schedule/schedule-types.js";
 import {
   accountOptions,
+  handOffRange,
   insertAt,
   needChoices,
   placeholderChoices,
@@ -65,6 +66,12 @@ describe("hand-offs", () => {
     expect(insertAt("see  now", 4, 4, "{{a.reply}}")).toEqual({ text: "see {{a.reply}} now", caret: 15 });
     expect(insertAt("see XX now", 4, 6, "T")).toEqual({ text: "see T now", caret: 5 });
     expect(insertAt("ab", 9, 12, "T")).toEqual({ text: "abT", caret: 3 });
+  });
+  it("targets the end of an untouched field, and the real caret once it has been focused", () => {
+    expect(handOffRange(10, false, 0, 0)).toEqual({ start: 10, end: 10 });
+    expect(handOffRange(10, true, 0, 0)).toEqual({ start: 0, end: 0 });
+    expect(handOffRange(10, true, 3, 7)).toEqual({ start: 3, end: 7 });
+    expect(handOffRange(10, false, 3, 7)).toEqual({ start: 10, end: 10 });
   });
 });
 
