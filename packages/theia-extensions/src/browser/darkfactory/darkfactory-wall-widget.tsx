@@ -637,14 +637,27 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * Resolve every task's launch here, where the preferences are, then hand
    * the run to the backend. Returns the problems that refused the run (empty
    * on success) so the sidebar can show a backend-only refusal — a task with
-   * no usable launch command, a worktree workspace (Slice 4), or a run
-   * already in progress — the same way it shows a client-side one.
+   * no usable launch command, or a run already in progress — the same way it
+   * shows a client-side one.
    */
   private async runSchedule(schedule: Schedule): Promise<ValidationProblem[]> {
     const launches = Object.fromEntries(
       schedule.tasks.map((t) => [t.id, this.terminals.resolveLaunch(t.harness, t.configDir ?? "", t.project)]),
     );
     const problems = await this.schedules.run(schedule.id, launches);
+    this.refreshSchedules();
+    return problems;
+  }
+
+  /**
+   * Retry a task with its launch resolved again here (R22): the preferences
+   * or the active profile may have changed since Run.
+   */
+  private async retryTask(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
+    const task = this.scheduleSnapshot.schedules.find((s) => s.id === scheduleId)?.tasks.find((t) => t.id === taskId);
+    if (!task) return [{ field: "run", message: "Unknown task." }];
+    const launch = this.terminals.resolveLaunch(task.harness, task.configDir ?? "", task.project);
+    const problems = await this.schedules.retry(scheduleId, taskId, launch);
     this.refreshSchedules();
     return problems;
   }
@@ -1472,6 +1485,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
                 this.schedules.resume(id).then(
                   (): ValidationProblem[] => [],
                   (): ValidationProblem[] => [{ field: "run", message: "Could not resume the run." }],
+                )
+              }
+              onRetry={(sid, tid) =>
+                this.retryTask(sid, tid).catch((): ValidationProblem[] => [{ field: "run", message: "Could not retry the task." }])
+              }
+              onSkip={(sid, tid) =>
+                this.schedules.skip(sid, tid).then(
+                  (problems) => {
+                    this.refreshSchedules();
+                    return problems;
+                  },
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not skip the task." }],
                 )
               }
               onFocusTask={(sid, tid) => this.focusTask(sid, tid)}

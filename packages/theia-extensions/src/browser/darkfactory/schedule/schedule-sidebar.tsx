@@ -14,7 +14,17 @@ import {
 } from "../../../common/schedule/schedule-types.js";
 import { validateSchedule } from "../../../common/schedule/schedule-validate.js";
 import { patchLoop, withCheck, withCheckTimeout, withLoop, withMaxIterations } from "./loop-edit.js";
-import { newSchedule, newTask, runBar, taskRows, taskTransitions, type TaskRow } from "./schedule-view.js";
+import {
+  bandsOf,
+  duplicateSchedule,
+  newSchedule,
+  newTask,
+  runBar,
+  taskRows,
+  taskTransitions,
+  upstreamHighlight,
+  type TaskRow,
+} from "./schedule-view.js";
 import {
   accountOptions,
   insertAt,
@@ -46,6 +56,10 @@ export interface ScheduleSidebarProps {
    */
   onPause(scheduleId: string): Promise<ValidationProblem[]>;
   onResume(scheduleId: string): Promise<ValidationProblem[]>;
+  /** Start a failed or interrupted task again; resolves to the problems that refused it. */
+  onRetry(scheduleId: string, taskId: string): Promise<ValidationProblem[]>;
+  /** Let its dependents start without it; resolves to the problems that refused it. */
+  onSkip(scheduleId: string, taskId: string): Promise<ValidationProblem[]>;
   onFocusTask(scheduleId: string, taskId: string): void;
   onClose(): void;
 }
@@ -57,6 +71,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   );
   const [editing, setEditing] = React.useState<string | undefined>();
   const [confirmAbort, setConfirmAbort] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  // The selected row: aria-current, its card focused while running, and its upstream highlighted.
+  const [selected, setSelected] = React.useState<string | undefined>();
   // Edits go to a local draft and are saved after a pause in typing: saving
   // every keystroke over RPC made controlled inputs lag and drop characters.
   const [draft, setDraft] = React.useState<Schedule | undefined>();
@@ -100,6 +117,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const bar = schedule ? runBar(schedule, run, problems) : undefined;
   const nameProblem = problems.find((x) => !x.task && x.field === "name")?.message;
   const rows = schedule ? taskRows(schedule, run) : [];
+  const upstream = schedule ? upstreamHighlight(schedule, selected) : new Set<string>();
   const [announce, setAnnounce] = React.useState("");
   const rowKey = rows.map((r) => `${r.id}:${r.status}`).join(",");
   const prevRowsRef = React.useRef<TaskRow[] | undefined>(undefined);
@@ -119,6 +137,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   }, [rowKey, bar?.label]);
   React.useEffect(() => {
     if (!running) setConfirmAbort(false);
+    else setConfirmDelete(false);
   }, [running]);
 
   const addSchedule = (): void => {
@@ -130,9 +149,30 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     setDraft(undefined);
     savedRef.current = undefined;
     setRunProblems(undefined);
+    setSelected(undefined);
+    setConfirmDelete(false);
     const s = newSchedule(new Set(p.snapshot.schedules.map((x) => x.id)));
     p.onSave(s);
     setSelectedId(s.id);
+  };
+  const duplicate = (): void => {
+    if (!schedule) return;
+    const copy = duplicateSchedule(schedule, new Set(p.snapshot.schedules.map((x) => x.id)));
+    flush();
+    clearTimeout(saveTimer.current);
+    setDraft(undefined);
+    savedRef.current = undefined;
+    setRunProblems(undefined);
+    setSelected(undefined);
+    setConfirmDelete(false);
+    p.onSave(copy);
+    setSelectedId(copy.id);
+  };
+  /** Retry or Skip; a refusal joins the reasons above Run, like a refused run. */
+  const taskAction = (act: (sid: string, tid: string) => Promise<ValidationProblem[]>, taskId: string): void => {
+    if (!schedule) return;
+    const scheduleId = schedule.id;
+    void act(scheduleId, taskId).then((problems) => setRunProblems({ scheduleId, problems }));
   };
   const removeSchedule = (id: string): void => {
     if (draft?.id === id) {
@@ -142,6 +182,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     }
     setRunProblems(undefined);
     setEditing(undefined);
+    setSelected(undefined);
+    setConfirmDelete(false);
     p.onRemove(id);
   };
   const updateTask = (task: ScheduleTask): void => {
@@ -191,6 +233,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                       setDraft(undefined);
                       savedRef.current = undefined;
                       setRunProblems(undefined);
+                      setSelected(undefined);
+                      setConfirmDelete(false);
                       setSelectedId(e.target.value);
                     }}
                   >
@@ -211,15 +255,36 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             >
               <i className="codicon codicon-add" />
             </button>
-            <button
-              className="sl-icon-btn"
-              onClick={() => removeSchedule(schedule.id)}
-              disabled={running}
-              aria-label="Delete this schedule"
-              title="Delete this schedule"
-            >
-              <i className="codicon codicon-trash" />
+            <button className="sl-icon-btn" onClick={duplicate} aria-label="Duplicate this schedule" title="Duplicate this schedule">
+              <i className="codicon codicon-copy" />
             </button>
+            {confirmDelete && !running ? (
+              <span className="spexr-sched__confirm" role="group" aria-label="Confirm delete">
+                Delete “{schedule.name}”?
+                <button
+                  className="sl-btn sl-btn--sm"
+                  onClick={() => {
+                    setConfirmDelete(false);
+                    removeSchedule(schedule.id);
+                  }}
+                >
+                  Delete
+                </button>
+                <button className="sl-btn sl-btn--ghost sl-btn--sm" onClick={() => setConfirmDelete(false)}>
+                  Keep
+                </button>
+              </span>
+            ) : (
+              <button
+                className="sl-icon-btn"
+                onClick={() => setConfirmDelete(true)}
+                disabled={running}
+                aria-label="Delete this schedule"
+                title="Delete this schedule"
+              >
+                <i className="codicon codicon-trash" />
+              </button>
+            )}
           </div>
           <label className="sl-field" data-invalid={nameProblem ? "true" : undefined}>
             <span className="sl-field__label">Name</span>
@@ -311,63 +376,108 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             )}
           </div>
 
-          <ol className="spexr-sched__tasks">
-            {rows.map((row) => (
-              <li
-                key={row.id}
-                className="spexr-sched__row"
-                data-layer={row.layer}
-                data-tone={row.tone}
-                aria-current={editing === row.id ? "true" : undefined}
-              >
-                <button
-                  className="spexr-sched__rowmain"
-                  onClick={() =>
-                    running ? p.onFocusTask(schedule.id, row.id) : setEditing(row.id)
-                  }
-                >
-                  <span className="spexr-sched__name">{row.name}</span>
-                  <span className="sl-tag sl-tag--plain">{row.harness}</span>
-                  <span
-                    className={`sl-badge${row.tone !== "neutral" ? ` sl-badge--${row.tone}` : ""}${row.status === "running" ? " sl-badge--live" : ""}`}
-                  >
-                    <i className={`codicon ${row.icon}`} aria-hidden="true" /> {row.label}
-                    {row.iteration ? ` · ${row.iteration}` : ""}
-                  </span>
-                  {row.unattended && (
-                    <span className="sl-badge sl-badge--warning" title="Tools run without asking">
-                      <i className="codicon codicon-warning" aria-hidden="true" /> Unattended
-                    </span>
-                  )}
-                  {row.waitsFor.length > 0 && (
-                    <span className="spexr-sched__waits">after {row.waitsFor.join(", ")}</span>
-                  )}
-                  {row.error && <span className="spexr-sched__error">{row.error}</span>}
-                </button>
-                {!running && (
-                  <button
-                    className="sl-icon-btn"
-                    onClick={() => setEditing(editing === row.id ? undefined : row.id)}
-                    aria-label={`Edit ${row.name}`}
-                  >
-                    <i className="codicon codicon-edit" />
-                  </button>
-                )}
-                {editing === row.id && !running && (
-                  <TaskEditor
-                    task={schedule.tasks.find((t) => t.id === row.id)!}
-                    schedule={schedule}
-                    projects={p.projects}
-                    configs={p.configs}
-                    problems={problems.filter((x) => x.task === row.id)}
-                    onChange={updateTask}
-                    onBlur={flush}
-                  />
-                )}
-              </li>
-            ))}
-          </ol>
-          {!running && (
+          {schedule.tasks.length === 0 ? (
+            <div className="sl-empty spexr-sched__empty">
+              <p>No tasks yet. A task is one agent session, with its own folder and prompt.</p>
+              <button className="sl-btn sl-btn--sm" onClick={addTask}>
+                <i className="codicon codicon-add" aria-hidden="true" /> Add a task
+              </button>
+            </div>
+          ) : (
+            <ol className="spexr-sched__bands" aria-label="Tasks, in the order they start">
+              {bandsOf(rows).map((band) => (
+                <li key={band.layer} className="spexr-sched__band">
+                  <span className="sl-eyebrow">{band.layer === 0 ? "Starts first" : `Then, step ${band.layer + 1}`}</span>
+                  <ol className="spexr-sched__tasks">
+                    {band.rows.map((row) => (
+                      <li
+                        key={row.id}
+                        className="spexr-sched__row"
+                        data-layer={row.layer}
+                        data-tone={row.tone}
+                        data-upstream={upstream.has(row.id) ? "true" : undefined}
+                        aria-current={selected === row.id ? "true" : undefined}
+                      >
+                        <button
+                          className="spexr-sched__rowmain"
+                          onClick={() => {
+                            setSelected(row.id);
+                            if (running) p.onFocusTask(schedule.id, row.id);
+                            else setEditing(row.id);
+                          }}
+                        >
+                          <span className="spexr-sched__name">{row.name}</span>
+                          <span className="sl-tag sl-tag--plain">{row.harness}</span>
+                          <span className="sl-tag sl-tag--plain">{row.workspace}</span>
+                          <span
+                            className={`sl-badge${row.tone !== "neutral" ? ` sl-badge--${row.tone}` : ""}${row.status === "running" ? " sl-badge--live" : ""}`}
+                          >
+                            <i className={`codicon ${row.icon}`} aria-hidden="true" /> {row.label}
+                            {row.iteration ? ` · ${row.iteration}` : ""}
+                          </span>
+                          {upstream.has(row.id) && (
+                            <span className="sl-tag">
+                              <i className="codicon codicon-arrow-up" aria-hidden="true" /> Upstream
+                            </span>
+                          )}
+                          {row.unattended && (
+                            <span className="sl-badge sl-badge--warning" title="Tools run without asking">
+                              <i className="codicon codicon-warning" aria-hidden="true" /> Unattended
+                            </span>
+                          )}
+                          {row.waitsFor.length > 0 && <span className="spexr-sched__waits">after {row.waitsFor.join(", ")}</span>}
+                          {row.session && <span className="spexr-sched__waits spexr-sched__mono">session {row.session}</span>}
+                          {row.error && <span className="spexr-sched__error">{row.error}</span>}
+                        </button>
+                        <span className="spexr-sched__rowactions">
+                          {row.canRetry && (
+                            <>
+                              <button
+                                className="sl-btn sl-btn--sm"
+                                onClick={() => taskAction(p.onRetry, row.id)}
+                                title="Start it again from iteration 1 in the same workspace. Its failed session is closed."
+                              >
+                                <i className="codicon codicon-debug-restart" aria-hidden="true" /> Retry
+                              </button>
+                              <button
+                                className="sl-btn sl-btn--ghost sl-btn--sm"
+                                onClick={() => taskAction(p.onSkip, row.id)}
+                                title="Let the tasks that wait for it start without it. Its hand-offs arrive empty; its session stays open."
+                              >
+                                <i className="codicon codicon-debug-step-over" aria-hidden="true" /> Skip
+                              </button>
+                            </>
+                          )}
+                          {!running && (
+                            <button
+                              className="sl-icon-btn"
+                              onClick={() => setEditing(editing === row.id ? undefined : row.id)}
+                              aria-label={`Edit ${row.name}`}
+                              aria-expanded={editing === row.id}
+                            >
+                              <i className="codicon codicon-edit" />
+                            </button>
+                          )}
+                        </span>
+                        {editing === row.id && !running && (
+                          <TaskEditor
+                            task={schedule.tasks.find((t) => t.id === row.id)!}
+                            schedule={schedule}
+                            projects={p.projects}
+                            configs={p.configs}
+                            problems={problems.filter((x) => x.task === row.id)}
+                            onChange={updateTask}
+                            onBlur={flush}
+                          />
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </li>
+              ))}
+            </ol>
+          )}
+          {!running && schedule.tasks.length > 0 && (
             <button className="sl-btn sl-btn--ghost sl-btn--sm" onClick={addTask}>
               <i className="codicon codicon-add" aria-hidden="true" /> Add a task
             </button>

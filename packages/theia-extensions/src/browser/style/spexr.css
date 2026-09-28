@@ -2462,11 +2462,13 @@ code {
 .spexr-sched__runbar { justify-content: space-between; }
 .spexr-sched__confirm { display: flex; align-items: center; gap: var(--sl-space-2); font-size: var(--sl-text-sm); }
 .spexr-sched__tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sl-space-2); }
-/* Layers read as bands: each depth steps in, so "after" is visible at a glance. */
-.spexr-sched__row { display: grid; grid-template-columns: 1fr auto; gap: var(--sl-space-2); padding-left: calc(var(--sl-space-4) * var(--layer, 0)); }
-.spexr-sched__row[data-layer="1"] { --layer: 1; }
-.spexr-sched__row[data-layer="2"] { --layer: 2; }
-.spexr-sched__row[data-layer="3"] { --layer: 3; }
+.spexr-sched__row { display: grid; grid-template-columns: 1fr auto; gap: var(--sl-space-2); }
+/* The layered list: each depth is a band with its own label, and starts only once the bands above it have settled. */
+.spexr-sched__bands { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sl-space-3); }
+.spexr-sched__band { display: flex; flex-direction: column; gap: var(--sl-space-2); padding-left: var(--sl-space-3); border-left: 2px solid var(--sl-border-subtle); }
+.spexr-sched__rowactions { display: flex; align-items: flex-start; gap: var(--sl-space-1); }
+/* Upstream of the selected task: a dashed accent border and an "Upstream" tag — never colour alone. */
+.spexr-sched__row[data-upstream="true"] .spexr-sched__rowmain { border-style: dashed; border-color: var(--sl-accent-default); }
 .spexr-sched__rowmain {
   all: unset; box-sizing: border-box; cursor: pointer;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2);
