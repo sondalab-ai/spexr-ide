@@ -10,9 +10,9 @@
 ## Status legend
 
 - **Shipped** — merged and available to users.
-- **Planned** — described here, not yet implemented.
+- **Implemented (not delivered)** — committed on a branch, not merged.
 
-Everything below is **Planned**.
+Everything below is **Implemented (not delivered)**, on `feat/photo-backdrop`.
 
 ## What the user asked
 
