@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CLAUDE_STARTUP_PROMPT_MS, findClaudeTranscript, watchClaudeTask, type WatchEvent } from "./claude-task-watcher.js";
+import { CLAUDE_STARTUP_PROMPT_MS, everyMs, findClaudeTranscript, watchClaudeTask, type WatchEvent } from "./claude-task-watcher.js";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -131,5 +131,83 @@ describe("watchClaudeTask", () => {
     batch = [said("two")]; // its reply lands
     await h.advance(1_000);
     expect(ends(h.events)).toEqual(["one", "two"]);
+  });
+});
+
+describe("watchClaudeTask after stop()", () => {
+  it("a tick already reading when stop() is called emits nothing", async () => {
+    let tickFn: (() => Promise<void>) | undefined;
+    let release: (() => void) | undefined;
+    const events: WatchEvent[] = [];
+    const watch = watchClaudeTask(
+      { sessionId: "abc", configDir: "" },
+      {
+        now: () => 0,
+        every: (fn) => ((tickFn = fn), () => {}),
+        find: async () => "/t.jsonl",
+        read: () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve({
+                lines: [
+                  L({ message: { role: "user", content: "p" } }),
+                  L({ message: { role: "assistant", content: [{ type: "text", text: "done" }], stop_reason: "end_turn" } }),
+                ],
+                cursor: undefined,
+              });
+          }),
+      },
+      (e) => events.push(e),
+    );
+    const tick = tickFn!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(events).toEqual([{ type: "session-found", sessionId: "abc" }]);
+    watch.stop();
+    release!();
+    await tick;
+    expect(events).toEqual([{ type: "session-found", sessionId: "abc" }]);
+  });
+
+  it("a find already in flight when stop() is called reports no session", async () => {
+    let tickFn: (() => Promise<void>) | undefined;
+    let found: ((p: string) => void) | undefined;
+    const events: WatchEvent[] = [];
+    const watch = watchClaudeTask(
+      { sessionId: "abc", configDir: "" },
+      {
+        now: () => 0,
+        every: (fn) => ((tickFn = fn), () => {}),
+        find: () => new Promise((resolve) => (found = resolve)),
+        read: async () => ({ lines: [], cursor: undefined }),
+      },
+      (e) => events.push(e),
+    );
+    const tick = tickFn!();
+    watch.stop();
+    found!("/t.jsonl");
+    await tick;
+    expect(events).toEqual([]);
+  });
+});
+
+describe("everyMs", () => {
+  it("logs a tick that rejects and keeps ticking", async () => {
+    vi.useFakeTimers();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let calls = 0;
+      const stop = everyMs(1_000)(async () => {
+        calls++;
+        throw new Error("boom");
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(calls).toBe(2);
+      expect(errors).toHaveBeenCalled();
+      stop();
+    } finally {
+      errors.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

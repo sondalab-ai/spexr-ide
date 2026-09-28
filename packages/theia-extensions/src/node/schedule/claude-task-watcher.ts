@@ -72,14 +72,16 @@ export interface ClaudeWatchDeps {
   read(path: string, cursor: FollowCursor | undefined, tailBytes: number): ReturnType<typeof readFollowChunk>;
 }
 
-/** A ticker that runs `fn` every `ms`, skipping a tick while the previous one is still running. */
+/** A ticker that runs `fn` every `ms`, skipping a tick while the previous one is still running; a failed tick is logged. */
 export function everyMs(ms: number): (fn: () => Promise<void>) => () => void {
   return (fn) => {
     let busy = false;
     const timer = setInterval(() => {
       if (busy) return;
       busy = true;
-      void fn().finally(() => (busy = false));
+      void fn()
+        .catch((err) => console.error("[schedule] a watcher tick failed", err))
+        .finally(() => (busy = false));
     }, ms);
     timer.unref?.();
     return () => clearInterval(timer);
@@ -117,9 +119,12 @@ export function watchClaudeTask(
   // length cannot serve as the baseline arm() compares against.
   let promptsSeen = 0;
   let armAfter: number | undefined;
-  const stop = deps.every(async () => {
+  // A tick already awaiting a find or read when stop() runs must not report afterwards.
+  let stopped = false;
+  const stopTicks = deps.every(async () => {
     if (!path) {
       path = await deps.find(req.configDir, req.sessionId);
+      if (stopped) return;
       if (!path) {
         if (!waitingAtStartup && deps.now() - startedAt >= CLAUDE_STARTUP_PROMPT_MS) {
           waitingAtStartup = true;
@@ -131,6 +136,7 @@ export function watchClaudeTask(
       if (waitingAtStartup) listener({ type: "resumed-working" });
     }
     const chunk = await deps.read(path, cursor, FIRST_READ_BYTES);
+    if (stopped) return;
     cursor = chunk.cursor;
     for (const line of chunk.lines) {
       let entry: StateEntry;
@@ -152,7 +158,10 @@ export function watchClaudeTask(
     }
   });
   return {
-    stop,
+    stop: () => {
+      stopped = true;
+      stopTicks();
+    },
     arm: () => {
       armAfter = promptsSeen;
     },
