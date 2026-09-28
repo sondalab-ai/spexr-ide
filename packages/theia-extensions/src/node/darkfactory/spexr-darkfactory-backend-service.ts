@@ -329,6 +329,10 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private sessionNames?: Promise<Map<string, string>>;
   /** The last queued names write; see {@link writeSessionNames}. */
   private sessionNamesWrite: Promise<void> = Promise.resolve();
+  /** The last queued index write; see {@link writeSessionIndex}. */
+  private sessionIndexWrite: Promise<void> = Promise.resolve();
+  /** The last queued rename; renames apply one at a time, so the last one asked for wins everywhere. */
+  private renameQueue: Promise<void> = Promise.resolve();
   /** projectPath → the name the user gave it; loaded once, then kept in step with writes. */
   private projectNames?: Promise<Map<string, string>>;
   private readonly dirExists: (path: string) => Promise<boolean>;
@@ -727,7 +731,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         index,
         embed: this.embed,
         list: () => this.indexableSessions(),
-        save: (i) => saveSessionIndex(i, this.sessionIndexPath),
+        save: (i) => this.writeSessionIndex(i),
         onProgress: (done, total) => this.client?.onSessionIndexProgress(done, total),
       });
     } finally {
@@ -877,6 +881,13 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * that asked.
    */
   async renameSession(sessionId: string, name: string): Promise<void> {
+    const next = this.renameQueue.then(() => this.applyRename(sessionId, name));
+    this.renameQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  /** One rename, applied to the names file, the search index and the last tiles. */
+  private async applyRename(sessionId: string, name: string): Promise<void> {
     const names = await this.loadNames();
     const trimmed = name.trim().slice(0, MAX_SESSION_NAME_CHARS);
     if (trimmed) names.set(sessionId, trimmed);
@@ -950,7 +961,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       record.mtimeMs = 0; // no encoder here: let the next crawl rebuild the vector
     }
     index.upsert(record);
-    await saveSessionIndex(index, this.sessionIndexPath);
+    await this.writeSessionIndex(index);
+  }
+
+  /** Save the search index one write at a time, for the same fixed-temp-file reason as {@link writeSessionNames}. */
+  private writeSessionIndex(index: SessionIndex): Promise<void> {
+    const next = this.sessionIndexWrite.then(() => saveSessionIndex(index, this.sessionIndexPath));
+    this.sessionIndexWrite = next.catch(() => undefined);
+    return next;
   }
 
   private loadIndex(): Promise<SessionIndex> {
@@ -1070,6 +1088,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.poll.unref?.();
   }
 
+  /** Clear the periodic rescan timer, if one runs. */
   private stopPolling(): void {
     if (!this.poll) return;
     clearInterval(this.poll);

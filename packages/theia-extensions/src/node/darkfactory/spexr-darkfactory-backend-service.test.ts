@@ -1443,6 +1443,26 @@ describe("renameSession and the search index", () => {
     }
   });
 
+  it("overlapping renames of indexed sessions all land in the index, one write at a time", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-index-"));
+    try {
+      const s = indexedSvc(join(dir, "i.json"), join(dir, "names.json"));
+      await s.indexNow();
+      await s.listTiles();
+      await Promise.all([
+        ...Array.from({ length: 10 }, (_, i) => s.renameSession(i % 2 ? "s2" : "s1", `Hydra ${i}`)),
+        s.renameSession("s1", "Hydra uno"),
+        s.renameSession("s2", "Hydra due"),
+      ]);
+      const onDisk = await readFile(join(dir, "i.json"), "utf8");
+      expect(onDisk).toContain("Hydra uno");
+      expect(onDisk).toContain("Hydra due");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("stops matching a name that was replaced, rather than keeping both", async () => {
     const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-index-"));
     try {
