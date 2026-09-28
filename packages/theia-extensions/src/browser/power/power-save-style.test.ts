@@ -22,14 +22,14 @@ function kitOffScreenGate(): string[] {
     .map((s) => s.trim().replace('[data-sl-fx="on"] ', "").replaceAll(OFF_SCREEN, ""));
 }
 
-/** Selectors of spexr.css rules that pause animations while saving power. */
-function powerSavePaused(): string[] {
+/** Selectors of spexr.css rules that pause animations under the given root flag. */
+function pausedUnder(flag: string): string[] {
   const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
   return [...css.matchAll(/([^{}]+)\{[^}]*animation-play-state:\s*paused !important;[^}]*\}/g)]
     .flatMap((m) => m[1]!.replace(/\/\*[\s\S]*?\*\//g, "").split(","))
     .map((s) => s.trim())
-    .filter((s) => s.startsWith(":root[data-spexr-power-save] "))
-    .map((s) => s.slice(":root[data-spexr-power-save] ".length));
+    .filter((s) => s.startsWith(`${flag} `))
+    .map((s) => s.slice(flag.length + 1));
 }
 
 // The aurora's sweeps, orbit and curtains animate on pseudo-elements, which
@@ -38,6 +38,26 @@ describe("power saving CSS", () => {
   it("pauses everything the kit pauses off-screen", () => {
     const gate = kitOffScreenGate();
     expect(gate.length).toBeGreaterThan(0);
-    expect(powerSavePaused()).toEqual(expect.arrayContaining(gate));
+    expect(pausedUnder(":root[data-spexr-power-save]")).toEqual(expect.arrayContaining(gate));
+  });
+});
+
+// Idle or unfocused windows (motion-idle.ts) freeze decorative loops in place,
+// so they resume where they were; status animations are not in this list.
+describe("paused motion CSS", () => {
+  const paused = (): string[] => pausedUnder(':root[data-spexr-motion="paused"]');
+
+  it("freezes everything the kit pauses off-screen", () => {
+    expect(paused()).toEqual(expect.arrayContaining(kitOffScreenGate()));
+  });
+
+  it("freezes SPEXR's own decorative loops", () => {
+    expect(paused()).toEqual(
+      expect.arrayContaining([
+        ".spexr-welcome-bg__blob::before",
+        ".spexr-smart-search__map-cta",
+        ".spexr-smart-search__map-glyph",
+      ]),
+    );
   });
 });

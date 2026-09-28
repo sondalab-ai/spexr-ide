@@ -1,5 +1,5 @@
 import * as React from "react";
-import { POWER_SAVE_ATTRIBUTE, isPowerSaving } from "../power/power-save-dom.js";
+import { MOTION_ATTRIBUTE, POWER_SAVE_ATTRIBUTE, isMotionPaused, isPowerSaving } from "../power/power-save-dom.js";
 import { followStep } from "./welcome-follow.js";
 
 /** Decorative blobs; `depth` pairs with the per-class parallax factor in CSS. */
@@ -17,7 +17,7 @@ const FOLLOW = 0.02;
  * the blobs trail the mouse very slowly via per-blob parallax. The loop runs
  * only while the blobs are still catching up with the pointer. Honors
  * `prefers-reduced-motion` by leaving the layer static, and stops the loop
- * while SPEXR saves power (the CSS stills the drift then too).
+ * while SPEXR saves power or motion is paused (the CSS stills the drift then too).
  */
 export const WelcomeBackground: React.FC = () => {
   const ref = React.useRef<HTMLDivElement>(null);
@@ -39,8 +39,9 @@ export const WelcomeBackground: React.FC = () => {
       raf = next.settled ? 0 : requestAnimationFrame(tick);
     };
 
+    const still = (): boolean => isPowerSaving() || isMotionPaused();
     const start = (): void => {
-      if (raf === 0 && !isPowerSaving()) raf = requestAnimationFrame(tick);
+      if (raf === 0 && !still()) raf = requestAnimationFrame(tick);
     };
 
     // A hidden page has an empty box, so pointer moves elsewhere in the app
@@ -54,7 +55,7 @@ export const WelcomeBackground: React.FC = () => {
     };
 
     const sync = (): void => {
-      if (isPowerSaving()) {
+      if (still()) {
         cancelAnimationFrame(raf);
         raf = 0;
       } else {
@@ -62,7 +63,7 @@ export const WelcomeBackground: React.FC = () => {
       }
     };
     const power = new MutationObserver(sync);
-    power.observe(document.documentElement, { attributes: true, attributeFilter: [POWER_SAVE_ATTRIBUTE] });
+    power.observe(document.documentElement, { attributes: true, attributeFilter: [POWER_SAVE_ATTRIBUTE, MOTION_ATTRIBUTE] });
 
     window.addEventListener("mousemove", onMove);
     sync();

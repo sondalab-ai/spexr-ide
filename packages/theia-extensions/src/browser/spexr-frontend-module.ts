@@ -100,6 +100,7 @@ import {
 } from "./resources/resource-status-bar-contribution.js";
 import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
 import { SpexrPowerSaveContribution, SpexrPowerServiceProxy } from "./power/power-save-contribution.js";
+import { SpexrMotionIdleContribution } from "./power/motion-idle.js";
 import { POWER_SERVICE_PATH } from "../common/power-protocol.js";
 import { DECISION_SERVICE_PATH } from "../common/decision-protocol.js";
 import { SpexrSearchClientDispatcher, SpexrSearchClientToken } from "./search/smart-search-client.js";
@@ -362,6 +363,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     .inSingletonScope();
   bind(SpexrPowerSaveContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrPowerSaveContribution);
+  bind(SpexrMotionIdleContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrMotionIdleContribution);
   bindSmartSearchWidgetFactory(bind);
   bind(WidgetFactory)
     .toDynamicValue((ctx) => ({

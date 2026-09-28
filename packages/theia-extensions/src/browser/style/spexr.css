@@ -187,6 +187,25 @@ body {
   animation: none;
 }
 
+/* An unfocused or idle window (motion-idle.ts): decorative loops freeze in
+   place and resume where they were. Each running frame re-composites the
+   whole window through the glass layers. Status animations keep running.
+   The kit's own loops are listed too until the installed kit pauses them
+   under data-sl-fx-still (ui-kit 0.18.0). */
+:root[data-spexr-motion="paused"] .sl-fx-aurora::after,
+:root[data-spexr-motion="paused"] .sl-fx-aurora > .sl-fx-aurora__glow,
+:root[data-spexr-motion="paused"] .sl-fx-aurora > .sl-fx-aurora__glow::before,
+:root[data-spexr-motion="paused"] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora),
+:root[data-spexr-motion="paused"] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora)::before,
+:root[data-spexr-motion="paused"] .sl-fx-aurora__glow[data-sl-fx-seated]:has(+ .sl-fx-aurora)::after,
+:root[data-spexr-motion="paused"] .sl-fx-glass::before,
+:root[data-spexr-motion="paused"] .sl-fx-glass::after,
+:root[data-spexr-motion="paused"] .spexr-welcome-bg__blob::before,
+:root[data-spexr-motion="paused"] .spexr-smart-search__map-cta,
+:root[data-spexr-motion="paused"] .spexr-smart-search__map-glyph {
+  animation-play-state: paused !important;
+}
+
 /* The Game of Life under the Spec and Darkfactory panels: a zero-height
    sticky strip at the top of the scrolling node, holding a canvas that
    life-background.tsx sizes to that node. Negative margins cancel the node's
