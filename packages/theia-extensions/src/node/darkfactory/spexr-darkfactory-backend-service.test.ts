@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FSWatcher } from "node:fs";
-import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -984,6 +984,20 @@ describe("renameSession", () => {
       await s.renameSession("s1", "  Typography fix  ");
       expect(pushed.at(-1)!.find((t) => t.sessionId === "s1")!.customName).toBe("Typography fix");
       expect((await s.listTiles())[0]!.customName).toBe("Typography fix");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("renames that overlap (a schedule naming several sessions at once) all land, one write at a time", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-"));
+    try {
+      const s = svc({ sessionNamesPath: join(dir, "names.json") });
+      const ids = Array.from({ length: 12 }, (_, i) => `s${i}`);
+      await Promise.all(ids.map((id) => s.renameSession(id, `Name ${id}`)));
+      const onDisk = JSON.parse(await readFile(join(dir, "names.json"), "utf8")) as Record<string, string>;
+      expect(Object.keys(onDisk).sort()).toEqual([...ids].sort());
       s.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });

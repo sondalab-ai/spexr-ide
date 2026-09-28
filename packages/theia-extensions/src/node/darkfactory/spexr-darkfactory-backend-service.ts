@@ -327,6 +327,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly projectNamesPath: string | undefined;
   /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
   private sessionNames?: Promise<Map<string, string>>;
+  /** The last queued names write; see {@link writeSessionNames}. */
+  private sessionNamesWrite: Promise<void> = Promise.resolve();
   /** projectPath → the name the user gave it; loaded once, then kept in step with writes. */
   private projectNames?: Promise<Map<string, string>>;
   private readonly dirExists: (path: string) => Promise<boolean>;
@@ -667,7 +669,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.missingSessionNames = missingNow;
     if (drop.length > 0) {
       for (const id of drop) names.delete(id);
-      await saveSessionNames(names, this.sessionNamesPath);
+      await this.writeSessionNames(names);
     }
 
     const gone = staleProjectNames(projectNames, await this.projectDirState([...projectNames.keys()]));
@@ -846,6 +848,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     }));
   }
 
+  /**
+   * Save the session names, one write at a time: the store writes through a
+   * temporary file with a fixed name, so two overlapping saves (a schedule
+   * naming several sessions at once) raced on it and one failed with ENOENT.
+   * A failed write does not block the ones queued after it.
+   */
+  private writeSessionNames(names: Map<string, string>): Promise<void> {
+    const next = this.sessionNamesWrite.then(() => saveSessionNames(names, this.sessionNamesPath));
+    this.sessionNamesWrite = next.catch(() => undefined);
+    return next;
+  }
+
   private loadNames(): Promise<Map<string, string>> {
     if (!this.sessionNames) this.sessionNames = loadSessionNames(this.sessionNamesPath);
     return this.sessionNames;
@@ -867,7 +881,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const trimmed = name.trim().slice(0, MAX_SESSION_NAME_CHARS);
     if (trimmed) names.set(sessionId, trimmed);
     else names.delete(sessionId);
-    await saveSessionNames(names, this.sessionNamesPath);
+    await this.writeSessionNames(names);
     // A name the user just typed has served no strikes. Without this, naming a
     // session the scan cannot see — one whose transcript is not written yet —
     // between two sweeps would count as the second strike and delete it.
