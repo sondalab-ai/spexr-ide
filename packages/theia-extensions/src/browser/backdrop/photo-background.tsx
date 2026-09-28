@@ -37,8 +37,8 @@ async function loadPixels(url: string): Promise<Uint8ClampedArray> {
  * SPEXR's glass each frame re-composites the window, so here the dots gather
  * at the display rate once per photo, then drift at the Life backdrop's tick.
  * A new photo every ten minutes, never the same twice in a row; one that
- * fails to load is skipped. Colour is the canvas's `color`: dark ink prints
- * the picture's dark, light ink its light. The clock stops while the panel
+ * fails to load is skipped. Colour is the canvas's `color`, and the dots
+ * always print the picture's light, whatever the ink. The clock stops while the panel
  * or window is hidden, while motion is paused or power is saved, and resumes
  * where it stopped; reduced motion draws the settled picture; high contrast
  * draws nothing.
@@ -60,12 +60,9 @@ export const PhotoBackground = React.memo(function PhotoBackground({
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const root = document.documentElement;
-    const swatch = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
     let disposed = false;
     let photo: string | undefined;
-    let pixels: Uint8ClampedArray | undefined;
     let dots: Dot[] = [];
-    let dark = false;
     let ink = "";
     let side = 0;
     let t0: number | null = null;
@@ -79,24 +76,9 @@ export const PhotoBackground = React.memo(function PhotoBackground({
     const running = (): boolean =>
       onScreen && !document.hidden && !highContrast() && !isPowerSaving() && !isMotionPaused();
 
-    /** Whether a CSS colour is darker than mid-grey, read by painting it: tokens may be oklch(). */
-    const isDark = (colour: string): boolean => {
-      if (!swatch) return false;
-      swatch.clearRect(0, 0, 1, 1);
-      swatch.fillStyle = colour;
-      swatch.fillRect(0, 0, 1, 1);
-      const [r, g, b] = swatch.getImageData(0, 0, 1, 1).data;
-      return (0.2126 * r! + 0.7152 * g! + 0.0722 * b!) / 255 < 0.5;
-    };
-
-    /** Re-read the ink; resample when its polarity flips or there are no dots yet. */
+    /** Re-read the ink, which the theme sets through CSS. */
     const retint = (): void => {
       ink = getComputedStyle(canvas).color;
-      const nowDark = isDark(ink);
-      if (pixels && (nowDark !== dark || dots.length === 0)) {
-        dots = sampleDots(pixels, GRID * 2, { grid: GRID, invert: nowDark });
-      }
-      dark = nowDark;
     };
 
     const draw = (now: number): void => {
@@ -159,8 +141,9 @@ export const PhotoBackground = React.memo(function PhotoBackground({
         try {
           const loaded = await loadPixels(next);
           if (disposed) return;
-          pixels = loaded;
-          dots = [];
+          // Always the picture's light, in any ink: the curated photos are light
+          // subjects on dark fields, and inverted, their sky prints as a solid blot.
+          dots = sampleDots(loaded, GRID * 2, { grid: GRID });
           retint();
           halt();
           const now = performance.now();

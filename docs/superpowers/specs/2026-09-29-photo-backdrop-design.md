@@ -80,8 +80,10 @@ The canvas carries no `data-sl-halftone`, so the kit's own runtime never arms it
 ### Colour
 
 The dots take the canvas's `color` (the accent, like the Life canvas), at a faint opacity set in
-CSS. Ink darker than mid-grey prints the picture's dark (the kit's rule), so a light theme prints
-ink on paper and a dark theme prints the photo's light.
+CSS. They always print the picture's light, in either theme. This departs from the kit's live
+`halftone()`, where ink darker than mid-grey prints the picture's dark: the curated photos are
+light subjects on dark fields, and inverted, their dark sky prints as one solid blot with the
+subject as a hole (seen in the headless check on the light theme).
 
 ### States
 
