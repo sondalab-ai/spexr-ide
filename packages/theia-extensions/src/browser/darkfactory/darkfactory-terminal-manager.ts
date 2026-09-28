@@ -13,23 +13,19 @@ import {
   isHomeRelative,
   launchPlanFor,
   resolveAccount,
-  shellQuoteConfigDir,
   type LaunchPlan,
 } from "../../common/claude-launch-profiles.js";
 import { readLaunchProfiles } from "../preferences/launch-profiles.js";
 import { claudeCore } from "../../common/harness/claude-harness-core.js";
 import { opencodeCore } from "../../common/harness/opencode-harness-core.js";
+import { buildLaunchLine } from "../../common/harness/launch-line.js";
 import type { ClaudeLaunchProfile } from "../../common/claude-launch-profiles.js";
 import type { HarnessCore, HarnessId } from "../../common/harness/harness-types.js";
+import type { TaskLaunch } from "../../common/schedule/schedule-types.js";
 import { SESSION_TERMINAL_KIND } from "../terminal/terminal-style.js";
 import { evictOnAttachFailure, isReusableTerminal } from "../terminal/terminal-liveness.js";
 import { fallBackOnContextLoss } from "../terminal/terminal-attach.js";
 import type { StoredTerminal } from "./pinned-store.js";
-
-/** Wrap an argument in single quotes for safe inclusion in a shell command. */
-function shellQuote(arg: string): string {
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
 
 /** A workspace path as the resource uri folder-scoped preferences are keyed by. */
 function resourceUriFor(projectPath: string): string | undefined {
@@ -40,6 +36,20 @@ function resourceUriFor(projectPath: string): string | undefined {
 function baseName(p: string): string {
   const parts = p.replace(/\/+$/, "").split("/");
   return parts[parts.length - 1] || p;
+}
+
+/** A terminal that can save its own inner state — Theia's `StatefulWidget` contract. */
+interface StorableTerminal {
+  storeState(): unknown;
+}
+
+/**
+ * Whether a terminal widget implements `storeState()`, checked structurally
+ * with an `in` guard (no cast) so this file needs no import of Theia's
+ * `StatefulWidget` type and a test fake can opt in without implementing it.
+ */
+function hasStoreState(term: object): term is StorableTerminal {
+  return "storeState" in term && typeof term.storeState === "function";
 }
 
 /** The harness that owns a session id (by shape: UUID → claude, `ses_…` → opencode). */
@@ -213,6 +223,17 @@ export class SpexrDarkfactoryTerminalManager {
   }
 
   /**
+   * How a scheduled task must be launched, resolved here because the launch
+   * profiles and the executable preference live in the frontend: the plan and
+   * the account dir, exactly as a wall session with the same choices gets them.
+   */
+  resolveLaunch(harness: HarnessId, configDir: string, projectPath: string): TaskLaunch {
+    const core = harness === "claude" ? claudeCore : opencodeCore;
+    const dir = harness === "claude" ? this.resolveConfigDir(configDir, projectPath) : "";
+    return { plan: this.launchPlan(core, dir, projectPath), configDir: dir };
+  }
+
+  /**
    * Show a card the terminal it had before a window reload. The backend keeps
    * session processes across a reload, but a new frontend has no widget for
    * them. The process id is checked before attaching: terminal ids start over
@@ -240,7 +261,16 @@ export class SpexrDarkfactoryTerminalManager {
     try {
       await term.start(stored.terminalId);
     } catch {
-      return undefined; // the process ended in between; the widget holds no id to close
+      // `term`'s id here may be the real, attached backend id (attach can
+      // succeed and start() still throw on a later bookkeeping round trip).
+      // storeState() is the call Theia's reload path makes before dropping a
+      // widget; it turns off closeOnDispose, so the dispose() below can never
+      // reach the backend. If this widget somehow doesn't support it, leak
+      // rather than risk closing the scheduler's terminal.
+      if (!hasStoreState(term)) return undefined;
+      term.storeState();
+      term.dispose();
+      return undefined;
     }
     await this.register(key, term);
     return term;
@@ -283,19 +313,7 @@ export class SpexrDarkfactoryTerminalManager {
     projectPath: string,
     ownsAccount: boolean,
   ): { shellArgs: string[] } {
-    const account = plan.exportConfigDir
-      ? `export CLAUDE_CONFIG_DIR=${shellQuoteConfigDir(plan.exportConfigDir)}`
-      : "unset CLAUDE_CONFIG_DIR";
-    const prefix = [
-      ownsAccount ? account : "",
-      projectPath ? `cd ${shellQuote(projectPath)}` : "",
-    ]
-      .filter(Boolean)
-      .join("; ");
-    const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
-    // `; exec $SHELL` keeps the terminal alive after the harness exits (e.g. a
-    // resume that can't find the conversation) so the tab shows the error instead of vanishing.
-    const line = `${prefix ? `${prefix}; ` : ""}${[bin, ...resumeArgs.map(shellQuote)].join(" ")}; exec "$SHELL" -i`;
+    const line = buildLaunchLine({ plan, args: resumeArgs, cwd: projectPath, ownsAccount, keepShell: true });
     return { shellArgs: ["-i", "-l", "-c", line] };
   }
 

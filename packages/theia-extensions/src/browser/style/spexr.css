@@ -228,7 +228,7 @@ body {
   margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
 }
 
-.spexr-life-bg ~ :is(.spexr-df-root, .spexr-spec-panel) {
+.spexr-life-bg ~ :is(.spexr-df-shell, .spexr-spec-panel) {
   position: relative;
   z-index: 1;
 }
@@ -2438,6 +2438,81 @@ code {
   padding: var(--sl-space-5); color: var(--sl-text-muted); font-size: var(--sl-text-sm);
 }
 .spexr-df-root { display: flex; flex-direction: column; gap: var(--sl-space-5); }
+
+/* The wall and the plant schedule side by side; the wall keeps the room it needs. */
+.spexr-df-shell { display: flex; align-items: flex-start; gap: var(--sl-space-5); }
+/* position: relative restores what .spexr-df-root lost when it stopped being
+   .spexr-life-bg's direct sibling: an absolutely positioned descendant must
+   still anchor to the wall alone, not to the wider shell (which now also
+   holds the sidebar). */
+.spexr-df-shell > .spexr-df-root { position: relative; flex: 1 1 auto; min-width: 0; }
+.spexr-df-shell__open { position: sticky; top: var(--sl-space-3); }
+
+.spexr-sched {
+  position: sticky; top: 0; flex: none;
+  display: flex; flex-direction: column; gap: var(--sl-space-4);
+  max-height: 100vh; overflow-y: auto;
+  padding: var(--sl-space-4);
+  border-left: 1px solid var(--sl-border-subtle);
+  background: var(--sl-bg-surface-raised, var(--sl-bg-surface));
+}
+.spexr-sched__head, .spexr-sched__picker, .spexr-sched__runbar { display: flex; align-items: center; gap: var(--sl-space-2); }
+.spexr-sched__head { justify-content: space-between; }
+.spexr-sched__picker > .sl-field { flex: 1; }
+.spexr-sched__runbar { justify-content: space-between; }
+/* A programmatic focus landing spot (Abort confirmed, or the run ending while it was open) while Run is still disabled. */
+.spexr-sched__runbar:focus-visible { outline: 2px solid var(--sl-focus-ring); outline-offset: 2px; }
+.spexr-sched__confirm { display: flex; align-items: center; gap: var(--sl-space-2); font-size: var(--sl-text-sm); }
+.spexr-sched__tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sl-space-2); }
+.spexr-sched__row { display: grid; grid-template-columns: 1fr auto; gap: var(--sl-space-2); }
+/* The layered list: each depth is a band with its own label, and starts only once the bands above it have settled. */
+.spexr-sched__bands { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sl-space-3); }
+.spexr-sched__band { display: flex; flex-direction: column; gap: var(--sl-space-2); padding-left: var(--sl-space-3); border-left: 2px solid var(--sl-border-subtle); }
+.spexr-sched__rowactions { display: flex; align-items: flex-start; gap: var(--sl-space-1); }
+/* Upstream of the selected task: a dashed accent border and an "Upstream" tag — never colour alone. */
+.spexr-sched__row[data-upstream="true"] .spexr-sched__rowmain { border-style: dashed; border-color: var(--sl-accent-default); }
+.spexr-sched__rowmain {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2);
+  padding: var(--sl-space-2) var(--sl-space-3);
+  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-md);
+  transition: border-color var(--sl-motion-fast, 120ms) var(--sl-motion-ease);
+}
+.spexr-sched__rowmain:hover { border-color: var(--sl-border-default); }
+.spexr-sched__rowmain:focus-visible { outline: 2px solid var(--sl-focus-ring); outline-offset: 2px; }
+.spexr-sched__row[aria-current="true"] .spexr-sched__rowmain { border-color: var(--sl-accent-default); }
+.spexr-sched__name { font-weight: 600; }
+.spexr-sched__waits, .spexr-sched__error { flex-basis: 100%; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
+.spexr-sched__error { color: var(--sl-status-danger); white-space: pre-line; overflow-wrap: anywhere; }
+.spexr-sched__editor { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
+.spexr-sched__editor-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sl-space-2); }
+.spexr-sched .sl-field[data-invalid="true"] .sl-field__input { border-color: var(--sl-status-danger); }
+.spexr-sched__prompt { min-height: 6rem; resize: vertical; font-family: var(--sl-font-mono); }
+.spexr-sched__problem { color: var(--sl-status-danger); }
+.spexr-sched__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* The loop settings unfold under their switch, stepped in so they read as belonging to it. */
+.spexr-sched__loop {
+  display: flex; flex-direction: column; gap: var(--sl-space-3);
+  margin: 0; padding: 0 0 0 var(--sl-space-3);
+  border: 0; border-left: 2px solid var(--sl-border-subtle);
+  animation: spexr-sched-unfold var(--sl-motion-fast, 120ms) var(--sl-motion-ease);
+}
+@keyframes spexr-sched-unfold { from { opacity: 0; transform: translateY(calc(var(--sl-space-1) * -1)); } }
+.spexr-sched__hint { margin: 0; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
+.spexr-sched__mono { font-family: var(--sl-font-mono); }
+/* "Waits for": one check per task; a choice that would close a cycle stays visible, disabled, with why. */
+.spexr-sched__needs { display: flex; flex-direction: column; gap: var(--sl-space-2); margin: 0; padding: 0; border: 0; }
+.spexr-sched__needs > legend { padding: 0; margin-bottom: var(--sl-space-1); }
+.spexr-sched__need { display: flex; flex-direction: column; gap: var(--sl-space-1); }
+/* A blocked choice is aria-disabled, not disabled, so it stays in the tab order (AC-17); the kit only dims :disabled. */
+.spexr-sched__need .sl-check:has([aria-disabled="true"]) { opacity: 0.5; cursor: not-allowed; }
+/* Hand-offs insert at the caret; one button each, its token in the title. */
+.spexr-sched__handoff { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-1); }
+/* Auto-approving permission modes: flagged where the summary is collapsed, and again next to the field.
+   The summary keeps its native list-item display (the disclosure triangle); the badge sits inline after the text. */
+.spexr-sched__advanced-badge { display: inline-flex; margin-left: var(--sl-space-2); }
+.spexr-sched__perm-warning { display: flex; align-items: center; gap: var(--sl-space-2); padding: var(--sl-space-2) var(--sl-space-3); font-size: var(--sl-text-xs); }
+@media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } .spexr-sched__loop { animation: none; } }
 
 /*
  * Head of the stack: a card that starts work rather than showing it. Dashed and

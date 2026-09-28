@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FSWatcher } from "node:fs";
-import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -742,6 +742,101 @@ describe("wall polling", () => {
   });
 });
 
+describe("requestScans (the plant schedule's shared scan ticker)", () => {
+  const counting = () => {
+    const c = { scans: 0, gate: undefined as Promise<void> | undefined };
+    const s = svc({
+      configDirs: [],
+      detect: () => false,
+      watchDir: fakeWatch([]),
+      listTranscripts: async () => {
+        c.scans++;
+        await c.gate;
+        return [];
+      },
+    });
+    return { s, c };
+  };
+
+  it("two holders share one ticker that scans every poll interval with no window open, until both release", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      const releaseA = s.requestScans();
+      const releaseB = s.requestScans();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(1);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(2);
+      releaseA();
+      releaseA(); // idempotent: it must not release B's hold too
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(3);
+      releaseB();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(c.scans).toBe(3);
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with a window open, a hold adds no second ticker, and releasing it leaves the wall's poll running", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      s.setClient(fakeClient);
+      const release = s.requestScans();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(1);
+      release();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(2);
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stays quiet while polling is paused and resumes after", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      s.setPollingPaused(true);
+      const release = s.requestScans();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(c.scans).toBe(0);
+      s.setPollingPaused(false);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(1);
+      release();
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips a tick while a scan is still in flight", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, c } = counting();
+      let open!: () => void;
+      c.gate = new Promise<void>((r) => (open = r));
+      const release = s.requestScans();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(c.scans).toBe(1);
+      c.gate = undefined;
+      open();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(c.scans).toBe(2);
+      release();
+      s.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("setPollingPaused", () => {
   it("stops the rescan while paused and restarts it after", async () => {
     vi.useFakeTimers();
@@ -889,6 +984,20 @@ describe("renameSession", () => {
       await s.renameSession("s1", "  Typography fix  ");
       expect(pushed.at(-1)!.find((t) => t.sessionId === "s1")!.customName).toBe("Typography fix");
       expect((await s.listTiles())[0]!.customName).toBe("Typography fix");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("renames that overlap (a schedule naming several sessions at once) all land, one write at a time", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-"));
+    try {
+      const s = svc({ sessionNamesPath: join(dir, "names.json") });
+      const ids = Array.from({ length: 12 }, (_, i) => `s${i}`);
+      await Promise.all(ids.map((id) => s.renameSession(id, `Name ${id}`)));
+      const onDisk = JSON.parse(await readFile(join(dir, "names.json"), "utf8")) as Record<string, string>;
+      expect(Object.keys(onDisk).sort()).toEqual([...ids].sort());
       s.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -1328,6 +1437,26 @@ describe("renameSession and the search index", () => {
       const hits = await s.searchSessions("hydra");
       expect(hits.map((h) => h.tile.sessionId)).toEqual(["s2"]);
       expect(hits[0]!.tile.customName).toBe("Hydra migration");
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("overlapping renames of indexed sessions all land in the index, one write at a time", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-rename-index-"));
+    try {
+      const s = indexedSvc(join(dir, "i.json"), join(dir, "names.json"));
+      await s.indexNow();
+      await s.listTiles();
+      await Promise.all([
+        ...Array.from({ length: 10 }, (_, i) => s.renameSession(i % 2 ? "s2" : "s1", `Hydra ${i}`)),
+        s.renameSession("s1", "Hydra uno"),
+        s.renameSession("s2", "Hydra due"),
+      ]);
+      const onDisk = await readFile(join(dir, "i.json"), "utf8");
+      expect(onDisk).toContain("Hydra uno");
+      expect(onDisk).toContain("Hydra due");
       s.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });

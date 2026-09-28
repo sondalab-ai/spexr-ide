@@ -23,6 +23,19 @@ import {
 import { SpexrDarkfactoryServiceProxy } from "./darkfactory-service-proxy.js";
 import { SpexrDarkfactoryClientDispatcher } from "./darkfactory-client.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+import { SpexrScheduleServiceProxy, SpexrScheduleClientDispatcher } from "./schedule/schedule-client.js";
+import {
+  adoptedSession,
+  closesDestructively,
+  currentTaskCard,
+  currentTaskCards,
+  syncLaunchedTasks,
+  taskCardsToMount,
+} from "./schedule/schedule-wall.js";
+import type { ScheduleSnapshot, SpexrScheduleService } from "../../common/schedule/schedule-protocol.js";
+import type { Schedule, ValidationProblem } from "../../common/schedule/schedule-types.js";
+import { ScheduleSidebar } from "./schedule/schedule-sidebar.js";
+import { readSidebarPrefs, writeSidebarPrefs } from "./schedule/sidebar-prefs.js";
 import { SpexrProjectTerminalService } from "../terminal/project-terminal-service.js";
 import { SpexrProjectSwitchService } from "../project/spexr-project-switch-service.js";
 import { parseLaunchProfiles } from "../../common/claude-launch-profiles.js";
@@ -48,7 +61,6 @@ import {
   type TileMatch,
 } from "./agent-tile.js";
 import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
-import { matchLaunchedSession } from "./new-session-match.js";
 import { keepPinnedTiles } from "./pinned-tiles.js";
 import { resolveForks, type PendingFork } from "./fork-adoption.js";
 import { readPins, writePins, type StoredPin } from "./pinned-store.js";
@@ -116,6 +128,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrDarkfactoryTerminalManager) private readonly terminals!: SpexrDarkfactoryTerminalManager;
+  @inject(SpexrScheduleServiceProxy) private readonly schedules!: SpexrScheduleService;
+  @inject(SpexrScheduleClientDispatcher) private readonly scheduleClient!: SpexrScheduleClientDispatcher;
   @inject(SpexrProjectTerminalService) private readonly projectTerminals!: SpexrProjectTerminalService;
   @inject(SpexrProjectSwitchService) private readonly projectSwitch!: SpexrProjectSwitchService;
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
@@ -193,17 +207,26 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   /**
    * Sessions started from the launcher, still keyed by a placeholder: a new
    * session has no id until its harness writes a transcript. `knownBefore` is
-   * what the wall knew at launch, which is how {@link matchLaunchedSession}
-   * recognises the session once it appears.
+   * what the wall knew at launch, which is how `matchLaunchedSession`
+   * recognises the session once it appears. A task card also carries the
+   * session its task runs, once known, and adopts only that one
+   * ({@link adoptedSession}), and the run it was mounted for.
    */
   private launched: {
     key: string;
+    runId?: string;
     projectPath: string;
     projectName: string;
     harness: HarnessId;
     knownBefore: ReadonlySet<string>;
+    sessionId?: string;
   }[] = [];
   private launchCounter = 0;
+
+  /** Latest snapshot pushed by the backend; empty until the first one lands. */
+  private scheduleSnapshot: ScheduleSnapshot = { schedules: [], runs: {} };
+  /** Task card keys already mounted this window, so a snapshot never mounts a terminal twice. */
+  private readonly mountedTasks = new Set<string>();
 
   /** When the wheel last scrolled the wall, anchoring {@link routeWheel}'s gesture window. */
   private lastWallWheelAt = 0;
@@ -234,6 +257,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * windows. Named `wallLayout` because Lumino's `Widget.layout` is taken.
    */
   private wallLayout: WallLayout = readWallLayout(window.localStorage);
+
+  /** The plant-schedule pane's open state and width; remembered per window. */
+  private sidebar = readSidebarPrefs(window.localStorage);
 
   /**
    * The mosaic container, measured to decide how many columns fit. Its own width
@@ -281,6 +307,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       }),
     );
     this.toDispose.push({ dispose: () => this.stopAllFollows() });
+    this.toDispose.push(this.scheduleClient.onSnapshot$((s) => this.onScheduleSnapshot(s)));
+    void this.schedules.snapshot().then((s) => this.onScheduleSnapshot(s)).catch(() => undefined);
     this.restorePins();
     // ReactWidget renders only on update() — paint the loading state now, before
     // the first tiles land (without this the widget body stays blank until then).
@@ -516,12 +544,6 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       });
   }
 
-  /**
-   * Close a card whose session the scan has not named yet. Its terminal IS
-   * disposed, unlike every other card: the placeholder key is the only handle to
-   * that process, so leaving it running would strand a session the wall could
-   * never re-attach — the very thing that made switching cards destructive.
-   */
   /** The browser props a card with this key renders; `sessionId` is absent on a launched card. */
   private browserProps(key: string, sessionId: string | undefined): CardBrowserProps {
     return {
@@ -573,8 +595,144 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.update();
   }
 
+  /**
+   * A running task is a launched card: attach to its backend terminal and let
+   * the scan adopt it like any session started here. Each terminal is mounted
+   * once per window.
+   */
+  private onScheduleSnapshot(snapshot: ScheduleSnapshot): void {
+    this.scheduleSnapshot = snapshot;
+    this.syncTaskCards(snapshot);
+    const mounted = new Set<string>([
+      ...this.mountedTasks,
+      ...this.pinned,
+      ...this.launched.map((l) => l.key),
+    ]);
+    for (const card of taskCardsToMount(snapshot, mounted)) {
+      this.mountedTasks.add(card.key);
+      void this.terminals
+        .reattach(card.key, { terminalId: card.terminalId, processId: card.processId }, card.workspace)
+        .then((term) => {
+          if (!term) {
+            // The process ended, or someone else's, between the snapshot and the
+            // attach — let a later snapshot try again rather than leaving this
+            // card permanently unmountable.
+            this.mountedTasks.delete(card.key);
+            return;
+          }
+          // A later snapshot may already have superseded this terminal (a retry,
+          // a new run). Free the key so a fresher snapshot can still mount it.
+          if (!currentTaskCard(currentTaskCards(this.scheduleSnapshot), card.key, card.runId)) {
+            this.mountedTasks.delete(card.key);
+            return;
+          }
+          const known = new Set(this.tiles.map((t) => t.sessionId).filter((id) => id !== card.sessionId));
+          this.launched = [
+            ...this.launched,
+            {
+              key: card.key,
+              runId: card.runId,
+              projectPath: card.workspace,
+              projectName: card.workspace.split("/").filter(Boolean).pop() ?? card.workspace,
+              harness: card.harness,
+              knownBefore: known,
+              ...(card.sessionId ? { sessionId: card.sessionId } : {}),
+            },
+          ];
+          this.update();
+        })
+        .catch(() => {
+          this.mountedTasks.delete(card.key);
+        });
+    }
+    this.update();
+  }
+
+  /**
+   * Keep launched task cards in step with the runs: a card learns its task's
+   * session id once the engine has it, and stays while its terminal is part
+   * of the run it was mounted for, whatever the task or run status (Abort
+   * leaves sessions open). One no longer part of it (a retry, a new run, a
+   * deleted schedule) is dropped — detached, never disposed — and its key is
+   * freed, unlike a user close, so a fresher snapshot can mount it again if a
+   * stale one dropped it.
+   */
+  private syncTaskCards(snapshot: ScheduleSnapshot): void {
+    const { kept, dropped } = syncLaunchedTasks(this.launched, this.mountedTasks, currentTaskCards(snapshot));
+    for (const key of dropped) {
+      this.browsers.delete(key);
+      this.mountedTasks.delete(key);
+    }
+    this.launched = kept;
+  }
+
+  private refreshSchedules(): void {
+    void this.schedules.snapshot().then((s) => this.onScheduleSnapshot(s)).catch(() => undefined);
+  }
+
+  /**
+   * Resolve every task's launch here, where the preferences are, then hand
+   * the run to the backend. Returns the problems that refused the run (empty
+   * on success) so the sidebar can show a backend-only refusal — a task with
+   * no usable launch command, or a run already in progress — the same way it
+   * shows a client-side one.
+   */
+  private async runSchedule(schedule: Schedule): Promise<ValidationProblem[]> {
+    const launches = Object.fromEntries(
+      schedule.tasks.map((t) => [t.id, this.terminals.resolveLaunch(t.harness, t.configDir ?? "", t.project)]),
+    );
+    const problems = await this.schedules.run(schedule.id, launches);
+    this.refreshSchedules();
+    return problems;
+  }
+
+  /**
+   * Retry a task with its launch resolved again here (R22): the preferences
+   * or the active profile may have changed since Run.
+   */
+  private async retryTask(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
+    const task = this.scheduleSnapshot.schedules.find((s) => s.id === scheduleId)?.tasks.find((t) => t.id === taskId);
+    if (!task) return [{ field: "run", message: "Unknown task." }];
+    const launch = this.terminals.resolveLaunch(task.harness, task.configDir ?? "", task.project);
+    const problems = await this.schedules.retry(scheduleId, taskId, launch);
+    this.refreshSchedules();
+    return problems;
+  }
+
+  /**
+   * Scroll to and focus a running task's card. Its card is keyed
+   * `spexr-task-<terminalId>` until the wall's scan adopts it into a pinned
+   * card keyed by session id ({@link taskCardsToMount}, `rekey`); the fallback
+   * covers the adopted case.
+   */
+  private focusTask(scheduleId: string, taskId: string): void {
+    const state = this.scheduleSnapshot.runs[scheduleId]?.tasks[taskId];
+    if (!state || state.terminalId === undefined) return;
+    const term = this.terminals.live(`spexr-task-${state.terminalId}`) ?? (state.sessionId ? this.terminals.live(state.sessionId) : undefined);
+    term?.node.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    term?.activate();
+  }
+
+  private setSidebarOpen(open: boolean): void {
+    this.sidebar = { ...this.sidebar, open };
+    writeSidebarPrefs(window.localStorage, this.sidebar);
+    this.update();
+  }
+
+  /**
+   * Close one launched card. A task card (its key tracked in
+   * {@link mountedTasks}) is scheduler-owned: the schedule spec ends a run
+   * only on Abort, sessions otherwise stay open, and the operator can take
+   * over at any point — so closing it only detaches the card, the way
+   * {@link unpin} does for a pinned one. The terminal stays live with the
+   * manager, and the key stays in `mountedTasks` so the next snapshot does
+   * not remount it in this window. Any other launched card's terminal IS
+   * disposed, as before: its placeholder key is the only handle to that
+   * process, so leaving it running would strand a session the wall could
+   * never re-attach.
+   */
   private closeLaunched(key: string): void {
-    this.terminals.live(key)?.dispose();
+    if (closesDestructively(key, this.mountedTasks)) this.terminals.live(key)?.dispose();
     this.browsers.delete(key);
     this.launched = this.launched.filter((l) => l.key !== key);
     this.update();
@@ -587,7 +745,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private adoptLaunched(tiles: AgentTile[]): void {
     const adopted: string[] = [];
     for (const launch of this.launched) {
-      const sessionId = matchLaunchedSession(launch.projectPath, launch.knownBefore, tiles);
+      const sessionId = adoptedSession(launch, this.launched, tiles);
       if (!sessionId || this.pinned.includes(sessionId)) continue;
       this.terminals.rekey(launch.key, sessionId);
       const browser = this.browsers.get(launch.key);
@@ -1167,177 +1325,225 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     return (
       <>
         <LifeBackground />
-        <div className="spexr-df-root">
-          <NewSessionLauncher
-            targets={launchTargets(this.tiles, currentProject, this.recentProjects)}
-            defaultPath={currentProject ?? ""}
-            configs={this.configs}
-            profiles={parseLaunchProfiles(
-              this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+        <div className="spexr-df-shell">
+          <div className="spexr-df-root">
+            <NewSessionLauncher
+              targets={launchTargets(this.tiles, currentProject, this.recentProjects)}
+              defaultPath={currentProject ?? ""}
+              configs={this.configs}
+              profiles={parseLaunchProfiles(
+                this.preferences.get<unknown>(SPEXR_CLAUDE_LAUNCH_PROFILES_PREFERENCE),
+              )}
+              layout={this.wallLayout}
+              onLayoutChange={(layout) => this.setLayout(layout)}
+              refreshing={this.refreshing}
+              onRefresh={() => this.refreshNow()}
+              onBrowse={() => this.browseForProject()}
+              onStart={(projectPath, harness, configDir) =>
+                this.startNewSession(projectPath, harness, configDir)
+              }
+            />
+            {/*
+              The alert is withheld while a search is running: search already
+              replaces the grid, and a second filter competing with it would leave
+              the user unable to tell which one is hiding what.
+            */}
+            {expiring.length > 0 && !this.search.active && (
+              <div className="spexr-df-expiry">
+                <i className="codicon codicon-watch" />
+                <span className="spexr-df-expiry__text">
+                  {expiring.length === 1 ? "1 session loses" : `${expiring.length} sessions lose`}
+                  {` their prompt cache within ${EXPIRING_WINDOW_MS / 60_000} min — resuming after that re-sends the whole conversation.`}
+                </span>
+                <button
+                  className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
+                  onClick={() => {
+                    this.expiringOnly = !this.expiringOnly;
+                    this.update();
+                  }}
+                >
+                  {/* A span, not bare text: React would reset the button's textContent and drop the injected glass layers. */}
+                  <span>{this.expiringOnly ? "Show all" : "Show them"}</span>
+                </button>
+              </div>
             )}
-            layout={this.wallLayout}
-            onLayoutChange={(layout) => this.setLayout(layout)}
-            refreshing={this.refreshing}
-            onRefresh={() => this.refreshNow()}
-            onBrowse={() => this.browseForProject()}
-            onStart={(projectPath, harness, configDir) =>
-              this.startNewSession(projectPath, harness, configDir)
-            }
-          />
-          {/*
-            The alert is withheld while a search is running: search already
-            replaces the grid, and a second filter competing with it would leave
-            the user unable to tell which one is hiding what.
-          */}
-          {expiring.length > 0 && !this.search.active && (
-            <div className="spexr-df-expiry">
-              <i className="codicon codicon-watch" />
-              <span className="spexr-df-expiry__text">
-                {expiring.length === 1 ? "1 session loses" : `${expiring.length} sessions lose`}
-                {` their prompt cache within ${EXPIRING_WINDOW_MS / 60_000} min — resuming after that re-sends the whole conversation.`}
-              </span>
-              <button
-                className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
-                onClick={() => {
-                  this.expiringOnly = !this.expiringOnly;
-                  this.update();
-                }}
-              >
-                {/* A span, not bare text: React would reset the button's textContent and drop the injected glass layers. */}
-                <span>{this.expiringOnly ? "Show all" : "Show them"}</span>
-              </button>
-            </div>
-          )}
-          <div className="spexr-df-search">
-            <div className="spexr-df-search__box">
-              <i className="codicon codicon-search spexr-df-search__icon" />
-              <input
-                className="spexr-df-search__input"
-                placeholder="Find a session — describe it"
-                value={this.search.query}
-                onChange={(e) => this.onSearchInput(e.target.value)}
-                onKeyDown={this.onSearchKeyDown}
-              />
-              {/*
-                One slot for two states: a query in flight shows the spinner, a
-                settled one the clear button. Sharing the slot keeps the field's
-                right edge still while typing.
-              */}
-              {this.search.active && (
-                <span className="spexr-df-search__slot">
-                  {this.search.pending ? (
-                    <i className="codicon codicon-loading codicon-modifier-spin" />
-                  ) : (
-                    <button
-                      className="spexr-df-search__clear"
-                      title="Clear search"
-                      aria-label="Clear search"
-                      onClick={() => {
-                        this.search.clear();
-                        this.update();
-                      }}
-                    >
-                      <i className="codicon codicon-close" />
-                    </button>
-                  )}
+            <div className="spexr-df-search">
+              <div className="spexr-df-search__box">
+                <i className="codicon codicon-search spexr-df-search__icon" />
+                <input
+                  className="spexr-df-search__input"
+                  placeholder="Find a session — describe it"
+                  value={this.search.query}
+                  onChange={(e) => this.onSearchInput(e.target.value)}
+                  onKeyDown={this.onSearchKeyDown}
+                />
+                {/*
+                  One slot for two states: a query in flight shows the spinner, a
+                  settled one the clear button. Sharing the slot keeps the field's
+                  right edge still while typing.
+                */}
+                {this.search.active && (
+                  <span className="spexr-df-search__slot">
+                    {this.search.pending ? (
+                      <i className="codicon codicon-loading codicon-modifier-spin" />
+                    ) : (
+                      <button
+                        className="spexr-df-search__clear"
+                        title="Clear search"
+                        aria-label="Clear search"
+                        onClick={() => {
+                          this.search.clear();
+                          this.update();
+                        }}
+                      >
+                        <i className="codicon codicon-close" />
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+              {this.search.active && !this.search.pending && (
+                <span className="spexr-df-search__count">{visibleHits.length} found</span>
+              )}
+              {this.indexProgress && (
+                <span className="spexr-df-search__progress">
+                  indexing {this.indexProgress.done}/{this.indexProgress.total}
                 </span>
               )}
             </div>
-            {this.search.active && !this.search.pending && (
-              <span className="spexr-df-search__count">{visibleHits.length} found</span>
-            )}
-            {this.indexProgress && (
-              <span className="spexr-df-search__progress">
-                indexing {this.indexProgress.done}/{this.indexProgress.total}
-              </span>
-            )}
-          </div>
-          {/*
-            One wrapper for every card that owns a terminal, in both arrangements:
-            only its class changes, so React keeps the same DOM node and no
-            TerminalMount unmounts — a remount would detach and re-attach every xterm.
-          */}
-          <div
-            ref={this.setActiveHost}
-            className={`spexr-df-active spexr-df-active--${this.wallLayout}`}
-            style={{ ["--df-mosaic-columns" as string]: String(this.mosaicColumnCount()) }}
-          >
-            {this.launched.map((launch) => (
-              <LaunchedSessionCard
-                key={launch.key}
-                projectName={this.projectNameAt(launch.projectPath, launch.projectName)}
-                projectPath={launch.projectPath}
-                harness={launch.harness}
-                terminal={this.terminals.live(launch.key)}
-                onClose={() => this.closeLaunched(launch.key)}
-                onOpenProject={() => this.openProject(launch.projectPath)}
-                onOpenTerminal={() =>
-                  this.openProjectTerminal(
-                    launch.projectPath,
-                    this.projectNameAt(launch.projectPath, launch.projectName),
-                  )
-                }
-                isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
-                layout={this.wallLayout}
-                browser={this.browserProps(launch.key, undefined)}
-              />
-            ))}
-            {expanded.map((tile) => (
-              <AgentPinnedCard
-                key={tile.sessionId}
-                tile={tile}
-                now={now}
-                summary={this.summaries.get(tile.sessionId)}
-                events={this.pinnedEvents.get(tile.sessionId) ?? []}
-                terminal={this.terminals.live(tile.sessionId)}
-                onClose={() => this.unpin(tile.sessionId)}
-                onFork={(t) => this.forkTakeover(t)}
-                onOpenProject={(t) => this.openProject(t.projectPath)}
-                onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, projectLabel(t))}
-                onTrash={(t) => this.moveToTrash(t.sessionId)}
-                onRename={(t) => void this.renameSession(t)}
-                isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
-                layout={this.wallLayout}
-                browser={this.browserProps(tile.sessionId, tile.sessionId)}
-              />
-            ))}
-          </div>
-          {/*
-            Only the grid is replaced by results. The expanded and launched cards
-            above keep their positions inside spexr-df-active, so no TerminalMount
-            unmounts and no running session is detached by a search.
-          */}
-          {this.search.active ? (
-            visibleHits.length === 0 ? (
-              <div className="spexr-df-empty">
-                {this.search.pending
-                  ? "Searching…"
-                  : this.indexProgress
-                    ? `No session matches "${this.search.query}" yet — still indexing.`
-                    : `No session matches "${this.search.query}".`}
-              </div>
-            ) : (
-              <div className="spexr-df-grid">
-                {visibleHits.map((h) =>
-                  this.renderCard(h.tile, now, true, {
-                    archived: h.archived,
-                    match: { score: h.score, dense: h.dense, lexical: h.lexical, terms: h.terms, best },
-                  }),
-                )}
-              </div>
-            )
-          ) : tiles.length === 0 ? (
-            <div className="spexr-df-empty">
-              {discarded.length > 0
-                ? "Every session on the wall is in the trash."
-                : "No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here."}
+            {/*
+              One wrapper for every card that owns a terminal, in both arrangements:
+              only its class changes, so React keeps the same DOM node and no
+              TerminalMount unmounts — a remount would detach and re-attach every xterm.
+            */}
+            <div
+              ref={this.setActiveHost}
+              className={`spexr-df-active spexr-df-active--${this.wallLayout}`}
+              style={{ ["--df-mosaic-columns" as string]: String(this.mosaicColumnCount()) }}
+            >
+              {this.launched.map((launch) => (
+                <LaunchedSessionCard
+                  key={launch.key}
+                  projectName={this.projectNameAt(launch.projectPath, launch.projectName)}
+                  projectPath={launch.projectPath}
+                  harness={launch.harness}
+                  terminal={this.terminals.live(launch.key)}
+                  onClose={() => this.closeLaunched(launch.key)}
+                  onOpenProject={() => this.openProject(launch.projectPath)}
+                  onOpenTerminal={() =>
+                    this.openProjectTerminal(
+                      launch.projectPath,
+                      this.projectNameAt(launch.projectPath, launch.projectName),
+                    )
+                  }
+                  isCurrent={this.projectSwitch.isCurrentProject(launch.projectPath)}
+                  layout={this.wallLayout}
+                  browser={this.browserProps(launch.key, undefined)}
+                />
+              ))}
+              {expanded.map((tile) => (
+                <AgentPinnedCard
+                  key={tile.sessionId}
+                  tile={tile}
+                  now={now}
+                  summary={this.summaries.get(tile.sessionId)}
+                  events={this.pinnedEvents.get(tile.sessionId) ?? []}
+                  terminal={this.terminals.live(tile.sessionId)}
+                  onClose={() => this.unpin(tile.sessionId)}
+                  onFork={(t) => this.forkTakeover(t)}
+                  onOpenProject={(t) => this.openProject(t.projectPath)}
+                  onOpenTerminal={(t) => this.openProjectTerminal(t.projectPath, projectLabel(t))}
+                  onTrash={(t) => this.moveToTrash(t.sessionId)}
+                  onRename={(t) => void this.renameSession(t)}
+                  isCurrent={this.projectSwitch.isCurrentProject(tile.projectPath)}
+                  layout={this.wallLayout}
+                  browser={this.browserProps(tile.sessionId, tile.sessionId)}
+                />
+              ))}
             </div>
-          ) : groups.length > 1 ? (
-            groups.map((g, i) => this.renderGroup(g, i, now))
+            {/*
+              Only the grid is replaced by results. The expanded and launched cards
+              above keep their positions inside spexr-df-active, so no TerminalMount
+              unmounts and no running session is detached by a search.
+            */}
+            {this.search.active ? (
+              visibleHits.length === 0 ? (
+                <div className="spexr-df-empty">
+                  {this.search.pending
+                    ? "Searching…"
+                    : this.indexProgress
+                      ? `No session matches "${this.search.query}" yet — still indexing.`
+                      : `No session matches "${this.search.query}".`}
+                </div>
+              ) : (
+                <div className="spexr-df-grid">
+                  {visibleHits.map((h) =>
+                    this.renderCard(h.tile, now, true, {
+                      archived: h.archived,
+                      match: { score: h.score, dense: h.dense, lexical: h.lexical, terms: h.terms, best },
+                    }),
+                  )}
+                </div>
+              )
+            ) : tiles.length === 0 ? (
+              <div className="spexr-df-empty">
+                {discarded.length > 0
+                  ? "Every session on the wall is in the trash."
+                  : "No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here."}
+              </div>
+            ) : groups.length > 1 ? (
+              groups.map((g, i) => this.renderGroup(g, i, now))
+            ) : (
+              this.renderFlat(rest, now)
+            )}
+            {!this.search.active && discarded.length > 0 && this.renderTrash(discarded, now)}
+          </div>
+          {this.sidebar.open ? (
+            <ScheduleSidebar
+              snapshot={this.scheduleSnapshot}
+              projects={launchTargets(this.tiles, currentProject, this.recentProjects).map((t) => ({ path: t.path, name: t.name }))}
+              configs={this.configs}
+              width={this.sidebar.width}
+              onSave={(s) => void this.schedules.save(s).then(() => this.refreshSchedules()).catch(() => undefined)}
+              onRemove={(id) => void this.schedules.remove(id).then(() => this.refreshSchedules()).catch(() => undefined)}
+              onRun={(s) =>
+                this.runSchedule(s).catch(
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not start the run." }],
+                )
+              }
+              onAbort={(id) => void this.schedules.abort(id).catch(() => undefined)}
+              onPause={(id) =>
+                this.schedules.pause(id).then(
+                  (): ValidationProblem[] => [],
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not pause the run." }],
+                )
+              }
+              onResume={(id) =>
+                this.schedules.resume(id).then(
+                  (): ValidationProblem[] => [],
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not resume the run." }],
+                )
+              }
+              onRetry={(sid, tid) =>
+                this.retryTask(sid, tid).catch((): ValidationProblem[] => [{ field: "run", message: "Could not retry the task." }])
+              }
+              onSkip={(sid, tid) =>
+                this.schedules.skip(sid, tid).then(
+                  (problems) => {
+                    this.refreshSchedules();
+                    return problems;
+                  },
+                  (): ValidationProblem[] => [{ field: "run", message: "Could not skip the task." }],
+                )
+              }
+              onFocusTask={(sid, tid) => this.focusTask(sid, tid)}
+              onClose={() => this.setSidebarOpen(false)}
+            />
           ) : (
-            this.renderFlat(rest, now)
+            <button className="sl-icon-btn spexr-df-shell__open" onClick={() => this.setSidebarOpen(true)} aria-label="Open the plant schedule" title="Plant schedule">
+              <i className="codicon codicon-layout-sidebar-right" />
+            </button>
           )}
-          {!this.search.active && discarded.length > 0 && this.renderTrash(discarded, now)}
         </div>
       </>
     );

@@ -1,4 +1,5 @@
 import { injectable, unmanaged } from "@theia/core/shared/inversify";
+import { Emitter } from "@theia/core/lib/common/event";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { stat, writeFile } from "node:fs/promises";
@@ -287,6 +288,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private poll: ReturnType<typeof setInterval> | undefined;
   /** Set while power saving: the periodic rescan stays off, the watchers keep working. */
   private pollPaused = false;
+  /** Backend consumers holding the periodic rescan on with no window open (see {@link requestScans}). */
+  private scanHolds = 0;
   private readonly wallWatchers: FSWatcher[] = [];
   /** Single-flight push state: while a scan runs, events mark it dirty for one follow-up scan. */
   private scanInFlight = false;
@@ -296,6 +299,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   /** TTL cache of discovered config dirs (one $HOME readdir per TTL, not per scan). */
   private configDirsCache?: { at: number; value: string[] };
   private readonly index = new Map<string, SessionMeta>();
+  private readonly scanned = new Emitter<AgentTile[]>();
   /**
    * Metadata for sessions reached through search, not through the scan.
    * `listTiles` clears `index` on every poll, so a hit registered there would
@@ -323,6 +327,12 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly projectNamesPath: string | undefined;
   /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
   private sessionNames?: Promise<Map<string, string>>;
+  /** The last queued names write; see {@link writeSessionNames}. */
+  private sessionNamesWrite: Promise<void> = Promise.resolve();
+  /** The last queued index write; see {@link writeSessionIndex}. */
+  private sessionIndexWrite: Promise<void> = Promise.resolve();
+  /** The last queued rename; renames apply one at a time, so the last one asked for wins everywhere. */
+  private renameQueue: Promise<void> = Promise.resolve();
   /** projectPath → the name the user gave it; loaded once, then kept in step with writes. */
   private projectNames?: Promise<Map<string, string>>;
   private readonly dirExists: (path: string) => Promise<boolean>;
@@ -598,7 +608,43 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // The names on disk get the same treatment, on a much longer clock. A failed
     // sweep must not fail the scan: the wall is what the user asked for.
     await this.pruneNames(allRefs).catch(() => {});
+    this.scanned.fire(tiles);
     return tiles;
+  }
+
+  /** Each finished scan's tiles, for backend consumers (the plant schedule's opencode tasks). */
+  onScanned(listener: (tiles: AgentTile[]) => void): () => void {
+    const d = this.scanned.event(listener);
+    return () => d.dispose();
+  }
+
+  /**
+   * Keep the periodic rescan running while a backend consumer (a scheduled
+   * opencode task) needs fresh tiles, even with no window open. Every holder
+   * shares the wall's one single-flight ticker, which still pauses for power
+   * saving; each extra `opencode db` query would re-trigger the wall's own
+   * watcher. Returns the release, which is idempotent.
+   */
+  requestScans(): () => void {
+    this.scanHolds++;
+    this.startPolling();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.scanHolds = Math.max(0, this.scanHolds - 1);
+      if (this.scanHolds === 0 && !this.watching) this.stopPolling();
+    };
+  }
+
+  /** Session ids the last scan knew. */
+  knownSessionIds(): Set<string> {
+    return new Set(this.index.keys());
+  }
+
+  /** A scanned session's entries through the loader the scan kept; [] when unknown. */
+  async scanEntries(sessionId: string): Promise<unknown[]> {
+    return (await this.meta(sessionId)?.loadEntries?.().catch(() => [])) ?? [];
   }
 
   /**
@@ -627,7 +673,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.missingSessionNames = missingNow;
     if (drop.length > 0) {
       for (const id of drop) names.delete(id);
-      await saveSessionNames(names, this.sessionNamesPath);
+      await this.writeSessionNames(names);
     }
 
     const gone = staleProjectNames(projectNames, await this.projectDirState([...projectNames.keys()]));
@@ -685,7 +731,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         index,
         embed: this.embed,
         list: () => this.indexableSessions(),
-        save: (i) => saveSessionIndex(i, this.sessionIndexPath),
+        save: (i) => this.writeSessionIndex(i),
         onProgress: (done, total) => this.client?.onSessionIndexProgress(done, total),
       });
     } finally {
@@ -806,6 +852,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     }));
   }
 
+  /**
+   * Save the session names, one write at a time: the store writes through a
+   * temporary file with a fixed name, so two overlapping saves (a schedule
+   * naming several sessions at once) raced on it and one failed with ENOENT.
+   * A failed write does not block the ones queued after it.
+   */
+  private writeSessionNames(names: Map<string, string>): Promise<void> {
+    const next = this.sessionNamesWrite.then(() => saveSessionNames(names, this.sessionNamesPath));
+    this.sessionNamesWrite = next.catch(() => undefined);
+    return next;
+  }
+
   private loadNames(): Promise<Map<string, string>> {
     if (!this.sessionNames) this.sessionNames = loadSessionNames(this.sessionNamesPath);
     return this.sessionNames;
@@ -823,11 +881,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * that asked.
    */
   async renameSession(sessionId: string, name: string): Promise<void> {
+    const next = this.renameQueue.then(() => this.applyRename(sessionId, name));
+    this.renameQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  /** One rename, applied to the names file, the search index and the last tiles. */
+  private async applyRename(sessionId: string, name: string): Promise<void> {
     const names = await this.loadNames();
     const trimmed = name.trim().slice(0, MAX_SESSION_NAME_CHARS);
     if (trimmed) names.set(sessionId, trimmed);
     else names.delete(sessionId);
-    await saveSessionNames(names, this.sessionNamesPath);
+    await this.writeSessionNames(names);
     // A name the user just typed has served no strikes. Without this, naming a
     // session the scan cannot see — one whose transcript is not written yet —
     // between two sweeps would count as the second strike and delete it.
@@ -896,7 +961,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       record.mtimeMs = 0; // no encoder here: let the next crawl rebuild the vector
     }
     index.upsert(record);
-    await saveSessionIndex(index, this.sessionIndexPath);
+    await this.writeSessionIndex(index);
+  }
+
+  /** Save the search index one write at a time, for the same fixed-temp-file reason as {@link writeSessionNames}. */
+  private writeSessionIndex(index: SessionIndex): Promise<void> {
+    const next = this.sessionIndexWrite.then(() => saveSessionIndex(index, this.sessionIndexPath));
+    this.sessionIndexWrite = next.catch(() => undefined);
+    return next;
   }
 
   private loadIndex(): Promise<SessionIndex> {
@@ -1004,15 +1076,23 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
   /**
    * Periodic full rescan, the safety net under the watchers (see
-   * {@link POLL_INTERVAL_MS}). It goes through pushTiles, so a tick landing on
-   * an in-flight scan coalesces instead of stacking another one.
+   * {@link POLL_INTERVAL_MS}), run while a window is watching or a backend
+   * consumer holds it ({@link requestScans}). A tick landing on an in-flight
+   * scan is skipped: that scan's tiles are fresh enough.
    */
   private startPolling(): void {
-    if (this.poll || this.pollPaused) return;
+    if (this.poll || this.pollPaused || (!this.watching && this.scanHolds === 0)) return;
     this.poll = setInterval(() => {
-      void this.pushTiles();
+      if (!this.scanInFlight) void this.pushTiles();
     }, POLL_INTERVAL_MS);
     this.poll.unref?.();
+  }
+
+  /** Clear the periodic rescan timer, if one runs. */
+  private stopPolling(): void {
+    if (!this.poll) return;
+    clearInterval(this.poll);
+    this.poll = undefined;
   }
 
   /**
@@ -1067,7 +1147,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * scan is queued no matter how many events land.
    */
   private async pushTiles(): Promise<void> {
-    if (!this.client) return;
+    if (!this.client && this.scanHolds === 0) return;
     this.scanDirty = true;
     if (this.scanInFlight) return;
     this.scanInFlight = true;
@@ -1075,7 +1155,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       while (this.scanDirty) {
         this.scanDirty = false;
         try {
-          this.client.onTilesChanged(await this.listTiles());
+          const tiles = await this.listTiles();
+          this.client?.onTilesChanged(tiles);
         } catch {
           /* transient scan failure → skip this tick */
         }
@@ -1149,21 +1230,15 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    */
   setPollingPaused(paused: boolean): void {
     this.pollPaused = paused;
-    if (paused && this.poll) {
-      clearInterval(this.poll);
-      this.poll = undefined;
-    } else if (!paused && this.watching) {
-      this.startPolling();
-    }
+    if (paused) this.stopPolling();
+    else this.startPolling();
   }
 
   dispose(): void {
     this.watching = false;
     if (this.loopMonitor) clearInterval(this.loopMonitor);
-    if (this.poll) {
-      clearInterval(this.poll);
-      this.poll = undefined;
-    }
+    this.scanHolds = 0;
+    this.stopPolling();
     for (const w of this.wallWatchers) w.close();
     this.wallWatchers.length = 0;
     for (const { watcher } of this.follows.values()) watcher.close();
