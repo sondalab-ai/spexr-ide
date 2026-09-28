@@ -29,6 +29,7 @@ import {
   withPending,
   type TaskRow,
 } from "./schedule-view.js";
+import { DraftSaver } from "./draft-saver.js";
 import {
   accountOptions,
   handOffRange,
@@ -100,12 +101,11 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   // Edits go to a local draft and are saved after a pause in typing: saving
   // every keystroke over RPC made controlled inputs lag and drop characters.
   const [draft, setDraft] = React.useState<Schedule | undefined>();
-  // The draft object last handed to onSave (by the debounce or by flush()),
-  // so a blur with nothing new to say is a no-op instead of a duplicate save.
-  const savedRef = React.useRef<Schedule | undefined>(undefined);
-  // React 19's useRef has no zero-argument overload, and exactOptionalPropertyTypes
-  // rejects an implicit `undefined`, so the initial value is passed explicitly.
-  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The unsaved edit and its timer; it saves through the latest onSave, and
+  // closing the pane saves an edit typed moments before instead of losing it.
+  const onSaveRef = React.useRef(p.onSave);
+  onSaveRef.current = p.onSave;
+  const [saver] = React.useState(() => new DraftSaver<Schedule>((d) => onSaveRef.current(d), 600));
   // Keyboard focus around the two inline confirms (AC-17): opening one moves
   // focus to its "Keep" button; keeping returns it to the button that opened
   // it; deleting moves it on to the schedule picker, since the trash button
@@ -152,19 +152,10 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   const edit = (next: Schedule): void => {
     setRunProblems(undefined);
     setDraft(next);
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      p.onSave(next);
-      savedRef.current = next;
-    }, 600);
+    saver.edit(next);
   };
-  const flush = (): void => {
-    if (!draft || draft === savedRef.current) return;
-    clearTimeout(saveTimer.current);
-    p.onSave(draft);
-    savedRef.current = draft;
-  };
-  React.useEffect(() => () => clearTimeout(saveTimer.current), []);
+  const flush = (): void => saver.flush();
+  React.useEffect(() => () => saver.dispose(), [saver]);
   const problems: ValidationProblem[] = schedule
     ? [...validateSchedule(schedule), ...(runProblems?.scheduleId === schedule.id ? runProblems.problems : [])]
     : [];
@@ -240,9 +231,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     // draft: a freed id (from a delete) can be reused by newSchedule, and a
     // stale draft with that id would resurrect the deleted content over it.
     flush();
-    clearTimeout(saveTimer.current);
     setDraft(undefined);
-    savedRef.current = undefined;
     setRunProblems(undefined);
     setSelected(undefined);
     setConfirmDelete(false);
@@ -254,9 +243,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     if (!schedule) return;
     const copy = duplicateSchedule(schedule, new Set(p.snapshot.schedules.map((x) => x.id)));
     flush();
-    clearTimeout(saveTimer.current);
     setDraft(undefined);
-    savedRef.current = undefined;
     setRunProblems(undefined);
     setSelected(undefined);
     setConfirmDelete(false);
@@ -289,9 +276,8 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   };
   const removeSchedule = (id: string): void => {
     if (draft?.id === id) {
-      clearTimeout(saveTimer.current);
+      saver.discard();
       setDraft(undefined);
-      savedRef.current = undefined;
     }
     setRunProblems(undefined);
     setEditing(undefined);
@@ -350,9 +336,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                     value={schedule.id}
                     onChange={(e) => {
                       flush();
-                      clearTimeout(saveTimer.current);
                       setDraft(undefined);
-                      savedRef.current = undefined;
                       setRunProblems(undefined);
                       setSelected(undefined);
                       setConfirmDelete(false);
