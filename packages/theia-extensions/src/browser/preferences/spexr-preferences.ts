@@ -94,6 +94,15 @@ export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDt
  */
 export const SPEXR_GIT_AUTOFETCH_PREFERENCE = "spexr.git.autofetch";
 
+/**
+ * Which backdrop the Spec and Dark Factory panels draw: the Game of Life, or
+ * a photo printed as halftone dots in the bottom-right corner.
+ */
+export const SPEXR_BACKDROP_KIND_PREFERENCE = "spexr.backdrop.kind";
+
+/** Picture URLs the photo backdrop cycles. Empty means the curated set. */
+export const SPEXR_BACKDROP_PHOTOS_PREFERENCE = "spexr.backdrop.photos";
+
 /** What each terminal family is, in the words a preference description needs. */
 const TERMINAL_KIND_LABELS: Record<SpexrTerminalKind, string> = {
   session: "the Darkfactory session cards",
@@ -267,6 +276,25 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "so the branch's ahead/behind counts stay truthful. Never touches the working " +
         "tree and never prompts for credentials. Turn off on a metered connection, or " +
         "where an unattended authentication attempt is unwelcome.",
+    },
+    [SPEXR_BACKDROP_KIND_PREFERENCE]: {
+      type: "string",
+      enum: ["life", "photo"],
+      default: "life",
+      enumDescriptions: [
+        "A Game of Life, in the accent and three code colours.",
+        "A photo printed as halftone dots in the bottom-right corner, changing every 10 minutes.",
+      ],
+      description: "What the Spec and Dark Factory panels draw behind their content.",
+    },
+    [SPEXR_BACKDROP_PHOTOS_PREFERENCE]: {
+      type: "array",
+      items: { type: "string" },
+      default: [],
+      description:
+        "Picture URLs for the photo backdrop, shown in random order. Empty uses SPEXR's " +
+        "curated set of NASA images. A picture on another site must allow cross-origin " +
+        "requests (CORS), or it is skipped.",
     },
     [SPEXR_SEARCH_GLOBAL_IGNORE_PROMPTED]: {
       type: "boolean",
