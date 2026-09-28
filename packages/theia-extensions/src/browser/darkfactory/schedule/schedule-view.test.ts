@@ -4,6 +4,7 @@ import {
   STATUS_VIEW,
   bandsOf,
   duplicateSchedule,
+  focusRequestFate,
   newSchedule,
   pendingKey,
   runBar,
@@ -164,6 +165,18 @@ describe("rows for the graph (Slice 4)", () => {
     expect(copy).toMatchObject({ id: "schedule-2", name: "G (copy)" });
     expect(copy.tasks).toEqual(g.tasks);
     expect(copy.tasks[0]).not.toBe(g.tasks[0]);
+  });
+});
+
+describe("focusRequestFate", () => {
+  it("applies once focus has actually reverted to the body", () => {
+    expect(focusRequestFate(false, true)).toBe("apply");
+  });
+  it("keeps waiting while focus is still somewhere inside the sidebar", () => {
+    expect(focusRequestFate(true, false)).toBe("wait");
+  });
+  it("drops the request once focus has moved outside the sidebar entirely", () => {
+    expect(focusRequestFate(false, false)).toBe("drop");
   });
 });
 

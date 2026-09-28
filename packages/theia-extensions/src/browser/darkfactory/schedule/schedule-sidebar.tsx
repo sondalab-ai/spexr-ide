@@ -18,6 +18,7 @@ import { patchLoop, withCheck, withCheckTimeout, withLoop, withMaxIterations } f
 import {
   bandsOf,
   duplicateSchedule,
+  focusRequestFate,
   newSchedule,
   newTask,
   pendingKey,
@@ -42,8 +43,17 @@ import {
   workspaceValue,
 } from "./task-edit.js";
 
-/** Where focus goes once its target mounts, after a change that unmounts whatever was focused. */
-type FocusTarget = { kind: "new-schedule" } | { kind: "run-bar" } | { kind: "row"; taskId: string };
+/**
+ * Where focus goes once its target mounts, after a change that unmounts
+ * whatever was focused. "run-bar" and "row" carry the schedule they were
+ * raised for, since a switch to a different schedule (including the one a
+ * delete falls back to) can leave a stale request pointing at a same-id
+ * task or run bar that means something else there.
+ */
+type FocusTarget =
+  | { kind: "new-schedule" }
+  | { kind: "run-bar"; scheduleId: string }
+  | { kind: "row"; scheduleId: string; taskId: string };
 
 export interface ScheduleSidebarProps {
   snapshot: ScheduleSnapshot;
@@ -110,10 +120,20 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   // Consumed once its target has mounted, so it survives a render or two of
   // lag between setting the intent and the DOM catching up.
   const [focusTarget, setFocusTarget] = React.useState<FocusTarget | undefined>(undefined);
+  const sidebarRootRef = React.useRef<HTMLElement | null>(null);
   const newScheduleBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const runBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const runBarRef = React.useRef<HTMLDivElement | null>(null);
   const rowBtnRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  // Only worth requesting a focus recovery while focus is still somewhere we
+  // can reason about: inside the sidebar (about to unmount) or already
+  // reverted to the body. If it's already elsewhere — a card the wall just
+  // focused, a terminal the operator clicked into — requesting one here
+  // would steal it back once the guard below happens to see the body again.
+  const canRequestFocus = (): boolean => {
+    const active = document.activeElement;
+    return !active || active === document.body || (sidebarRootRef.current?.contains(active) ?? false);
+  };
   const saved = p.snapshot.schedules.find((s) => s.id === selectedId) ?? p.snapshot.schedules[0];
   const schedule = draft && draft.id === saved?.id ? draft : saved;
   const run = schedule ? p.snapshot.runs[schedule.id] : undefined;
@@ -174,27 +194,40 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
     // reasons above Run are left alone.
     setRunProblems(undefined);
     if (!running) {
-      // The abort confirm was still open when the run ended on its own
-      // (not from that confirm's own Abort button, which sets its own
-      // intent): its buttons are about to unmount under the pointer or
-      // the keyboard focus that was on one of them.
-      if (confirmAbort) setFocusTarget({ kind: "run-bar" });
+      // The abort confirm was still open when the run ended on its own (not
+      // from that confirm's own Abort button, which sets its own request):
+      // only worth a request if focus was actually still on it.
+      if (confirmAbort && schedule && canRequestFocus()) setFocusTarget({ kind: "run-bar", scheduleId: schedule.id });
       setConfirmAbort(false);
     } else setConfirmDelete(false);
   }, [running]);
   React.useEffect(() => {
     if (!focusTarget) return;
+    // A switch to a different schedule (including the one a delete falls
+    // back to) outdates a run-bar or row request from the one left behind:
+    // a same-id row or run bar there means something else entirely.
+    if (focusTarget.kind !== "new-schedule" && focusTarget.scheduleId !== schedule?.id) {
+      setFocusTarget(undefined);
+      return;
+    }
     const active = document.activeElement;
-    if (active && active !== document.body) return;
+    const activeIsBody = !active || active === document.body;
+    const activeInside = !activeIsBody && (sidebarRootRef.current?.contains(active) ?? false);
+    const fate = focusRequestFate(activeInside, activeIsBody);
+    if (fate === "drop") {
+      setFocusTarget(undefined);
+      return;
+    }
+    if (fate === "wait") return;
     const el: HTMLElement | null =
       focusTarget.kind === "new-schedule"
         ? newScheduleBtnRef.current
         : focusTarget.kind === "row"
           ? (rowBtnRefs.current.get(focusTarget.taskId) ?? null)
-          : runBtnRef.current && !runBtnRef.current.disabled
-            ? runBtnRef.current
-            : runBarRef.current;
-    if (!el) return;
+          : (abortBtnRef.current ??
+            (runBtnRef.current && !runBtnRef.current.disabled ? runBtnRef.current : null) ??
+            runBarRef.current);
+    if (!el) return; // not mounted yet; focus is still on the body, so try again once it is
     el.focus();
     setFocusTarget(undefined);
   }, [focusTarget, running, rowKey, schedule?.id]);
@@ -243,8 +276,11 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
         setRunProblems({ scheduleId, problems });
         // Its own Retry/Skip buttons are about to unmount once the run's
         // next snapshot marks the task no longer retryable; land on the
-        // row itself instead of losing focus to the body.
-        if (problems.length === 0) setFocusTarget({ kind: "row", taskId });
+        // row itself instead of losing focus to the body. Only worth
+        // requesting while focus is still where we can reason about it —
+        // by the time this resolves the operator may already be in the new
+        // card the wall opened, or have switched to a different schedule.
+        if (problems.length === 0 && canRequestFocus()) setFocusTarget({ kind: "row", scheduleId, taskId });
       })
       .finally(() => setPendingTasks((prev) => withPending(prev, key, false)));
   };
@@ -272,7 +308,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
   };
 
   return (
-    <aside className="spexr-sched" style={{ width: p.width }} aria-label="Plant schedule">
+    <aside ref={sidebarRootRef} className="spexr-sched" style={{ width: p.width }} aria-label="Plant schedule">
       <header className="spexr-sched__head">
         <span className="sl-eyebrow">Plant schedule</span>
         <button
@@ -344,7 +380,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                     removeSchedule(schedule.id);
                     // The last schedule's delete takes the picker down with
                     // it, into the empty state's "New schedule" button.
-                    if (wasLast) setFocusTarget({ kind: "new-schedule" });
+                    if (wasLast && canRequestFocus()) setFocusTarget({ kind: "new-schedule" });
                     else requestAnimationFrame(() => scheduleSelectRef.current?.focus());
                   }}
                 >
@@ -436,9 +472,9 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                     onClick={() => {
                       p.onAbort(schedule.id);
                       setConfirmAbort(false);
-                      // Run is disabled until the run actually ends, so this
-                      // lands on the run bar itself until then.
-                      setFocusTarget({ kind: "run-bar" });
+                      // Prefers the plain Abort button once it re-mounts
+                      // (Run stays disabled until the run actually ends).
+                      if (canRequestFocus()) setFocusTarget({ kind: "run-bar", scheduleId: schedule.id });
                     }}
                   >
                     Abort

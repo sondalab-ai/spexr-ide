@@ -192,3 +192,17 @@ export function withPending(prev: ReadonlySet<string>, key: string, on: boolean)
   else next.delete(key);
   return next;
 }
+
+/**
+ * What to do with a pending focus request, each time the DOM settles: apply
+ * it once focus has actually reverted to the body (its old target really
+ * unmounted); keep waiting while focus is still somewhere inside the
+ * sidebar (the target hasn't unmounted yet, or the operator is elsewhere in
+ * the pane); drop it once focus has moved outside the sidebar entirely (a
+ * card got it, or the operator clicked into a terminal) — applying it later
+ * would steal focus from wherever they went.
+ */
+export function focusRequestFate(activeInside: boolean, activeIsBody: boolean): "apply" | "wait" | "drop" {
+  if (activeIsBody) return "apply";
+  return activeInside ? "wait" : "drop";
+}
