@@ -18,8 +18,10 @@ Everything below is **Implemented (not delivered)**, on `feat/photo-backdrop`.
 
 - The backdrop is configurable: the Game of Life (today's) or a photo viewer.
 - The photo viewer passes the photo through the kit's halftone mechanism.
-- By default it shows random royalty-free photos with a sci-fi, futuristic look, from a curated
-  list shipped with SPEXR.
+- By default it shows random royalty-free photos with a sci-fi, futuristic look. First pass: a
+  curated list shipped with SPEXR. Revised on 2026-09-29: "a plethora of different images" from
+  the web (Unsplash was asked for; it needs an access key, so Openverse is the key-free default and
+  Unsplash the upgrade), rotating every N seconds, N a preference.
 - The halftone is a square, anchored to the bottom-right corner, big enough to cover at least
   half of the panel.
 
@@ -30,19 +32,33 @@ Everything below is **Implemented (not delivered)**, on `feat/photo-backdrop`.
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `spexr.backdrop.kind` | `"life"` \| `"photo"` | `"life"` | Which backdrop the Spec and Dark Factory panels draw. |
-| `spexr.backdrop.photos` | `string[]` | `[]` | Picture URLs to cycle instead of the curated set. Empty uses the curated set. A URL on another origin must allow cross-origin resource sharing (CORS), or it is skipped. |
+| `spexr.backdrop.photoSource` | `"openverse"` \| `"unsplash"` \| `"curated"` | `"openverse"` | Where photos come from. `"unsplash"` without a key uses Openverse; `"curated"` never touches the network. |
+| `spexr.backdrop.photoQueries` | `string[]` | nine terms (below) | Search terms; each batch comes from one, picked at random. |
+| `spexr.backdrop.photoIntervalSeconds` | `number` | `60` | Seconds each photo stays; at least 10 (each new photo gathers at the display rate for ≈2 s). |
+| `spexr.backdrop.unsplashAccessKey` | `string` | `""` | The access key of the user's own Unsplash app. Stored in plain text in settings. |
+| `spexr.backdrop.photos` | `string[]` | `[]` | Picture URLs to cycle instead of any source. A URL on another origin must allow cross-origin resource sharing (CORS), or it is skipped. |
+
+Default queries, chosen from sampled results (terms like "sci-fi", "robot" and "spaceship" returned
+posters and toys): cyberpunk city, neon city, nebula, milky way, rocket launch, long exposure city,
+skyscraper night, futuristic architecture, tunnel light. Openverse answers 240 results per query
+without a key, so the defaults reach about 2,100 photos.
 
 A change applies live, without reopening a panel.
 
 ### Components
 
-- `backdrop/backdrop.tsx` — `<Backdrop preferences>`: reads both preferences, follows their
-  changes, and renders `<LifeBackground>` or `<PhotoBackground photos>`. It replaces the direct
-  `<LifeBackground />` in `darkfactory-wall-widget.tsx` and `spec-widget.tsx`.
-- `backdrop/photo-background.tsx` — `<PhotoBackground>`: the halftone canvas.
-- `backdrop/photo-set.ts` — the curated set (18 NASA images under `backdrop/photos/`,
-  credited in `backdrop/photos/CREDITS.md`) and `nextPhoto(list, previous, random)`, the pure
-  picker: a random entry, never the one just shown when there are two or more.
+- `backdrop/backdrop.tsx` — `<Backdrop preferences>`: `backdropChoice()` turns the preferences
+  into the Game of Life or a photo source and interval; it follows their changes, and replaces the
+  direct `<LifeBackground />` in `darkfactory-wall-widget.tsx` and `spec-widget.tsx`.
+- `backdrop/photo-feed.ts` — `PhotoFeed`: fetches a batch (20 from Openverse, a random page of the
+  12 it serves; 30 from Unsplash's random endpoint) for a random query, serves it shuffled, never a
+  photo already served this session while new ones exist. A failed or empty fetch serves a curated
+  photo, and the next call tries the network again.
+- `backdrop/photo-background.tsx` — `<PhotoBackground source intervalMs>`: the halftone canvas and
+  the credit line. It shows a photo, then fetches and decodes the next one, so each rotation is
+  instant; a picture that takes over 15 s is skipped.
+- `backdrop/photo-set.ts` — the curated set: 18 NASA images under `backdrop/photos/`, credited in
+  `backdrop/photos/CREDITS.md`.
 
 ### Geometry
 
@@ -66,10 +82,22 @@ that is what https://github.com/sondalab-ai/spexr-ide/pull/67 removed. So
 
 The canvas carries no `data-sl-halftone`, so the kit's own runtime never arms it.
 
+### Credit
+
+Under the square, at the visible area's bottom-right: "Photo: <author> · <licence> · via
+Openverse", "Photo by <author> on Unsplash" (with the referral links Unsplash requires), or
+"Photo: NASA/… · via NASA", each part linked where the source gives a link. It sits in its own
+sticky strip at `z-index: 2`, above the panel content (`z-index: 1`), so its links take clicks;
+the rest of the strip lets clicks through.
+
 ### Photos
 
-- The picker chooses one when the backdrop mounts, and a new one every 10 minutes; each new photo
-  gathers again.
+- One when the backdrop mounts (about 3 s from Openverse: its search takes 1.4–2.4 s, a
+  thumbnail about 1 s), then one every `photoIntervalSeconds`; each new photo gathers again. No
+  rotation while the clock is stopped, so a paused window does not fetch.
+- Openverse photos come through its thumbnail proxy (`api.openverse.org/v1/images/<id>/thumb/`,
+  600 px, `Access-Control-Allow-Origin: *`); Unsplash photos as a 640 px crop of `urls.raw`, and
+  each one shown is reported to its `download_location`, as Unsplash's API guidelines ask.
 - Each picture is decoded with `crossOrigin = "anonymous"`, cover-cropped to a square and sampled
   at twice the grid. A picture that fails to load or taints the canvas is skipped for the next one;
   if all fail, nothing is drawn.
@@ -83,7 +111,8 @@ The dots take the canvas's `color` (the accent, like the Life canvas), at a fain
 CSS. They always print the picture's light, in either theme. This departs from the kit's live
 `halftone()`, where ink darker than mid-grey prints the picture's dark: the curated photos are
 light subjects on dark fields, and inverted, their dark sky prints as one solid blot with the
-subject as a hole (seen in the headless check on the light theme).
+subject as a hole (seen in the headless check on the light theme). Photos from the web follow the
+same rule.
 
 ### States
 
@@ -100,16 +129,22 @@ matches what the Life backdrop does while saving and costs nothing, since no tim
 
 ## Testing
 
-- `photo-set.test.ts`: the picker never repeats with two or more photos, returns the only one with
-  one, handles an empty list; the curated set has 18 entries.
+- `photo-feed.test.ts`: request URLs, licence labels, parsing of both services (including error
+  bodies), batching without repeats, the curated fallback, the Unsplash key header and download
+  report, a fixed list without network.
+- `photo-set.test.ts`: the curated set has 18 credited entries.
 - `photo-geometry.test.ts`: the square's side and offset for wide, tall, square and empty hosts.
-- `backdrop.test.ts`: the preference values map to the Game of Life by default, and to the curated
-  set when no URL is given.
+- `backdrop.test.ts`: the Game of Life by default; Openverse with the default queries and 60 s;
+  Unsplash only with a key; the curated source; your URLs over any source; the 10 s floor.
+- A headless page against the live Openverse API: a photo and its credit appear, the credit link
+  takes clicks over the content, a 10 s interval swaps to the prefetched photo, and with the API
+  blocked a NASA photo stands in.
 - `pnpm build:dev` for the desktop bundle (the `.jpg` data-URL path), then the running app.
 
 ## Out of scope
 
 - Local file paths in `spexr.backdrop.photos` (only URLs).
 - A picker UI; the preference editor is enough.
-- Photo credits shown in the UI. They are in `backdrop/photos/CREDITS.md`, per
-  [NASA's media usage guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/).
+- Storing the Unsplash key in a secret store; it sits in settings like other SPEXR keys.
+- Unsplash's production approval (its demo mode allows 50 requests an hour, 1,500 photos at 30
+  per request).

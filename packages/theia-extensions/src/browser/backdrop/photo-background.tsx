@@ -1,21 +1,42 @@
 import * as React from "@theia/core/shared/react";
 import { cover, dotFrame, sampleDots, settledFrame, type Dot } from "@spexr/ui-kit/halftone";
-import { nextPhoto } from "./photo-set.js";
+import { CURATED } from "./photo-set.js";
+import { PhotoFeed, type Photo, type PhotoCredit, type PhotoSource } from "./photo-feed.js";
 import { squareFor } from "./photo-geometry.js";
-import { MOTION_ATTRIBUTE, POWER_SAVE_ATTRIBUTE, isMotionPaused, isPowerSaving } from "../power/power-save-dom.js";
+import {
+  MOTION_ATTRIBUTE,
+  POWER_SAVE_ATTRIBUTE,
+  isMotionPaused,
+  isPowerSaving,
+} from "../power/power-save-dom.js";
 
-/** Cells per side, the gather's length, the tick after it, and how long one photo stays. */
+/** Cells per side, the gather's length, and the tick after it. */
 const GRID = 128;
 const GATHER_MS = 1900;
 const TICK_MS = 120;
-const ROTATE_MS = 10 * 60 * 1000;
+/** Photos tried in a row before a rotation gives up until the next one, and how long one may take. */
+const TRIES = 5;
+const LOAD_TIMEOUT_MS = 15_000;
 
 /** Decode a picture, crop its centred square, and return its bytes at twice the grid. */
 async function loadPixels(url: string): Promise<Uint8ClampedArray> {
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.src = url;
-  await img.decode();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      img.decode(),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("timed out")), LOAD_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (e) {
+    img.src = ""; // Stop a download still running after the timeout.
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
   const size = GRID * 2;
   const off = document.createElement("canvas");
   off.width = off.height = size;
@@ -27,6 +48,11 @@ async function loadPixels(url: string): Promise<Uint8ClampedArray> {
   return g.getImageData(0, 0, size, size).data;
 }
 
+interface Ready {
+  readonly photo: Photo;
+  readonly pixels: Uint8ClampedArray;
+}
+
 /**
  * A photo printed as halftone dots in the panel's bottom-right corner, behind
  * its content. The alternative to the Game of Life (backdrop.tsx), mounted
@@ -36,32 +62,43 @@ async function loadPixels(url: string): Promise<Uint8ClampedArray> {
  * The kit's own live halftone repaints every frame while in view, and behind
  * SPEXR's glass each frame re-composites the window, so here the dots gather
  * at the display rate once per photo, then drift at the Life backdrop's tick.
- * A new photo every ten minutes, never the same twice in a row; one that
- * fails to load is skipped. Colour is the canvas's `color`, and the dots
- * always print the picture's light, whatever the ink. The clock stops while the panel
+ * A new photo every `intervalMs`, from `source` (photo-feed.ts), never one
+ * already shown this session while there are new ones; one that fails to load
+ * is skipped, and the curated set stands in while the network is out. The
+ * photo's credit sits under it, in a layer above the panel's content so its
+ * links can be clicked. Colour is the canvas's `color`, and the dots always
+ * print the picture's light, whatever the ink. The clock stops while the panel
  * or window is hidden, while motion is paused or power is saved, and resumes
  * where it stopped; reduced motion draws the settled picture; high contrast
  * draws nothing.
  */
 export const PhotoBackground = React.memo(function PhotoBackground({
-  photos,
+  source,
+  intervalMs,
 }: {
-  readonly photos: readonly string[];
+  readonly source: PhotoSource;
+  readonly intervalMs: number;
 }): React.ReactElement {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const photoKey = photos.join("\n");
+  const creditRef = React.useRef<HTMLDivElement>(null);
+  const [credit, setCredit] = React.useState<PhotoCredit | undefined>(undefined);
+  // A key that changes only when the source's content does: the choice is re-read, as a new
+  // object, whenever any backdrop preference changes.
+  const sourceKey = React.useMemo(() => JSON.stringify(source), [source]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
+    const creditBox = creditRef.current;
     const host = canvas?.parentElement?.parentElement;
     const ctx = canvas?.getContext("2d");
-    const list = photoKey ? photoKey.split("\n") : [];
-    if (!canvas || !host || !ctx || list.length === 0) return undefined;
+    if (!canvas || !creditBox || !host || !ctx) return undefined;
+    const feed = new PhotoFeed({ source: JSON.parse(sourceKey) as PhotoSource, fallback: CURATED });
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const root = document.documentElement;
     let disposed = false;
-    let photo: string | undefined;
+    let loading = false;
+    let upcoming: Promise<Ready | undefined> | undefined;
     let dots: Dot[] = [];
     let ink = "";
     let side = 0;
@@ -132,30 +169,54 @@ export const PhotoBackground = React.memo(function PhotoBackground({
       }
     };
 
-    /** Load the next photo (skipping any that fail) and start its gather. */
-    const advance = async (): Promise<void> => {
-      for (let tries = 0; tries < list.length; tries++) {
-        const next = nextPhoto(list, photo);
-        photo = next;
-        if (next === undefined) return;
+    /** The next photo that loads, with its pixels; skips up to TRIES that fail. */
+    const fetchNext = async (): Promise<Ready | undefined> => {
+      for (let tries = 0; tries < TRIES && !disposed; tries++) {
+        const photo = await feed.next();
+        if (!photo.url) return undefined;
         try {
-          const loaded = await loadPixels(next);
-          if (disposed) return;
-          // Always the picture's light, in any ink: the curated photos are light
-          // subjects on dark fields, and inverted, their sky prints as a solid blot.
-          dots = sampleDots(loaded, GRID * 2, { grid: GRID });
-          retint();
-          halt();
-          const now = performance.now();
-          // Loaded while paused: hold it gathered rather than as scattered dust.
-          t0 = running() ? now : now - GATHER_MS;
-          pausedAt = running() ? null : now;
-          sync();
-          return;
+          return { photo, pixels: await loadPixels(photo.url) };
         } catch {
-          if (disposed) return;
+          // Unreadable or too slow: the next one.
         }
       }
+      return undefined;
+    };
+
+    /**
+     * Show the photo fetched ahead (or fetch one now), then fetch the one
+     * after it, so the next rotation is instant.
+     */
+    const advance = async (): Promise<void> => {
+      if (loading) return;
+      loading = true;
+      try {
+        const ready = await (upcoming ?? fetchNext());
+        upcoming = undefined;
+        if (disposed) return;
+        if (ready) {
+          show(ready.pixels);
+          setCredit(ready.photo.credit);
+          feed.shown(ready.photo);
+        }
+        upcoming = fetchNext();
+      } finally {
+        loading = false;
+      }
+    };
+
+    /** Sample a picture's pixels and start its gather. */
+    const show = (pixels: Uint8ClampedArray): void => {
+      // Always the picture's light, in any ink: sci-fi photos are mostly light
+      // subjects on dark fields, and inverted, their sky prints as a solid blot.
+      dots = sampleDots(pixels, GRID * 2, { grid: GRID });
+      retint();
+      halt();
+      const now = performance.now();
+      // Loaded while paused: hold it gathered rather than as scattered dust.
+      t0 = running() ? now : now - GATHER_MS;
+      pausedAt = running() ? null : now;
+      sync();
     };
 
     const resize = (): void => {
@@ -164,6 +225,8 @@ export const PhotoBackground = React.memo(function PhotoBackground({
       canvas.style.width = canvas.style.height = `${s}px`;
       canvas.style.left = `${left}px`;
       canvas.style.top = `${top}px`;
+      creditBox.style.width = `${host.clientWidth}px`;
+      creditBox.style.top = `${host.clientHeight}px`;
       draw(pausedAt ?? performance.now());
     };
 
@@ -181,13 +244,16 @@ export const PhotoBackground = React.memo(function PhotoBackground({
     });
     visibility.observe(host);
     const theme = new MutationObserver(restyle);
-    theme.observe(root, { attributes: true, attributeFilter: ["data-sl-theme", POWER_SAVE_ATTRIBUTE, MOTION_ATTRIBUTE] });
+    theme.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-sl-theme", POWER_SAVE_ATTRIBUTE, MOTION_ATTRIBUTE],
+    });
     document.addEventListener("visibilitychange", sync);
     reduced.addEventListener("change", restyle);
     // A new photo only while someone is looking, so a paused window does not gather unseen.
     const rotation = setInterval(() => {
       if (running()) void advance();
-    }, ROTATE_MS);
+    }, intervalMs);
 
     resize();
     void advance();
@@ -201,11 +267,44 @@ export const PhotoBackground = React.memo(function PhotoBackground({
       document.removeEventListener("visibilitychange", sync);
       reduced.removeEventListener("change", restyle);
     };
-  }, [photoKey]);
+  }, [sourceKey, intervalMs]);
 
   return (
-    <div className="spexr-photo-bg" aria-hidden="true">
-      <canvas ref={canvasRef} className="spexr-photo-bg__canvas" />
-    </div>
+    <>
+      <div className="spexr-photo-bg" aria-hidden="true">
+        <canvas ref={canvasRef} className="spexr-photo-bg__canvas" />
+      </div>
+      <div className="spexr-photo-bg spexr-photo-bg--credit">
+        <div ref={creditRef} className="spexr-photo-bg__credit">
+          {credit && <CreditLine credit={credit} />}
+        </div>
+      </div>
+    </>
   );
 });
+
+/** "Photo by X on Unsplash", or "Photo: X · CC BY-SA 2.0 · via Openverse", linked where the source gives links. */
+function CreditLine({ credit }: { readonly credit: PhotoCredit }): React.ReactElement {
+  const link = (label: string, href: string | undefined): React.ReactNode =>
+    href ? (
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {label}
+      </a>
+    ) : (
+      label
+    );
+  if (credit.via === "Unsplash") {
+    return (
+      <span>
+        Photo by {link(credit.author, credit.authorUrl)} on {link("Unsplash", credit.viaUrl)}
+      </span>
+    );
+  }
+  return (
+    <span>
+      Photo: {link(credit.author, credit.authorUrl ?? credit.pageUrl)}
+      {credit.license && <> · {link(credit.license, credit.pageUrl)}</>} · via{" "}
+      {link(credit.via, credit.viaUrl)}
+    </span>
+  );
+}

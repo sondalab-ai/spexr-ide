@@ -61,3 +61,15 @@ a `*.jpg` module declaration.
 
 - [ ] Launch the built app with its own `--user-data-dir`; switch the preference; screenshot both
       panels in dark and light; check no per-frame repaint after the gather.
+
+### Task 5 (revision, 2026-09-29): photos from the web, configurable interval
+
+Supersedes the 10-minute rotation and `nextPhoto` above (see the spec's Preferences and Photos).
+
+- [x] `photo-feed.ts` (TDD): Openverse and Unsplash requests and parsing, batching without
+      repeats, curated fallback, Unsplash key header and download report.
+- [x] Preferences `photoSource`, `photoQueries`, `photoIntervalSeconds`, `unsplashAccessKey`;
+      `backdropChoice()` (TDD).
+- [x] `PhotoBackground`: feed, prefetch of the next photo, 15 s load timeout, credit line above the
+      content.
+- [x] Full theia-extensions suite; headless check against the live Openverse API.
