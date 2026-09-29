@@ -45,9 +45,21 @@ body {
 
 .sl-btn--danger {
   color: var(--slc-danger);
+  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
 }
 
 .sl-btn--danger:hover:not(:disabled) {
+  background: var(--slc-danger);
+  color: var(--slc-on-accent);
+  border-color: var(--slc-danger);
+}
+
+/* An icon button in the danger voice of .sl-btn. */
+.sl-icon-btn--danger {
+  color: var(--slc-danger);
+  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
+}
+.sl-icon-btn--danger:hover:not(:disabled) {
   background: var(--slc-danger);
   color: var(--slc-on-accent);
   border-color: var(--slc-danger);
@@ -293,7 +305,7 @@ body {
 }
 
 .spexr-darkfactory > :is(.spexr-life-bg, .spexr-photo-bg) {
-  margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
+  margin: 0;
 }
 
 :is(.spexr-life-bg, .spexr-photo-bg) ~ :is(.spexr-df-shell, .spexr-spec-panel) {
@@ -2143,16 +2155,9 @@ code {
 .spexr-scm-input .theia-scm-input-message { padding-right: 26px; }
 .spexr-scm-input__generate {
   position: absolute; top: 3px; right: 4px;
-  display: flex; align-items: center; justify-content: center;
   /* Small enough to sit inside a single-row textarea without overflowing it. */
-  width: 18px; height: 18px; padding: 0;
-  background: transparent; border: none; border-radius: var(--sl-radius-sm);
-  color: var(--sl-text-muted); cursor: pointer;
+  width: 18px; height: 18px; border-radius: var(--sl-radius-sm);
 }
-.spexr-scm-input__generate:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary);
-}
-.spexr-scm-input__generate:disabled { cursor: default; }
 
 /* Smart Search (Explorer) */
 .spexr-smart-search__body { padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -2411,30 +2416,12 @@ code {
    state uncluttered. */
 .spexr-smart-search__map-regen {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--sl-radius-sm);
-  background: none;
-  color: var(--sl-text-muted);
-  font-size: var(--sl-text-sm);
-  cursor: pointer;
   opacity: 0;
-  transition:
-    opacity var(--sl-motion-mid) var(--sl-motion-ease),
-    color var(--sl-motion-fast) var(--sl-motion-ease),
-    background var(--sl-motion-fast) var(--sl-motion-ease);
+  transition: opacity var(--sl-motion-mid) var(--sl-motion-ease);
 }
 .spexr-smart-search__map:hover .spexr-smart-search__map-regen,
 .spexr-smart-search__map-regen:focus-visible {
   opacity: 1;
-}
-.spexr-smart-search__map-regen:hover {
-  color: var(--sl-accent-default);
-  background: var(--sl-accent-subtle);
 }
 .spexr-smart-search__map-sub {
   display: flex;
@@ -2495,8 +2482,9 @@ code {
   --sl-df-accent-5: var(--sl-viz-5);
   --sl-df-accent-6: var(--sl-viz-6);
   --sl-df-accent-7: var(--sl-viz-7);
-  padding: var(--sl-space-4);
-  overflow: auto;
+  /* The wall column scrolls, not the widget: the plant schedule beside it
+     stays in place with its own scroll. */
+  overflow: hidden;
   height: 100%;
 }
 .spexr-df-empty { padding: var(--sl-space-5); color: var(--sl-text-muted); font-size: var(--sl-text-sm); }
@@ -2508,29 +2496,41 @@ code {
 .spexr-df-root { display: flex; flex-direction: column; gap: var(--sl-space-5); }
 
 /* The wall and the plant schedule side by side; the wall keeps the room it needs. */
-.spexr-df-shell { display: flex; align-items: flex-start; gap: var(--sl-space-5); }
+.spexr-df-shell { display: flex; height: 100%; }
 /* position: relative restores what .spexr-df-root lost when it stopped being
    .spexr-life-bg's direct sibling: an absolutely positioned descendant must
    still anchor to the wall alone, not to the wider shell (which now also
    holds the sidebar). */
-.spexr-df-shell > .spexr-df-root { position: relative; flex: 1 1 auto; min-width: 0; }
-.spexr-df-shell__open { position: sticky; top: var(--sl-space-3); }
+.spexr-df-shell > .spexr-df-root {
+  position: relative; flex: 1 1 auto; min-width: 0; min-height: 0;
+  overflow-y: auto; padding: var(--sl-space-4);
+}
+/* A scroller now: its rows keep their height and overflow, never shrink to fit. */
+.spexr-df-shell > .spexr-df-root > * { flex-shrink: 0; }
+.spexr-df-shell__open { flex: none; align-self: flex-start; margin: var(--sl-space-4) var(--sl-space-4) 0 var(--sl-space-3); }
 
+/* A full-height column beside the wall, flush to the top: it never scrolls
+   with the wall, only its own content scrolls. */
 .spexr-sched {
-  position: sticky; top: 0; flex: none;
+  flex: none;
   display: flex; flex-direction: column; gap: var(--sl-space-4);
-  max-height: 100vh; overflow-y: auto;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--sl-space-4);
   border-left: 1px solid var(--sl-border-subtle);
-  background: var(--sl-bg-surface-raised, var(--sl-bg-surface));
+  background: color-mix(in srgb, var(--sl-text-primary) 2%, transparent);
 }
-.spexr-sched__head, .spexr-sched__picker, .spexr-sched__runbar { display: flex; align-items: center; gap: var(--sl-space-2); }
+.spexr-sched__head, .spexr-sched__runbar { display: flex; align-items: center; gap: var(--sl-space-2); }
 .spexr-sched__head { justify-content: space-between; }
-.spexr-sched__picker > .sl-field { flex: 1; }
+/* Buttons sit on the select's baseline row, not centred on label + select. */
+.spexr-sched__picker { --df-control-height: 2rem; display: flex; align-items: flex-end; gap: var(--sl-space-2); }
+.spexr-sched__picker > .sl-field { flex: 1; min-width: 0; }
+.spexr-sched__picker .sl-field__input { height: var(--df-control-height); padding-top: 0; padding-bottom: 0; }
 .spexr-sched__runbar { justify-content: space-between; }
 /* A programmatic focus landing spot (Abort confirmed, or the run ending while it was open) while Run is still disabled. */
 .spexr-sched__runbar:focus-visible { outline: 2px solid var(--sl-focus-ring); outline-offset: 2px; }
-.spexr-sched__confirm { display: flex; align-items: center; gap: var(--sl-space-2); font-size: var(--sl-text-sm); }
+.spexr-sched__confirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2); font-size: var(--sl-text-sm); }
+.spexr-sched__confirm-text { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
 .spexr-sched__tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sl-space-2); }
 .spexr-sched__row { display: grid; grid-template-columns: 1fr auto; gap: var(--sl-space-2); }
 /* The layered list: each depth is a band with its own label, and starts only once the bands above it have settled. */
@@ -2578,6 +2578,10 @@ code {
 .spexr-sched__handoff { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-1); }
 /* Auto-approving permission modes: flagged where the summary is collapsed, and again next to the field.
    The summary keeps its native list-item display (the disclosure triangle); the badge sits inline after the text. */
+/* The kit's .sl-field has no outer spacing; inside the disclosure nothing else
+   separates the summary and the fields from each other. */
+.spexr-sched__advanced[open] > summary { margin-bottom: var(--sl-space-3); }
+.spexr-sched__advanced > :not(summary) + :not(summary) { margin-top: var(--sl-space-3); }
 .spexr-sched__advanced-badge { display: inline-flex; margin-left: var(--sl-space-2); }
 .spexr-sched__perm-warning { display: flex; align-items: center; gap: var(--sl-space-2); padding: var(--sl-space-2) var(--sl-space-3); font-size: var(--sl-text-xs); }
 @media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } .spexr-sched__loop { animation: none; } }
@@ -2611,16 +2615,7 @@ code {
 /* Select and Browse read as one control: the button is the select's overflow,
    for a project neither the wall nor the recents know about. */
 .spexr-df-launcher__project { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
-.spexr-df-launcher__browse {
-  flex: none; width: var(--df-control-height); height: var(--df-control-height);
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--sl-bg-surface); color: var(--sl-text-muted);
-  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
-  cursor: pointer;
-}
-.spexr-df-launcher__browse:hover {
-  color: var(--sl-text-primary); border-color: var(--sl-border-strong, var(--sl-text-muted));
-}
+.spexr-df-launcher__browse { flex: none; width: var(--df-control-height); height: var(--df-control-height); }
 .spexr-df-launcher__start {
   flex: none; height: var(--df-control-height); padding: 0 var(--sl-space-4);
   display: inline-flex; align-items: center; gap: var(--sl-space-2);
@@ -2635,18 +2630,7 @@ code {
 .spexr-df-layout .sl-segmented__item { padding: 2px 10px; }
 /* Rescan, sitting after the arrangement toggle: same wall-level register, and
    the only control that answers "a session started elsewhere is missing". */
-.spexr-df-refresh {
-  flex: none; width: 1.75rem; height: 1.75rem;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--sl-border-subtle); border-radius: 999px;
-  background: var(--sl-bg-surface); color: var(--sl-text-muted);
-  cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
-}
-.spexr-df-refresh:hover:not(:disabled) {
-  color: var(--sl-text-primary); border-color: var(--sl-border-strong, var(--sl-text-muted));
-}
-.spexr-df-refresh:disabled { cursor: default; opacity: 0.7; }
+.spexr-df-refresh { flex: none; }
 .spexr-df-refresh .codicon { line-height: 1; }
 
 /*
@@ -2690,16 +2674,7 @@ code {
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--sl-text-muted);
 }
-.spexr-df-search__clear {
-  width: 100%; height: 100%; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: transparent; border: none; border-radius: var(--sl-radius-sm);
-  color: inherit; cursor: pointer;
-}
-.spexr-df-search__clear:hover {
-  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent);
-  color: var(--sl-text-primary);
-}
+.spexr-df-search__clear { width: 100%; height: 100%; border-radius: var(--sl-radius-sm); }
 .spexr-df-search__clear .codicon { line-height: 1; }
 .spexr-df-search__count,
 .spexr-df-search__progress {
@@ -2818,17 +2793,7 @@ code {
   font-size: var(--sl-text-lg); font-weight: 700; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.spexr-df-pinned__close {
-  margin-left: var(--sl-space-2); flex: none; display: inline-flex; align-items: center;
-  padding: 4px; border: none; border-radius: var(--sl-radius-sm, 6px);
-  background: transparent; color: var(--sl-text-muted); cursor: pointer;
-}
-.spexr-df-pinned__close:hover { background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary); }
-/* Same shape as close, but it takes the session off the wall — settle on danger. */
-.spexr-df-pinned__trash:hover {
-  background: color-mix(in srgb, var(--sl-status-danger, #e5484d) 14%, transparent);
-  color: var(--sl-status-danger, #e5484d);
-}
+.spexr-df-pinned__close { margin-left: var(--sl-space-2); flex: none; }
 /* A zero basis keeps the streamed transcript from sizing the card: it fills
    whatever height the card has and scrolls, instead of growing the card on its
    own with every new event up to max-height. */
@@ -2909,15 +2874,7 @@ code {
   padding: var(--sl-space-1) var(--sl-space-2);
   border-bottom: 1px solid var(--sl-border-subtle);
 }
-.spexr-df-browser__icon {
-  flex: none; display: inline-flex; align-items: center; padding: 4px;
-  border: none; border-radius: var(--sl-radius-sm, 6px);
-  background: transparent; color: var(--sl-text-muted); cursor: pointer;
-}
-.spexr-df-browser__icon:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary);
-}
-.spexr-df-browser__icon:disabled { opacity: 0.4; cursor: default; }
+.spexr-df-browser__icon { flex: none; }
 /* The address keeps priority over the link picker when the card is narrow. */
 .spexr-df-browser__address { flex: 1 1 8em; min-width: 5em; margin: 0; }
 .spexr-df-browser__input {
@@ -3000,15 +2957,7 @@ code {
   padding-bottom: var(--sl-space-2);
   border-bottom: 1px solid var(--sl-border-subtle);
 }
-.spexr-df-group__toggle {
-  display: flex; align-items: center; justify-content: center; flex: none;
-  width: 18px; height: 18px; padding: 0;
-  background: transparent; border: none; border-radius: var(--sl-radius-sm);
-  color: var(--sl-text-muted); cursor: pointer;
-}
-.spexr-df-group__toggle:hover {
-  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent); color: var(--sl-text-primary);
-}
+.spexr-df-group__toggle { flex: none; }
 .spexr-df-group__bar[data-state="working"] .spexr-df-card__led {
   background: var(--tile-accent); animation: spexr-df-pulse 1.6s ease-in-out infinite;
 }

@@ -31,7 +31,7 @@ export class SpexrScmCommitWidget extends ScmCommitWidget {
       <div className="spexr-scm-input">
         {super.renderInput(input)}
         <button
-          className="spexr-scm-input__generate"
+          className="sl-icon-btn spexr-scm-input__generate sl-fx-glass sl-fx-glass--pane sl-fx-press"
           title="Write the commit message with the local model"
           disabled={this.generating}
           onClick={() => void this.generate()}

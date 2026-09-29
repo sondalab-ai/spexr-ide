@@ -295,7 +295,7 @@ export function AgentGroupHeader(props: {
       style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${group.accentId})` }}
     >
       <button
-        className="spexr-df-group__toggle"
+        className="sl-icon-btn spexr-df-group__toggle sl-fx-glass sl-fx-glass--pane sl-fx-press"
         aria-expanded={!collapsed}
         title={collapsed ? "Expand this project" : "Collapse this project"}
         onClick={() => onToggle(group.projectPath)}
@@ -792,13 +792,13 @@ export function AgentPinnedCard(props: {
           <CacheChip tile={tile} now={now} block="card" />
           <time className="spexr-df-card__time">{relativeTime(tile.lastActivityMs, now)}</time>
           <button
-            className="spexr-df-pinned__close spexr-df-pinned__trash"
+            className="sl-icon-btn sl-icon-btn--danger spexr-df-pinned__close spexr-df-pinned__trash sl-fx-glass sl-fx-glass--pane sl-fx-press"
             title="Move to the trash — closes this card and hides the session"
             onClick={() => onTrash(tile)}
           >
             <i className="codicon codicon-trash" />
           </button>
-          <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
+          <button className="sl-icon-btn spexr-df-pinned__close sl-fx-glass sl-fx-glass--pane sl-fx-press" title="Close" onClick={onClose}>
             <i className="codicon codicon-close" />
           </button>
         </div>
@@ -998,7 +998,7 @@ export function NewSessionLauncher(props: {
         <span className="spexr-df-launcher__title">Start a new session</span>
         <WallLayoutToggle layout={layout} onChange={onLayoutChange} />
         <button
-          className="spexr-df-refresh"
+          className="sl-icon-btn spexr-df-refresh sl-fx-glass sl-fx-glass--pane sl-fx-press"
           onClick={onRefresh}
           disabled={refreshing}
           title="Rescan for agent sessions started outside SPEXR"
@@ -1035,7 +1035,7 @@ export function NewSessionLauncher(props: {
               </span>
             </span>
             <button
-              className="spexr-df-launcher__browse"
+              className="sl-icon-btn spexr-df-launcher__browse sl-fx-glass sl-fx-glass--pane sl-fx-press"
               title="Start in a folder that is not listed"
               onClick={browse}
             >
@@ -1144,7 +1144,7 @@ export function LaunchedSessionCard(props: {
           <span className="spexr-df-card__status" data-kind="working">
             new session
           </span>
-          <button className="spexr-df-pinned__close" title="Close" onClick={onClose}>
+          <button className="sl-icon-btn spexr-df-pinned__close sl-fx-glass sl-fx-glass--pane sl-fx-press" title="Close" onClick={onClose}>
             <i className="codicon codicon-close" />
           </button>
         </div>
@@ -1243,7 +1243,7 @@ export function TrashSectionHeader(props: {
   return (
     <header className="spexr-df-group__bar spexr-df-trash__bar">
       <button
-        className="spexr-df-group__toggle"
+        className="sl-icon-btn spexr-df-group__toggle sl-fx-glass sl-fx-glass--pane sl-fx-press"
         aria-expanded={!collapsed}
         title={collapsed ? "Show the trashed sessions" : "Hide the trashed sessions"}
         onClick={onToggle}

@@ -81,3 +81,4 @@
 - [x] From time to time, the pinned terminal glitches (e.g. characters overlap, or the whole output goes full black except for few characters) there is no way to restore, not even closing and reopening the card
 - [ ] Integrate MxM into SPEXR (optional)
 - [ ] Add a TODO view in SPEXR (based on a TODO.md file)
+- [ ] On "low power mode" remove game-of-life bg which is frozen, glass tooltips (e.g. in spec view) are full transparent and hard to read through

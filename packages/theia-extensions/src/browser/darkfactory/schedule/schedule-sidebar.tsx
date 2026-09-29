@@ -308,7 +308,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
       <header className="spexr-sched__head">
         <span className="sl-eyebrow">Plant schedule</span>
         <button
-          className="sl-icon-btn"
+          className="sl-icon-btn sl-fx-glass sl-fx-glass--pane sl-fx-press"
           onClick={p.onClose}
           aria-label="Close the schedule"
           title="Close"
@@ -319,7 +319,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
       {!schedule ? (
         <div className="sl-empty">
           <p>Lay out agent sessions, say which waits for which, and run them.</p>
-          <button ref={newScheduleBtnRef} className="sl-btn" onClick={addSchedule}>
+          <button ref={newScheduleBtnRef} className="sl-btn sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={addSchedule}>
             New schedule
           </button>
         </div>
@@ -353,60 +353,60 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               </span>
             </label>
             <button
-              className="sl-icon-btn"
+              className="sl-icon-btn sl-fx-glass sl-fx-glass--pane sl-fx-press"
               onClick={addSchedule}
               aria-label="New schedule"
               title="New schedule"
             >
               <i className="codicon codicon-add" />
             </button>
-            <button className="sl-icon-btn" onClick={duplicate} aria-label="Duplicate this schedule" title="Duplicate this schedule">
+            <button className="sl-icon-btn sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={duplicate} aria-label="Duplicate this schedule" title="Duplicate this schedule">
               <i className="codicon codicon-copy" />
             </button>
-            {confirmDelete && !running ? (
-              <span className="spexr-sched__confirm" role="group" aria-label="Confirm delete">
-                Delete “{schedule.name}”?
-                <button
-                  className="sl-btn sl-btn--sm"
-                  onClick={() => {
-                    const wasLast = p.snapshot.schedules.length <= 1;
-                    setConfirmDelete(false);
-                    removeSchedule(schedule.id);
-                    // The last schedule's delete takes the picker down with
-                    // it, into the empty state's "New schedule" button.
-                    if (wasLast && canRequestFocus()) setFocusTarget({ kind: "new-schedule" });
-                    else requestAnimationFrame(() => scheduleSelectRef.current?.focus());
-                  }}
-                >
-                  Delete
-                </button>
-                <button
-                  ref={deleteKeepBtnRef}
-                  className="sl-btn sl-btn--ghost sl-btn--sm"
-                  onClick={() => {
-                    setConfirmDelete(false);
-                    requestAnimationFrame(() => deleteBtnRef.current?.focus());
-                  }}
-                >
-                  Keep
-                </button>
-              </span>
-            ) : (
-              <button
-                ref={deleteBtnRef}
-                className="sl-icon-btn"
-                onClick={() => {
-                  setConfirmDelete(true);
-                  requestAnimationFrame(() => deleteKeepBtnRef.current?.focus());
-                }}
-                disabled={running}
-                aria-label="Delete this schedule"
-                title="Delete this schedule"
-              >
-                <i className="codicon codicon-trash" />
-              </button>
-            )}
+            <button
+              ref={deleteBtnRef}
+              className="sl-icon-btn sl-icon-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
+              onClick={() => {
+                setConfirmDelete(true);
+                requestAnimationFrame(() => deleteKeepBtnRef.current?.focus());
+              }}
+              disabled={running}
+              aria-expanded={confirmDelete && !running}
+              aria-label="Delete this schedule"
+              title="Delete this schedule"
+            >
+              <i className="codicon codicon-trash" />
+            </button>
           </div>
+          {confirmDelete && !running && (
+            <span className="spexr-sched__confirm" role="group" aria-label="Confirm delete">
+              <span className="spexr-sched__confirm-text">Delete “{schedule.name}”?</span>
+              <button
+                className="sl-btn sl-btn--danger sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
+                onClick={() => {
+                  const wasLast = p.snapshot.schedules.length <= 1;
+                  setConfirmDelete(false);
+                  removeSchedule(schedule.id);
+                  // The last schedule's delete takes the picker down with
+                  // it, into the empty state's "New schedule" button.
+                  if (wasLast && canRequestFocus()) setFocusTarget({ kind: "new-schedule" });
+                  else requestAnimationFrame(() => scheduleSelectRef.current?.focus());
+                }}
+              >
+                Delete
+              </button>
+              <button
+                ref={deleteKeepBtnRef}
+                className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
+                onClick={() => {
+                  setConfirmDelete(false);
+                  requestAnimationFrame(() => deleteBtnRef.current?.focus());
+                }}
+              >
+                Keep
+              </button>
+            </span>
+          )}
           <label className="sl-field" data-invalid={nameProblem ? "true" : undefined}>
             <span className="sl-field__label">Name</span>
             <span className="sl-field__control">
@@ -435,7 +435,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             <span className="sl-tag">{bar!.label}</span>
             {bar!.canPause && (
               <button
-                className="sl-btn sl-btn--sm"
+                className="sl-btn sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                 onClick={() => {
                   const scheduleId = schedule.id;
                   void p.onPause(scheduleId).then((problems) => setRunProblems({ scheduleId, problems }));
@@ -447,7 +447,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             )}
             {bar!.canResume && (
               <button
-                className="sl-btn sl-btn--sm"
+                className="sl-btn sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                 onClick={() => {
                   const scheduleId = schedule.id;
                   void p.onResume(scheduleId).then((problems) => setRunProblems({ scheduleId, problems }));
@@ -462,7 +462,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                 <span className="spexr-sched__confirm">
                   Stop starting tasks? Sessions stay open.
                   <button
-                    className="sl-btn sl-btn--sm"
+                    className="sl-btn sl-btn--danger sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                     onClick={() => {
                       p.onAbort(schedule.id);
                       setConfirmAbort(false);
@@ -475,7 +475,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                   </button>
                   <button
                     ref={abortKeepBtnRef}
-                    className="sl-btn sl-btn--ghost sl-btn--sm"
+                    className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                     onClick={() => {
                       setConfirmAbort(false);
                       requestAnimationFrame(() => abortBtnRef.current?.focus());
@@ -487,7 +487,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               ) : (
                 <button
                   ref={abortBtnRef}
-                  className="sl-btn sl-btn--sm"
+                  className="sl-btn sl-btn--danger sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                   onClick={() => {
                     setConfirmAbort(true);
                     requestAnimationFrame(() => abortKeepBtnRef.current?.focus());
@@ -499,7 +499,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             ) : (
               <button
                 ref={runBtnRef}
-                className="sl-btn sl-btn--primary sl-btn--sm"
+                className="sl-btn sl-btn--primary sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                 disabled={!bar!.canRun}
                 onClick={() => {
                   flush();
@@ -515,7 +515,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
           {schedule.tasks.length === 0 ? (
             <div className="sl-empty">
               <p>No tasks yet. A task is one agent session, with its own folder and prompt.</p>
-              <button ref={addTaskBtnRef} className="sl-btn sl-btn--sm" onClick={addTask}>
+              <button ref={addTaskBtnRef} className="sl-btn sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={addTask}>
                 <i className="codicon codicon-add" aria-hidden="true" /> Add a task
               </button>
             </div>
@@ -573,7 +573,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                           {row.canRetry && (
                             <>
                               <button
-                                className="sl-btn sl-btn--sm"
+                                className="sl-btn sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                                 onClick={() => taskAction(p.onRetry, row.id)}
                                 disabled={pendingTasks.has(pendingKey(schedule.id, row.id))}
                                 aria-label={`Retry ${row.name}`}
@@ -582,7 +582,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                                 <i className="codicon codicon-debug-restart" aria-hidden="true" /> Retry
                               </button>
                               <button
-                                className="sl-btn sl-btn--ghost sl-btn--sm"
+                                className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
                                 onClick={() => taskAction(p.onSkip, row.id)}
                                 disabled={pendingTasks.has(pendingKey(schedule.id, row.id))}
                                 aria-label={`Skip ${row.name}`}
@@ -594,7 +594,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                           )}
                           {!running && (
                             <button
-                              className="sl-icon-btn"
+                              className="sl-icon-btn sl-fx-glass sl-fx-glass--pane sl-fx-press"
                               onClick={() => setEditing(editing === row.id ? undefined : row.id)}
                               aria-label={`Edit ${row.name}`}
                               aria-expanded={editing === row.id}
@@ -623,7 +623,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
             </ol>
           )}
           {!running && schedule.tasks.length > 0 && (
-            <button ref={addTaskBtnRef} className="sl-btn sl-btn--ghost sl-btn--sm" onClick={addTask}>
+            <button ref={addTaskBtnRef} className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={addTask}>
               <i className="codicon codicon-add" aria-hidden="true" /> Add a task
             </button>
           )}
@@ -810,8 +810,8 @@ function TaskEditor(p: {
         <div className="spexr-sched__handoff" role="group" aria-label="Insert a hand-off into the prompt">
           <span className="spexr-sched__hint">Insert:</span>
           {handOffs.map((h) => (
-            <button key={h.token} type="button" className="sl-btn sl-btn--ghost sl-btn--sm" onClick={() => insertHandOff(h.token)} title={h.token}>
-              {h.label}
+            <button key={h.token} type="button" className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={() => insertHandOff(h.token)} title={h.token}>
+              <span>{h.label}</span>
             </button>
           ))}
         </div>
@@ -989,12 +989,12 @@ function TaskEditor(p: {
         {confirmRemove ? (
           <span className="spexr-sched__confirm" role="group" aria-label="Confirm remove task">
             Remove “{t.name}”?
-            <button className="sl-btn sl-btn--sm" onClick={p.onRemove}>
+            <button className="sl-btn sl-btn--danger sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={p.onRemove}>
               Remove
             </button>
             <button
               ref={removeKeepBtnRef}
-              className="sl-btn sl-btn--ghost sl-btn--sm"
+              className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
               onClick={() => {
                 setConfirmRemove(false);
                 requestAnimationFrame(() => removeBtnRef.current?.focus());
@@ -1006,7 +1006,7 @@ function TaskEditor(p: {
         ) : (
           <button
             ref={removeBtnRef}
-            className="sl-btn sl-btn--ghost sl-btn--sm"
+            className="sl-btn sl-btn--ghost sl-btn--danger sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
             onClick={() => {
               setConfirmRemove(true);
               requestAnimationFrame(() => removeKeepBtnRef.current?.focus());

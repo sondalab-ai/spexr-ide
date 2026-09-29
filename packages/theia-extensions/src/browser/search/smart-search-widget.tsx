@@ -411,7 +411,7 @@ export class SmartSearchWidget extends ReactWidget {
           <div className="spexr-smart-search__map-sub">
             <span>Summarize every file, on-device</span>
             <button
-              className="spexr-smart-search__map-regen"
+              className="sl-icon-btn spexr-smart-search__map-regen sl-fx-glass sl-fx-glass--pane sl-fx-press"
               onClick={() => void this.startMap(true)}
               title="Regenerate all descriptions"
               aria-label="Regenerate all descriptions"

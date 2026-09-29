@@ -108,7 +108,7 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
     <div className="spexr-df-browser">
       <div className="spexr-df-browser__bar">
         <button
-          className="spexr-df-browser__icon"
+          className="sl-icon-btn spexr-df-browser__icon sl-fx-glass sl-fx-glass--pane sl-fx-press"
           title="Back"
           disabled={!nav.back}
           onClick={() => view.current?.goBack()}
@@ -116,7 +116,7 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
           <i className="codicon codicon-arrow-left" />
         </button>
         <button
-          className="spexr-df-browser__icon"
+          className="sl-icon-btn spexr-df-browser__icon sl-fx-glass sl-fx-glass--pane sl-fx-press"
           title="Forward"
           disabled={!nav.forward}
           onClick={() => view.current?.goForward()}
@@ -124,7 +124,7 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
           <i className="codicon codicon-arrow-right" />
         </button>
         <button
-          className="spexr-df-browser__icon"
+          className="sl-icon-btn spexr-df-browser__icon sl-fx-glass sl-fx-glass--pane sl-fx-press"
           title="Reload"
           disabled={!state.request}
           onClick={() => view.current?.reload()}
@@ -171,7 +171,7 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
           </span>
         )}
         <button
-          className="spexr-df-browser__icon"
+          className="sl-icon-btn spexr-df-browser__icon sl-fx-glass sl-fx-glass--pane sl-fx-press"
           title="Open in the system browser"
           disabled={!current}
           onClick={() => current && onOpenExternal(current)}

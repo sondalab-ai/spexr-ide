@@ -267,6 +267,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * scrollbar takes a few more pixels.
    */
   private activeHost: HTMLDivElement | null = null;
+  /** The wall column: it scrolls on its own so the plant schedule beside it stays put. */
+  private wallScroller: HTMLDivElement | null = null;
   /** Watches {@link activeHost}; created on first attach, moved with the element. */
   private activeObserver?: ResizeObserver;
   /** Last measured width of {@link activeHost}; 0 until the wall is laid out. */
@@ -411,7 +413,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   /**
    * Keep a wheel gesture on the wall once it has started there, even after a
-   * terminal has slid under the pointer. The wall's own node is the scroller, so
+   * terminal has slid under the pointer. The wall column is the scroller, so
    * taking the event over means scrolling it by hand — the browser would
    * otherwise scroll the terminal's viewport, the nearest scrollable ancestor of
    * the event's target.
@@ -425,7 +427,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     if (!overTerminal) return; // the browser already scrolls the wall itself
     event.preventDefault();
     event.stopPropagation();
-    this.node.scrollTop += wheelDeltaPx(event.deltaY, event.deltaMode, this.node.clientHeight);
+    const scroller = this.wallScroller;
+    if (scroller) scroller.scrollTop += wheelDeltaPx(event.deltaY, event.deltaMode, scroller.clientHeight);
   };
 
   /** Cards that own a terminal — the ones the mosaic has to fit side by side. */
@@ -1326,7 +1329,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       <>
         <Backdrop preferences={this.preferences} />
         <div className="spexr-df-shell">
-          <div className="spexr-df-root">
+          <div className="spexr-df-root" ref={(el) => { this.wallScroller = el; }}>
             <NewSessionLauncher
               targets={launchTargets(this.tiles, currentProject, this.recentProjects)}
               defaultPath={currentProject ?? ""}
@@ -1388,7 +1391,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
                       <i className="codicon codicon-loading codicon-modifier-spin" />
                     ) : (
                       <button
-                        className="spexr-df-search__clear"
+                        className="sl-icon-btn spexr-df-search__clear sl-fx-glass sl-fx-glass--pane sl-fx-press"
                         title="Clear search"
                         aria-label="Clear search"
                         onClick={() => {
@@ -1540,7 +1543,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
               onClose={() => this.setSidebarOpen(false)}
             />
           ) : (
-            <button className="sl-icon-btn spexr-df-shell__open" onClick={() => this.setSidebarOpen(true)} aria-label="Open the plant schedule" title="Plant schedule">
+            <button className="sl-icon-btn spexr-df-shell__open sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={() => this.setSidebarOpen(true)} aria-label="Open the plant schedule" title="Plant schedule">
               <i className="codicon codicon-layout-sidebar-right" />
             </button>
           )}
