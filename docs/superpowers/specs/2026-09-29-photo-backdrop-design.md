@@ -54,9 +54,13 @@ A change applies live, without reopening a panel.
   12 it serves; 30 from Unsplash's random endpoint) for a random query, serves it shuffled, never a
   photo already served this session while new ones exist. A failed or empty fetch serves a curated
   photo, and the next call tries the network again.
-- `backdrop/photo-background.tsx` — `<PhotoBackground source intervalMs>`: the halftone canvas and
-  the credit line. It shows a photo, then fetches and decodes the next one, so each rotation is
-  instant; a picture that takes over 15 s is skipped.
+- `backdrop/photo-scene.ts` — `PhotoScene`: the clock (gather, tick, pause and resume, reduced
+  motion, high contrast), with the page's clock, scheduler and canvas passed in.
+- `backdrop/photo-rotation.ts` — `PhotoRotation`: shows the photo decoded ahead, then decodes the
+  next one, so each rotation is instant; skips up to 5 photos that fail in a row.
+- `backdrop/photo-background.tsx` — `<PhotoBackground source intervalMs>`: wires the scene, the
+  rotation and the feed to the page (canvas, observers, the interval) and renders the credit line; a
+  picture that takes over 15 s to load is skipped.
 - `backdrop/photo-set.ts` — the curated set: 18 NASA images under `backdrop/photos/`, credited in
   `backdrop/photos/CREDITS.md`.
 
@@ -132,6 +136,14 @@ matches what the Life backdrop does while saving and costs nothing, since no tim
 - `photo-feed.test.ts`: request URLs, licence labels, parsing of both services (including error
   bodies), batching without repeats, the curated fallback, the Unsplash key header and download
   report, a fixed list without network.
+- `photo-scene.test.ts`: every frame while gathering, then every 120 ms; the frame held while
+  paused and resumed from it; a photo shown while paused held gathered; the settled picture once
+  under reduced motion; a cleared square when nothing may be drawn; dispose stops everything.
+- `photo-rotation.test.ts`: the next photo decoded ahead; failures skipped up to the limit; an
+  empty feed; an advance while loading dropped; nothing shown after dispose.
+- `backdrop-style.test.ts` (CSS, in the style of `power-save-style.test.ts`): the shared sticky
+  strip takes no clicks; the backdrop under the content and the credit above it; only the credit's
+  links take clicks; both hidden in high contrast; the photo faint, in the accent, in both themes.
 - `photo-set.test.ts`: the curated set has 18 credited entries.
 - `photo-geometry.test.ts`: the square's side and offset for wide, tall, square and empty hosts.
 - `backdrop.test.ts`: the Game of Life by default; Openverse with the default queries and 60 s;

@@ -1,8 +1,10 @@
 import * as React from "@theia/core/shared/react";
-import { cover, dotFrame, sampleDots, settledFrame, type Dot } from "@spexr/ui-kit/halftone";
+import { cover, sampleDots, type DotFrame } from "@spexr/ui-kit/halftone";
 import { CURATED } from "./photo-set.js";
-import { PhotoFeed, type Photo, type PhotoCredit, type PhotoSource } from "./photo-feed.js";
+import { PhotoFeed, type PhotoCredit, type PhotoSource } from "./photo-feed.js";
 import { squareFor } from "./photo-geometry.js";
+import { GRID, PhotoScene } from "./photo-scene.js";
+import { PhotoRotation } from "./photo-rotation.js";
 import {
   MOTION_ATTRIBUTE,
   POWER_SAVE_ATTRIBUTE,
@@ -10,12 +12,7 @@ import {
   isPowerSaving,
 } from "../power/power-save-dom.js";
 
-/** Cells per side, the gather's length, and the tick after it. */
-const GRID = 128;
-const GATHER_MS = 1900;
-const TICK_MS = 120;
-/** Photos tried in a row before a rotation gives up until the next one, and how long one may take. */
-const TRIES = 5;
+/** How long one picture may take to download and decode before it is skipped. */
 const LOAD_TIMEOUT_MS = 15_000;
 
 /** Decode a picture, crop its centred square, and return its bytes at twice the grid. */
@@ -48,17 +45,14 @@ async function loadPixels(url: string): Promise<Uint8ClampedArray> {
   return g.getImageData(0, 0, size, size).data;
 }
 
-interface Ready {
-  readonly photo: Photo;
-  readonly pixels: Uint8ClampedArray;
-}
-
 /**
  * A photo printed as halftone dots in the panel's bottom-right corner, behind
  * its content. The alternative to the Game of Life (backdrop.tsx), mounted
  * the same way: first child of the widget's scrolling node.
  *
- * The dots come from the Sondalab kit's halftone core; the clock is SPEXR's.
+ * The dots come from the Sondalab kit's halftone core; the clock is SPEXR's
+ * (photo-scene.ts), and so is the choice of the next photo (photo-rotation.ts):
+ * this component only wires them to the page.
  * The kit's own live halftone repaints every frame while in view, and behind
  * SPEXR's glass each frame re-composites the window, so here the dots gather
  * at the display rate once per photo, then drift at the Life backdrop's tick.
@@ -96,144 +90,73 @@ export const PhotoBackground = React.memo(function PhotoBackground({
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const root = document.documentElement;
-    let disposed = false;
-    let loading = false;
-    let upcoming: Promise<Ready | undefined> | undefined;
-    let dots: Dot[] = [];
     let ink = "";
-    let side = 0;
-    let t0: number | null = null;
-    let pausedAt: number | null = null;
-    let frame = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
     let onScreen = true;
 
     const highContrast = (): boolean => root.getAttribute("data-sl-theme") === "high-contrast";
-    const moving = (): boolean => !reduced.matches;
     const running = (): boolean =>
       onScreen && !document.hidden && !highContrast() && !isPowerSaving() && !isMotionPaused();
 
-    /** Re-read the ink, which the theme sets through CSS. */
-    const retint = (): void => {
-      ink = getComputedStyle(canvas).color;
-    };
-
-    const draw = (now: number): void => {
+    const paint = (frames: readonly DotFrame[] | null, side: number): void => {
       const dpr = window.devicePixelRatio || 1;
       const px = Math.max(1, Math.round(side * dpr));
       if (canvas.width !== px) canvas.width = canvas.height = px;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, side, side);
-      if (!side || t0 === null || highContrast()) return;
-      const t = (now - t0) / 1000;
+      if (!frames) return;
       ctx.fillStyle = ink;
       ctx.beginPath();
-      for (const d of dots) {
-        const f = moving() ? dotFrame(d, t, side, GRID) : settledFrame(d, side, GRID);
-        if (f.r <= 0) continue;
+      for (const f of frames) {
         ctx.moveTo(f.x + f.r, f.y);
         ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
       }
       ctx.fill();
     };
 
-    const halt = (): void => {
-      if (frame) cancelAnimationFrame(frame);
-      if (timer !== undefined) clearTimeout(timer);
-      frame = 0;
-      timer = undefined;
-    };
+    const scene = new PhotoScene({
+      now: () => performance.now(),
+      requestFrame: (run) => requestAnimationFrame(run),
+      cancelFrame: (id) => cancelAnimationFrame(id),
+      setTimer: (run, ms) => setTimeout(run, ms),
+      clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+      running,
+      moving: () => !reduced.matches,
+      visible: () => !highContrast(),
+      paint,
+    });
 
-    /** Draw now, then schedule the next frame: every frame while gathering, then every tick. */
-    const tick = (): void => {
-      frame = 0;
-      timer = undefined;
-      const now = performance.now();
-      draw(now);
-      if (!moving() || !running() || t0 === null) return;
-      if (now - t0 < GATHER_MS) frame = requestAnimationFrame(tick);
-      else timer = setTimeout(tick, TICK_MS);
-    };
+    const rotation = new PhotoRotation({
+      next: () => feed.next(),
+      load: loadPixels,
+      show: ({ photo, pixels }) => {
+        // Always the picture's light, in any ink: sci-fi photos are mostly light
+        // subjects on dark fields, and inverted, their sky prints as a solid blot.
+        scene.show(sampleDots(pixels, GRID * 2, { grid: GRID }));
+        setCredit(photo.credit);
+        feed.shown(photo);
+      },
+    });
 
-    /** Start, stop or redraw after anything that changes whether the clock runs. */
-    const sync = (): void => {
-      const now = performance.now();
-      if (running()) {
-        if (pausedAt !== null && t0 !== null) t0 += now - pausedAt;
-        pausedAt = null;
-        if (!frame && timer === undefined) tick();
-      } else {
-        if (pausedAt === null) pausedAt = now;
-        halt();
-        draw(pausedAt);
-      }
+    /** Re-read the ink, which the theme sets through CSS. */
+    const retint = (): void => {
+      ink = getComputedStyle(canvas).color;
     };
-
-    /** The next photo that loads, with its pixels; skips up to TRIES that fail. */
-    const fetchNext = async (): Promise<Ready | undefined> => {
-      for (let tries = 0; tries < TRIES && !disposed; tries++) {
-        const photo = await feed.next();
-        if (!photo.url) return undefined;
-        try {
-          return { photo, pixels: await loadPixels(photo.url) };
-        } catch {
-          // Unreadable or too slow: the next one.
-        }
-      }
-      return undefined;
-    };
-
-    /**
-     * Show the photo fetched ahead (or fetch one now), then fetch the one
-     * after it, so the next rotation is instant.
-     */
-    const advance = async (): Promise<void> => {
-      if (loading) return;
-      loading = true;
-      try {
-        const ready = await (upcoming ?? fetchNext());
-        upcoming = undefined;
-        if (disposed) return;
-        if (ready) {
-          show(ready.pixels);
-          setCredit(ready.photo.credit);
-          feed.shown(ready.photo);
-        }
-        upcoming = fetchNext();
-      } finally {
-        loading = false;
-      }
-    };
-
-    /** Sample a picture's pixels and start its gather. */
-    const show = (pixels: Uint8ClampedArray): void => {
-      // Always the picture's light, in any ink: sci-fi photos are mostly light
-      // subjects on dark fields, and inverted, their sky prints as a solid blot.
-      dots = sampleDots(pixels, GRID * 2, { grid: GRID });
-      retint();
-      halt();
-      const now = performance.now();
-      // Loaded while paused: hold it gathered rather than as scattered dust.
-      t0 = running() ? now : now - GATHER_MS;
-      pausedAt = running() ? null : now;
-      sync();
-    };
+    const sync = (): void => scene.sync();
 
     const resize = (): void => {
-      const { side: s, left, top } = squareFor(host.clientWidth, host.clientHeight);
-      side = s;
-      canvas.style.width = canvas.style.height = `${s}px`;
+      const { side, left, top } = squareFor(host.clientWidth, host.clientHeight);
+      canvas.style.width = canvas.style.height = `${side}px`;
       canvas.style.left = `${left}px`;
       canvas.style.top = `${top}px`;
       creditBox.style.width = `${host.clientWidth}px`;
       creditBox.style.top = `${host.clientHeight}px`;
-      draw(pausedAt ?? performance.now());
+      scene.resize(side);
     };
 
     const restyle = (): void => {
       retint();
       resize();
-      sync();
+      scene.sync();
     };
 
     const sizeObserver = new ResizeObserver(resize);
@@ -251,16 +174,17 @@ export const PhotoBackground = React.memo(function PhotoBackground({
     document.addEventListener("visibilitychange", sync);
     reduced.addEventListener("change", restyle);
     // A new photo only while someone is looking, so a paused window does not gather unseen.
-    const rotation = setInterval(() => {
-      if (running()) void advance();
+    const every = setInterval(() => {
+      if (running()) void rotation.advance();
     }, intervalMs);
 
+    retint();
     resize();
-    void advance();
+    void rotation.advance();
     return () => {
-      disposed = true;
-      halt();
-      clearInterval(rotation);
+      rotation.dispose();
+      scene.dispose();
+      clearInterval(every);
       sizeObserver.disconnect();
       visibility.disconnect();
       theme.disconnect();
