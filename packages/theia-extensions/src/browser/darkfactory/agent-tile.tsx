@@ -16,6 +16,7 @@ import {
   matchShares,
   statusOf,
   liveOf,
+  placeInGroup,
 } from "./darkfactory-format.js";
 import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
 import { cacheFreshness, expiryLabel, formatTokens } from "./cache-freshness.js";
@@ -444,6 +445,8 @@ export function AgentTileCard(props: {
   // Inside a project group the header already names the project, so an unnamed
   // card there has no heading of its own.
   const heading = tile.customName || (showProject ? projectLabel(tile) : "");
+  // A worktree or subfolder of the project the group is named after.
+  const place = placeInGroup(tile);
   const primary = capitalize(tile.goal || tile.actionLine);
   const expandable = primary.length > 90;
   const ai = summary && !summary.loading ? summaryLines(summary.summary) : undefined;
@@ -527,6 +530,12 @@ export function AgentTileCard(props: {
         </span>
       )}
 
+      {place && (
+        <span className="spexr-df-card__branch" title={tile.projectPath}>
+          <i className="codicon codicon-folder" />
+          <span className="spexr-df-card__branch-name">{place}</span>
+        </span>
+      )}
       {tile.gitBranch && (
         <span className="spexr-df-card__branch" title={tile.gitBranch}>
           <i className="codicon codicon-git-branch" />

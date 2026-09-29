@@ -24,6 +24,10 @@ export interface TileInput {
   customName?: string;
   /** The name the user gave this session's project, if any. */
   projectCustomName?: string;
+  /** Older copies of this conversation that this session's transcript took over. */
+  supersedes?: string[];
+  /** The project this session is grouped under (see {@link AgentTile.groupPath}). */
+  group?: { path: string; scratch?: true };
 }
 
 /**
@@ -48,7 +52,8 @@ export function buildTile(input: TileInput): AgentTile {
     recentActions: recentActions(entries, 4),
     lastActivityMs: input.mtimeMs,
     turnCount: p.userTurns,
-    accentId: input.hashToIndex(input.projectPath, PALETTE_SIZE),
+    // Keyed on the group, so every worktree of a repository shares its colour.
+    accentId: input.hashToIndex(input.group?.path ?? input.projectPath, PALETTE_SIZE),
     ...(action.tool !== undefined ? { tool: action.tool } : {}),
     ...(action.target !== undefined ? { target: action.target } : {}),
     ...(p.gitBranch !== undefined ? { gitBranch: p.gitBranch } : {}),
@@ -56,6 +61,9 @@ export function buildTile(input: TileInput): AgentTile {
     ...(p.permissionMode !== undefined ? { permissionMode: p.permissionMode } : {}),
     ...(input.customName ? { customName: input.customName } : {}),
     ...(input.projectCustomName ? { projectCustomName: input.projectCustomName } : {}),
+    ...(input.supersedes?.length ? { supersedes: input.supersedes } : {}),
+    ...(input.group ? { groupPath: input.group.path } : {}),
+    ...(input.group?.scratch ? { scratch: true as const } : {}),
     ...(p.cache
       ? {
           contextTokens: p.cache.contextTokens,

@@ -36,6 +36,16 @@ describe("rankSessions", () => {
     expect(ranked.map((r) => r.sessionId)).toContain("effects");
   });
 
+  it("gives a conversation one slot, under its newest copy, whichever copy scored best", () => {
+    const index = new SessionIndex();
+    index.upsert(record("old-copy", [1, 0], "adding new effects to the spexr design system"));
+    index.upsert(record("new-copy", [0.9, 0.1], "adding new effects to the design system"));
+    const newest = (id: string) => (id === "old-copy" ? "new-copy" : id);
+    const ranked = rankSessions(index, Float32Array.from([1, 0]), "effects design system", newest);
+    expect(ranked.map((r) => r.sessionId)).toEqual(["new-copy"]);
+    expect(ranked[0]!.score).toBe(rankSessions(index, Float32Array.from([1, 0]), "effects design system")[0]!.score);
+  });
+
   it("drops everything below the minimum score", () => {
     const index = new SessionIndex();
     index.upsert(record("unrelated", [0, 1], "unrelated words entirely"));

@@ -46,8 +46,8 @@ export interface ParsedTranscript {
   lastTool?: string;
   /**
    * True for interactive TUI sessions. Claude uses this to filter SDK / one-shot
-   * subagent sessions out of the wall; opencode reports all its TUI sessions as
-   * interactive (it has no headless flood today).
+   * subagent sessions out of the wall; opencode reports every session it lists
+   * as interactive, having left its subagent sessions out of the list.
    */
   interactive: boolean;
   /**

@@ -222,6 +222,13 @@ describe("opencodeHarness.listSessions (mocked opencode db)", () => {
     ]);
   });
 
+  it("leaves out subagent sessions, which have a parent session", async () => {
+    const child = { ...rows[1], id: "ses_child", parent_id: "ses_a" };
+    mockCli(() => ({ stdout: JSON.stringify([rows[0], child, rows[1]]) }));
+    const refs = await opencodeHarness.listSessions();
+    expect(refs.map((r) => r.sessionId)).toEqual(["ses_a", "ses_b"]);
+  });
+
   it("memoizes loadEntries — one `opencode export` spawn per ref per scan", async () => {
     let exportCalls = 0;
     mockCli((args) => {

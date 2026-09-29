@@ -36,11 +36,14 @@ export interface RankedSession {
  * Blend the dense and lexical passes into one ranking. The dense pass finds
  * paraphrase, the lexical pass finds the literal terms — file names, project
  * names, and the non-English words the English-only encoder cannot place.
+ * `conversationOf` names the session a hit stands for — a resume copy stands
+ * for the newest copy — so one conversation takes one slot, at its best score.
  */
 export function rankSessions(
   index: SessionIndex,
   queryVector: Float32Array,
   expandedQuery: string,
+  conversationOf: (sessionId: string) => string = (id) => id,
 ): RankedSession[] {
   const dense = index.searchDense(queryVector, TOP_K * 3, DENSE_CANDIDATE_THRESHOLD);
   const denseScores = new Map(dense.map((h) => [h.sessionId, h.score]));
@@ -70,5 +73,13 @@ export function rankSessions(
     });
   }
   ranked.sort((a, b) => b.score - a.score);
-  return ranked.slice(0, TOP_K);
+  const seen = new Set<string>();
+  const distinct: RankedSession[] = [];
+  for (const r of ranked) {
+    const sessionId = conversationOf(r.sessionId);
+    if (seen.has(sessionId)) continue;
+    seen.add(sessionId);
+    distinct.push({ ...r, sessionId });
+  }
+  return distinct.slice(0, TOP_K);
 }

@@ -33,3 +33,39 @@ export function resolveForks(
   }
   return { adopted, pending };
 }
+
+/**
+ * Cards open on a session a newer resume copy has taken over, and the session
+ * each moves to. The copy is where the conversation continues — whether it was
+ * resumed from this card or from a terminal elsewhere — and the scan no longer
+ * returns the old one. A card already open on the copy leaves the old card be.
+ */
+export function resolveSuccessors(
+  pinned: readonly string[],
+  tiles: readonly { sessionId: string; supersedes?: readonly string[] }[],
+): { fromId: string; toId: string }[] {
+  const moves: { fromId: string; toId: string }[] = [];
+  for (const tile of tiles) {
+    if (!tile.supersedes || pinned.includes(tile.sessionId)) continue;
+    const fromId = tile.supersedes.find((id) => pinned.includes(id));
+    if (fromId) moves.push({ fromId, toId: tile.sessionId });
+  }
+  return moves;
+}
+
+/**
+ * Pins stored before a window reload, pointed at the sessions their cards just
+ * moved to, so the restore re-attaches each terminal under the card's new id
+ * instead of skipping a pin whose id is no longer open.
+ */
+export function retargetPins<P extends { tile: { sessionId: string } }>(
+  stored: readonly P[],
+  moves: readonly { fromId: string; toId: string }[],
+  tiles: readonly P["tile"][],
+): P[] {
+  return stored.map((pin) => {
+    const move = moves.find((m) => m.fromId === pin.tile.sessionId);
+    const tile = move && tiles.find((t) => t.sessionId === move.toId);
+    return tile ? { ...pin, tile } : pin;
+  });
+}

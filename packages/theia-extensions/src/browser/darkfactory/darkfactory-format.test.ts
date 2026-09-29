@@ -6,6 +6,7 @@ import {
   permissionLabel,
   modeLabel,
   groupTiles,
+  placeInGroup,
   summaryTargets,
   launchTargets,
   projectDisplayName,
@@ -87,6 +88,42 @@ describe("darkfactory-format", () => {
     expect(out.map((g) => g.projectPath)).toEqual(["/x", "/y"]);
     expect(out[0]!.tiles.map((t) => t.sessionId)).toEqual(["c", "a"]);
     expect(out[1]!.tiles.map((t) => t.sessionId)).toEqual(["b"]);
+  });
+
+  test("groupTiles puts every worktree and subfolder of a repository in the repository's group", () => {
+    const hub = "/src/hub";
+    const out = groupTiles(
+      [
+        tile("a", "idle", false, 10, { projectPath: "/src/hub/.claude/worktrees/ds-729", projectName: "ds-729", groupPath: hub }),
+        tile("b", "idle", false, 20, { projectPath: "/src/hub/e2e", projectName: "e2e", groupPath: hub }),
+        tile("c", "idle", false, 30, { projectPath: "/src/other", projectName: "other" }),
+      ],
+      "/src/hub/.claude/worktrees/ds-729",
+    );
+    expect(out.map((g) => [g.projectPath, g.label, g.tiles.length, g.isCurrent])).toEqual([
+      [hub, "hub", 2, true],
+      ["/src/other", "other", 1, false],
+    ]);
+  });
+
+  test("groupTiles names temp-directory sessions Scratch and sorts them last", () => {
+    const out = groupTiles([
+      tile("probe", "working", true, 99, { projectPath: "/tmp/spexr-probe-x", projectName: "spexr-probe-x", groupPath: "/tmp", scratch: true }),
+      tile("real", "done", false, 1, { projectPath: "/src/app", projectName: "app" }),
+    ]);
+    expect(out.map((g) => [g.label, !!g.scratch])).toEqual([
+      ["app", false],
+      ["Scratch", true],
+    ]);
+  });
+
+  test("placeInGroup names a worktree, a subfolder or a sibling checkout, and nothing at the root", () => {
+    const at = (projectPath: string) => placeInGroup(tile("t", "idle", false, 0, { projectPath, groupPath: "/src/hub" }));
+    expect(at("/src/hub")).toBe("");
+    expect(at("/src/hub/.claude/worktrees/ds-729/e2e")).toBe("ds-729");
+    expect(at("/src/hub/packages/ui")).toBe("packages/ui");
+    expect(at("/src/hub-wt-perf")).toBe("hub-wt-perf");
+    expect(placeInGroup(tile("old", "idle"))).toBe("");
   });
 
   test("groupTiles orders groups by their best attention rank", () => {

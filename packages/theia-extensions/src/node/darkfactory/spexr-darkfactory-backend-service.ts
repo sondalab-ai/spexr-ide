@@ -42,6 +42,8 @@ import { expandQuery } from "../search/query-expander.js";
 import type { SessionIndex } from "./session-index.js";
 import { forEachConcurrent } from "./concurrency.js";
 import { memoizeFor } from "./ttl-memo.js";
+import { lineageNode, SessionLineage, type LineageNode } from "./session-lineage.js";
+import { ProjectGroups } from "./project-group.js";
 
 export { forEachConcurrent };
 import { nowActionLine } from "./action-distiller.js";
@@ -98,6 +100,13 @@ const MIN_SUMMARY_CHARS = 60;
  * work anyway, so cap the parse to this many newest sessions.
  */
 const RECENT_LIMIT = 60;
+
+/**
+ * How many of the newest transcripts one scan may read to fill those
+ * {@link RECENT_LIMIT} cards. SDK runs and superseded resume copies take no
+ * card, so the scan reads past them — but not through the whole history.
+ */
+const SCAN_REACH = RECENT_LIMIT * 4;
 
 /** Enumeration freshness floor for the search path, mirroring LIVE_DIRS_TTL_MS. */
 const ENUM_TTL_MS = 15_000;
@@ -202,6 +211,10 @@ export interface DarkfactoryDeps {
   projectNamesPath?: string;
   /** Directory-existence seam used by the name sweep (default: a `stat` that must say "directory"). */
   dirExists?: (path: string) => Promise<boolean>;
+  /** Resume-chain tracker; tests inject one with in-memory file seams. */
+  lineage?: SessionLineage;
+  /** Working directory → project group resolver; tests inject one with a fake home. */
+  projectGroups?: ProjectGroups;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -240,6 +253,8 @@ function nameOf(names: Map<string, string>, sessionId: string): { customName?: s
  * The stored project name as a spreadable fragment, the project-level twin of
  * {@link nameOf}. Keyed through {@link projectNameKey} because a transcript's
  * `cwd` and the path the header sends back need not agree on a trailing slash.
+ * The first path with a name wins: the group's, then a name the folder itself
+ * was given back when the wall grouped by folder.
  */
 /**
  * Production directory check for the name sweep. A path that is not a directory
@@ -256,10 +271,52 @@ async function defaultDirExists(path: string): Promise<boolean> {
 
 function projectNameOf(
   names: Map<string, string>,
-  projectPath: string,
+  ...paths: string[]
 ): { projectCustomName?: string } {
-  const name = names.get(projectNameKey(projectPath));
-  return name ? { projectCustomName: name } : {};
+  for (const path of paths) {
+    const name = names.get(projectNameKey(path));
+    if (name) return { projectCustomName: name };
+  }
+  return {};
+}
+
+/** Lineage facts for the scanned Claude transcripts; other harnesses write no copies. */
+function lineageNodes(
+  parsed: Map<string, { u: UnifiedRef; entries: TurnEntry[] }>,
+): LineageNode[] {
+  const nodes: LineageNode[] = [];
+  for (const [sessionId, { u, entries }] of parsed) {
+    if (u.claude) nodes.push(lineageNode(sessionId, u.claude.transcriptPath, u.ref.mtimeMs, entries));
+  }
+  return nodes;
+}
+
+/**
+ * Successor → the sessions it took over, newest first, so a name given to an
+ * older copy is found before one given to an even older one.
+ */
+function ancestorsBySuccessor(supersededBy: Map<string, string>, refs: UnifiedRef[]): Map<string, string[]> {
+  const mtime = new Map(refs.map((u) => [u.ref.sessionId, u.ref.mtimeMs]));
+  const out = new Map<string, string[]>();
+  for (const [from, to] of supersededBy) out.set(to, [...(out.get(to) ?? []), from]);
+  for (const list of out.values()) list.sort((a, b) => (mtime.get(b) ?? 0) - (mtime.get(a) ?? 0));
+  return out;
+}
+
+/**
+ * {@link nameOf}, falling back to the name of a session this one took over: a
+ * resume writes a new transcript, and the user's name belongs to the conversation.
+ */
+function inheritedNameOf(
+  names: Map<string, string>,
+  sessionId: string,
+  ancestors: string[] | undefined,
+): { customName?: string } {
+  for (const id of [sessionId, ...(ancestors ?? [])]) {
+    const name = names.get(id);
+    if (name) return { customName: name };
+  }
+  return {};
 }
 
 @injectable()
@@ -312,6 +369,20 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * as-is rather than re-parsed and re-classified with different inputs.
    */
   private readonly lastTiles = new Map<string, AgentTile>();
+  /** Finds the transcripts a resume copied into a newer one (see {@link SessionLineage}). */
+  private readonly lineage: SessionLineage;
+  /** Groups sessions by project rather than by folder (see {@link ProjectGroups}). */
+  private readonly projectGroups: ProjectGroups;
+  /** Superseded session → the session that took it over, as of the last scan. */
+  private supersededBy = new Map<string, string>();
+  /**
+   * sessionId → transcript mtime of a session the wall never shows (an SDK run,
+   * no working directory). A finished SDK run never changes again, so later
+   * scans skip its read instead of parsing it every time.
+   */
+  private readonly unshown = new Map<string, number>();
+  /** Transcript path → its first genuine prompt, once found: it never changes. */
+  private readonly firstPrompts = new Map<string, string>();
   /**
    * Enumeration is a full transcript scan plus an `opencode db` spawn; a query
    * must not pay for it on every debounce.
@@ -388,6 +459,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.sessionNamesPath = d.sessionNamesPath;
     this.projectNamesPath = d.projectNamesPath;
     this.dirExists = d.dirExists ?? defaultDirExists;
+    this.lineage = d.lineage ?? new SessionLineage();
+    this.projectGroups = d.projectGroups ?? new ProjectGroups(this.now);
     if (this.embed) {
       setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
     }
@@ -531,27 +604,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       this.loadProjectNames(),
     ]);
     const now = this.now();
-    // Only read the newest sessions — history is huge and reading it all stalls
-    // the event loop; the wall only shows recent work.
-    const refs = [...allRefs].sort((a, b) => b.ref.mtimeMs - a.ref.mtimeMs).slice(0, RECENT_LIMIT);
-    // Parse each transcript once; track the newest transcript mtime per project
-    // so "working" is attributed to a single session per project. Parses run
-    // concurrently (bounded) — sequential parsing serialized ~60 harness calls,
-    // which for opencode is one CLI spawn per session (~30s total).
-    const parsed = new Map<
-      string,
-      { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }
-    >();
+    const { refs, parsed } = await this.scanWindow(allRefs);
+    // Track the newest transcript mtime per project so "working" is attributed
+    // to a single session per project.
     const newestByProject = new Map<string, number>();
-    await forEachConcurrent(refs, PARSE_CONCURRENCY, async (u) => {
-      const p = await u.harness.parseTranscript(u.ref);
-      if (!p.cwd) return; // no real project path → skip
-      if (!p.interactive) return; // SDK / one-shot subagent session → not followable
-      const entries = (await u.ref.loadEntries()) as TurnEntry[];
-      parsed.set(u.ref.sessionId, { u, entries, parsed: p });
-      const prev = newestByProject.get(p.cwd);
-      if (prev === undefined || u.ref.mtimeMs > prev) newestByProject.set(p.cwd, u.ref.mtimeMs);
-    });
+    for (const u of refs) {
+      const cwd = parsed.get(u.ref.sessionId)!.parsed.cwd!;
+      const prev = newestByProject.get(cwd);
+      if (prev === undefined || u.ref.mtimeMs > prev) newestByProject.set(cwd, u.ref.mtimeMs);
+    }
+    const ancestors = ancestorsBySuccessor(this.supersededBy, allRefs);
 
     this.index.clear();
     this.lastTiles.clear();
@@ -582,11 +644,13 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         harnessId: u.harness.id,
         loadEntries: ref.loadEntries,
       });
+      const group = await this.projectGroups.resolve(cwd);
       const tile = buildTile({
         sessionId: ref.sessionId,
         harness: u.harness.id,
         transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
+        group,
         mtimeMs: ref.mtimeMs,
         entries,
         parsed: p,
@@ -594,8 +658,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYou,
         needsYouCertain,
         hashToIndex,
-        ...nameOf(names, ref.sessionId),
-        ...projectNameOf(projectNames, cwd),
+        ...inheritedNameOf(names, ref.sessionId, ancestors.get(ref.sessionId)),
+        ...projectNameOf(projectNames, group.path, cwd),
+        ...(ancestors.has(ref.sessionId) ? { supersedes: ancestors.get(ref.sessionId)! } : {}),
       });
       this.lastTiles.set(ref.sessionId, tile);
       tiles.push(tile);
@@ -610,6 +675,66 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     await this.pruneNames(allRefs).catch(() => {});
     this.scanned.fire(tiles);
     return tiles;
+  }
+
+  /**
+   * The sessions the wall shows, newest first, at most {@link RECENT_LIMIT}.
+   * Reads the newest transcripts a batch at a time — reading all of history
+   * stalled the event loop — skipping SDK runs and sessions a newer resume
+   * copy took over, so neither pushes real work off the wall.
+   */
+  private async scanWindow(allRefs: UnifiedRef[]): Promise<{
+    refs: UnifiedRef[];
+    parsed: Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>;
+  }> {
+    const sorted = [...allRefs].sort((a, b) => b.ref.mtimeMs - a.ref.mtimeMs).slice(0, SCAN_REACH);
+    const parsed = new Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>();
+    let superseded = new Map<string, string>();
+    for (let at = 0; at < sorted.length; at += RECENT_LIMIT) {
+      // Parses run concurrently (bounded) — sequential parsing serialized ~60
+      // harness calls, which for opencode is one CLI spawn per session (~30s total).
+      await forEachConcurrent(sorted.slice(at, at + RECENT_LIMIT), PARSE_CONCURRENCY, async (u) => {
+        const { sessionId, mtimeMs } = u.ref;
+        if (this.unshown.get(sessionId) === mtimeMs) return;
+        const p = await u.harness.parseTranscript(u.ref);
+        // No real project path, or an SDK / one-shot subagent session → not followable.
+        if (!p.cwd || !p.interactive) {
+          this.unshown.set(sessionId, mtimeMs);
+          return;
+        }
+        this.unshown.delete(sessionId);
+        const entries = (await u.ref.loadEntries()) as TurnEntry[];
+        parsed.set(sessionId, { u, entries, parsed: await this.withGoal(u, p) });
+      });
+      superseded = await this.lineage.superseded(lineageNodes(parsed));
+      if (parsed.size - superseded.size >= RECENT_LIMIT) break;
+    }
+    const reached = new Set(sorted.map((u) => u.ref.sessionId));
+    for (const id of this.unshown.keys()) if (!reached.has(id)) this.unshown.delete(id);
+    const paths = new Set(sorted.map((u) => u.claude?.transcriptPath));
+    for (const path of this.firstPrompts.keys()) if (!paths.has(path)) this.firstPrompts.delete(path);
+    this.supersededBy = superseded;
+    // Iterate the sorted refs (not the parse map) so order stays recency-based, not completion-order.
+    const refs = sorted
+      .filter((u) => parsed.has(u.ref.sessionId) && !superseded.has(u.ref.sessionId))
+      .slice(0, RECENT_LIMIT);
+    return { refs, parsed };
+  }
+
+  /**
+   * The parse, with a goal even when the bounded read found no prompt at all:
+   * session-start hook output can run past the head read, and a long run of
+   * tool calls fills the tail. The first prompt is then read from further in.
+   */
+  private async withGoal(u: UnifiedRef, p: ParsedTranscript): Promise<ParsedTranscript> {
+    const path = u.claude?.transcriptPath;
+    if (p.goal || p.lastPrompt || !path) return p;
+    let goal = this.firstPrompts.get(path);
+    if (goal === undefined) {
+      goal = await readFirstPrompt(path);
+      if (goal) this.firstPrompts.set(path, goal);
+    }
+    return goal ? { ...p, goal } : p;
   }
 
   /** Each finished scan's tiles, for backend consumers (the plant schedule's opencode tasks). */
@@ -747,7 +872,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const expanded = expandQuery(query);
     const [vector] = await this.embed([expanded]);
     if (!vector) return [];
-    const ranked = rankSessions(index, vector, expanded);
+    // A resume copy stands for the newest copy; copies older than the scan's reach stay as they are.
+    const supersededBy = this.supersededBy;
+    const ranked = rankSessions(index, vector, expanded, (id) => supersededBy.get(id) ?? id);
     if (ranked.length === 0) return [];
 
     // A hit the last scan already rendered is returned as that scan built it —
@@ -777,7 +904,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       await fanOut(archived, PARSE_CONCURRENCY, async (sessionId) => {
         const u = refs.get(sessionId);
         if (!u) return; // indexed but gone from disk; the next crawl drops it
-        const p = await u.harness.parseTranscript(u.ref);
+        const p = await this.withGoal(u, await u.harness.parseTranscript(u.ref));
         if (!p.cwd || !p.interactive) return;
         const entries = (await u.ref.loadEntries()) as TurnEntry[];
         const { state, needsYou, needsYouCertain } = classifySession(
@@ -798,12 +925,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
           harnessId: u.harness.id,
           loadEntries: u.ref.loadEntries,
         });
+        const group = await this.projectGroups.resolve(p.cwd);
         built.push({
           tile: buildTile({
             sessionId,
             harness: u.harness.id,
             transcriptPath: u.claude?.transcriptPath ?? "",
             projectPath: p.cwd,
+            group,
             mtimeMs: u.ref.mtimeMs,
             entries,
             parsed: p,
@@ -812,7 +941,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYouCertain,
             hashToIndex,
             ...nameOf(names, sessionId),
-            ...projectNameOf(projectNames, p.cwd),
+            ...projectNameOf(projectNames, group.path, p.cwd),
           }),
           ...matchOf(scored.get(sessionId)!),
           archived: true,
@@ -927,7 +1056,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
     let changed = false;
     for (const [sessionId, tile] of this.lastTiles) {
-      if (projectNameKey(tile.projectPath) !== key) continue;
+      if (projectNameKey(tile.groupPath ?? tile.projectPath) !== key) continue;
       const { projectCustomName: _dropped, ...rest } = tile;
       this.lastTiles.set(sessionId, trimmed ? { ...rest, projectCustomName: trimmed } : rest);
       changed = true;
