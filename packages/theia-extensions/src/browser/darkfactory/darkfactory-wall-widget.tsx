@@ -62,7 +62,7 @@ import {
 } from "./agent-tile.js";
 import { EXPIRING_WINDOW_MS, expiringTiles } from "./cache-freshness.js";
 import { keepPinnedTiles } from "./pinned-tiles.js";
-import { resolveForks, type PendingFork } from "./fork-adoption.js";
+import { resolveForks, resolveSuccessors, retargetPins, type PendingFork } from "./fork-adoption.js";
 import { readPins, writePins, type StoredPin } from "./pinned-store.js";
 import {
   applyLinks,
@@ -820,17 +820,40 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private adoptForks(tiles: AgentTile[]): void {
     const { adopted, pending } = resolveForks(this.forks, this.pinned, tiles);
     this.forks = pending;
-    for (const { fromId, toId } of adopted) {
-      this.terminals.rekey(fromId, toId);
-      this.pinned = this.pinned.map((id) => (id === fromId ? toId : id));
-      this.pinnedEvents.delete(fromId);
-      this.pinnedEvents.set(toId, []);
-      const browser = this.browsers.get(fromId);
-      if (browser) {
-        this.browsers.delete(fromId);
-        this.browsers.set(toId, browser);
-        if (browser.open) void this.refreshLinks(toId);
-      }
+    for (const { fromId, toId } of adopted) this.moveCard(fromId, toId);
+  }
+
+  /**
+   * Move cards open on a session a resume copy took over onto that copy: the
+   * scan stops returning the old session, and the conversation goes on in the new one.
+   */
+  private adoptSuccessors(tiles: AgentTile[]): void {
+    const moves = resolveSuccessors(this.pinned, tiles);
+    if (moves.length === 0) return;
+    // Right after a reload the cards are not re-opened yet: the restore will
+    // re-attach each one's terminal, or start its follow, under the new id.
+    if (this.pendingRestore) this.pendingRestore = retargetPins(this.pendingRestore, moves, tiles);
+    for (const { fromId, toId } of moves) {
+      const following = !this.pendingRestore && !this.terminals.live(fromId);
+      this.moveCard(fromId, toId);
+      if (!following) continue;
+      // A card with no terminal shows a read-only follow: point it at the copy.
+      this.stopFollow(fromId);
+      void this.service.startFollow(toId).catch(() => {});
+    }
+  }
+
+  /** Re-key an open card — its terminal, its follow buffer and its browser — to another session. */
+  private moveCard(fromId: string, toId: string): void {
+    this.terminals.rekey(fromId, toId);
+    this.pinned = this.pinned.map((id) => (id === fromId ? toId : id));
+    this.pinnedEvents.delete(fromId);
+    this.pinnedEvents.set(toId, []);
+    const browser = this.browsers.get(fromId);
+    if (browser) {
+      this.browsers.delete(fromId);
+      this.browsers.set(toId, browser);
+      if (browser.open) void this.refreshLinks(toId);
     }
   }
 
@@ -916,6 +939,9 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       this.holdTimer = setTimeout(() => this.setTiles(this.lastScanned), held.nextExpiry - Date.now());
     }
     const scanned = held.tiles;
+    // Before pinned tiles are carried over: a card moved onto its successor
+    // must not also keep the superseded session's last tile on the wall.
+    this.adoptSuccessors(scanned);
     const tiles = keepPinnedTiles(scanned, this.tiles, this.pinned);
     this.tiles = tiles;
     this.loaded = true;
