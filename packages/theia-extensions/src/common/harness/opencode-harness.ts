@@ -162,8 +162,11 @@ export function createOpencodeHarness(run: OpencodeRunner = runOpencode, now: ()
         return [];
       }
       if (!Array.isArray(rows)) return [];
-      exports.keepOnly(new Set(rows.map((r) => r.id)));
-      return rows.map((r) => ({
+      // A session with a parent is a subagent run (`@explore`, `@general`) the
+      // parent's task tool started: part of that session's work, not a card.
+      const top = rows.filter((r) => !r.parent_id);
+      exports.keepOnly(new Set(top.map((r) => r.id)));
+      return top.map((r) => ({
         sessionId: r.id,
         projectPath: r.directory,
         mtimeMs: r.time_updated,
