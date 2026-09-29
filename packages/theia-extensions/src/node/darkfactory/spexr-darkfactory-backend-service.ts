@@ -371,6 +371,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * scans skip its read instead of parsing it every time.
    */
   private readonly unshown = new Map<string, number>();
+  /** Transcript path → its first genuine prompt, once found: it never changes. */
+  private readonly firstPrompts = new Map<string, string>();
   /**
    * Enumeration is a full transcript scan plus an `opencode db` spawn; a query
    * must not pay for it on every debounce.
@@ -689,19 +691,37 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         }
         this.unshown.delete(sessionId);
         const entries = (await u.ref.loadEntries()) as TurnEntry[];
-        parsed.set(sessionId, { u, entries, parsed: p });
+        parsed.set(sessionId, { u, entries, parsed: await this.withGoal(u, p) });
       });
       superseded = await this.lineage.superseded(lineageNodes(parsed));
       if (parsed.size - superseded.size >= RECENT_LIMIT) break;
     }
     const reached = new Set(sorted.map((u) => u.ref.sessionId));
     for (const id of this.unshown.keys()) if (!reached.has(id)) this.unshown.delete(id);
+    const paths = new Set(sorted.map((u) => u.claude?.transcriptPath));
+    for (const path of this.firstPrompts.keys()) if (!paths.has(path)) this.firstPrompts.delete(path);
     this.supersededBy = superseded;
     // Iterate the sorted refs (not the parse map) so order stays recency-based, not completion-order.
     const refs = sorted
       .filter((u) => parsed.has(u.ref.sessionId) && !superseded.has(u.ref.sessionId))
       .slice(0, RECENT_LIMIT);
     return { refs, parsed };
+  }
+
+  /**
+   * The parse, with a goal even when the bounded read found no prompt at all:
+   * session-start hook output can run past the head read, and a long run of
+   * tool calls fills the tail. The first prompt is then read from further in.
+   */
+  private async withGoal(u: UnifiedRef, p: ParsedTranscript): Promise<ParsedTranscript> {
+    const path = u.claude?.transcriptPath;
+    if (p.goal || p.lastPrompt || !path) return p;
+    let goal = this.firstPrompts.get(path);
+    if (goal === undefined) {
+      goal = await readFirstPrompt(path);
+      if (goal) this.firstPrompts.set(path, goal);
+    }
+    return goal ? { ...p, goal } : p;
   }
 
   /** Each finished scan's tiles, for backend consumers (the plant schedule's opencode tasks). */
@@ -871,7 +891,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       await fanOut(archived, PARSE_CONCURRENCY, async (sessionId) => {
         const u = refs.get(sessionId);
         if (!u) return; // indexed but gone from disk; the next crawl drops it
-        const p = await u.harness.parseTranscript(u.ref);
+        const p = await this.withGoal(u, await u.harness.parseTranscript(u.ref));
         if (!p.cwd || !p.interactive) return;
         const entries = (await u.ref.loadEntries()) as TurnEntry[];
         const { state, needsYou, needsYouCertain } = classifySession(

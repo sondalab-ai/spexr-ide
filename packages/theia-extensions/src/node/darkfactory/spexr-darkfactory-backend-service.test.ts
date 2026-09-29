@@ -1691,6 +1691,25 @@ describe("wall window: SDK runs and resume copies", () => {
     expect(tiles[0]!.customName).toBe("Wall fixes");
   });
 
+  it("reads the goal from further in when hook output pushed the first prompt past the head read", async () => {
+    const hook = { type: "attachment", attachment: { type: "hook_additional_context", content: "x".repeat(40_000) } };
+    const tool = {
+      type: "assistant",
+      uuid: "t1",
+      cwd: "/Users/x/src/proj",
+      message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "ls" } }] },
+    };
+    const ref = await claudeRef("hooked", NOW - 1_000, [mode, hook, turn("p", "clean up the wall"), tool]);
+    // The bounded read the scan gets: the head holds only the hook, the tail only tool calls.
+    ref.ref.loadEntries = async () => [mode, tool];
+    const s = svc({
+      listTranscripts: () => Promise.resolve([ref]),
+      liveProjectDirs: () => Promise.resolve(new Set<string>()),
+    });
+    const [tile] = await s.listTiles();
+    expect(tile!.goal).toBe("clean up the wall");
+  });
+
   it("keeps both branches of a fork that each moved on", async () => {
     const a = await claudeRef("branch-a", NOW - 2_000, [mode, turn("r", "fix"), turn("a1", "x"), turn("a2", "branch a")]);
     const b = await claudeRef("branch-b", NOW - 1_000, [mode, turn("r", "fix"), turn("a1", "x"), turn("b2", "branch b")]);
