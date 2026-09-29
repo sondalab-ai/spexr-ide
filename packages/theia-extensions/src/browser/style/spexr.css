@@ -207,12 +207,13 @@ body {
   animation-play-state: paused !important;
 }
 
-/* The Game of Life under the Spec and Darkfactory panels: a zero-height
+/* The backdrop under the Spec and Darkfactory panels (the Game of Life or
+   the halftone photo, backdrop.tsx): a zero-height
    sticky strip at the top of the scrolling node, holding a canvas that
-   life-background.tsx sizes to that node. Negative margins cancel the node's
+   life-background.tsx or photo-background.tsx sizes to that node. Negative margins cancel the node's
    own padding so the canvas starts at its edge. The content after it is
    lifted above it; the glass cards bend what shows through. */
-.spexr-life-bg {
+:is(.spexr-life-bg, .spexr-photo-bg) {
   position: sticky;
   top: 0;
   height: 0;
@@ -240,15 +241,62 @@ body {
   opacity: 0.1;
 }
 
-[data-sl-theme="high-contrast"] .spexr-life-bg {
+/* The halftone photo: a square in the bottom-right corner, placed by
+   photo-background.tsx, in the accent. Dots are sparser than live cells,
+   so it can take a little more strength than the Life canvas. */
+.spexr-photo-bg__canvas {
+  position: absolute;
+  display: block;
+  color: var(--sl-accent-default);
+  opacity: 0.2;
+}
+
+[data-sl-theme="light"] .spexr-photo-bg__canvas {
+  opacity: 0.16;
+}
+
+/* The photo's credit: its own strip above the panel's content (which sits at
+   z-index 1), so its links take clicks; only the links do. photo-background.tsx
+   sets the box's width and its top at the visible area's bottom edge. */
+.spexr-photo-bg--credit {
+  z-index: 2;
+}
+
+.spexr-photo-bg__credit {
+  position: absolute;
+  left: 0;
+  transform: translateY(-100%);
+  box-sizing: border-box;
+  padding: var(--sl-space-1) var(--sl-space-3);
+  text-align: right;
+  font-size: var(--sl-text-xs);
+  color: var(--sl-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spexr-photo-bg__credit a {
+  pointer-events: auto;
+  color: inherit;
+  text-decoration: none;
+}
+
+.spexr-photo-bg__credit a:hover,
+.spexr-photo-bg__credit a:focus-visible {
+  color: var(--sl-text-primary);
+  text-decoration: underline;
+}
+
+[data-sl-theme="high-contrast"] :is(.spexr-life-bg, .spexr-photo-bg) {
   display: none;
 }
 
-.spexr-darkfactory > .spexr-life-bg {
+.spexr-darkfactory > :is(.spexr-life-bg, .spexr-photo-bg) {
   margin: calc(-1 * var(--sl-space-4)) calc(-1 * var(--sl-space-4)) 0;
 }
 
-.spexr-life-bg ~ :is(.spexr-df-shell, .spexr-spec-panel) {
+:is(.spexr-life-bg, .spexr-photo-bg) ~ :is(.spexr-df-shell, .spexr-spec-panel) {
   position: relative;
   z-index: 1;
 }

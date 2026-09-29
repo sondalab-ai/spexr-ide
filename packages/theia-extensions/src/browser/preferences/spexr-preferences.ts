@@ -1,9 +1,9 @@
 import { injectable } from "@theia/core/shared/inversify";
-import type { PreferenceContribution, PreferenceSchema } from "@theia/core/lib/common/preferences/preference-schema";
-import {
-  DEFAULT_GENERATION_MODEL,
-  GENERATION_DTYPES,
-} from "../../common/generation-model.js";
+import type {
+  PreferenceContribution,
+  PreferenceSchema,
+} from "@theia/core/lib/common/preferences/preference-schema";
+import { DEFAULT_GENERATION_MODEL, GENERATION_DTYPES } from "../../common/generation-model.js";
 import {
   SPEXR_TERMINAL_KINDS,
   CURSOR_STYLES,
@@ -94,6 +94,43 @@ export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDt
  */
 export const SPEXR_GIT_AUTOFETCH_PREFERENCE = "spexr.git.autofetch";
 
+/**
+ * Which backdrop the Spec and Dark Factory panels draw: the Game of Life, or
+ * a photo printed as halftone dots in the bottom-right corner.
+ */
+export const SPEXR_BACKDROP_KIND_PREFERENCE = "spexr.backdrop.kind";
+
+/** Picture URLs the photo backdrop cycles instead of its source. Empty means use the source. */
+export const SPEXR_BACKDROP_PHOTOS_PREFERENCE = "spexr.backdrop.photos";
+
+/** Where the photo backdrop finds photos: Openverse, Unsplash (with a key), or the bundled NASA set. */
+export const SPEXR_BACKDROP_PHOTO_SOURCE_PREFERENCE = "spexr.backdrop.photoSource";
+
+/** Search terms the photo backdrop draws from, one picked at random per batch. */
+export const SPEXR_BACKDROP_PHOTO_QUERIES_PREFERENCE = "spexr.backdrop.photoQueries";
+
+/** Seconds each photo stays before the next. */
+export const SPEXR_BACKDROP_PHOTO_INTERVAL_PREFERENCE = "spexr.backdrop.photoIntervalSeconds";
+
+/** Access key of your Unsplash app, for `photoSource: "unsplash"`. */
+export const SPEXR_BACKDROP_UNSPLASH_KEY_PREFERENCE = "spexr.backdrop.unsplashAccessKey";
+
+/** The photo backdrop's search terms until the user sets their own. */
+export const DEFAULT_BACKDROP_PHOTO_QUERIES: readonly string[] = [
+  "cyberpunk city",
+  "neon city",
+  "nebula",
+  "milky way",
+  "rocket launch",
+  "long exposure city",
+  "skyscraper night",
+  "futuristic architecture",
+  "tunnel light",
+];
+
+/** The shortest time a photo stays: each new one gathers at the display rate for about two seconds. */
+export const MIN_BACKDROP_PHOTO_INTERVAL_SECONDS = 10;
+
 /** What each terminal family is, in the words a preference description needs. */
 const TERMINAL_KIND_LABELS: Record<SpexrTerminalKind, string> = {
   session: "the Darkfactory session cards",
@@ -172,7 +209,7 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       default: "",
       description:
         "Account SPEXR starts Claude under: the label of a spexr.claude.launchProfiles " +
-        "entry, or \"default\" for the account that runs with no CLAUDE_CONFIG_DIR. " +
+        'entry, or "default" for the account that runs with no CLAUDE_CONFIG_DIR. ' +
         "Empty means not chosen yet — SPEXR asks once when the machine has more " +
         "than one account. Read against the workspace folder the agent runs in, " +
         "so separate projects (personal, work) can run under different identities, " +
@@ -267,6 +304,58 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "so the branch's ahead/behind counts stay truthful. Never touches the working " +
         "tree and never prompts for credentials. Turn off on a metered connection, or " +
         "where an unattended authentication attempt is unwelcome.",
+    },
+    [SPEXR_BACKDROP_KIND_PREFERENCE]: {
+      type: "string",
+      enum: ["life", "photo"],
+      default: "life",
+      enumDescriptions: [
+        "A Game of Life, in the accent and three code colours.",
+        "A photo printed as halftone dots in the bottom-right corner (see spexr.backdrop.photoSource).",
+      ],
+      description: "What the Spec and Dark Factory panels draw behind their content.",
+    },
+    [SPEXR_BACKDROP_PHOTOS_PREFERENCE]: {
+      type: "array",
+      items: { type: "string" },
+      default: [],
+      description:
+        "Picture URLs for the photo backdrop, shown in random order instead of " +
+        "spexr.backdrop.photoSource. A picture on another site must allow cross-origin " +
+        "requests (CORS), or it is skipped.",
+    },
+    [SPEXR_BACKDROP_PHOTO_SOURCE_PREFERENCE]: {
+      type: "string",
+      enum: ["openverse", "unsplash", "curated"],
+      default: "openverse",
+      enumDescriptions: [
+        "Openly licensed photos found through Openverse (openverse.org). No key needed.",
+        "Photos from Unsplash. Needs spexr.backdrop.unsplashAccessKey; without it, Openverse.",
+        "SPEXR's bundled NASA images only. Never touches the network.",
+      ],
+      description:
+        "Where the photo backdrop finds photos. Whatever the source, the bundled NASA images " +
+        "stand in while the network is out. Each photo is credited under it.",
+    },
+    [SPEXR_BACKDROP_PHOTO_QUERIES_PREFERENCE]: {
+      type: "array",
+      items: { type: "string" },
+      default: [...DEFAULT_BACKDROP_PHOTO_QUERIES],
+      description:
+        "Search terms for Openverse or Unsplash; each batch of photos comes from one, picked at random.",
+    },
+    [SPEXR_BACKDROP_PHOTO_INTERVAL_PREFERENCE]: {
+      type: "number",
+      default: 60,
+      minimum: MIN_BACKDROP_PHOTO_INTERVAL_SECONDS,
+      description: `Seconds each photo stays before the next. At least ${MIN_BACKDROP_PHOTO_INTERVAL_SECONDS}.`,
+    },
+    [SPEXR_BACKDROP_UNSPLASH_KEY_PREFERENCE]: {
+      type: "string",
+      default: "",
+      description:
+        "Access key of your own Unsplash app (unsplash.com/developers), used when " +
+        'spexr.backdrop.photoSource is "unsplash". Stored in plain text in your settings.',
     },
     [SPEXR_SEARCH_GLOBAL_IGNORE_PROMPTED]: {
       type: "boolean",

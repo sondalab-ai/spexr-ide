@@ -2,6 +2,7 @@ import * as React from "react";
 import { injectable, inject, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget, type Message } from "@theia/core/lib/browser";
 import { CommandService } from "@theia/core/lib/common/command";
+import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { type FileOperationEvent } from "@theia/filesystem/lib/common/files";
@@ -20,7 +21,7 @@ import {
 import { SPEC_VIEW_ID } from "./spec-view-contribution.js";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
 import { SPEC_CONTEXT_DIR } from "../workspace-paths.js";
-import { LifeBackground } from "../backdrop/life-background.js";
+import { Backdrop } from "../backdrop/backdrop.js";
 import {
   specDirPrefixes,
   specDirsForRoots,
@@ -84,6 +85,9 @@ export class SpexrSpecWidget extends ReactWidget {
 
   @inject(FileService)
   private readonly fileService!: FileService;
+
+  @inject(PreferenceService)
+  private readonly preferences!: PreferenceService;
 
   private specs: readonly SpecEntry[] = [];
   private groups: readonly SpecRootGroup<SpecEntry>[] = [];
@@ -302,7 +306,7 @@ export class SpexrSpecWidget extends ReactWidget {
   protected render(): React.ReactNode {
     return (
       <>
-        <LifeBackground />
+        <Backdrop preferences={this.preferences} />
         <SpecPanel
           specs={this.specs}
           groups={this.groups}

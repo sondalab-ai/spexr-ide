@@ -8,6 +8,9 @@
     "*": {
       "effects": [
         "./dist/effects.d.ts"
+      ],
+      "halftone": [
+        "./dist/halftone.d.ts"
       ]
     }
   },
@@ -30,6 +33,12 @@
       "import": "./dist/effects.js",
       "default": "./dist/effects.js"
     },
+    "./halftone": {
+      "types": "./dist/halftone.d.ts",
+      "require": "./dist/halftone.js",
+      "import": "./dist/halftone.js",
+      "default": "./dist/halftone.js"
+    },
     "./tokens.css": "./src/tokens/tokens.css",
     "./fonts.css": "./src/fonts.css",
     "./components.css": "./src/components.css",
@@ -49,7 +58,7 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@sondalab/ui-kit": "^0.18.0",
+    "@sondalab/ui-kit": "^0.19.0",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@radix-ui/react-tabs": "^1.1.21",

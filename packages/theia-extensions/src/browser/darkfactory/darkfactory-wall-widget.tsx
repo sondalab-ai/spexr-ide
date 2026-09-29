@@ -80,7 +80,7 @@ import { SessionSearchState } from "./session-search.js";
 import { addTrashed, partitionTrashed, readTrashed, removeTrashed, writeTrashed } from "./trash.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
-import { LifeBackground } from "../backdrop/life-background.js";
+import { Backdrop } from "../backdrop/backdrop.js";
 import { WorkingHold } from "./working-hold.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
@@ -1324,7 +1324,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     const best = Math.max(0, ...visibleHits.map((h) => h.score));
     return (
       <>
-        <LifeBackground />
+        <Backdrop preferences={this.preferences} />
         <div className="spexr-df-shell">
           <div className="spexr-df-root">
             <NewSessionLauncher
