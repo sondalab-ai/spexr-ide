@@ -1606,3 +1606,100 @@ describe("startFollow", () => {
     }
   });
 });
+
+describe("wall window: SDK runs and resume copies", () => {
+  let dir: string;
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "spexr-df-lineage-"));
+  });
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  /** A Claude ref over a real transcript file, counting how often it is read. */
+  async function claudeRef(id: string, mtimeMs: number, entries: object[], reads = { n: 0 }) {
+    const transcriptPath = join(dir, `${id}.jsonl`);
+    const lines = entries.map((e) => JSON.stringify(e));
+    await writeFile(transcriptPath, lines.join("\n") + "\n");
+    return {
+      harness: claudeHarness,
+      ref: {
+        sessionId: id,
+        projectPath: "",
+        mtimeMs,
+        loadEntries: async () => {
+          reads.n++;
+          return entries;
+        },
+      },
+      claude: {
+        sessionId: id,
+        transcriptPath,
+        configDir: "/Users/x/.claude",
+        mtimeMs,
+        readLines: () => Promise.resolve(lines),
+      },
+    };
+  }
+
+  const mode = { type: "mode", mode: "normal" };
+  const turn = (uuid: string, text: string) => ({
+    type: "user",
+    uuid,
+    cwd: "/Users/x/src/proj",
+    message: { role: "user", content: text },
+  });
+
+  it("does not let SDK runs push interactive sessions off the wall, and reads each finished run once", async () => {
+    const reads = { n: 0 };
+    const sdk = await Promise.all(
+      Array.from({ length: 70 }, (_, i) =>
+        claudeRef(`sdk${i}`, NOW - i, [{ ...turn(`u${i}`, "Review this change"), entrypoint: "sdk-py" }], reads),
+      ),
+    );
+    const real = await claudeRef("real", NOW - 1_000_000, [mode, turn("r", "build the wall")]);
+    const s = svc({
+      listTranscripts: () => Promise.resolve([...sdk, real]),
+      liveProjectDirs: () => Promise.resolve(new Set<string>()),
+    });
+    expect((await s.listTiles()).map((t) => t.sessionId)).toEqual(["real"]);
+    const firstReads = reads.n;
+    expect(firstReads).toBe(70);
+    await s.listTiles();
+    expect(reads.n).toBe(firstReads);
+  });
+
+  it("shows a resumed conversation once, on its newest copy, carrying the older copy's name", async () => {
+    const namesPath = join(dir, "names.json");
+    const older = await claudeRef("older", NOW - 50_000, [mode, turn("r", "fix the wall"), turn("a1", "and the cards")]);
+    const newer = await claudeRef("newer", NOW - 1_000, [
+      mode,
+      turn("r", "fix the wall"),
+      turn("a1", "and the cards"),
+      turn("b1", "continue"),
+    ]);
+    const s = svc({
+      listTranscripts: () => Promise.resolve([newer, older]),
+      liveProjectDirs: () => Promise.resolve(new Set<string>()),
+      sessionNamesPath: namesPath,
+    });
+    await s.listTiles();
+    await s.renameSession("older", "Wall fixes");
+    const tiles = await s.listTiles();
+    expect(tiles.map((t) => t.sessionId)).toEqual(["newer"]);
+    expect(tiles[0]!.supersedes).toEqual(["older"]);
+    expect(tiles[0]!.customName).toBe("Wall fixes");
+  });
+
+  it("keeps both branches of a fork that each moved on", async () => {
+    const a = await claudeRef("branch-a", NOW - 2_000, [mode, turn("r", "fix"), turn("a1", "x"), turn("a2", "branch a")]);
+    const b = await claudeRef("branch-b", NOW - 1_000, [mode, turn("r", "fix"), turn("a1", "x"), turn("b2", "branch b")]);
+    const s = svc({
+      listTranscripts: () => Promise.resolve([a, b]),
+      liveProjectDirs: () => Promise.resolve(new Set<string>()),
+    });
+    const tiles = await s.listTiles();
+    expect(tiles.map((t) => t.sessionId).sort()).toEqual(["branch-a", "branch-b"]);
+    expect(tiles.every((t) => t.supersedes === undefined)).toBe(true);
+  });
+});

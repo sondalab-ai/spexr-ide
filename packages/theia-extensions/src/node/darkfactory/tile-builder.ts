@@ -24,6 +24,8 @@ export interface TileInput {
   customName?: string;
   /** The name the user gave this session's project, if any. */
   projectCustomName?: string;
+  /** Older copies of this conversation that this session's transcript took over. */
+  supersedes?: string[];
 }
 
 /**
@@ -56,6 +58,7 @@ export function buildTile(input: TileInput): AgentTile {
     ...(p.permissionMode !== undefined ? { permissionMode: p.permissionMode } : {}),
     ...(input.customName ? { customName: input.customName } : {}),
     ...(input.projectCustomName ? { projectCustomName: input.projectCustomName } : {}),
+    ...(input.supersedes?.length ? { supersedes: input.supersedes } : {}),
     ...(p.cache
       ? {
           contextTokens: p.cache.contextTokens,

@@ -42,6 +42,7 @@ import { expandQuery } from "../search/query-expander.js";
 import type { SessionIndex } from "./session-index.js";
 import { forEachConcurrent } from "./concurrency.js";
 import { memoizeFor } from "./ttl-memo.js";
+import { lineageNode, SessionLineage, type LineageNode } from "./session-lineage.js";
 
 export { forEachConcurrent };
 import { nowActionLine } from "./action-distiller.js";
@@ -98,6 +99,13 @@ const MIN_SUMMARY_CHARS = 60;
  * work anyway, so cap the parse to this many newest sessions.
  */
 const RECENT_LIMIT = 60;
+
+/**
+ * How many of the newest transcripts one scan may read to fill those
+ * {@link RECENT_LIMIT} cards. SDK runs and superseded resume copies take no
+ * card, so the scan reads past them — but not through the whole history.
+ */
+const SCAN_REACH = RECENT_LIMIT * 4;
 
 /** Enumeration freshness floor for the search path, mirroring LIVE_DIRS_TTL_MS. */
 const ENUM_TTL_MS = 15_000;
@@ -202,6 +210,8 @@ export interface DarkfactoryDeps {
   projectNamesPath?: string;
   /** Directory-existence seam used by the name sweep (default: a `stat` that must say "directory"). */
   dirExists?: (path: string) => Promise<boolean>;
+  /** Resume-chain tracker; tests inject one with in-memory file seams. */
+  lineage?: SessionLineage;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -262,6 +272,45 @@ function projectNameOf(
   return name ? { projectCustomName: name } : {};
 }
 
+/** Lineage facts for the scanned Claude transcripts; other harnesses write no copies. */
+function lineageNodes(
+  parsed: Map<string, { u: UnifiedRef; entries: TurnEntry[] }>,
+): LineageNode[] {
+  const nodes: LineageNode[] = [];
+  for (const [sessionId, { u, entries }] of parsed) {
+    if (u.claude) nodes.push(lineageNode(sessionId, u.claude.transcriptPath, u.ref.mtimeMs, entries));
+  }
+  return nodes;
+}
+
+/**
+ * Successor → the sessions it took over, newest first, so a name given to an
+ * older copy is found before one given to an even older one.
+ */
+function ancestorsBySuccessor(supersededBy: Map<string, string>, refs: UnifiedRef[]): Map<string, string[]> {
+  const mtime = new Map(refs.map((u) => [u.ref.sessionId, u.ref.mtimeMs]));
+  const out = new Map<string, string[]>();
+  for (const [from, to] of supersededBy) out.set(to, [...(out.get(to) ?? []), from]);
+  for (const list of out.values()) list.sort((a, b) => (mtime.get(b) ?? 0) - (mtime.get(a) ?? 0));
+  return out;
+}
+
+/**
+ * {@link nameOf}, falling back to the name of a session this one took over: a
+ * resume writes a new transcript, and the user's name belongs to the conversation.
+ */
+function inheritedNameOf(
+  names: Map<string, string>,
+  sessionId: string,
+  ancestors: string[] | undefined,
+): { customName?: string } {
+  for (const id of [sessionId, ...(ancestors ?? [])]) {
+    const name = names.get(id);
+    if (name) return { customName: name };
+  }
+  return {};
+}
+
 @injectable()
 export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly configDirsSource: string[] | (() => string[]);
@@ -312,6 +361,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * as-is rather than re-parsed and re-classified with different inputs.
    */
   private readonly lastTiles = new Map<string, AgentTile>();
+  /** Finds the transcripts a resume copied into a newer one (see {@link SessionLineage}). */
+  private readonly lineage: SessionLineage;
+  /** Superseded session → the session that took it over, as of the last scan. */
+  private supersededBy = new Map<string, string>();
+  /**
+   * sessionId → transcript mtime of a session the wall never shows (an SDK run,
+   * no working directory). A finished SDK run never changes again, so later
+   * scans skip its read instead of parsing it every time.
+   */
+  private readonly unshown = new Map<string, number>();
   /**
    * Enumeration is a full transcript scan plus an `opencode db` spawn; a query
    * must not pay for it on every debounce.
@@ -388,6 +447,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.sessionNamesPath = d.sessionNamesPath;
     this.projectNamesPath = d.projectNamesPath;
     this.dirExists = d.dirExists ?? defaultDirExists;
+    this.lineage = d.lineage ?? new SessionLineage();
     if (this.embed) {
       setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
     }
@@ -531,27 +591,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       this.loadProjectNames(),
     ]);
     const now = this.now();
-    // Only read the newest sessions — history is huge and reading it all stalls
-    // the event loop; the wall only shows recent work.
-    const refs = [...allRefs].sort((a, b) => b.ref.mtimeMs - a.ref.mtimeMs).slice(0, RECENT_LIMIT);
-    // Parse each transcript once; track the newest transcript mtime per project
-    // so "working" is attributed to a single session per project. Parses run
-    // concurrently (bounded) — sequential parsing serialized ~60 harness calls,
-    // which for opencode is one CLI spawn per session (~30s total).
-    const parsed = new Map<
-      string,
-      { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }
-    >();
+    const { refs, parsed } = await this.scanWindow(allRefs);
+    // Track the newest transcript mtime per project so "working" is attributed
+    // to a single session per project.
     const newestByProject = new Map<string, number>();
-    await forEachConcurrent(refs, PARSE_CONCURRENCY, async (u) => {
-      const p = await u.harness.parseTranscript(u.ref);
-      if (!p.cwd) return; // no real project path → skip
-      if (!p.interactive) return; // SDK / one-shot subagent session → not followable
-      const entries = (await u.ref.loadEntries()) as TurnEntry[];
-      parsed.set(u.ref.sessionId, { u, entries, parsed: p });
-      const prev = newestByProject.get(p.cwd);
-      if (prev === undefined || u.ref.mtimeMs > prev) newestByProject.set(p.cwd, u.ref.mtimeMs);
-    });
+    for (const u of refs) {
+      const cwd = parsed.get(u.ref.sessionId)!.parsed.cwd!;
+      const prev = newestByProject.get(cwd);
+      if (prev === undefined || u.ref.mtimeMs > prev) newestByProject.set(cwd, u.ref.mtimeMs);
+    }
+    const ancestors = ancestorsBySuccessor(this.supersededBy, allRefs);
 
     this.index.clear();
     this.lastTiles.clear();
@@ -594,8 +643,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYou,
         needsYouCertain,
         hashToIndex,
-        ...nameOf(names, ref.sessionId),
+        ...inheritedNameOf(names, ref.sessionId, ancestors.get(ref.sessionId)),
         ...projectNameOf(projectNames, cwd),
+        ...(ancestors.has(ref.sessionId) ? { supersedes: ancestors.get(ref.sessionId)! } : {}),
       });
       this.lastTiles.set(ref.sessionId, tile);
       tiles.push(tile);
@@ -610,6 +660,48 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     await this.pruneNames(allRefs).catch(() => {});
     this.scanned.fire(tiles);
     return tiles;
+  }
+
+  /**
+   * The sessions the wall shows, newest first, at most {@link RECENT_LIMIT}.
+   * Reads the newest transcripts a batch at a time — reading all of history
+   * stalled the event loop — skipping SDK runs and sessions a newer resume
+   * copy took over, so neither pushes real work off the wall.
+   */
+  private async scanWindow(allRefs: UnifiedRef[]): Promise<{
+    refs: UnifiedRef[];
+    parsed: Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>;
+  }> {
+    const sorted = [...allRefs].sort((a, b) => b.ref.mtimeMs - a.ref.mtimeMs).slice(0, SCAN_REACH);
+    const parsed = new Map<string, { u: UnifiedRef; entries: TurnEntry[]; parsed: ParsedTranscript }>();
+    let superseded = new Map<string, string>();
+    for (let at = 0; at < sorted.length; at += RECENT_LIMIT) {
+      // Parses run concurrently (bounded) — sequential parsing serialized ~60
+      // harness calls, which for opencode is one CLI spawn per session (~30s total).
+      await forEachConcurrent(sorted.slice(at, at + RECENT_LIMIT), PARSE_CONCURRENCY, async (u) => {
+        const { sessionId, mtimeMs } = u.ref;
+        if (this.unshown.get(sessionId) === mtimeMs) return;
+        const p = await u.harness.parseTranscript(u.ref);
+        // No real project path, or an SDK / one-shot subagent session → not followable.
+        if (!p.cwd || !p.interactive) {
+          this.unshown.set(sessionId, mtimeMs);
+          return;
+        }
+        this.unshown.delete(sessionId);
+        const entries = (await u.ref.loadEntries()) as TurnEntry[];
+        parsed.set(sessionId, { u, entries, parsed: p });
+      });
+      superseded = await this.lineage.superseded(lineageNodes(parsed));
+      if (parsed.size - superseded.size >= RECENT_LIMIT) break;
+    }
+    const reached = new Set(sorted.map((u) => u.ref.sessionId));
+    for (const id of this.unshown.keys()) if (!reached.has(id)) this.unshown.delete(id);
+    this.supersededBy = superseded;
+    // Iterate the sorted refs (not the parse map) so order stays recency-based, not completion-order.
+    const refs = sorted
+      .filter((u) => parsed.has(u.ref.sessionId) && !superseded.has(u.ref.sessionId))
+      .slice(0, RECENT_LIMIT);
+    return { refs, parsed };
   }
 
   /** Each finished scan's tiles, for backend consumers (the plant schedule's opencode tasks). */
@@ -747,7 +839,9 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const expanded = expandQuery(query);
     const [vector] = await this.embed([expanded]);
     if (!vector) return [];
-    const ranked = rankSessions(index, vector, expanded);
+    // A resume copy stands for the newest copy; copies older than the scan's reach stay as they are.
+    const supersededBy = this.supersededBy;
+    const ranked = rankSessions(index, vector, expanded, (id) => supersededBy.get(id) ?? id);
     if (ranked.length === 0) return [];
 
     // A hit the last scan already rendered is returned as that scan built it —

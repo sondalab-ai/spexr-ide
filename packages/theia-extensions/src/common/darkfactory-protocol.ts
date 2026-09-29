@@ -95,6 +95,12 @@ export interface AgentTile {
    * already knows — `projectName` and `accentId` ride along the same way.
    */
   projectCustomName?: string;
+  /**
+   * Sessions this one took over: a resume writes the conversation to a new
+   * transcript, so its older copies leave the wall and a card still open on
+   * one of them moves here. Absent when there are none.
+   */
+  supersedes?: string[];
 }
 
 /** Two-level AI description of a session, from the local model. */

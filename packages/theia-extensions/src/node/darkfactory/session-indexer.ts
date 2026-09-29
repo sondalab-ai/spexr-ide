@@ -122,9 +122,9 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
       } catch {
         return; // unreadable transcript → not indexable, and not fatal
       }
-      // The same two rules the wall applies: a session with no working directory
-      // cannot be placed, and a non-interactive one is an SDK or subagent run
-      // nobody can open.
+      // Two of the wall's rules: a session with no working directory cannot be
+      // placed, and a non-interactive one is an SDK or subagent run nobody can
+      // open. Resume copies stay indexed; search folds them into the newest copy.
       if (!parsed.cwd || !parsed.interactive) return;
       let goal = sessionGoal(entries) || parsed.goal || parsed.lastPrompt;
       if (!goal && session.readGoalHead) goal = await session.readGoalHead();
