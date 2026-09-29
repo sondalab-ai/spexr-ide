@@ -71,7 +71,10 @@ export function modeLabel(mode: string | undefined): string | undefined {
 
 /** One project's sessions, as rendered under a single header on the wall. */
 export interface TileGroup {
-  /** Group identity — two checkouts may share a name, never a path. */
+  /**
+   * Group identity — two checkouts may share a name, never a path. The
+   * project's folder (see {@link groupKey}), not necessarily any member's.
+   */
   projectPath: string;
   /** Header copy: the project's name, suffixed with its parent folder when the name is ambiguous. */
   label: string;
@@ -83,6 +86,8 @@ export interface TileGroup {
   accentId: number;
   /** Members in {@link sortTiles} order. */
   tiles: AgentTile[];
+  /** True for the group of throwaway sessions run in a temporary directory. */
+  scratch?: boolean;
 }
 
 /** Drop trailing slashes so `/x` and `/x/` name the same project. */
@@ -105,31 +110,58 @@ export function projectLabel(tile: AgentTile): string {
   return (tile.projectCustomName ?? "").trim() || tile.projectName;
 }
 
+/** The folder a tile is grouped under: its project, else (an older saved tile) its own folder. */
+export function groupKey(tile: AgentTile): string {
+  return tile.groupPath ?? tile.projectPath;
+}
+
+/** Last segment of a path. */
+function folderName(path: string): string {
+  return trimPath(path).split("/").pop() || path;
+}
+
 /**
- * Bucket sessions by project. Members keep the flat attention order; groups lead
+ * Where a session sits inside its group, when that is not the project folder
+ * itself: a worktree's name, or the subfolder it works in. Empty otherwise.
+ */
+export function placeInGroup(tile: AgentTile): string {
+  const group = trimPath(groupKey(tile));
+  const own = trimPath(tile.projectPath);
+  if (own === group) return "";
+  const worktree = /\/\.claude\/worktrees\/([^/]+)/.exec(own);
+  if (worktree) return worktree[1]!;
+  return own.startsWith(`${group}/`) ? own.slice(group.length + 1) : folderName(own);
+}
+
+/**
+ * Bucket sessions by project — every worktree and subfolder of a repository
+ * together, throwaway temp-directory sessions in one Scratch group. Members keep the flat attention order; groups lead
  * with the project loaded in this window, then by their most urgent member, then
  * by the most recent activity — so a group only moves when its own state does.
  */
 export function groupTiles(tiles: AgentTile[], currentProjectPath?: string): TileGroup[] {
   const byPath = new Map<string, AgentTile[]>();
   for (const tile of tiles) {
-    const bucket = byPath.get(tile.projectPath);
+    const key = groupKey(tile);
+    const bucket = byPath.get(key);
     if (bucket) bucket.push(tile);
-    else byPath.set(tile.projectPath, [tile]);
+    else byPath.set(key, [tile]);
   }
   // A name shared by two checkouts is not an identity — say which one this is.
   // Counted on the name actually shown: renaming one of two same-named checkouts
   // ends the collision, and two projects renamed alike start one.
+  const nameOf = (projectPath: string, head: AgentTile): string =>
+    (head.projectCustomName ?? "").trim() || (head.scratch ? "Scratch" : folderName(projectPath));
   const nameCount = new Map<string, number>();
-  for (const [, members] of byPath) {
-    const name = projectLabel(members[0]!);
+  for (const [projectPath, members] of byPath) {
+    const name = nameOf(projectPath, members[0]!);
     nameCount.set(name, (nameCount.get(name) ?? 0) + 1);
   }
   const groups: TileGroup[] = [];
   for (const [projectPath, members] of byPath) {
     const sorted = sortTiles(members);
     const head = sorted[0]!;
-    const name = projectLabel(head);
+    const name = nameOf(projectPath, head);
     const parent = parentFolder(projectPath);
     const ambiguous = (nameCount.get(name) ?? 0) > 1 && parent !== "";
     const custom = (head.projectCustomName ?? "").trim();
@@ -137,13 +169,20 @@ export function groupTiles(tiles: AgentTile[], currentProjectPath?: string): Til
       projectPath,
       label: ambiguous ? `${name} — ${parent}` : name,
       ...(custom ? { customName: custom } : {}),
-      isCurrent: currentProjectPath !== undefined && trimPath(projectPath) === trimPath(currentProjectPath),
+      isCurrent:
+        currentProjectPath !== undefined &&
+        [projectPath, ...members.map((t) => t.projectPath)].some(
+          (p) => trimPath(p) === trimPath(currentProjectPath),
+        ),
       accentId: head.accentId,
       tiles: sorted,
+      ...(head.scratch ? { scratch: true } : {}),
     });
   }
+  // Scratch goes last: it holds test runs, never the work the wall is for.
   return groups.sort(
     (a, b) =>
+      Number(!!a.scratch) - Number(!!b.scratch) ||
       Number(b.isCurrent) - Number(a.isCurrent) ||
       attentionRank(a.tiles[0]!.state, a.tiles[0]!.needsYou) -
         attentionRank(b.tiles[0]!.state, b.tiles[0]!.needsYou) ||

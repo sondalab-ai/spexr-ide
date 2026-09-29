@@ -43,6 +43,7 @@ import type { SessionIndex } from "./session-index.js";
 import { forEachConcurrent } from "./concurrency.js";
 import { memoizeFor } from "./ttl-memo.js";
 import { lineageNode, SessionLineage, type LineageNode } from "./session-lineage.js";
+import { ProjectGroups } from "./project-group.js";
 
 export { forEachConcurrent };
 import { nowActionLine } from "./action-distiller.js";
@@ -212,6 +213,8 @@ export interface DarkfactoryDeps {
   dirExists?: (path: string) => Promise<boolean>;
   /** Resume-chain tracker; tests inject one with in-memory file seams. */
   lineage?: SessionLineage;
+  /** Working directory → project group resolver; tests inject one with a fake home. */
+  projectGroups?: ProjectGroups;
 }
 
 /** Per-session bookkeeping from the last scan, for focus/follow. */
@@ -250,6 +253,8 @@ function nameOf(names: Map<string, string>, sessionId: string): { customName?: s
  * The stored project name as a spreadable fragment, the project-level twin of
  * {@link nameOf}. Keyed through {@link projectNameKey} because a transcript's
  * `cwd` and the path the header sends back need not agree on a trailing slash.
+ * The first path with a name wins: the group's, then a name the folder itself
+ * was given back when the wall grouped by folder.
  */
 /**
  * Production directory check for the name sweep. A path that is not a directory
@@ -266,10 +271,13 @@ async function defaultDirExists(path: string): Promise<boolean> {
 
 function projectNameOf(
   names: Map<string, string>,
-  projectPath: string,
+  ...paths: string[]
 ): { projectCustomName?: string } {
-  const name = names.get(projectNameKey(projectPath));
-  return name ? { projectCustomName: name } : {};
+  for (const path of paths) {
+    const name = names.get(projectNameKey(path));
+    if (name) return { projectCustomName: name };
+  }
+  return {};
 }
 
 /** Lineage facts for the scanned Claude transcripts; other harnesses write no copies. */
@@ -363,6 +371,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly lastTiles = new Map<string, AgentTile>();
   /** Finds the transcripts a resume copied into a newer one (see {@link SessionLineage}). */
   private readonly lineage: SessionLineage;
+  /** Groups sessions by project rather than by folder (see {@link ProjectGroups}). */
+  private readonly projectGroups: ProjectGroups;
   /** Superseded session → the session that took it over, as of the last scan. */
   private supersededBy = new Map<string, string>();
   /**
@@ -450,6 +460,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.projectNamesPath = d.projectNamesPath;
     this.dirExists = d.dirExists ?? defaultDirExists;
     this.lineage = d.lineage ?? new SessionLineage();
+    this.projectGroups = d.projectGroups ?? new ProjectGroups(this.now);
     if (this.embed) {
       setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
     }
@@ -633,11 +644,13 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         harnessId: u.harness.id,
         loadEntries: ref.loadEntries,
       });
+      const group = await this.projectGroups.resolve(cwd);
       const tile = buildTile({
         sessionId: ref.sessionId,
         harness: u.harness.id,
         transcriptPath: u.claude?.transcriptPath ?? "",
         projectPath: cwd,
+        group,
         mtimeMs: ref.mtimeMs,
         entries,
         parsed: p,
@@ -646,7 +659,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYouCertain,
         hashToIndex,
         ...inheritedNameOf(names, ref.sessionId, ancestors.get(ref.sessionId)),
-        ...projectNameOf(projectNames, cwd),
+        ...projectNameOf(projectNames, group.path, cwd),
         ...(ancestors.has(ref.sessionId) ? { supersedes: ancestors.get(ref.sessionId)! } : {}),
       });
       this.lastTiles.set(ref.sessionId, tile);
@@ -912,12 +925,14 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
           harnessId: u.harness.id,
           loadEntries: u.ref.loadEntries,
         });
+        const group = await this.projectGroups.resolve(p.cwd);
         built.push({
           tile: buildTile({
             sessionId,
             harness: u.harness.id,
             transcriptPath: u.claude?.transcriptPath ?? "",
             projectPath: p.cwd,
+            group,
             mtimeMs: u.ref.mtimeMs,
             entries,
             parsed: p,
@@ -926,7 +941,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYouCertain,
             hashToIndex,
             ...nameOf(names, sessionId),
-            ...projectNameOf(projectNames, p.cwd),
+            ...projectNameOf(projectNames, group.path, p.cwd),
           }),
           ...matchOf(scored.get(sessionId)!),
           archived: true,
@@ -1041,7 +1056,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
 
     let changed = false;
     for (const [sessionId, tile] of this.lastTiles) {
-      if (projectNameKey(tile.projectPath) !== key) continue;
+      if (projectNameKey(tile.groupPath ?? tile.projectPath) !== key) continue;
       const { projectCustomName: _dropped, ...rest } = tile;
       this.lastTiles.set(sessionId, trimmed ? { ...rest, projectCustomName: trimmed } : rest);
       changed = true;

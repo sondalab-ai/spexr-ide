@@ -13,6 +13,7 @@ import { configDirs as discoverConfigDirs } from "./config-dirs.js";
 import { claudeHarness } from "../../common/harness/claude-harness.js";
 import { loadSessionNames } from "./session-names-store.js";
 import { loadProjectNames } from "./project-names-store.js";
+import { ProjectGroups } from "./project-group.js";
 import type { AgentTile, SpexrDarkfactoryClient } from "../../common/darkfactory-protocol.js";
 import {
   MAX_PROJECT_NAME_CHARS,
@@ -1708,6 +1709,29 @@ describe("wall window: SDK runs and resume copies", () => {
     });
     const [tile] = await s.listTiles();
     expect(tile!.goal).toBe("clean up the wall");
+  });
+
+  it("groups a worktree session under its repository, sharing its colour and name", async () => {
+    const home = join(dir, "home");
+    const repo = join(home, "src", "hub");
+    await mkdir(join(repo, ".git"), { recursive: true });
+    const cwdAt = (path: string) => ({ type: "user", uuid: path, cwd: path, message: { role: "user", content: "work" } });
+    const main = await claudeRef("main", NOW - 1_000, [mode, cwdAt(repo)]);
+    const wt = await claudeRef("wt", NOW - 2_000, [mode, cwdAt(join(repo, ".claude", "worktrees", "ds-729"))]);
+    const s = svc({
+      listTranscripts: () => Promise.resolve([main, wt]),
+      liveProjectDirs: () => Promise.resolve(new Set<string>()),
+      projectGroups: new ProjectGroups(() => NOW, home, join(dir, "tmp")),
+      projectNamesPath: join(dir, "project-names.json"),
+    });
+    await s.listTiles();
+    await s.renameProject(repo, "Hub");
+    const tiles = await s.listTiles();
+    expect(tiles.map((t) => [t.sessionId, t.groupPath, t.projectCustomName])).toEqual([
+      ["main", repo, "Hub"],
+      ["wt", repo, "Hub"],
+    ]);
+    expect(tiles[0]!.accentId).toBe(tiles[1]!.accentId);
   });
 
   it("keeps both branches of a fork that each moved on", async () => {

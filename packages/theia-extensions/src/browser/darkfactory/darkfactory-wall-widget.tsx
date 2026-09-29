@@ -47,6 +47,7 @@ import {
   summaryTargets,
   launchTargets,
   defaultSessionName,
+  groupKey,
   projectLabel,
 } from "./darkfactory-format.js";
 import type { TileGroup } from "./darkfactory-format.js";
@@ -164,7 +165,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private readonly summaryQueue: string[] = [];
   private summaryRunning = false;
 
-  /** Project paths the user has shut; groups are open by default and this is not persisted. */
+  /**
+   * Groups whose open/shut state the user flipped, by {@link groupKey}. Groups
+   * start open, except Scratch, which starts shut; not persisted.
+   */
   private readonly collapsedGroups = new Set<string>();
 
   /**
@@ -877,7 +881,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // Not when it is on its way to the trash: there it has no group to drop into,
     // and popping one open would be a side effect with nothing behind it.
     const tile = reveal ? this.tiles.find((t) => t.sessionId === sessionId) : undefined;
-    if (tile) this.collapsedGroups.delete(tile.projectPath);
+    if (tile) this.revealGroup(tile);
     this.stopFollow(sessionId);
     this.pinned = this.pinned.filter((id) => id !== sessionId);
     this.pinnedEvents.delete(sessionId);
@@ -955,7 +959,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     for (const id of this.summaries.keys()) {
       if (!live.has(id)) this.summaries.delete(id);
     }
-    const liveProjects = new Set(tiles.map((t) => t.projectPath));
+    const liveProjects = new Set(tiles.map(groupKey));
     for (const path of this.collapsedGroups) {
       if (!liveProjects.has(path)) this.collapsedGroups.delete(path);
     }
@@ -1048,6 +1052,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   /** Open or shut one project group. */
+  /** Whether a group is shut: Scratch starts shut, so a flip there means open. */
+  private isCollapsed(key: string, scratch: boolean): boolean {
+    return this.collapsedGroups.has(key) !== scratch;
+  }
+
+  /** Open the group a tile belongs to. */
+  private revealGroup(tile: AgentTile): void {
+    const key = groupKey(tile);
+    if (tile.scratch) this.collapsedGroups.add(key);
+    else this.collapsedGroups.delete(key);
+  }
+
   private toggleGroup(projectPath: string): void {
     if (this.collapsedGroups.has(projectPath)) this.collapsedGroups.delete(projectPath);
     else this.collapsedGroups.add(projectPath);
@@ -1161,7 +1177,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     const name = await this.quickInput.input({
       prompt: `Name this project — ${group.projectPath}`,
       placeHolder: "Leave empty to go back to the folder name",
-      value: group.customName ?? group.tiles[0]!.projectName,
+      value: group.customName ?? group.projectPath.split("/").filter(Boolean).pop() ?? group.label,
       // Enforced here as well as in the store, so what the header ends up showing
       // is what the field accepted rather than a silent truncation.
       validateInput: (v) =>
@@ -1176,7 +1192,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     // Same reason as a session rename: a hit from outside the scan window is not
     // in the tiles the backend pushes back, so its card is ours to update.
     this.search.hits = this.search.hits.map((hit) =>
-      normalizeProjectPath(hit.tile.projectPath) === normalizeProjectPath(group.projectPath)
+      normalizeProjectPath(groupKey(hit.tile)) === normalizeProjectPath(group.projectPath)
         ? { ...hit, tile: projectRenamedTile(hit.tile, name) }
         : hit,
     );
@@ -1289,7 +1305,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * to a nameless tail.
    */
   private renderGroup(group: TileGroup, index: number, now: number): React.ReactNode {
-    const collapsed = this.collapsedGroups.has(group.projectPath);
+    const collapsed = this.isCollapsed(group.projectPath, !!group.scratch);
     const asCards = index < GROUP_CARD_LIMIT;
     const cards = asCards ? group.tiles.slice(0, CARD_LIMIT) : [];
     const condensed = asCards ? group.tiles.slice(CARD_LIMIT) : group.tiles;

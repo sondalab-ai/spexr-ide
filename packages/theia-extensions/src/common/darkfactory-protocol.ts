@@ -101,6 +101,15 @@ export interface AgentTile {
    * one of them moves here. Absent when there are none.
    */
   supersedes?: string[];
+  /**
+   * The project the wall groups this session under: the repository its folder
+   * belongs to (every worktree and subfolder included), else the nearest folder
+   * holding a project file, else the folder itself. Absent on tiles saved
+   * before grouping existed, which group by `projectPath`.
+   */
+  groupPath?: string;
+  /** Set for throwaway sessions run in a temporary directory; `groupPath` is that directory. */
+  scratch?: true;
 }
 
 /** Two-level AI description of a session, from the local model. */
