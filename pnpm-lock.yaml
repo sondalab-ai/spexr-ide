@@ -8,7 +8,7 @@ overrides:
   '@vscode/ripgrep': 1.18.0
   undici@6: ^6.28.0
   undici@7: ^7.29.0
-  dompurify: ^3.4.14
+  dompurify: ^3.4.16
   axios: ^1.18.0
   brace-expansion@1: ^1.1.18
   brace-expansion@2: ^2.1.4
@@ -361,8 +361,8 @@ importers:
         specifier: ^1.75.0
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       dompurify:
-        specifier: ^3.4.14
-        version: 3.4.14
+        specifier: ^3.4.16
+        version: 3.4.16
       highlight.js:
         specifier: ^11.12.0
         version: 11.12.0
@@ -2990,8 +2990,8 @@ packages:
     os: [darwin]
     hasBin: true
 
-  dompurify@3.4.14:
-    resolution: {integrity: sha512-dVoH9z+MY+C9IilgGCk3YfFqjLi3fChm2OiKJMzh6axrJ5qwxqWaZamgmHrpv22CN/KdbZJuGEGgfQoL00LTdg==}
+  dompurify@3.4.16:
+    resolution: {integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==}
 
   dot-prop@6.0.1:
     resolution: {integrity: sha512-tE7ztYzXHIeyvc7N+hR3oi7FIbf/NIjVP9hmAt3yMXzrQ072/fpjGLx2GxNxGxUl5V73MEqYzioOMoVhGMJ5cA==}
@@ -4346,6 +4346,7 @@ packages:
   nano@10.1.4:
     resolution: {integrity: sha512-bJOFIPLExIbF6mljnfExXX9Cub4W0puhDjVMp+qV40xl/DBvgKao7St4+6/GB6EoHZap7eFnrnx4mnp5KYgwJA==}
     engines: {node: '>=14'}
+    deprecated: nano@10 is now deprecated. Please visit https://www.npmjs.com/package/nano for the latest version
 
   nanoid@3.3.18:
     resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
@@ -7238,7 +7239,7 @@ snapshots:
       async-mutex: 0.4.1
       body-parser: 1.20.6
       cookie: 1.1.1
-      dompurify: 3.4.14
+      dompurify: 3.4.16
       drivelist: 12.0.2
       express: 4.22.2
       fast-json-stable-stringify: 2.1.0
@@ -7486,7 +7487,7 @@ snapshots:
 
   '@theia/monaco-editor-core@1.108.201':
     dependencies:
-      dompurify: 3.4.14
+      dompurify: 3.4.16
       marked: 14.0.0
 
   '@theia/monaco@1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)':
@@ -9361,7 +9362,7 @@ snapshots:
       verror: 1.10.1
     optional: true
 
-  dompurify@3.4.14:
+  dompurify@3.4.16:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
