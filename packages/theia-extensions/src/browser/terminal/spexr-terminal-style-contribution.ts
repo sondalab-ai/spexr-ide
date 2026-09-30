@@ -1,11 +1,14 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
+import { ThemeService } from "@theia/core/lib/browser/theming";
+import { getThemeMode } from "@theia/core/lib/common/theme";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import { TerminalThemeService } from "@theia/terminal/lib/browser/terminal-theme-service";
 import { Unicode11Addon } from "xterm-addon-unicode11";
 import { readTerminalStyle, terminalKindOf, xtermOptions, xtermTheme } from "./terminal-style.js";
+import { themeReport, trackThemeReports, type CsiParserLike, type ThemeReportTracker } from "./terminal-theme-report.js";
 import { enableUnicode11, type XtermUnicodeLike } from "./terminal-unicode.js";
 
 /** The slice of the xterm instance we write to. */
@@ -14,8 +17,9 @@ interface XtermLike {
 }
 
 /**
- * Applies the per-family terminal style preferences, and switches every
- * terminal to Unicode 11 character widths (see `terminal-unicode`).
+ * Applies the per-family terminal style preferences, switches every terminal
+ * to Unicode 11 character widths (see `terminal-unicode`), and tells programs
+ * that asked for it when the colour theme changes (see `terminal-theme-report`).
  *
  * Theia styles every terminal from one global source — `TerminalThemeService`
  * for colours and `terminal.integrated.*` for the font — and exposes no seam to
@@ -39,14 +43,23 @@ export class SpexrTerminalStyleContribution implements FrontendApplicationContri
   @inject(TerminalService) private readonly terminals!: TerminalService;
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
   @inject(TerminalThemeService) private readonly terminalTheme!: TerminalThemeService;
+  @inject(ThemeService) private readonly themeService!: ThemeService;
+
+  private readonly themeReports = new WeakMap<TerminalWidget, ThemeReportTracker>();
 
   onStart(): void {
     this.terminals.onDidCreateTerminal((widget) => {
       this.useUnicode11(widget);
+      this.trackThemeReports(widget);
       this.applyLater(widget);
     });
-    for (const widget of this.terminals.all) this.useUnicode11(widget);
-    this.terminalTheme.onDidChange(() => this.applyLater());
+    for (const widget of this.terminals.all) {
+      this.useUnicode11(widget);
+      this.trackThemeReports(widget);
+    }
+    // The report goes out after our colours land: the program answers it by
+    // asking xterm for the background, which must already be the new one.
+    this.terminalTheme.onDidChange(() => setTimeout(() => (this.applyAll(), this.reportTheme()), 0));
     this.preferences.onPreferenceChanged((event) => {
       if (
         event.preferenceName.startsWith("spexr.terminal.") ||
@@ -85,6 +98,21 @@ export class SpexrTerminalStyleContribution implements FrontendApplicationContri
       enableUnicode11(term as XtermUnicodeLike, () => new Unicode11Addon());
     } catch (err) {
       console.warn("[spexr] could not switch terminal to Unicode 11 widths", err);
+    }
+  }
+
+  /** Starts watching the widget's xterm for programs that want theme-change reports. */
+  private trackThemeReports(widget: TerminalWidget): void {
+    const parser = (widget as unknown as { term?: { parser?: Partial<CsiParserLike> } }).term?.parser;
+    if (typeof parser?.registerCsiHandler !== "function" || this.themeReports.has(widget)) return;
+    this.themeReports.set(widget, trackThemeReports(parser as CsiParserLike));
+  }
+
+  /** Sends the current dark/light report to every terminal whose program asked for it. */
+  private reportTheme(): void {
+    const report = themeReport(getThemeMode(this.themeService.getCurrentTheme().type) === "dark");
+    for (const widget of this.terminals.all) {
+      if (this.themeReports.get(widget)?.enabled) widget.sendText(report);
     }
   }
 
