@@ -673,7 +673,7 @@ function CardSplit(props: { browser?: CardBrowserProps | undefined; children: Re
       {open && browser && (
         <>
           <div
-            className="spexr-df-split__divider"
+            className="sl-resizer sl-resizer--horizontal spexr-df-split__divider"
             role="separator"
             aria-orientation="horizontal"
             aria-label="Resize the browser"
@@ -1211,7 +1211,8 @@ export function AgentCondensedRow(props: {
   const status = statusOf(tile);
   return (
     <button
-      className="spexr-df-row"
+      type="button"
+      className="sl-list__row spexr-df-row"
       data-state={tile.state}
       data-status={status.kind}
       style={{ ["--tile-accent" as string]: `var(--sl-df-accent-${tile.accentId})` }}

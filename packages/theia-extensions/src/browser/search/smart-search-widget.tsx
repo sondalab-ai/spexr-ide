@@ -14,7 +14,7 @@ import {
 } from "../preferences/spexr-preferences.js";
 import { SpexrSearchServiceProxy } from "./smart-search-service.js";
 import { SpexrSearchClientDispatcher } from "./smart-search-client.js";
-import { formatScore, scoreColor, statusLabel, debounce, CATEGORY_LABELS, categoryColor } from "./smart-search-format.js";
+import { formatScore, scoreColor, statusLabel, debounce, CATEGORY_LABELS } from "./smart-search-format.js";
 import { isPowerSaving } from "../power/power-save-dom.js";
 
 const INDEXING_MESSAGES = [
@@ -259,11 +259,18 @@ export class SmartSearchWidget extends ReactWidget {
     const msg = INDEXING_MESSAGES[msgIndex];
     return (
       <div className="spexr-smart-search__progress">
-        <div className="spexr-smart-search__progress-track">
-          <div
-            className="spexr-smart-search__progress-fill"
-            style={{ width: `${Math.max(pct, total === 0 ? 8 : 2)}%` }}
-          />
+        {/* Before the file count is known there is no value to show: the bar stays
+            empty and busy, and the count line below says "Indexing…". */}
+        <div
+          className="sl-progress"
+          role="progressbar"
+          aria-label="Indexing the workspace"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          {...(total > 0 ? { "aria-valuenow": pct } : { "aria-busy": true })}
+          style={{ "--sl-progress": `${total > 0 ? Math.max(pct, 2) : 0}%` } as React.CSSProperties}
+        >
+          <span className="sl-progress__bar" />
         </div>
         <div className="spexr-smart-search__progress-meta">
           <span className="spexr-smart-search__progress-count">
@@ -276,12 +283,11 @@ export class SmartSearchWidget extends ReactWidget {
   }
 
   private renderHit(hit: SearchHit): React.ReactNode {
-    const color = categoryColor(hit.category);
     return (
       <li key={hit.path} className="spexr-smart-search__hit" title={hit.path} onClick={() => this.openHit(hit)}>
         <div className="spexr-smart-search__hit-head">
           <span className="spexr-smart-search__hit-name">{basename(hit.path)}</span>
-          <span className="spexr-smart-search__hit-chip" style={{ color, borderColor: color }}>
+          <span className="sl-tag sl-tag--plain spexr-smart-search__hit-chip">
             {CATEGORY_LABELS[hit.category] ?? hit.category}
           </span>
           <span className="spexr-smart-search__hit-score" style={{ color: scoreColor(hit.score) }}>{formatScore(hit.score)}</span>
@@ -324,20 +330,19 @@ export class SmartSearchWidget extends ReactWidget {
     const cats = [...new Set(this.hits.map((h) => h.category))];
     if (cats.length <= 1) return null;
     return (
-      <div className="spexr-smart-search__filters">
+      <div className="sl-chips" role="group" aria-label="Filter results by category">
         {cats.map((cat) => {
-          const active = this.activeFilters.has(cat);
-          const color = categoryColor(cat);
           const count = this.hits.filter((h) => h.category === cat).length;
           return (
             <button
               key={cat}
-              className={`spexr-smart-search__filter-chip${active ? " spexr-smart-search__filter-chip--active" : ""}`}
-              style={{ "--cat-color": color } as React.CSSProperties}
+              type="button"
+              className="sl-chip"
+              aria-pressed={this.activeFilters.has(cat)}
               onClick={() => this.toggleFilter(cat)}
             >
               {CATEGORY_LABELS[cat] ?? cat}
-              <span className="spexr-smart-search__filter-count">{count}</span>
+              <span className="sl-chip__count">{count}</span>
             </button>
           );
         })}
@@ -367,7 +372,7 @@ export class SmartSearchWidget extends ReactWidget {
       <div className="spexr-smart-search__body">
         {this.renderMapHeader()}
         <input
-          className="spexr-smart-search__input theia-input"
+          className="sl-field__input spexr-smart-search__input"
           placeholder="Search files by meaning…"
           value={this.query}
           onChange={this.onInput}
@@ -422,8 +427,16 @@ export class SmartSearchWidget extends ReactWidget {
         )}
         {(running || paused) && (
           <div className="spexr-smart-search__map-progress">
-            <span className="spexr-smart-search__map-track">
-              <span className="spexr-smart-search__map-fill" style={{ width: `${pct}%` }} />
+            <span
+              className="sl-progress spexr-smart-search__map-track"
+              role="progressbar"
+              aria-label="Files described"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct}
+              style={{ "--sl-progress": `${pct}%` } as React.CSSProperties}
+            >
+              <span className="sl-progress__bar" />
             </span>
             <span className="spexr-smart-search__map-count">{done}/{total}</span>
           </div>

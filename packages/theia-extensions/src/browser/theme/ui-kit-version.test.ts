@@ -10,10 +10,11 @@ function installedKitVersion(): string {
 }
 
 describe("@sondalab/ui-kit", () => {
-  // 0.15.2 fades the live light to zero at its canvas edge; 0.15.1 ended it on
-  // a hard rectangle 6px outside a working card.
-  it("is at least 0.15.2", () => {
+  // 0.23.0 ships the list, disclosure and resizer spexr's rows and splits use,
+  // and (since 0.22) paints a segmented item's aria-pressed, which spexr no
+  // longer patches locally.
+  it("is at least 0.23.0", () => {
     const [major, minor, patch] = installedKitVersion().split(".").map(Number) as [number, number, number];
-    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(15_002);
+    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(23_000);
   });
 });

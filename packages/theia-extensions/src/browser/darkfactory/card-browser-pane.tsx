@@ -133,7 +133,7 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
         </button>
         <form className="spexr-df-browser__address" onSubmit={submit}>
           <input
-            className="spexr-df-browser__input"
+            className="sl-field__input spexr-df-browser__input"
             value={address}
             placeholder="Type an address, or pick a link the session produced"
             spellCheck={false}
@@ -143,22 +143,24 @@ export function CardBrowserPane(props: CardBrowserProps): React.ReactElement {
           />
         </form>
         {links.length > 0 && (
-          <select
-            className="spexr-df-browser__links"
-            value=""
-            title="Links this session produced"
-            aria-label="Links this session produced"
-            onChange={(e) => {
-              if (e.target.value) onNavigate(e.target.value, "picked");
-            }}
-          >
-            <option value="">{`Session links (${links.length})`}</option>
-            {links.map((l) => (
-              <option key={l.url} value={l.url}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+          <span className="sl-select spexr-df-browser__links">
+            <select
+              className="sl-field__input"
+              value=""
+              title="Links this session produced"
+              aria-label="Links this session produced"
+              onChange={(e) => {
+                if (e.target.value) onNavigate(e.target.value, "picked");
+              }}
+            >
+              <option value="">{`Session links (${links.length})`}</option>
+              {links.map((l) => (
+                <option key={l.url} value={l.url}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </span>
         )}
         {!state.following && links.length > 0 && (
           <span

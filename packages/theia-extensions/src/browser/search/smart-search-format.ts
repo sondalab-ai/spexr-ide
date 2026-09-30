@@ -29,18 +29,6 @@ export const CATEGORY_LABELS: Record<string, string> = {
   other:    "Other",
 };
 
-export const CATEGORY_COLORS: Record<string, string> = {
-  frontend: "#60a5fa",
-  backend:  "#34d399",
-  test:     "#fbbf24",
-  config:   "#94a3b8",
-  other:    "#c084fc",
-};
-
-export function categoryColor(cat: string): string {
-  return CATEGORY_COLORS[cat] ?? "#94a3b8";
-}
-
 /** Similarity in [0,1] → rounded percentage string. */
 export function formatScore(score: number): string {
   return `${Math.round(score * 100)}%`;

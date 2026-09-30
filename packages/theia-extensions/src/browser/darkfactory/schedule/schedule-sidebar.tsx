@@ -524,7 +524,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               {bandsOf(rows).map((band) => (
                 <li key={band.layer} className="spexr-sched__band">
                   <span className="sl-eyebrow">{band.layer === 0 ? "Starts first" : `Then, step ${band.layer + 1}`}</span>
-                  <ol className="spexr-sched__tasks">
+                  <ol className="sl-list spexr-sched__tasks">
                     {band.rows.map((row) => (
                       <li
                         key={row.id}
@@ -532,14 +532,15 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
                         data-layer={row.layer}
                         data-tone={row.tone}
                         data-upstream={upstream.has(row.id) ? "true" : undefined}
-                        aria-current={selected === row.id ? "true" : undefined}
                       >
                         <button
                           ref={(el) => {
                             if (el) rowBtnRefs.current.set(row.id, el);
                             else rowBtnRefs.current.delete(row.id);
                           }}
-                          className="spexr-sched__rowmain"
+                          type="button"
+                          className="sl-list__row spexr-sched__rowmain"
+                          aria-current={selected === row.id ? "true" : undefined}
                           onClick={() => {
                             setSelected(row.id);
                             if (running) p.onFocusTask(schedule.id, row.id);

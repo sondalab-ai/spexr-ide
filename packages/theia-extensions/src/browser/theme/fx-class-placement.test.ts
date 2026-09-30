@@ -11,8 +11,9 @@ import { fileURLToPath } from "node:url";
  * rule is to put the effect on a wrapper around the component.
  */
 const SELF_DRAWN = [
-  "sl-badge", "sl-callout", "sl-check__box", "sl-monogram", "sl-radio__box",
-  "sl-rule--labeled", "sl-select", "sl-switch__track", "sl-tag", "sl-tooltip",
+  "sl-badge", "sl-callout", "sl-check__box", "sl-chip", "sl-disclosure", "sl-monogram",
+  "sl-radio__box", "sl-resizer", "sl-rule--labeled", "sl-select", "sl-switch__track",
+  "sl-tag", "sl-tooltip",
 ];
 
 const BROWSER = fileURLToPath(new URL("..", import.meta.url));
