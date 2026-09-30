@@ -71,13 +71,6 @@ body {
   padding: var(--sl-space-4);
 }
 
-/* A group of pressed buttons (not a tablist) keeps aria-pressed; the kit only
-   paints aria-selected. */
-.sl-segmented__item[aria-pressed="true"] {
-  background: var(--slc-raised);
-  color: var(--slc-text);
-}
-
 /* A ground for the glass. The kit's lens bends what is behind a pane, and a
    flat panel bent is the same flat panel: these gradients give every panel
    that hosts glass controls something for the refraction to move. Layered
@@ -315,7 +308,7 @@ body {
 
 /* spexr's eyebrows carry the accent; the kit's are muted. */
 .sl-eyebrow--accent {
-  color: var(--slc-accent);
+  color: var(--slc-accent-text);
 }
 
 /* Theia's activity-bar/tab badge (e.g. SCM changed-file count) is a fixed
@@ -629,7 +622,7 @@ body {
   font-size: var(--sl-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   padding-top: 2px;
 }
 
@@ -803,7 +796,7 @@ body {
 }
 
 .spexr-spec-resources__item a {
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
 }
 
 .spexr-spec-resources__path {
@@ -1251,7 +1244,7 @@ code {
   font-family: var(--sl-font-code);
   font-size: var(--sl-text-xs);
   font-weight: 600;
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   letter-spacing: 0.08em;
   padding-top: 2px;
   min-width: 1.75rem;
@@ -1311,21 +1304,8 @@ code {
 }
 
 .spexr-whats-new__dismiss {
-  font-size: var(--sl-text-xs);
-  color: var(--sl-text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font: inherit;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: color var(--sl-motion-fast) var(--sl-motion-ease);
-  padding-top: var(--sl-space-1);
-}
-
-.spexr-whats-new__dismiss:hover {
-  color: var(--sl-text-primary);
 }
 
 .spexr-whats-new__list {
@@ -1355,7 +1335,7 @@ code {
 }
 
 .spexr-whats-new__item a {
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color var(--sl-motion-fast) var(--sl-motion-ease);
@@ -1472,20 +1452,6 @@ code {
   font-family: var(--sl-font-code);
   font-size: var(--sl-text-xs);
   color: var(--sl-text-primary);
-}
-
-.spexr-progress__bar {
-  height: 6px;
-  background: var(--sl-bg-canvas);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.spexr-progress__fill {
-  height: 100%;
-  background: var(--sl-accent-default);
-  border-radius: inherit;
-  transition: width var(--sl-motion-default) var(--sl-motion-ease);
 }
 
 /* Per-spec stepper */
@@ -1673,10 +1639,6 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spexr-progress__fill {
-    transition: none;
-  }
-
   .spexr-stepper__tooltip {
     animation: none;
   }
@@ -2060,7 +2022,7 @@ code {
 .spexr-plan-checklist__ac-ref {
   font-size: var(--sl-text-xs);
   font-weight: 600;
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   margin-right: var(--sl-space-1);
 }
 
@@ -2098,7 +2060,7 @@ code {
 }
 
 .spexr-about-links a {
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   cursor: pointer;
   text-decoration: none;
 }
@@ -2165,20 +2127,6 @@ code {
 .spexr-smart-search__status { font-size: 11px; opacity: 0.7; }
 
 .spexr-smart-search__progress { display: flex; flex-direction: column; gap: 4px; }
-.spexr-smart-search__progress-track {
-  width: 100%;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--theia-widget-border, rgba(128,128,128,0.25));
-  overflow: hidden;
-}
-.spexr-smart-search__progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--theia-focusBorder, var(--theia-button-background));
-  transition: width 0.6s ease;
-  min-width: 4px;
-}
 .spexr-smart-search__progress-meta {
   display: flex;
   justify-content: space-between;
@@ -2201,64 +2149,16 @@ code {
 
 .spexr-smart-search__results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 
-.spexr-smart-search__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.spexr-smart-search__filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  cursor: pointer;
-  border: 1px solid var(--cat-color);
-  color: var(--cat-color);
-  background: transparent;
-  opacity: 0.7;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
-  user-select: none;
-  line-height: 1.5;
-}
-.spexr-smart-search__filter-chip:hover { opacity: 1; }
-.spexr-smart-search__filter-chip--active {
-  background: var(--cat-color);
-  color: #0d0d0d;
-  opacity: 1;
-}
-.spexr-smart-search__filter-count {
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 8px;
-  padding: 0 4px;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-}
-.spexr-smart-search__filter-chip--active .spexr-smart-search__filter-count {
-  background: rgba(0, 0, 0, 0.2);
-}
-
 .spexr-smart-search__hit { padding: 4px 6px 5px; border-radius: 4px; cursor: pointer; }
 .spexr-smart-search__hit:hover { background: var(--theia-list-hoverBackground); }
 .spexr-smart-search__hit-head { display: flex; align-items: baseline; gap: 6px; }
 .spexr-smart-search__hit-name { font-weight: 600; font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* A kit tag, sized down to sit on the hit's 12px name line. */
 .spexr-smart-search__hit-chip {
   flex-shrink: 0;
+  gap: var(--sl-space-1);
   font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  font-family: var(--sl-font-mono);
-  text-transform: uppercase;
-  padding: 1px 5px;
-  border-radius: 3px;
-  border: 1px solid currentColor;
-  opacity: 0.65;
-  line-height: 1.5;
+  padding: 1px var(--sl-space-2);
 }
 .spexr-smart-search__hit-score { font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 500; flex-shrink: 0; }
 .spexr-smart-search__hit-desc {
@@ -2441,20 +2341,7 @@ code {
   margin-top: var(--sl-space-2);
   font-size: var(--sl-text-xs);
 }
-.spexr-smart-search__map-track {
-  flex: 1;
-  height: 3px;
-  border-radius: var(--sl-radius-pill);
-  background: var(--sl-accent-subtle);
-  overflow: hidden;
-}
-.spexr-smart-search__map-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--sl-radius-pill);
-  background: linear-gradient(90deg, var(--sl-accent-default), var(--sl-accent-hover));
-  transition: width var(--sl-motion-slow) var(--sl-motion-ease);
-}
+.spexr-smart-search__map-track { flex: 1; }
 .spexr-smart-search__map-count {
   font-variant-numeric: tabular-nums;
   color: var(--sl-text-muted);
@@ -2539,16 +2426,13 @@ code {
 .spexr-sched__rowactions { display: flex; align-items: flex-start; gap: var(--sl-space-1); }
 /* Upstream of the selected task: a dashed accent border and an "Upstream" tag — never colour alone. */
 .spexr-sched__row[data-upstream="true"] .spexr-sched__rowmain { border-style: dashed; border-color: var(--sl-accent-default); }
+/* A kit list row (selected by aria-current) that keeps its resting edge: a
+   task reads as a card in its band. */
 .spexr-sched__rowmain {
-  all: unset; box-sizing: border-box; cursor: pointer;
+  box-sizing: border-box;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-2);
-  padding: var(--sl-space-2) var(--sl-space-3);
-  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-md);
-  transition: border-color var(--sl-motion-fast, 120ms) var(--sl-motion-ease);
+  border-color: var(--slc-border-subtle); border-radius: var(--sl-radius-md);
 }
-.spexr-sched__rowmain:hover { border-color: var(--sl-border-default); }
-.spexr-sched__rowmain:focus-visible { outline: 2px solid var(--sl-focus-ring); outline-offset: 2px; }
-.spexr-sched__row[aria-current="true"] .spexr-sched__rowmain { border-color: var(--sl-accent-default); }
 .spexr-sched__name { font-weight: 600; }
 .spexr-sched__waits, .spexr-sched__error { flex-basis: 100%; font-size: var(--sl-text-xs); color: var(--sl-text-muted); }
 .spexr-sched__error { color: var(--sl-status-danger); white-space: pre-line; overflow-wrap: anywhere; }
@@ -2584,7 +2468,7 @@ code {
 .spexr-sched__advanced > :not(summary) + :not(summary) { margin-top: var(--sl-space-3); }
 .spexr-sched__advanced-badge { display: inline-flex; margin-left: var(--sl-space-2); }
 .spexr-sched__perm-warning { display: flex; align-items: center; gap: var(--sl-space-2); padding: var(--sl-space-2) var(--sl-space-3); font-size: var(--sl-text-xs); }
-@media (prefers-reduced-motion: reduce) { .spexr-sched__rowmain { transition: none; } .spexr-sched__loop { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .spexr-sched__loop { animation: none; } }
 
 /*
  * Head of the stack: a card that starts work rather than showing it. Dashed and
@@ -2853,17 +2737,10 @@ code {
 /* A card with no height of its own takes its tallest default once it holds two panes. */
 .spexr-df-pinned:has(.spexr-df-split--open) { min-height: 62vh; }
 .spexr-df-active--mosaic .spexr-df-pinned:has(.spexr-df-split--open) { min-height: 52vh; }
-.spexr-df-split__divider {
-  flex: none; height: 10px; touch-action: none; cursor: ns-resize;
-  display: flex; align-items: center; justify-content: center;
-}
-.spexr-df-split__divider::after {
-  content: ""; width: 36px; height: 3px; border-radius: 2px;
-  background: color-mix(in srgb, var(--sl-text-primary) 18%, transparent);
-  transition: background 120ms ease;
-}
-.spexr-df-split__divider:hover::after,
-.spexr-df-split--dragging .spexr-df-split__divider::after { background: var(--tile-accent); }
+/* The kit's resizer, lit in the card's own colour; it stays lit for the whole
+   drag, even while the pointer is over the page below. */
+.spexr-df-split__divider { --slc-accent: var(--tile-accent); }
+.spexr-df-split--dragging .spexr-df-split__divider::after { inset: 3.5px 0; background-color: var(--slc-accent); }
 /* The guest page would swallow the pointer mid-drag otherwise. */
 .spexr-df-split--dragging .spexr-df-browser__view { pointer-events: none; }
 
@@ -2880,18 +2757,15 @@ code {
 .spexr-df-browser__icon { flex: none; }
 /* The address keeps priority over the link picker when the card is narrow. */
 .spexr-df-browser__address { flex: 1 1 8em; min-width: 5em; margin: 0; }
-.spexr-df-browser__input {
-  width: 100%; box-sizing: border-box; padding: 3px var(--sl-space-2);
-  font-family: var(--theia-code-font-family); font-size: var(--sl-text-xs); color: var(--sl-text-primary);
-  background: color-mix(in srgb, var(--sl-text-primary) 5%, transparent);
-  border: 1px solid transparent; border-radius: var(--sl-radius-sm, 6px); outline: none;
+/* Kit fields, at the toolbar's icon-button height. No Prism rim (light theme):
+   like the launcher's fields, they sit beside glass buttons that share one edge. */
+.spexr-df-browser__input,
+.spexr-df-browser__links > .sl-field__input {
+  --slc-rim: initial; --slc-rim-edge: initial;
+  height: 2rem; padding-top: 0; padding-bottom: 0; font-size: var(--sl-text-xs);
 }
-.spexr-df-browser__input:focus { border-color: var(--tile-accent); }
-.spexr-df-browser__links {
-  flex: 0 1 auto; min-width: 0; width: 7.5em; max-width: 14em; padding: 2px var(--sl-space-1);
-  font-size: var(--sl-text-xs); color: var(--sl-text-primary); background: var(--sl-bg-surface);
-  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
-}
+.spexr-df-browser__input { width: 100%; box-sizing: border-box; font-family: var(--theia-code-font-family); }
+.spexr-df-browser__links { flex: 0 1 auto; min-width: 0; width: 7.5em; max-width: 14em; }
 .spexr-df-browser__paused { flex: none; display: inline-flex; color: var(--sl-text-muted); }
 .spexr-df-browser__stage { flex: 1 1 0; min-height: 0; position: relative; }
 .spexr-df-browser__host,
@@ -3228,10 +3102,6 @@ code {
 .spexr-df-card__sep { color: var(--tile-accent); flex: none; }
 
 .spexr-df-card__foot { display: flex; align-items: center; gap: var(--sl-space-2); min-width: 0; font-size: var(--sl-text-xs); }
-.spexr-df-card__chip {
-  flex: none; padding: 0 var(--sl-space-1); font-family: var(--theia-code-font-family);
-  color: var(--tile-accent); border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm);
-}
 .spexr-df-card__now { color: var(--sl-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .spexr-df-card__meta { margin-left: auto; flex: none; display: flex; align-items: center; gap: var(--sl-space-2); color: var(--sl-text-muted); }
 .spexr-df-card__meta em { font-style: normal; }
@@ -3315,13 +3185,11 @@ code {
   font-size: var(--sl-text-xs); font-family: var(--sl-font-mono); text-transform: uppercase; letter-spacing: 0.14em;
   color: var(--sl-text-muted); padding: var(--sl-space-2) 0;
 }
+/* A kit list row laid out as one line; the kit paints it. */
 .spexr-df-row {
   display: flex; align-items: center; gap: var(--sl-space-2); min-width: 0;
-  padding: var(--sl-space-1) var(--sl-space-2); text-align: left;
-  background: transparent; border: none; border-top: 1px solid var(--sl-border-subtle);
-  color: var(--sl-text-primary); font: inherit; cursor: pointer;
+  padding: var(--sl-space-1) var(--sl-space-2);
 }
-.spexr-df-row:hover { background: var(--sl-bg-surface-raised); }
 .spexr-df-row__led { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--sl-text-muted); }
 .spexr-df-row[data-state="working"] .spexr-df-row__led { background: var(--tile-accent); }
 .spexr-df-row__project { flex: 0 0 auto; max-width: 30%; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3364,14 +3232,12 @@ code {
   color: var(--sl-text-primary); font: inherit; font-size: var(--sl-text-sm); line-height: 1.45;
   overflow-wrap: anywhere;
 }
-.spexr-todo__title:hover { color: var(--sl-accent-default); }
+.spexr-todo__title:hover { color: var(--slc-accent-text); }
 .spexr-todo__item--done .spexr-todo__title { color: var(--sl-text-muted); text-decoration: line-through; }
 .spexr-todo__more, .spexr-todo__done-toggle {
-  display: inline-flex; align-items: center; gap: 2px; padding: 0; border: none; background: none; cursor: pointer;
   font-family: var(--sl-font-mono); font-size: var(--sl-text-xs);
-  text-transform: uppercase; letter-spacing: 0.14em; color: var(--sl-text-muted);
+  text-transform: uppercase; letter-spacing: 0.14em;
 }
-.spexr-todo__more:hover, .spexr-todo__done-toggle:hover { color: var(--sl-text-primary); }
 .spexr-todo__details {
   margin: 0; max-height: 14em; overflow: auto; width: 100%; box-sizing: border-box;
   padding: var(--sl-space-2); border-radius: var(--sl-radius-sm, 6px);

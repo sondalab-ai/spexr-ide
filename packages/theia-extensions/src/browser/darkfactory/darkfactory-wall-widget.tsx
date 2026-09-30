@@ -1262,7 +1262,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           onToggle={() => this.toggleTrash()}
         />
         {!this.trashCollapsed && (
-          <div className="spexr-df-condensed">
+          <div className="sl-list spexr-df-condensed">
             {tiles.map((tile) => (
               <AgentCondensedRow
                 key={tile.sessionId}
@@ -1290,7 +1290,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       <>
         <div className="spexr-df-grid">{tiles.slice(0, CARD_LIMIT).map((t) => this.renderCard(t, now, true))}</div>
         {condensed.length > 0 && (
-          <div className="spexr-df-condensed">
+          <div className="sl-list spexr-df-condensed">
             <div className="spexr-df-condensed__label">{condensed.length} more</div>
             {condensed.map((t) => this.renderRow(t, now, true))}
           </div>
@@ -1322,7 +1322,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
           <div className="spexr-df-grid">{cards.map((t) => this.renderCard(t, now, false))}</div>
         )}
         {!collapsed && condensed.length > 0 && (
-          <div className="spexr-df-condensed">{condensed.map((t) => this.renderRow(t, now, false))}</div>
+          <div className="sl-list spexr-df-condensed">{condensed.map((t) => this.renderRow(t, now, false))}</div>
         )}
       </section>
     );

@@ -158,14 +158,14 @@ export class SpexrTodoWidget extends ReactWidget {
         {done > 0 && (
           <div className="spexr-todo__done">
             <button
-              className="spexr-todo__done-toggle"
+              type="button"
+              className="sl-disclosure spexr-todo__done-toggle"
               aria-expanded={this.showDone}
               onClick={() => {
                 this.showDone = !this.showDone;
                 this.update();
               }}
             >
-              <i className={`codicon codicon-chevron-${this.showDone ? "down" : "right"}`} />
               Done ({done})
             </button>
             {this.showDone &&
@@ -201,8 +201,7 @@ export class SpexrTodoWidget extends ReactWidget {
             {item.title}
           </button>
           {item.details && (
-            <button className="spexr-todo__more" aria-expanded={open} onClick={() => this.toggleDetails(key)}>
-              <i className={`codicon codicon-chevron-${open ? "down" : "right"}`} />
+            <button type="button" className="sl-disclosure spexr-todo__more" aria-expanded={open} onClick={() => this.toggleDetails(key)}>
               {open ? "Less" : "Details"}
             </button>
           )}

@@ -249,13 +249,15 @@ export const WorkspaceProgressBar: React.FC<WorkspaceProgressBarProps> = ({
       </span>
     </div>
     <div
-      className="spexr-progress__bar"
+      className="sl-progress"
       role="progressbar"
+      aria-label={label}
       aria-valuenow={percent}
       aria-valuemin={0}
       aria-valuemax={100}
+      style={{ "--sl-progress": `${percent}%` } as React.CSSProperties}
     >
-      <div className="spexr-progress__fill" style={{ width: `${percent}%` }} />
+      <span className="sl-progress__bar" />
     </div>
   </div>
 );

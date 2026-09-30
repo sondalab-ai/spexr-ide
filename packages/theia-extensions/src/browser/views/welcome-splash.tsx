@@ -136,7 +136,11 @@ const WhatsNewPanel: React.FC<{ note: ReleaseNote }> = ({ note }) => {
             </h2>
           )}
         </div>
-        <button type="button" className="spexr-whats-new__dismiss" onClick={dismiss}>
+        <button
+          type="button"
+          className="sl-btn sl-btn--ghost sl-btn--sm spexr-whats-new__dismiss sl-fx-glass sl-fx-glass--pane sl-fx-press"
+          onClick={dismiss}
+        >
           Dismiss
         </button>
       </div>
