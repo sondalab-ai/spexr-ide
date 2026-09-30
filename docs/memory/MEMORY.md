@@ -19,6 +19,7 @@ One line per memory. Linked file holds the body.
 - [Theia tree scroll snap-back](theia-tree-scroll-snapback.md) — the virtualized tree scrolled back to the focused row on every re-render; patched in @theia/core.
 - [Git status untracked expansion](git-status-untracked-expansion.md) — the panel lists every untracked file where terminal `git status` collapses the directory; both counts are right.
 - [Electron single-instance lock](electron-single-instance-lock.md) — a second instance quits silently, so a rebuilt app looks unchanged; quit the running one before verifying UI.
+- [Claude theme lives in settings.json](claude-theme-lives-in-settings-json.md) — `theme` in settings.json wins over .claude.json; "dark" there means no OSC 11 query, so Auto never engages.
 
 ## Feedback
 
