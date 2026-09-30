@@ -308,7 +308,7 @@ body {
 
 /* spexr's eyebrows carry the accent; the kit's are muted. */
 .sl-eyebrow--accent {
-  color: var(--slc-accent);
+  color: var(--slc-accent-text);
 }
 
 /* Theia's activity-bar/tab badge (e.g. SCM changed-file count) is a fixed
@@ -622,7 +622,7 @@ body {
   font-size: var(--sl-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   padding-top: 2px;
 }
 
@@ -796,7 +796,7 @@ body {
 }
 
 .spexr-spec-resources__item a {
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
 }
 
 .spexr-spec-resources__path {
@@ -1244,7 +1244,7 @@ code {
   font-family: var(--sl-font-code);
   font-size: var(--sl-text-xs);
   font-weight: 600;
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   letter-spacing: 0.08em;
   padding-top: 2px;
   min-width: 1.75rem;
@@ -1335,7 +1335,7 @@ code {
 }
 
 .spexr-whats-new__item a {
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color var(--sl-motion-fast) var(--sl-motion-ease);
@@ -2022,7 +2022,7 @@ code {
 .spexr-plan-checklist__ac-ref {
   font-size: var(--sl-text-xs);
   font-weight: 600;
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   margin-right: var(--sl-space-1);
 }
 
@@ -2060,7 +2060,7 @@ code {
 }
 
 .spexr-about-links a {
-  color: var(--sl-accent-default);
+  color: var(--slc-accent-text);
   cursor: pointer;
   text-decoration: none;
 }
@@ -3232,7 +3232,7 @@ code {
   color: var(--sl-text-primary); font: inherit; font-size: var(--sl-text-sm); line-height: 1.45;
   overflow-wrap: anywhere;
 }
-.spexr-todo__title:hover { color: var(--sl-accent-default); }
+.spexr-todo__title:hover { color: var(--slc-accent-text); }
 .spexr-todo__item--done .spexr-todo__title { color: var(--sl-text-muted); text-decoration: line-through; }
 .spexr-todo__more, .spexr-todo__done-toggle {
   font-family: var(--sl-font-mono); font-size: var(--sl-text-xs);

@@ -10,11 +10,11 @@ function installedKitVersion(): string {
 }
 
 describe("@sondalab/ui-kit", () => {
-  // 0.23.0 ships the list, disclosure and resizer spexr's rows and splits use,
-  // and (since 0.22) paints a segmented item's aria-pressed, which spexr no
-  // longer patches locally.
-  it("is at least 0.23.0", () => {
+  // 0.24.0 carries accent text in --slc-accent-text (capped darker on light),
+  // which spexr's accent-coloured labels read. 0.23 shipped the list,
+  // disclosure and resizer, and 0.22 the segmented aria-pressed paint.
+  it("is at least 0.24.0", () => {
     const [major, minor, patch] = installedKitVersion().split(".").map(Number) as [number, number, number];
-    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(23_000);
+    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(24_000);
   });
 });
