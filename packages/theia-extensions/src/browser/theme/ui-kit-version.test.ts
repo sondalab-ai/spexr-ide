@@ -10,11 +10,13 @@ function installedKitVersion(): string {
 }
 
 describe("@sondalab/ui-kit", () => {
-  // 0.24.0 carries accent text in --slc-accent-text (capped darker on light),
+  // 0.25.0 gives every control its press (a small squash, sprung back) and
+  // makes the glass panes press the same way. 0.24.0 carries accent text in
+  // --slc-accent-text (capped darker on light),
   // which spexr's accent-coloured labels read. 0.23 shipped the list,
   // disclosure and resizer, and 0.22 the segmented aria-pressed paint.
-  it("is at least 0.24.0", () => {
+  it("is at least 0.25.0", () => {
     const [major, minor, patch] = installedKitVersion().split(".").map(Number) as [number, number, number];
-    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(24_000);
+    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(25_000);
   });
 });
