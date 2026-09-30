@@ -32,7 +32,7 @@
       // forces to the app's theme once the bundle has loaded.
       theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    var canvas = theme === 'light' ? '#ECE4D4' : '#070A0D';
+    var canvas = theme === 'light' ? '#F4F4F8' : '#070A0D';
     var root = document.documentElement;
     root.setAttribute('data-sl-theme', theme);
     root.style.background = canvas;

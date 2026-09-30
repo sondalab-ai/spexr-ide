@@ -2597,6 +2597,9 @@ code {
   border-radius: var(--sl-radius-md);
   background: color-mix(in srgb, var(--sl-text-primary) 2%, transparent);
 }
+/* No Prism rim on these fields (light theme): they sit beside glass buttons
+   that share one edge, and a rainbow hairline would break it. */
+.spexr-df-launcher, .spexr-sched { --slc-rim: initial; --slc-rim-edge: initial; }
 .spexr-df-launcher__head {
   display: flex; align-items: center; gap: var(--sl-space-2); color: var(--sl-text-muted);
 }
