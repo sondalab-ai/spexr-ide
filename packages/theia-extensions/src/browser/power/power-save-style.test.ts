@@ -86,3 +86,11 @@ describe("power saving the welcome background", () => {
     expect(veil).not.toMatch(/background:\s*none/);
   });
 });
+
+// Ink was dropped only inside live cards (their data-sl-fx="off") and kept
+// running on every other button while saving.
+describe("power saving the ink hover", () => {
+  it("drops the ink layer on every button", () => {
+    expect(declarationsFor(":root[data-spexr-power-save] .sl-fx-ink")).toMatch(/display:\s*none/);
+  });
+});
