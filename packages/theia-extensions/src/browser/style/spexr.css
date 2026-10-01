@@ -50,7 +50,7 @@ body {
 
 .sl-btn--danger:hover:not(:disabled) {
   background: var(--slc-danger);
-  color: var(--slc-on-accent);
+  color: var(--slc-on-danger);
   border-color: var(--slc-danger);
 }
 
@@ -61,7 +61,7 @@ body {
 }
 .sl-icon-btn--danger:hover:not(:disabled) {
   background: var(--slc-danger);
-  color: var(--slc-on-accent);
+  color: var(--slc-on-danger);
   border-color: var(--slc-danger);
 }
 
