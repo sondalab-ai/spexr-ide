@@ -171,6 +171,14 @@ body {
   animation: none !important;
 }
 
+/* The kit's ink (the hover front on every button: a blurred, noise-torn layer
+   on a 1.1s transition) goes everywhere while saving. Without this it was off
+   only on buttons inside the live cards switched to data-sl-fx="off" above,
+   and still running on every other button. */
+:root[data-spexr-power-save] .sl-fx-ink {
+  display: none;
+}
+
 /* The sweeps, the orbit and the curtains run on pseudo-elements, which the
    rules above never reach. Paused like the kit pauses them off-screen (its
    off-screen gate in effects.css; power-save-style.test.ts keeps the two
