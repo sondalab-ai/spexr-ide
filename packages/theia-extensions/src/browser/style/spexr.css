@@ -2522,7 +2522,9 @@ code {
 /* Segmented control: how the running terminals are arranged. Sits opposite the
    launcher title, where it reads as a wall-level setting rather than a launch option. */
 .spexr-df-layout { margin-left: auto; }
-.spexr-df-layout .sl-segmented__item { padding: 2px 10px; }
+/* line-height: normal keeps this compact item its pre-0.27 height: the kit
+   moved segmented items to line-height 1 for its 32px control height. */
+.spexr-df-layout .sl-segmented__item { padding: 2px 10px; line-height: normal; }
 /* Rescan, sitting after the arrangement toggle: same wall-level register, and
    the only control that answers "a session started elsewhere is missing". */
 .spexr-df-refresh { flex: none; }
