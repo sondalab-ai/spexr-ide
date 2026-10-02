@@ -1121,7 +1121,7 @@ code {
   padding: clamp(var(--sl-space-6), 6vw, var(--sl-space-8));
   display: flex;
   flex-direction: column;
-  gap: var(--sl-space-7);
+  gap: var(--sl-space-6);
 }
 
 .spexr-welcome__header {
@@ -2086,7 +2086,7 @@ code {
 }
 
 .spexr-about-links span {
-  color: var(--sl-text-disabled);
+  color: var(--sl-text-muted);
 }
 
 /* --- Git blame inline annotations (left margin column) --- */
@@ -2815,7 +2815,7 @@ code {
 .spexr-df-term__line[data-kind="assistant"] .spexr-df-term__glyph { color: var(--tile-accent); }
 /* Tool call: a command — monospace headline, distinct tint. */
 .spexr-df-term__line[data-kind="tool"] { color: var(--sl-text-secondary, var(--sl-text-primary)); }
-.spexr-df-term__line[data-kind="tool"] .spexr-df-term__glyph { color: var(--sl-accent, var(--tile-accent)); font-weight: 700; }
+.spexr-df-term__line[data-kind="tool"] .spexr-df-term__glyph { color: var(--tile-accent); font-weight: 700; }
 .spexr-df-term__line[data-kind="tool"] .spexr-df-term__text { color: var(--tile-accent); }
 /* Tool output: dimmed, indented under its command. */
 .spexr-df-term__line[data-kind="result"] { color: var(--sl-text-muted); padding-left: calc(1ch + 8px); }
