@@ -10,14 +10,18 @@ function installedKitVersion(): string {
 }
 
 describe("@sondalab/ui-kit", () => {
-  // 0.30.0 ships Geist / Geist Mono and the micro register (--sl-text-micro)
+  // 0.32.0 ships the --slc-accent-fill role spexr's registered fill is set
+  // through, the kit's danger tone (spexr's own was deleted), the focus halo
+  // and its restore after the effects kill switches; 0.31.0 the depth roles
+  // (--slc-tile, --slc-depth-*) the Theia chrome is drawn with. 0.30.0 ships
+  // Geist / Geist Mono and the micro register (--sl-text-micro)
   // spexr's structural labels read; 0.29.0 the per-product neutrals
   // (themes/products.css, neutrals.json) that SPEXR_NEUTRALS and the
   // data-sl-product attribute select. 0.25.0 gives every control its press,
   // 0.24.0 carries accent text in --slc-accent-text, 0.23 shipped the list,
   // disclosure and resizer, and 0.22 the segmented aria-pressed paint.
-  it("is at least 0.30.0", () => {
+  it("is at least 0.32.0", () => {
     const [major, minor, patch] = installedKitVersion().split(".").map(Number) as [number, number, number];
-    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(30_000);
+    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(32_000);
   });
 });

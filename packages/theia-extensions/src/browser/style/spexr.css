@@ -1569,10 +1569,12 @@ code {
   font-weight: 500;
 }
 
+/* A labelled accent fill: the product's registered fill and its label (the
+   canvas on the #5b6cff accent read 3.37:1 on light). */
 .spexr-stepper__item--done .spexr-stepper__num {
-  background: var(--sl-accent-default);
-  border-color: var(--sl-accent-default);
-  color: var(--sl-bg-canvas);
+  background: var(--slc-accent-fill, var(--slc-accent));
+  border-color: var(--slc-accent-fill, var(--slc-accent));
+  color: var(--slc-on-accent-fill);
 }
 
 /* The current step is the kit's primary button: its badge takes the button's

@@ -419,8 +419,8 @@ importers:
         specifier: ^1.2.16
         version: 1.2.16(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@sondalab/ui-kit':
-        specifier: ^0.30.0
-        version: 0.30.0
+        specifier: ^0.32.0
+        version: 0.32.0
       clsx:
         specifier: ^2.1.0
         version: 2.1.1
@@ -1627,8 +1627,8 @@ packages:
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
 
-  '@sondalab/ui-kit@0.30.0':
-    resolution: {integrity: sha512-oIq2NhP3WgsbUK8URwV0z3I40EJqLfDa6z2cMe+kH0Zeh9Iq8UFOenzBxCl3iYQ4Vwo2066c0lsJfRVslL4ZTQ==}
+  '@sondalab/ui-kit@0.32.0':
+    resolution: {integrity: sha512-dGrgasGs8XwYuliEAaSqy58OabZKWQi21mg/qjZMv1Nz6iu6VV+g4lX3fVec/x+ZknkpIDj/T+Me6/oawkOAcQ==}
     hasBin: true
     peerDependencies:
       vgpu: ^0.3.1
@@ -6975,7 +6975,7 @@ snapshots:
 
   '@socket.io/component-emitter@3.1.2': {}
 
-  '@sondalab/ui-kit@0.30.0': {}
+  '@sondalab/ui-kit@0.32.0': {}
 
   '@standard-schema/spec@1.1.0': {}
 

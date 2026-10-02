@@ -67,19 +67,15 @@
   --sl-focus-ring-width: 3px;
 }
 
-/* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28). The
-   primary is a deeper indigo than the accent so its label can be white on
-   both themes: 5.41:1 on the fill, 6.47 on hover, 8.03 pressed. One literal,
-   registered in the kit's accent registry; hover and press are derived from
-   it, so there are no hand-tuned steps to drift. The accent itself
-   (#5b6cff / #8b96ff) still drives links, tags, the agent rail and the focus
-   ring. Scoped to the button: --slc-* resolve at :root, so binding them here
-   re-derives only the primary's fill, edge and label. High contrast keeps the
-   kit's own primary. */
-:is([data-sl-theme="light"], [data-sl-theme="dark"]) .sl-btn--primary {
-  --slc-accent: #4c58e9;
-  --slc-accent-hover: color-mix(in srgb, var(--slc-accent) 89%, black);
-  --slc-accent-active: color-mix(in srgb, var(--slc-accent) 76%, black);
-  --slc-edge-accent: oklch(from var(--slc-accent) calc(l - var(--slc-shade-step, 0.075)) c h);
-  --slc-on-accent: #ffffff;
+/* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28, the
+   kit's --slc-accent-fill role since 0.32). White on the #5b6cff accent reads
+   4.17:1, so every accent fill that carries a label -- the primary, a checked
+   check, radio or switch, a count badge -- is the deeper registered fill on
+   both themes: white on it reads 5.41:1, 6.47 hovered, 8.03 pressed. One
+   literal, set once as a role; the kit derives the label, hover, press and
+   edge from it. The accent (#5b6cff / #8b96ff) still drives links, tags, the
+   agent rail, selection and the focus ring. High contrast keeps its own
+   yellow: the kit resets the fill there too. */
+:root:not([data-sl-theme="high-contrast"]) {
+  --slc-accent-fill: #4c58e9;
 }
