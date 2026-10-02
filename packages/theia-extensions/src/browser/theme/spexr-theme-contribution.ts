@@ -70,6 +70,9 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   /** Apply a SPEXR theme to both the design tokens and Theia's native chrome. */
   private applyTheme(spexrTheme: string): void {
     document.documentElement.setAttribute("data-sl-theme", spexrTheme);
+    // Selects SPEXR's indigo-tinted neutrals in the kit's products.css, which
+    // only match on the element that carries data-sl-theme (or an ancestor).
+    document.documentElement.setAttribute("data-sl-product", "spexr");
     // The anti-flash guard in index.html (apps/desktop/preload.html) paints the
     // canvas with an inline style, which would outrank the stylesheet for every
     // later theme change. Hand the element back now that the tokens are loaded.
@@ -160,7 +163,8 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   /**
    * Inject CSS variable overrides so Theia's native chrome (buttons, focus
    * rings, badges, tabs, activity bar) uses the SPEXR violet accent instead
-   * of the default Theia blue. Theia computes `--theia-*` variables from its
+   * of the default Theia blue, the SPEXR neutrals and the kit's UI face (Geist)
+   * instead of the platform font. Theia computes `--theia-*` variables from its
    * color registry; overriding them here takes precedence via document order.
    */
   private applyAccentOverrides(spexrTheme: string): void {
@@ -172,13 +176,21 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     const onAccent      = "#ffffff";
 
     // Sondalab surface neutrals — pushed into Theia's native chrome so the
-    // editor/sidebar/tabs/terminal share the same (slightly teal) grays as the
-    // SPEXR-styled panels, instead of Theia's default neutral gray. High
-    // contrast is left to Theia's own HC theme (see the guard below).
+    // editor/sidebar/tabs/terminal share the same indigo-tinted greys as the
+    // SPEXR-styled panels (the kit's generated spexr ladder), instead of
+    // Theia's default neutral grey. High contrast is left to Theia's own HC
+    // theme (see the guard below).
     const { canvas, surface, raised, fg, fgMuted, line } =
       SPEXR_NEUTRALS[isDark ? "dark" : "light"];
 
     const css = `
+/* Theia's chrome in the kit's UI face (Geist). On body too: Theia's os.css sets
+   this variable on body.mac / .windows / .linux, which would shadow :root. The
+   editor and terminal keep their own coding mono (editor.fontFamily). */
+:root,
+body {
+  --theia-ui-font-family: var(--sl-font-sans) !important;
+}
 :root {
   /* Focus ring */
   --theia-focusBorder: ${accent} !important;
@@ -253,7 +265,7 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
 }`;
 
     // Neutral surfaces: only for light/dark. In high contrast, leave Theia's own
-    // HC theme untouched (its grays are WCAG-tuned; a teal cast would break it).
+    // HC theme untouched (its grays are WCAG-tuned; an indigo cast would break it).
     const neutralsCss = spexrTheme === "high-contrast" ? "" : `
 :root {
   /* Base surfaces */

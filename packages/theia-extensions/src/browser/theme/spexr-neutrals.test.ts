@@ -1,40 +1,70 @@
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
-import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
+import { SPEXR_NEUTRALS, solidOver } from "./spexr-neutrals.js";
 
-/** Reads one `--sl-*` token from the installed kit's generated theme file. */
-function kitToken(theme: "light" | "dark", name: string): string {
-  const css = readFileSync(createRequire(import.meta.url).resolve(`@sondalab/ui-kit/themes/${theme}.css`), "utf8");
-  const value = new RegExp(`--sl-${name}:\\s*([^;]+);`).exec(css)?.[1]?.trim();
-  if (!value) throw new Error(`--sl-${name} not found in themes/${theme}.css`);
-  return value.toUpperCase();
+type Roles = Record<string, string>;
+
+/** spexr's generated neutrals for one theme, read from the installed kit's neutrals.json. */
+function kitRoles(theme: "light" | "dark"): Roles {
+  const json = JSON.parse(readFileSync(createRequire(import.meta.url).resolve("@sondalab/ui-kit/neutrals.json"), "utf8"));
+  const roles = json.products?.spexr?.[theme] as Roles | undefined;
+  if (!roles) throw new Error(`products.spexr.${theme} not found in neutrals.json`);
+  return roles;
 }
 
-/** Solid colour of `rgba(r,g,b,a)` painted over an opaque `#RRGGBB`, rounded per channel. */
-function composite(rgba: string, over: string): string {
-  const [r, g, b, a] = rgba.match(/[\d.]+/g)!.map(Number) as [number, number, number, number];
-  const base = [1, 3, 5].map((i) => parseInt(over.slice(i, i + 2), 16));
-  return `#${[r, g, b].map((c, i) => Math.round(base[i]! + (c - base[i]!) * a).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
-}
+/** A file of the desktop app, which carries the literals that cannot import the JSON. */
+const desktopFile = (name: string): string =>
+  readFileSync(new URL(`../../../../../apps/desktop/${name}`, import.meta.url), "utf8");
 
-// SPEXR_NEUTRALS copies the kit's neutrals into Theia's variables and colour
-// registry; a kit bump that moves a neutral must move the copy with it.
+// SPEXR_NEUTRALS feeds Theia's variables and colour registry from the kit's
+// generated spexr ladder; it must say exactly what products.css says.
 describe("SPEXR_NEUTRALS", () => {
   for (const theme of ["light", "dark"] as const) {
-    it(`matches the kit's ${theme} neutrals`, () => {
+    it(`is the kit's generated spexr ${theme} neutrals`, () => {
       const n = SPEXR_NEUTRALS[theme];
+      const k = kitRoles(theme);
       expect({ canvas: n.canvas, surface: n.surface, raised: n.raised, fg: n.fg, fgMuted: n.fgMuted }).toEqual({
-        canvas: kitToken(theme, "bg-canvas"),
-        surface: kitToken(theme, "bg-surface"),
-        raised: kitToken(theme, "bg-surface-raised"),
-        fg: kitToken(theme, "text-primary"),
-        fgMuted: kitToken(theme, "text-muted"),
+        canvas: k["bg-canvas"],
+        surface: k["bg-surface"],
+        raised: k["bg-surface-raised"],
+        fg: k["text-primary"],
+        fgMuted: k["text-muted"],
       });
+    });
+
+    it(`${theme} line is the kit's default border over the surface`, () => {
+      const k = kitRoles(theme);
+      expect(SPEXR_NEUTRALS[theme].line).toBe(solidOver(k["border-default"]!, k["bg-surface"]!));
     });
   }
 
-  it("light line is the kit's default border over the surface", () => {
-    expect(SPEXR_NEUTRALS.light.line).toBe(composite(kitToken("light", "border-default"), SPEXR_NEUTRALS.light.surface));
+  it("composites a translucent ink over a solid ground", () => {
+    expect(solidOver("rgba(0,0,0,0.5)", "#ffffff")).toBe("#808080");
+    expect(solidOver("rgba(255,255,255,0)", "#102030")).toBe("#102030");
+  });
+});
+
+// Build-time literals that cannot import neutrals.json: the anti-flash preload
+// (a static template injected into index.html) and the Electron window's
+// configured background. Kept in sync by hand; these pin them to the kit.
+describe("the desktop app's literal canvas", () => {
+  it("preload.html paints the kit's spexr canvas for each theme", () => {
+    const html = desktopFile("preload.html");
+    const literal = /var canvas = theme === 'light' \? '(#[0-9a-f]{6})' : '(#[0-9a-f]{6})';/.exec(html);
+    expect(literal, "the canvas literal in preload.html").not.toBeNull();
+    expect({ light: literal![1], dark: literal![2] }).toEqual({
+      light: kitRoles("light")["bg-canvas"],
+      dark: kitRoles("dark")["bg-canvas"],
+    });
+  });
+
+  it("preload.html selects the spexr product next to the theme", () => {
+    expect(desktopFile("preload.html")).toMatch(/root\.setAttribute\('data-sl-product', 'spexr'\);/);
+  });
+
+  it("the Electron window starts on the kit's spexr dark canvas", () => {
+    const manifest = JSON.parse(desktopFile("package.json"));
+    expect(manifest.theia.frontend.config.electron.windowOptions.backgroundColor).toBe(kitRoles("dark")["bg-canvas"]);
   });
 });

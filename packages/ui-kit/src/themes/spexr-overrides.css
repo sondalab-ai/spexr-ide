@@ -3,14 +3,15 @@
  *
  * The Sondalab kit ships the shared grammar (type, spacing, neutrals, status,
  * 3-theme machinery) and its default amber/teal accent. SPEXR keeps its own
- * signature: the indigo accent, the IDE-specific roles (agent / editor / hljs),
- * and a coding mono for the editor. These are product tokens, not brand tokens,
+ * signature: the indigo accent, the IDE-specific roles (agent / hljs), and a
+ * coding mono for the editor. These are product tokens, not brand tokens,
  * so they live here instead of in the vendored (generated) files.
  */
 
 :root {
-  /* Editor / code contexts keep a coding mono; the brand mono (--sl-font-mono,
-     Martian) is available for data labels but is not forced into code here. */
+  /* Editor / code contexts keep a coding mono (owner, 2026-10-02): JetBrains
+     Mono, then the kit's Geist Mono. The kit's mono (--sl-font-mono, Geist
+     Mono) carries labels and data but is not forced into code here. */
   --sl-font-code: "JetBrains Mono", "Geist Mono", "SF Mono", "Menlo", "Consolas", monospace;
 
   /* Syntax highlight — adopt the shared DS atom-one palette (--sl-code-*, which
@@ -27,6 +28,17 @@
   --sl-hljs-builtin: var(--sl-code-builtin);
 }
 
+/* Agent surfaces — primary view emphasis. Named roles over the kit's own, so
+   they follow the generated spexr neutrals (products.css) and the indigo
+   accent on light and dark, and the kit's literal roles in high contrast.
+   Declared on the theme element so a nested theme re-resolves them. */
+[data-sl-theme] {
+  --sl-agent-bg: var(--sl-bg-surface);
+  --sl-agent-bubble-user: var(--sl-accent-subtle);
+  --sl-agent-bubble-assistant: var(--sl-bg-surface-raised);
+  --sl-agent-rail: var(--sl-accent-default);
+}
+
 [data-sl-theme="light"] {
   /* Accent — SPEXR indigo, overrides the Sondalab default */
   --sl-accent-default: #5b6cff;
@@ -36,18 +48,6 @@
   --sl-focus-ring: #5b6cff;
   /* The accent's depth companion: where the kit's light recedes to. */
   --sl-accent-depth: #7a3fd0;
-
-  /* Agent surfaces — primary view emphasis */
-  --sl-agent-bg: #fbfbfd;
-  --sl-agent-bubble-user: #eef0ff;
-  --sl-agent-bubble-assistant: #ffffff;
-  --sl-agent-rail: #5b6cff;
-
-  /* Editor */
-  --sl-editor-bg: #ffffff;
-  --sl-editor-fg: #0a0a0b;
-  --sl-editor-line-active: #f4f4f5;
-  --sl-editor-selection: #c7d2fe;
 }
 
 [data-sl-theme="dark"] {
@@ -57,33 +57,14 @@
   --sl-accent-subtle: #1c1f3a;
   --sl-focus-ring: #8b96ff;
   --sl-accent-depth: #b58cff;
-
-  --sl-agent-bg: #0e0f13;
-  --sl-agent-bubble-user: #1c1f3a;
-  --sl-agent-bubble-assistant: #15171c;
-  --sl-agent-rail: #8b96ff;
-
-  --sl-editor-bg: #0c0d10;
-  --sl-editor-fg: #e5e5e7;
-  --sl-editor-line-active: #15171c;
-  --sl-editor-selection: #313869;
 }
 
 [data-sl-theme="high-contrast"] {
   /* Accent is NOT overridden: the Sondalab HC accent (#ffff00) already matches
-     SPEXR's HC. Only the product roles + the wider HC focus ring are restored.
+     SPEXR's HC. Only the wider HC focus ring is restored; the agent roles read
+     the kit's HC values (the same black, #0a0a0a, #1a1a00 and yellow as before).
      hljs is intentionally left undefined in HC, as it was before the migration. */
   --sl-focus-ring-width: 3px;
-
-  --sl-agent-bg: #000000;
-  --sl-agent-bubble-user: #1a1a00;
-  --sl-agent-bubble-assistant: #0a0a0a;
-  --sl-agent-rail: #ffff00;
-
-  --sl-editor-bg: #000000;
-  --sl-editor-fg: #ffffff;
-  --sl-editor-line-active: #1a1a1a;
-  --sl-editor-selection: #ffff00;
 }
 
 /* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28). The

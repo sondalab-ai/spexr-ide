@@ -32,9 +32,12 @@
       // forces to the app's theme once the bundle has loaded.
       theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    var canvas = theme === 'light' ? '#F4F4F8' : '#070A0D';
+    // products.spexr.<theme>["bg-canvas"] in @sondalab/ui-kit/neutrals.json. A
+    // static template cannot import it, so spexr-neutrals.test.ts pins it.
+    var canvas = theme === 'light' ? '#e5e7ec' : '#08080b';
     var root = document.documentElement;
     root.setAttribute('data-sl-theme', theme);
+    root.setAttribute('data-sl-product', 'spexr');
     root.style.background = canvas;
     // Theia's ThemePreloadContribution runs later, from the bundle, and copies
     // this key into --theia-editor-background — the color every shell surface
