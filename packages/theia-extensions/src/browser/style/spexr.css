@@ -17,8 +17,10 @@ body {
      `theia.generator.config.preloadTemplate`), and a body-positioned style beats
      this one at equal specificity. The attribute lands exactly when the token
      becomes valid, so the qualified rule takes over from the flash guard.
-     The literal fallback covers `body` in that same pre-theme window. */
-  background: var(--sl-bg-canvas, #070A0D);
+     No literal fallback: the guard sets data-sl-theme before this stylesheet
+     loads, and a body without the token is transparent over the guard's
+     html canvas, which is the kit's spexr canvas already. */
+  background: var(--sl-bg-canvas);
   color: var(--sl-text-primary);
   font-family: var(--sl-font-sans);
   font-size: var(--sl-text-md);

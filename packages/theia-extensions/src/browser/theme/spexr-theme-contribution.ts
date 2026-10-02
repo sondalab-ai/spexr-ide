@@ -175,9 +175,10 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     const onAccent      = "#ffffff";
 
     // Sondalab surface neutrals — pushed into Theia's native chrome so the
-    // editor/sidebar/tabs/terminal share the same (slightly teal) grays as the
-    // SPEXR-styled panels, instead of Theia's default neutral gray. High
-    // contrast is left to Theia's own HC theme (see the guard below).
+    // editor/sidebar/tabs/terminal share the same indigo-tinted greys as the
+    // SPEXR-styled panels (the kit's generated spexr ladder), instead of
+    // Theia's default neutral grey. High contrast is left to Theia's own HC
+    // theme (see the guard below).
     const { canvas, surface, raised, fg, fgMuted, line } =
       SPEXR_NEUTRALS[isDark ? "dark" : "light"];
 
@@ -256,7 +257,7 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
 }`;
 
     // Neutral surfaces: only for light/dark. In high contrast, leave Theia's own
-    // HC theme untouched (its grays are WCAG-tuned; a teal cast would break it).
+    // HC theme untouched (its grays are WCAG-tuned; an indigo cast would break it).
     const neutralsCss = spexrTheme === "high-contrast" ? "" : `
 :root {
   /* Base surfaces */
