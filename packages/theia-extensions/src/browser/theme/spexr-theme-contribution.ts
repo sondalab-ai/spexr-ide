@@ -70,6 +70,9 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   /** Apply a SPEXR theme to both the design tokens and Theia's native chrome. */
   private applyTheme(spexrTheme: string): void {
     document.documentElement.setAttribute("data-sl-theme", spexrTheme);
+    // Selects SPEXR's indigo-tinted neutrals in the kit's products.css, which
+    // only match on the element that carries data-sl-theme (or an ancestor).
+    document.documentElement.setAttribute("data-sl-product", "spexr");
     // The anti-flash guard in index.html (apps/desktop/preload.html) paints the
     // canvas with an inline style, which would outrank the stylesheet for every
     // later theme change. Hand the element back now that the tokens are loaded.

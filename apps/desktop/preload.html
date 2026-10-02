@@ -35,6 +35,7 @@
     var canvas = theme === 'light' ? '#F4F4F8' : '#070A0D';
     var root = document.documentElement;
     root.setAttribute('data-sl-theme', theme);
+    root.setAttribute('data-sl-product', 'spexr');
     root.style.background = canvas;
     // Theia's ThemePreloadContribution runs later, from the bundle, and copies
     // this key into --theia-editor-background — the color every shell surface

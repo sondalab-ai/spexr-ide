@@ -1,0 +1,4 @@
+/* Sondalab per-product neutrals (canvas, surfaces, text, borders, neutral code
+   roles), tinted with each product's accent hue. Matches only where
+   data-sl-product sits on the element that carries data-sl-theme. */
+@import "@sondalab/ui-kit/themes/products.css";
