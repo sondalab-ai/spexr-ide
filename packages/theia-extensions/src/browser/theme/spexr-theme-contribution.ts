@@ -163,7 +163,8 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
   /**
    * Inject CSS variable overrides so Theia's native chrome (buttons, focus
    * rings, badges, tabs, activity bar) uses the SPEXR violet accent instead
-   * of the default Theia blue. Theia computes `--theia-*` variables from its
+   * of the default Theia blue, the SPEXR neutrals and the kit's UI face (Geist)
+   * instead of the platform font. Theia computes `--theia-*` variables from its
    * color registry; overriding them here takes precedence via document order.
    */
   private applyAccentOverrides(spexrTheme: string): void {
@@ -183,6 +184,13 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
       SPEXR_NEUTRALS[isDark ? "dark" : "light"];
 
     const css = `
+/* Theia's chrome in the kit's UI face (Geist). On body too: Theia's os.css sets
+   this variable on body.mac / .windows / .linux, which would shadow :root. The
+   editor and terminal keep their own coding mono (editor.fontFamily). */
+:root,
+body {
+  --theia-ui-font-family: var(--sl-font-sans) !important;
+}
 :root {
   /* Focus ring */
   --theia-focusBorder: ${accent} !important;

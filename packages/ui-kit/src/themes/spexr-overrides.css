@@ -9,8 +9,9 @@
  */
 
 :root {
-  /* Editor / code contexts keep a coding mono; the brand mono (--sl-font-mono,
-     Martian) is available for data labels but is not forced into code here. */
+  /* Editor / code contexts keep a coding mono (owner, 2026-10-02): JetBrains
+     Mono, then the kit's Geist Mono. The kit's mono (--sl-font-mono, Geist
+     Mono) carries labels and data but is not forced into code here. */
   --sl-font-code: "JetBrains Mono", "Geist Mono", "SF Mono", "Menlo", "Consolas", monospace;
 
   /* Syntax highlight — adopt the shared DS atom-one palette (--sl-code-*, which
