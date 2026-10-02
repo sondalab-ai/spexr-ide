@@ -34,38 +34,21 @@ body {
 }
 
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
-   something the kit does not ship yet (density, danger, pressed segments,
-   accent eyebrow): https://github.com/sondalab-ai/sondalab-ui/issues/33 */
+   something the kit does not ship yet (density, accent eyebrow):
+   https://github.com/sondalab-ai/sondalab-ui/issues/33
+   Density: a wider button, and a small one in the 14px face. Since kit 0.32
+   the primary's foot is a background layer, so this padding gives every
+   variant the kit's rows -- 1 + 8 + 14 + 8 + 1 = 32px, and 1 + 4 + 14 + 4 + 1
+   = 24px small -- opaque, on a glass pane, under high contrast and with the
+   effects off. The danger tone is the kit's (.sl-btn--danger,
+   .sl-icon-btn--danger), with its band-safe ink and its own focus ring. */
 .sl-btn {
   padding: var(--sl-space-2) var(--sl-space-4);
-  border-radius: var(--sl-radius-md);
 }
 
 .sl-btn--sm {
   padding: var(--sl-space-1) var(--sl-space-3);
   font-size: var(--sl-text-sm);
-}
-
-.sl-btn--danger {
-  color: var(--slc-danger);
-  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
-}
-
-.sl-btn--danger:hover:not(:disabled) {
-  background: var(--slc-danger);
-  color: var(--slc-on-danger);
-  border-color: var(--slc-danger);
-}
-
-/* An icon button in the danger voice of .sl-btn. */
-.sl-icon-btn--danger {
-  color: var(--slc-danger);
-  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
-}
-.sl-icon-btn--danger:hover:not(:disabled) {
-  background: var(--slc-danger);
-  color: var(--slc-on-danger);
-  border-color: var(--slc-danger);
 }
 
 /* A panel is narrower than a page: the kit's empty-state padding would push

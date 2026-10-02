@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -46,18 +47,21 @@ describe(".spexr-sched__advanced", () => {
   });
 });
 
-describe("the danger icon button", () => {
-  it("draws a danger icon button in the danger colour", () => {
-    expect(rule(".sl-icon-btn--danger")).toMatch(/color:\s*var\(--slc-danger\)/);
-  });
-});
-
 // With every other button filled, a bare danger button read as disabled.
+// The tone is the kit's since 0.32: spexr's own rules won by load order and
+// kept the canvas danger as text where the band needs its band-safe ink.
 describe("danger buttons", () => {
-  it("carry a danger tint at rest", () => {
-    for (const sel of [".sl-btn--danger", ".sl-icon-btn--danger"]) {
-      expect(rule(sel)).toMatch(/background:\s*color-mix\(in srgb, var\(--slc-danger\) 14%, transparent\)/);
-    }
+  it("leave the danger tone to the kit", () => {
+    const css = readFileSync(fileURLToPath(new URL("../../style/spexr.css", import.meta.url)), "utf8");
+    expect(css.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/\.sl-(icon-)?btn--danger\b/);
+  });
+
+  it("carry the kit's danger ink and tint at rest", () => {
+    const kit = readFileSync(createRequire(import.meta.url).resolve("@sondalab/ui-kit/components.css"), "utf8");
+    const rest = /\.sl-btn--danger:not\(\.sl-btn--primary\),\s*\.sl-icon-btn--danger\s*\{([^}]*)\}/.exec(kit);
+    expect(rest, "the kit's resting danger rule").not.toBeNull();
+    expect(rest![1]).toMatch(/color:\s*var\(--slc-danger-text, var\(--slc-danger\)\)/);
+    expect(rest![1]).toMatch(/background-color:\s*color-mix\(in srgb, currentColor 12%, transparent\)/);
   });
 });
 
