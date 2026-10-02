@@ -471,14 +471,6 @@ body {
   background: var(--sl-bg-surface);
 }
 
-/* In light theme, align the right side panel with the left (agent) panel so
-   both sidebars share the same background instead of stark white vs off-white. */
-[data-sl-theme="light"] .spexr-spec-widget,
-[data-sl-theme="light"] .spexr-memory-widget,
-[data-sl-theme="light"] .spexr-experts-widget {
-  background: var(--sl-agent-bg);
-}
-
 .spexr-spec-panel,
 .spexr-memory-panel {
   padding: var(--sl-space-5);
