@@ -2806,11 +2806,20 @@ code {
 /* Only the first button takes the free space: several autos would spread them apart. */
 .spexr-df-pinned__actions .sl-btn:first-of-type { margin-left: auto; }
 
-/* The card's browser switch sits in a dense action row: a smaller track than the kit's. */
+/* The card's browser switch sits in a dense action row: a smaller track than
+   the kit's. The kit's track is border-box since 0.32, so the size includes
+   its 1px edge: 28 x 16 leaves 26 x 14 inside, a 10px knob 2px in from every
+   side, travelling 26 - 2 - 10 - 2 = 12px. Held, the knob stretches by a
+   tenth toward where it will go, as the kit's does. The kit's held rules
+   weigh (0,4,1) and (0,6,1), so they are repeated here under the switch's own
+   class, or the held knob would grow to the kit's 0.935rem and run past the
+   track. */
 .spexr-df-switch { gap: var(--sl-space-2); }
-.spexr-df-switch .sl-switch__track { width: 26px; height: 14px; }
+.spexr-df-switch .sl-switch__track { width: 28px; height: 16px; }
 .spexr-df-switch .sl-switch__track::after { width: 10px; height: 10px; }
 .spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(12px); }
+.spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__track::after { width: 11px; }
+.spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(11px); }
 .spexr-df-switch .sl-switch__label { display: inline-flex; align-items: center; gap: var(--sl-space-1); color: var(--sl-text-secondary); }
 
 /*
