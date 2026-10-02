@@ -86,16 +86,19 @@
   --sl-editor-selection: #ffff00;
 }
 
-/* FILLED INDIGO (owner, 2026-10-01). The primary is a deeper indigo than the
-   accent so its label can be white on both themes: 5.41:1 solid, ~4.5:1 as a
-   glass pane at the kit's 90% share. The accent itself (#5b6cff / #8b96ff)
-   still drives links, tags, the agent rail and the focus ring. Scoped to the
-   button: --slc-* resolve at :root, so binding them here re-derives only the
-   primary's fill, edge and label. High contrast keeps the kit's own primary. */
+/* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28). The
+   primary is a deeper indigo than the accent so its label can be white on
+   both themes: 5.41:1 on the fill, 6.47 on hover, 8.03 pressed. One literal,
+   registered in the kit's accent registry; hover and press are derived from
+   it, so there are no hand-tuned steps to drift. The accent itself
+   (#5b6cff / #8b96ff) still drives links, tags, the agent rail and the focus
+   ring. Scoped to the button: --slc-* resolve at :root, so binding them here
+   re-derives only the primary's fill, edge and label. High contrast keeps the
+   kit's own primary. */
 :is([data-sl-theme="light"], [data-sl-theme="dark"]) .sl-btn--primary {
   --slc-accent: #4c58e9;
-  --slc-edge-accent: oklch(from #4c58e9 calc(l - var(--slc-shade-step, 0.075)) c h);
+  --slc-accent-hover: color-mix(in srgb, var(--slc-accent) 89%, black);
+  --slc-accent-active: color-mix(in srgb, var(--slc-accent) 76%, black);
+  --slc-edge-accent: oklch(from var(--slc-accent) calc(l - var(--slc-shade-step, 0.075)) c h);
   --slc-on-accent: #ffffff;
 }
-[data-sl-theme="light"] .sl-btn--primary { --slc-accent-hover: #424adb; --slc-accent-active: #393ccd; }
-[data-sl-theme="dark"] .sl-btn--primary { --slc-accent-hover: #505ef0; --slc-accent-active: #424adb; }
