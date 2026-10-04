@@ -53,6 +53,19 @@ describe("the palette's, a dropdown's and the SCM history's selection", () => {
   });
 });
 
+// Monaco's suggest widget and code-action menu read Monaco's own colour
+// variables (declared on .monaco-editor / .monaco-component), which resolved
+// to a white label on #e8e8e8 on light: their focused rows are painted here.
+describe("Monaco's lists", () => {
+  it("paint the focused suggestion and code action as a tile with the accent seam", () => {
+    const row = rule(":is(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused, .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled)) {");
+    expect(row).toMatch(/color:\s*var\(--slc-text\);/);
+    expect(row).toMatch(/background-color:\s*var\(--slc-tile\) !important/);
+    expect(row).toMatch(/background-image:\s*linear-gradient\(var\(--slc-seam\), var\(--slc-seam\)\)/);
+    expect(row).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--slc-border\);/);
+  });
+});
+
 describe("Theia's keycaps", () => {
   it("override Monaco's inline key paint in the palette and the code-action menu only", () => {
     const key = rule(":is(.quick-input-list, .action-widget .monaco-list-row) .monaco-keybinding > .monaco-keybinding-key");
@@ -95,6 +108,7 @@ describe("forced colours", () => {
   it("outline the selected rows and the current tab in Highlight", () => {
     const block = css.slice(css.indexOf("@media (forced-colors: active)"));
     expect(block).toMatch(/\.theia-TreeNode\.theia-mod-selected[\s\S]*?outline:\s*1px solid Highlight/);
+    expect(block).toMatch(/\.suggest-widget \.monaco-list \.monaco-list-row\.focused[\s\S]*?outline:\s*1px solid Highlight/);
     expect(block).toMatch(/\.lm-TabBar-tab\.lm-mod-current[\s\S]*?outline:\s*2px solid Highlight/);
   });
 });

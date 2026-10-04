@@ -443,6 +443,33 @@ body {
   background-position: 1px 50%;
 }
 
+/* Monaco's own lists: the suggest widget and the code-action menu paint their
+   focused row from Monaco's colour variables, which Monaco declares on
+   .monaco-editor / .monaco-component (a root override does not reach them)
+   and which resolve to Theia's list selection (a white label on a light
+   grey on light, 1.23:1). The rows are painted directly instead: the tile in the
+   primary ink with the accent seam (the widget is where the keyboard is) and
+   a ring drawn inside. The code-action row's fill is !important in Monaco's
+   own CSS, so it is here too. The suggest row's content steps 3px in so the
+   seam stands clear of the completion icon. */
+:root:not([data-sl-theme="high-contrast"]) :is(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused, .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled)) {
+  color: var(--slc-text);
+  background-color: var(--slc-tile) !important;
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
+  padding-left: 5px;
+}
+
 /* Other things Theia paints with the selection colour, now the tile: the
    search view's match count, the file drag image and an SCM history base
    ref. They are not states, so no seam; the one control edge is their
@@ -588,7 +615,8 @@ body {
 @media (forced-colors: active) {
   :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
   :root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected,
-  :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
+  :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected),
+  :root:not([data-sl-theme="high-contrast"]) :is(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused, .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled)) {
     outline: 1px solid Highlight;
     outline-offset: -1px;
   }
