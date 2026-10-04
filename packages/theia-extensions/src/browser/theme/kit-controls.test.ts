@@ -93,3 +93,13 @@ describe("the compact switch", () => {
     expect(INSET + heldTravel + held).toBe(INSET + travel + knob);
   });
 });
+
+// A radius on the global focus rule snapped an 8px button's corners to 6px
+// under focus; since 0.32 the kit's halo made the jump visible.
+describe("the global focus ring", () => {
+  it("is flush and sets no radius", () => {
+    const ring = rule("*:focus-visible");
+    expect(ring).toMatch(/outline-offset:\s*var\(--sl-focus-ring-offset\)/);
+    expect(ring).not.toMatch(/border-radius/);
+  });
+});

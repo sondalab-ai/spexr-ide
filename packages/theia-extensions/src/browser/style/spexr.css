@@ -27,10 +27,14 @@ body {
   line-height: var(--sl-line-normal);
 }
 
+/* The ring for anything the kit's focus rule does not cover (Theia's own
+   elements, spexr's): flush, in the ring's colour. No radius: an outline
+   follows the element's own corners, and a radius here snapped an 8px
+   button to 6px under focus. The kit's controls take its own rule, which
+   adds the halo (0.32). */
 *:focus-visible {
   outline: var(--sl-focus-ring-width) solid var(--sl-focus-ring);
   outline-offset: var(--sl-focus-ring-offset);
-  border-radius: var(--sl-radius-sm);
 }
 
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
