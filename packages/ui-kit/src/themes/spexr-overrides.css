@@ -46,11 +46,11 @@
   --sl-accent-active: #3645d4;
   --sl-accent-subtle: #eef0ff;
   --sl-focus-ring: #5b6cff;
-  /* The accent's depth companion: where the kit's light recedes to. Derived
-     from the accent -- a violet a little deeper, 24 degrees round the hue --
-     it paints exactly the hex literal it replaced (sl-audit allowlists the
-     registered accent, not a free literal beside it). */
-  --sl-accent-depth: oklch(from var(--sl-accent-default) calc(l - 0.08) calc(c - 0.0065) calc(h + 24.1));
+  /* The accent's depth companion: where the kit's light recedes to. The
+     accent turned 24 degrees toward violet and, on paper, one shade step
+     deeper (the kit's --slc-shade-step), as the kit's own depth is darker on
+     light than on dark. Derived, so it follows the accent. */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) calc(l - var(--slc-shade-step, 0.075)) c calc(h + 24));
 }
 
 [data-sl-theme="dark"] {
@@ -59,8 +59,8 @@
   --sl-accent-active: #6b78f0;
   --sl-accent-subtle: #1c1f3a;
   --sl-focus-ring: #8b96ff;
-  /* The same companion on ink: a touch lighter, 21 degrees round. */
-  --sl-accent-depth: oklch(from var(--sl-accent-default) calc(l + 0.016) calc(c + 0.013) calc(h + 21.4));
+  /* The same companion on ink: the accent turned 24 degrees toward violet. */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) l c calc(h + 24));
 }
 
 [data-sl-theme="high-contrast"] {
