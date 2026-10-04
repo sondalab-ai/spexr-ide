@@ -4,17 +4,29 @@ import { ACCENT_FILL } from "./spexr-accent.js";
 /**
  * The CSS SpexrThemeContribution injects for a SPEXR theme: `--theia-*`
  * variable overrides that put Theia's native chrome (buttons, focus rings,
- * badges, tabs, lists, activity bar, status bar) on the SPEXR accent, its
+ * badges, lists, activity bar, status bar) on the SPEXR accent, its
  * registered fill, the SPEXR neutrals and the kit's selection tile, and the
- * kit's UI face (Geist) instead of the platform font. Pure, so it can be
- * rendered outside Theia.
+ * kit's UI face (Geist) instead of the platform font. High contrast gets the
+ * face only: its colours stay Theia's own HC theme and the kit's yellow.
+ * Pure, so it can be rendered outside Theia.
  */
 export function theiaChromeCss(spexrTheme: string): string {
+  const font = `
+/* Theia's chrome in the kit's UI face (Geist). On body too: Theia's os.css sets
+   this variable on body.mac / .windows / .linux, which would shadow :root. The
+   editor and terminal keep their own coding mono (editor.fontFamily). */
+:root,
+body {
+  --theia-ui-font-family: var(--sl-font-sans) !important;
+}`;
+  if (spexrTheme === "high-contrast") return font;
+
   const isDark = spexrTheme === "dark";
   const accent        = isDark ? "#8b96ff" : "#5b6cff";
-  const accentHover   = isDark ? "#a3acff" : "#4858ee";
-  const accentActive  = isDark ? "#6b78f0" : "#3645d4";
   const accentSubtle  = isDark ? "rgba(139,150,255,0.12)" : "rgba(91,108,255,0.1)";
+  // The accent as text or a thin line: the kit's role, capped on light so it
+  // reads at 4.5:1 (#5b6cff itself is 3.37:1 on the light canvas).
+  const accentText    = "var(--slc-accent-text)";
   const onAccent      = "#ffffff";
   // A fill that carries the white label: the registered fill and its hover,
   // on both themes (the kit's --slc-accent-fill, spexr-overrides.css).
@@ -24,19 +36,11 @@ export function theiaChromeCss(spexrTheme: string): string {
   // Sondalab surface neutrals — pushed into Theia's native chrome so the
   // editor/sidebar/tabs/terminal share the same indigo-tinted greys as the
   // SPEXR-styled panels (the kit's generated spexr ladder), instead of
-  // Theia's default neutral grey. High contrast is left to Theia's own HC
-  // theme (see the guard below).
+  // Theia's default neutral grey.
   const { canvas, surface, raised, fg, fgMuted, line } =
     SPEXR_NEUTRALS[isDark ? "dark" : "light"];
 
   const css = `
-/* Theia's chrome in the kit's UI face (Geist). On body too: Theia's os.css sets
-   this variable on body.mac / .windows / .linux, which would shadow :root. The
-   editor and terminal keep their own coding mono (editor.fontFamily). */
-:root,
-body {
-  --theia-ui-font-family: var(--sl-font-sans) !important;
-}
 :root {
   /* Focus ring */
   --theia-focusBorder: ${accent} !important;
@@ -47,7 +51,7 @@ body {
   --theia-button-background: ${fill} !important;
   --theia-button-hoverBackground: ${fillHover} !important;
   --theia-button-foreground: ${onAccent} !important;
-  --theia-button-secondaryForeground: ${accent} !important;
+  --theia-button-secondaryForeground: ${accentText} !important;
   --theia-button-secondaryBackground: ${accentSubtle} !important;
   --theia-button-secondaryHoverBackground: ${accentSubtle} !important;
 
@@ -65,14 +69,11 @@ body {
   /* Progress bar */
   --theia-progressBar-background: ${accent} !important;
 
-  /* Links */
-  --theia-textLink-foreground: ${accent} !important;
-  --theia-textLink-activeForeground: ${accentHover} !important;
-  --theia-editorLink-activeForeground: ${accent} !important;
-
-  /* Active tab indicator */
-  --theia-tab-activeBorderTop: ${accent} !important;
-  --theia-tab-unfocusedActiveBorderTop: ${accentActive} !important;
+  /* Links, and the quick pick's group labels (the registry cannot hold a var()) */
+  --theia-textLink-foreground: ${accentText} !important;
+  --theia-textLink-activeForeground: ${accentText} !important;
+  --theia-editorLink-activeForeground: ${accentText} !important;
+  --theia-pickerGroup-foreground: ${accentText} !important;
 
   /* Activity bar active highlight */
   --theia-activityBar-activeBorder: ${accent} !important;
@@ -82,7 +83,7 @@ body {
   /* Input options (e.g. case-sensitive toggle) */
   --theia-inputOption-activeBackground: ${accentSubtle} !important;
   --theia-inputOption-activeBorder: ${accent} !important;
-  --theia-inputOption-activeForeground: ${accent} !important;
+  --theia-inputOption-activeForeground: ${accentText} !important;
 
   /* Editor cursor */
   --theia-editorCursor-foreground: ${accent} !important;
@@ -91,7 +92,7 @@ body {
      design tokens (already theme-branched per [data-sl-theme], including
      high contrast) rather than new literals here, so they stay legible
      without duplicating this file's isDark branching. */
-  --theia-gitDecoration-addedResourceForeground: ${accent} !important;
+  --theia-gitDecoration-addedResourceForeground: ${accentText} !important;
   --theia-gitDecoration-modifiedResourceForeground: var(--sl-status-warning) !important;
   --theia-gitDecoration-deletedResourceForeground: var(--sl-status-danger) !important;
   --theia-gitDecoration-untrackedResourceForeground: var(--sl-status-success) !important;
@@ -99,9 +100,7 @@ body {
   --theia-gitDecoration-conflictingResourceForeground: var(--sl-status-danger) !important;
 }`;
 
-  // Neutral surfaces: only for light/dark. In high contrast, leave Theia's own
-  // HC theme untouched (its grays are WCAG-tuned; an indigo cast would break it).
-  const neutralsCss = spexrTheme === "high-contrast" ? "" : `
+  const neutralsCss = `
 :root {
   /* Base surfaces */
   --theia-editor-background: ${canvas} !important;
@@ -116,15 +115,12 @@ body {
   --theia-titleBar-inactiveBackground: ${canvas} !important;
   --theia-terminal-background: ${canvas} !important;
   --theia-editorGroupHeader-tabsBackground: ${canvas} !important;
-  --theia-tab-inactiveBackground: ${canvas} !important;
 
   /* Raised-once surfaces */
   --theia-sideBar-background: ${surface} !important;
   --theia-sideBarSectionHeader-background: ${surface} !important;
   --theia-panel-background: ${surface} !important;
   --theia-panelSectionHeader-background: ${surface} !important;
-  --theia-tab-activeBackground: ${surface} !important;
-  --theia-tab-hoverBackground: ${surface} !important;
 
   /* Floating surfaces (menus, dropdowns, inputs, widgets) */
   --theia-menu-background: ${raised} !important;
@@ -134,13 +130,16 @@ body {
   --theia-editorWidget-background: ${raised} !important;
   --theia-notifications-background: ${raised} !important;
 
-  /* Selection is a tile (kit 0.31): the tile rung under the primary ink, on
-     every list and tree, focused or not; the ring, the cast and the focused
-     tree's seam are drawn in spexr.css. Kit roles, not hex, so the tile
-     follows the theme the kit resolves. Matched characters are the accent as
-     text (capped on light: #5b6cff on the white tile read 4.17:1). Theia
-     core's CommonFrontendContribution re-registers list.* with its blue
-     AFTER our ColorContribution, so only !important reliably wins here. */
+  /* Selection is a tile (kit 0.31): the tile rung under the primary ink on
+     Theia's lists and trees and the quick pick, focused or not. The tile is
+     found by the seam spexr.css draws on it (the accent where the list has
+     focus, the muted ink where it has not), with its ring and cast. Monaco's
+     own lists (suggest, code actions) read the registry instead and keep
+     Theia's colours. Kit roles, not hex, so the tile follows the theme the
+     kit resolves. Matched characters are the accent as text (#5b6cff on the
+     white tile read 4.17:1). Theia core's CommonFrontendContribution
+     re-registers list.* with its blue AFTER our ColorContribution, so only
+     !important reliably wins here. */
   --theia-list-activeSelectionBackground: var(--slc-tile) !important;
   --theia-list-activeSelectionForeground: var(--slc-text) !important;
   --theia-list-activeSelectionIconForeground: var(--slc-text) !important;
@@ -165,7 +164,6 @@ body {
   --theia-sideBar-border: ${line} !important;
   --theia-panel-border: ${line} !important;
   --theia-editorGroup-border: ${line} !important;
-  --theia-tab-border: ${line} !important;
   --theia-titleBar-border: ${line} !important;
   --theia-statusBar-border: ${line} !important;
   --theia-menu-border: ${line} !important;
@@ -173,5 +171,5 @@ body {
   --theia-editorWidget-border: ${line} !important;
   --theia-activityBar-border: ${line} !important;
 }`;
-  return css + neutralsCss;
+  return font + css + neutralsCss;
 }

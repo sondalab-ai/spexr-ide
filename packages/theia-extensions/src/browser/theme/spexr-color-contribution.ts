@@ -74,9 +74,6 @@ export class SpexrColorContribution implements ColorContribution {
     accent(colors, "textLink.activeForeground", "hover");
     accent(colors, "editorLink.activeForeground", "fill");
 
-    // Active tab indicator
-    accent(colors, "tab.activeBorderTop", "fill");
-
     // Activity bar active highlight
     accent(colors, "activityBar.activeBorder", "fill");
     accent(colors, "activityBar.activeFocusBorder", "fill");
@@ -118,7 +115,10 @@ export class SpexrColorContribution implements ColorContribution {
 
     // Tree / list selection is contested: Theia core's CommonFrontendContribution
     // re-registers list.* with its blue after this runs, so the override lives in
-    // SpexrThemeContribution's CSS !important layer instead.
+    // SpexrThemeContribution's CSS !important layer instead. It is not
+    // registered here on purpose: the tile is found by the seam spexr.css draws
+    // on Theia's own rows, and Monaco's lists (suggest, code actions) would get
+    // the tile without it, white on a white widget on light.
 
     // xterm paints onto a canvas from the *registry* value, so the CSS
     // `--theia-terminal-background` override in SpexrThemeContribution never
