@@ -346,6 +346,64 @@ body {
   color: var(--sl-text-primary);
 }
 
+/* ══ THEIA'S CHROME IN LUMEN (kit 0.31 / 0.32) ═════════════════════════════
+   Theia's own widgets drawn with the kit's depth roles: selection is a tile,
+   shortcuts are keycaps, the editor's tabs are tile tabs. CSS on Theia's
+   existing elements only; the --theia-* colours they read are set in
+   SpexrThemeContribution. Light and dark only: high contrast stays Theia's
+   own HC theme, as its neutrals do. */
+
+/* A selected tree row is a tile, inset from the pane's edges so its ring and
+   cast show: Theia's rows are full-width and the tree clips. The tile is a
+   layer under the row's content, never its box, so indentation, the indent
+   guides and the virtualised list keep their geometry. Unfocused, it is a
+   flat tile (lit, ringed, no cast). In the focused tree it lifts (the cast)
+   and carries the seam, the accent as a line of light at its leading edge,
+   the kit's mark for the focus of attention; the seam stands off the
+   expansion chevron. The row's text is the primary ink on the tile
+   (--theia-list-*SelectionForeground). Theia's 1px focus outline stays on a
+   focused row that is not selected. */
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  outline: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected::before {
+  content: "";
+  position: absolute;
+  inset: 1px 2px;
+  z-index: -1;
+  border-radius: var(--sl-radius-sm);
+  background-color: var(--slc-tile);
+  box-shadow: var(--slc-depth-flat);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected::before {
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: var(--slc-depth-tile);
+}
+
+/* The command palette's active row is a tile too. The list pads its rows
+   6px from the widget's edges, so the kit's ring and cast fit outside it. */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row.focused {
+  border-radius: var(--sl-radius-sm);
+  box-shadow: var(--slc-depth-tile);
+}
+
+/* A dropdown's highlighted option sits on the raised rung, the tile's own
+   colour on light: its ring, drawn inside so the list does not clip it,
+   is what finds it. */
+:root:not([data-sl-theme="high-contrast"]) .theia-select-component-dropdown .theia-select-component-option.selected {
+  border-radius: var(--sl-radius-sm);
+  box-shadow: inset 0 0 0 1px var(--slc-border), inset 0 2px 0 var(--slc-lit);
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {

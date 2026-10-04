@@ -77,19 +77,6 @@ body {
   --theia-inputOption-activeBorder: ${accent} !important;
   --theia-inputOption-activeForeground: ${accent} !important;
 
-  /* List / tree selection (file explorer, SCM/git panel, quick-pick).
-     Theia core's CommonFrontendContribution re-registers these with its blue
-     AFTER our ColorContribution, so only !important reliably wins here. */
-  --theia-list-activeSelectionBackground: ${accent} !important;
-  --theia-list-activeSelectionForeground: ${onAccent} !important;
-  --theia-list-activeSelectionIconForeground: ${onAccent} !important;
-  --theia-list-inactiveSelectionBackground: ${accentSubtle} !important;
-  --theia-list-focusAndSelectionOutline: ${accent} !important;
-  --theia-list-focusHighlightForeground: ${accent} !important;
-  --theia-list-highlightForeground: ${accent} !important;
-  --theia-quickInputList-focusBackground: ${accent} !important;
-  --theia-quickInputList-focusForeground: ${onAccent} !important;
-
   /* Editor cursor */
   --theia-editorCursor-foreground: ${accent} !important;
 
@@ -139,6 +126,24 @@ body {
   --theia-quickInput-background: ${raised} !important;
   --theia-editorWidget-background: ${raised} !important;
   --theia-notifications-background: ${raised} !important;
+
+  /* Selection is a tile (kit 0.31): the tile rung under the primary ink, on
+     every list and tree, focused or not; the ring, the cast and the focused
+     tree's seam are drawn in spexr.css. Kit roles, not hex, so the tile
+     follows the theme the kit resolves. Matched characters are the accent as
+     text (capped on light: #5b6cff on the white tile read 4.17:1). Theia
+     core's CommonFrontendContribution re-registers list.* with its blue
+     AFTER our ColorContribution, so only !important reliably wins here. */
+  --theia-list-activeSelectionBackground: var(--slc-tile) !important;
+  --theia-list-activeSelectionForeground: var(--slc-text) !important;
+  --theia-list-activeSelectionIconForeground: var(--slc-text) !important;
+  --theia-list-inactiveSelectionBackground: var(--slc-tile) !important;
+  --theia-list-inactiveSelectionForeground: var(--slc-text) !important;
+  --theia-list-focusAndSelectionOutline: transparent !important;
+  --theia-list-focusHighlightForeground: var(--slc-accent-text) !important;
+  --theia-list-highlightForeground: var(--slc-accent-text) !important;
+  --theia-quickInputList-focusBackground: var(--slc-tile) !important;
+  --theia-quickInputList-focusForeground: var(--slc-text) !important;
 
   /* Foreground */
   --theia-foreground: ${fg} !important;
