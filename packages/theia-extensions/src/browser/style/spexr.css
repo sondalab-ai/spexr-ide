@@ -600,6 +600,13 @@ body {
   color: var(--slc-text);
 }
 
+/* In a group without focus the current tab's label steps down to the
+   secondary ink, so the focused group is told apart by lightness as well as
+   by its seam's hue (the two seams differ by 1.13:1 on light, 1.04 on dark). */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  color: var(--slc-text-secondary);
+}
+
 /* workbench.editor.highlightModifiedTabs draws a 2px top border on a dirty
    tab, at up to (1,6,1); inside a tile it is a band above the lit line. The
    tile tab marks unsaved work with its dot (Theia's ● in the close glyph, the

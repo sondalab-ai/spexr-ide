@@ -97,6 +97,11 @@ describe("the editor's tabs", () => {
     expect(tab).toMatch(/color:\s*var\(--slc-text-muted\)/);
   });
 
+  it("step the current tab's label down in a group without focus", () => {
+    // Its own rule, after the shared current-tab rule (which lists the same selector).
+    expect(css).toMatch(/\n:root:not\(\[data-sl-theme="high-contrast"\]\) #theia-main-content-panel \.lm-TabBar:not\(\.theia-tabBar-active\) \.lm-TabBar-tab\.lm-mod-current \{\s*color:\s*var\(--slc-text-secondary\);\s*\}/);
+  });
+
   it("drop the modified-tab band inside the tile", () => {
     const dirty = rule("body.theia-editor-highlightModifiedTabs #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-dirty.theia-mod-dirty");
     expect(dirty).toMatch(/border-top:\s*0/);
