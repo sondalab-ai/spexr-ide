@@ -350,17 +350,45 @@ body {
    Theia's own widgets drawn with the kit's depth roles: selection is a tile,
    shortcuts are keycaps, the editor's tabs are tile tabs. CSS on Theia's
    existing elements only; the --theia-* colours they read are set in
-   SpexrThemeContribution. Light and dark only: high contrast stays Theia's
-   own HC theme, as its neutrals do. */
+   theia-chrome-css.ts. Light and dark only: high contrast stays Theia's own
+   HC theme, as its neutrals do.
+
+   THE SEAM. A tile alone is found by its ring, about 1.4:1 against its pane,
+   which is no state indicator (owner, 2026-10-04). Every selected or current
+   tile here carries the kit's seam: a 2px line, half the tile's height, at
+   its leading edge (a layer of its background, as on the kit's current nav
+   item). It is the accent (--slc-seam) where its container has focus, the
+   muted ink where it has not; both read at least 5.7:1 against the tile on
+   either theme. Containers set the ink; the tiles paint it. */
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container) {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container):focus-within {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* An open dropdown is where the keyboard is, whichever element holds focus. */
+:root:not([data-sl-theme="high-contrast"]) .theia-select-component-dropdown {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* The tab strips: the focused group is Theia's .theia-tabBar-active. */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar.theia-tabBar-active {
+  --spexr-seam-ink: var(--slc-seam);
+}
 
 /* A selected tree row is a tile, inset from the pane's edges so its ring and
    cast show: Theia's rows are full-width and the tree clips. The tile is a
-   layer under the row's content, never its box, so indentation, the indent
-   guides and the virtualised list keep their geometry. Unfocused, it is a
-   flat tile (lit, ringed, no cast). In the focused tree it lifts (the cast)
-   and carries the seam, the accent as a line of light at its leading edge,
-   the kit's mark for the focus of attention; the seam stands off the
-   expansion chevron. The row's text is the primary ink on the tile
+   layer under the row's content, never its box, so indentation and the
+   virtualised list keep their geometry. Unfocused, it is a flat tile (lit,
+   ringed, no cast) with the muted seam; in the focused tree it lifts (the
+   cast) and the seam is the accent. The seam sits 1px inside the tile, clear
+   of the expansion chevron. The row's text is the primary ink on the tile
    (--theia-list-*SelectionForeground). Theia's 1px focus outline stays on a
    focused row that is not selected. */
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
@@ -378,38 +406,61 @@ body {
   z-index: -1;
   border-radius: var(--sl-radius-sm);
   background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
   box-shadow: var(--slc-depth-flat);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected::before {
-  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  box-shadow: var(--slc-depth-tile);
+}
+
+/* The indent guides are positioned siblings drawn before the row; the
+   selected row's tile (an isolated, positioned layer) would cover them, so
+   they are lifted over it. They take no pointer events. */
+:root:not([data-sl-theme="high-contrast"]) .theia-tree-node-indent {
+  z-index: 1;
+}
+
+/* The quick pick's active row, a dropdown's highlighted option and a
+   selected SCM history row are tiles too. Their lists clip a ring drawn
+   outside (the quick pick has no room above its first row or below its last,
+   the history list is full-width), so the ring is drawn inside, and there is
+   no cast to clip. The lit line goes: on light it is white on the white tile.
+   The seam sits 1-2px inside, clear of the text. */
+:root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
+  border-radius: var(--sl-radius-sm);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
   background-repeat: no-repeat;
   background-size: 2px 50%;
-  background-position: 1px 50%;
-  box-shadow: var(--slc-depth-tile);
+  background-position: 2px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
 }
 
-/* The command palette's active row is a tile too. The list pads its rows
-   6px from the widget's edges, so the kit's ring and cast fit outside it. */
-:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row.focused {
-  border-radius: var(--sl-radius-sm);
-  box-shadow: var(--slc-depth-tile);
-}
-
-/* A dropdown's highlighted option sits on the raised rung, the tile's own
-   colour on light: its ring, drawn inside so the list does not clip it,
-   is what finds it. */
 :root:not([data-sl-theme="high-contrast"]) .theia-select-component-dropdown .theia-select-component-option.selected {
-  border-radius: var(--sl-radius-sm);
-  box-shadow: inset 0 0 0 1px var(--slc-border), inset 0 2px 0 var(--slc-lit);
+  background-position: 1px 50%;
 }
 
-/* Shortcuts are keycaps, the kit's .sl-kbd: Geist Mono 500, at least 20px
-   square, raised-to-surface, ringed, lit along the top, on a base in its own
-   fill in shade. Monaco writes a key's background, border and shadow inline
-   (command palette, code actions), so those three are !important here; its
-   colour too, over Theia's own !important rules on the palette. */
-:root:not([data-sl-theme="high-contrast"]) .monaco-keybinding > .monaco-keybinding-key {
+/* Other things Theia paints with the selection colour, now the tile: the
+   search view's match count, the file drag image and an SCM history base
+   ref. They are not states, so no seam; the one control edge is their
+   boundary (at least 3.5:1 on the kit's grounds). */
+:root:not([data-sl-theme="high-contrast"]) :is(.highlighted-count-container, .theia-file-tree-drag-image, .scm-history-ref-badge.base) {
+  box-shadow: inset 0 0 0 1px var(--slc-edge-control);
+}
+
+/* Shortcuts are keycaps, the kit's .sl-kbd (components.css, "Kbd — a keycap";
+   these declarations repeat its own and follow it by hand): Geist Mono 500,
+   at least 20px square, raised-to-surface, ringed, lit along the top, on a
+   base in its own fill in shade. Only the command palette and the code-action
+   menu: Monaco's inline-completion and inline-edit hints keep their own small
+   keys. Monaco writes a key's background, border and shadow inline, so those
+   are !important here, and so is the colour, over Theia's own !important
+   palette rule; where a key sits inside a highlighted label Theia's heavier
+   rule gives it the row's ink, which reads on the cap as well. */
+:root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list, .action-widget .monaco-list-row) .monaco-keybinding > .monaco-keybinding-key {
   box-sizing: border-box;
   min-width: 20px;
   height: 20px;
@@ -426,9 +477,35 @@ body {
   box-shadow: var(--slc-depth-key) !important;
 }
 
-/* A browser menu's shortcut (Lumino; menus are native on macOS) is one string
-   in a table cell, so it is one cap per shortcut: an 18px cap drawn behind
-   the text, inside the 24px row, as wide as the text and its padding. */
+/* A browser menu (Lumino; menus are native on macOS) lays its rows out as a
+   table, so a shortcut cell is as wide as the longest shortcut in the menu.
+   Its rows are flex rows here, the label taking the free space, so each
+   shortcut is a box of its own width and the shortcuts still line up at the
+   right; a separator row keeps its own 9px. The cap is an 18px layer behind
+   the shortcut's text, inside the 24px row, as wide as the text and its
+   padding. */
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-content {
+  display: flex;
+  flex-direction: column;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-item {
+  display: flex;
+  align-items: stretch;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-item[data-type="separator"] {
+  min-height: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-itemLabel {
+  flex: 1 1 auto;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu :is(.lm-Menu-itemIcon, .lm-Menu-itemShortcut, .lm-Menu-itemSubmenuIcon) {
+  flex: none;
+}
+
 :root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty) {
   position: relative;
   isolation: isolate;
@@ -452,11 +529,13 @@ body {
 
 /* The editor's tabs are the kit's tile tabs (.sl-tabs--tile): no rules
    between them, the others on the canvas in the muted ink, hover a flat wash,
-   the current tab a flat tile (lit, ringed, no cast) in the primary ink. A
-   28px tile centred in Theia's 35px strip, 2px apart; the strip pads its
-   ends so the first and last ring are not clipped. Theia's tab participant
-   writes the current tab at (1,3,0) and (1,4,0) for an unfocused group, so
-   these outrank it. */
+   the current tab a flat tile (lit, ringed, no cast) in the primary ink with
+   the seam 3px in from its leading edge: the accent in the focused group, the
+   muted ink in another, so the active group is told apart. A 28px tile
+   centred in Theia's 35px strip, 2px apart; the strip pads its ends so the
+   first and last ring are not clipped. Theia's tab participant writes the
+   current tab at (1,3,0), and at (1,4,0) for an unfocused group, so these
+   outrank it. */
 :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-content {
   gap: 2px;
   padding-inline: 4px;
@@ -486,8 +565,39 @@ body {
 :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
   border: 0;
   background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 3px 50%;
   box-shadow: var(--slc-depth-flat);
   color: var(--slc-text);
+}
+
+/* workbench.editor.highlightModifiedTabs draws a 2px top border on a dirty
+   tab, at up to (1,6,1); inside a tile it is a band above the lit line. The
+   tile tab marks unsaved work with its dot (Theia's ● in the close glyph, the
+   kit's __dot), so the band goes and the tab keeps its tile. */
+:root:not([data-sl-theme="high-contrast"]) body.theia-editor-highlightModifiedTabs #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-dirty.theia-mod-dirty {
+  border-top: 0;
+  padding-bottom: 0;
+}
+
+/* Forced colours (a Windows contrast theme) drop the fills, the gradients
+   and the shadows the tiles and seams are made of; an outline in Highlight
+   keeps the state, at each rule's own weight. */
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
+  :root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected,
+  :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+  :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }
 
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
