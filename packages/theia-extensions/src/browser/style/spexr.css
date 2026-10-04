@@ -404,6 +404,52 @@ body {
   box-shadow: inset 0 0 0 1px var(--slc-border), inset 0 2px 0 var(--slc-lit);
 }
 
+/* Shortcuts are keycaps, the kit's .sl-kbd: Geist Mono 500, at least 20px
+   square, raised-to-surface, ringed, lit along the top, on a base in its own
+   fill in shade. Monaco writes a key's background, border and shadow inline
+   (command palette, code actions), so those three are !important here; its
+   colour too, over Theia's own !important rules on the palette. */
+:root:not([data-sl-theme="high-contrast"]) .monaco-keybinding > .monaco-keybinding-key {
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.3125rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--slc-text-secondary) !important;
+  background-color: var(--slc-raised) !important;
+  background-image: linear-gradient(var(--slc-raised), var(--slc-surface)) !important;
+  border: 0 !important;
+  border-radius: 5px;
+  box-shadow: var(--slc-depth-key) !important;
+}
+
+/* A browser menu's shortcut (Lumino; menus are native on macOS) is one string
+   in a table cell, so it is one cap per shortcut: an 18px cap drawn behind
+   the text, inside the 24px row, as wide as the text and its padding. */
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty) {
+  position: relative;
+  isolation: isolate;
+  padding-inline: 0.3125rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--slc-text-secondary);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty)::before {
+  content: "";
+  position: absolute;
+  inset: 3px 0;
+  z-index: -1;
+  border-radius: 5px;
+  background-color: var(--slc-raised);
+  background-image: linear-gradient(var(--slc-raised), var(--slc-surface));
+  box-shadow: var(--slc-depth-key);
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {

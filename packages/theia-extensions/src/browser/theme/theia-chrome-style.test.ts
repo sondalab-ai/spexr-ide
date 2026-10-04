@@ -29,3 +29,12 @@ describe("Theia's tree selection", () => {
     expect(focused).toMatch(/linear-gradient\(var\(--slc-seam\), var\(--slc-seam\)\)/);
   });
 });
+
+describe("Theia's keycaps", () => {
+  it("override Monaco's inline key paint with the kit's key", () => {
+    const key = rule(".monaco-keybinding > .monaco-keybinding-key");
+    expect(key).toMatch(/border:\s*0 !important/);
+    expect(key).toMatch(/background-color:\s*var\(--slc-raised\) !important/);
+    expect(key).toMatch(/box-shadow:\s*var\(--slc-depth-key\) !important/);
+  });
+});
