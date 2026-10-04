@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { theiaChromeCss } from "./theia-chrome-css.js";
+import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** The value theiaChromeCss gives a `--theia-*` variable, or undefined. */
 function value(theme: string, name: string): string | undefined {
@@ -22,5 +23,13 @@ describe("Theia's selection", () => {
   it("is left to Theia's own high-contrast theme", () => {
     expect(value("high-contrast", "list-activeSelectionBackground")).toBeUndefined();
     expect(value("high-contrast", "quickInputList-focusBackground")).toBeUndefined();
+  });
+});
+
+// The status bar sits on the canvas in the muted ink, not on an accent strip.
+describe("Theia's status bar", () => {
+  it.each(["light", "dark"] as const)("is the canvas with the muted ink on %s", (theme) => {
+    expect(value(theme, "statusBar-background")).toBe(SPEXR_NEUTRALS[theme].canvas);
+    expect(value(theme, "statusBar-foreground")).toBe(SPEXR_NEUTRALS[theme].fgMuted);
   });
 });

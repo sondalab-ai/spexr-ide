@@ -92,10 +92,22 @@ export class SpexrColorContribution implements ColorContribution {
     // Editor cursor
     accent(colors, "editorCursor.foreground", "fill");
 
-    // Status bar (the bottom bar) — registry default is the Theia/VS Code blue
-    accent(colors, "statusBar.background", "fill");
-    accent(colors, "statusBar.foreground", "onAccent");
-    accent(colors, "statusBar.noFolderBackground", "fill");
+    // Status bar (the bottom bar): the canvas with the muted ink, not an
+    // accent strip (the registry default is the Theia/VS Code blue). The CSS
+    // layer in SpexrThemeContribution says the same; registering it here too
+    // keeps the strip from flashing the accent before that layer lands.
+    for (const id of ["statusBar.background", "statusBar.noFolderBackground"]) {
+      colors.register({
+        id,
+        defaults: { dark: SPEXR_NEUTRALS.dark.canvas, light: SPEXR_NEUTRALS.light.canvas },
+        description: `SPEXR: ${id} on the SPEXR canvas neutral.`,
+      });
+    }
+    colors.register({
+      id: "statusBar.foreground",
+      defaults: { dark: SPEXR_NEUTRALS.dark.fgMuted, light: SPEXR_NEUTRALS.light.fgMuted },
+      description: "SPEXR: statusBar.foreground in the SPEXR muted ink.",
+    });
     accent(colors, "statusBar.focusBorder", "fill");
     // statusBarItem.hoverBackground is deliberately NOT accented: the bar's
     // foreground is muted, and muted text on the light violet hover is ~1.9:1.
