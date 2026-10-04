@@ -94,7 +94,8 @@ describe("invalid schedule fields", () => {
   });
 
   it("mark every task field's control with aria-invalid for its own problem", () => {
-    const calls = [...source.matchAll(/field\(\n\s+"[^"]+",\n\s+"([^"]+)",\n([\s\S]*?)(?=field\(\n|$)/g)];
+    // Each call's control runs to the call's own close: the control's trailing comma, then `)` on a line of its own.
+    const calls = [...source.matchAll(/field\(\n\s+"[^"]+",\n\s+"([^"]+)",\n([\s\S]*?),\n\s*\)/g)];
     expect(calls.length).toBeGreaterThanOrEqual(10);
     for (const [, name, control] of calls) {
       expect(control, `the ${name} field`).toMatch(new RegExp(`className="sl-field__input[^"]*"\\s+aria-invalid=\\{invalid\\("${name!.replace(/\./g, "\\.")}"\\)\\}`));

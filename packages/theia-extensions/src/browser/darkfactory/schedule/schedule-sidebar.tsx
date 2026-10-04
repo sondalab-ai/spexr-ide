@@ -915,7 +915,7 @@ function TaskEditor(p: {
           )}
         </fieldset>
       )}
-      <fieldset className="spexr-sched__needs" data-invalid={problem("needs") ? "true" : undefined}>
+      <fieldset className="spexr-sched__needs">
         <legend className="sl-field__label">Waits for</legend>
         {needs.length === 0 ? (
           <p className="spexr-sched__hint">Add another task to make this one wait for it.</p>
