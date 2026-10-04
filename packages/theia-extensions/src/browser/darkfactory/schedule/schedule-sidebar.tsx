@@ -407,7 +407,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
               </button>
             </span>
           )}
-          <label className="sl-field" data-invalid={nameProblem ? "true" : undefined}>
+          <label className="sl-field">
             <span className="sl-field__label">Name</span>
             <span className="sl-field__control">
               <input
@@ -698,8 +698,10 @@ function TaskEditor(p: {
     if (key === "model") set({ model: value });
     else set({ permissionMode: value });
   };
+  /** The invalid state a field's control carries: the kit draws its edge, focus ring and halo in the danger. */
+  const invalid = (field: string): true | undefined => (problem(field) ? true : undefined);
   const field = (label: string, name: string, control: React.ReactNode): React.ReactElement => (
-    <label className="sl-field" data-invalid={problem(name) ? "true" : undefined}>
+    <label className="sl-field">
       <span className="sl-field__label">{label}</span>
       <span className="sl-field__control">{control}</span>
       {problem(name) && <span className="spexr-sched__problem">{problem(name)}</span>}
@@ -712,6 +714,7 @@ function TaskEditor(p: {
         "name",
         <input
           className="sl-field__input"
+          aria-invalid={invalid("name")}
           value={t.name}
           onChange={(e) => set({ name: e.target.value })}
         />,
@@ -722,6 +725,7 @@ function TaskEditor(p: {
         <span className="sl-select">
           <select
             className="sl-field__input"
+            aria-invalid={invalid("project")}
             value={t.project}
             onChange={(e) => set({ project: e.target.value })}
           >
@@ -744,7 +748,7 @@ function TaskEditor(p: {
         "Workspace",
         "workspace",
         <span className="sl-select">
-          <select className="sl-field__input" value={current} onChange={(e) => p.onChange(withWorkspace(t, e.target.value))}>
+          <select className="sl-field__input" aria-invalid={invalid("workspace")} value={current} onChange={(e) => p.onChange(withWorkspace(t, e.target.value))}>
             {workspaces.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -768,6 +772,7 @@ function TaskEditor(p: {
         <span className="sl-select">
           <select
             className="sl-field__input"
+            aria-invalid={invalid("harness")}
             value={t.harness}
             onChange={(e) => {
               const { permissionMode: _dropped, ...rest } = t;
@@ -784,7 +789,7 @@ function TaskEditor(p: {
           "Account",
           "configDir",
           <span className="sl-select">
-            <select className="sl-field__input" value={t.configDir ?? ""} onChange={(e) => p.onChange(withAccount(t, e.target.value))}>
+            <select className="sl-field__input" aria-invalid={invalid("configDir")} value={t.configDir ?? ""} onChange={(e) => p.onChange(withAccount(t, e.target.value))}>
               {accountOptions(p.configs, t.configDir).map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -799,6 +804,7 @@ function TaskEditor(p: {
         <textarea
           ref={promptRef}
           className="sl-field__input spexr-sched__prompt"
+          aria-invalid={invalid("prompt")}
           rows={5}
           value={t.prompt}
           onChange={(e) => set({ prompt: e.target.value })}
@@ -838,6 +844,7 @@ function TaskEditor(p: {
             "loop.stopCriteria",
             <textarea
               className="sl-field__input"
+              aria-invalid={invalid("loop.stopCriteria")}
               rows={3}
               value={t.loop.stopCriteria}
               placeholder="All tests pass and the linter is clean."
@@ -849,6 +856,7 @@ function TaskEditor(p: {
             "loop.followUp",
             <textarea
               className="sl-field__input"
+              aria-invalid={invalid("loop.followUp")}
               rows={3}
               value={t.loop.followUp}
               onChange={(e) => p.onChange(patchLoop(t, { followUp: e.target.value }))}
@@ -859,6 +867,7 @@ function TaskEditor(p: {
             "loop.maxIterations",
             <input
               className="sl-field__input"
+              aria-invalid={invalid("loop.maxIterations")}
               type="number"
               min={1}
               max={MAX_ITERATIONS}
@@ -871,6 +880,7 @@ function TaskEditor(p: {
             "loop.check",
             <input
               className="sl-field__input spexr-sched__mono"
+              aria-invalid={invalid("loop.check")}
               value={t.loop.check ?? ""}
               placeholder="pnpm test"
               aria-describedby={`${t.id}-loop-check-hint`}
@@ -889,6 +899,7 @@ function TaskEditor(p: {
               "loop.checkTimeoutSec",
               <input
                 className="sl-field__input"
+                aria-invalid={invalid("loop.checkTimeoutSec")}
                 type="number"
                 min={1}
                 max={MAX_CHECK_TIMEOUT_SEC}
@@ -955,6 +966,7 @@ function TaskEditor(p: {
           "model",
           <input
             className="sl-field__input"
+            aria-invalid={invalid("model")}
             value={t.model ?? ""}
             placeholder="default"
             onChange={(e) => setOrClear("model", e.target.value)}
@@ -966,6 +978,7 @@ function TaskEditor(p: {
           <span className="sl-select">
             <select
               className="sl-field__input"
+              aria-invalid={invalid("permissionMode")}
               value={t.permissionMode ?? ""}
               aria-describedby={unattended ? permWarningId : undefined}
               onChange={(e) => setOrClear("permissionMode", e.target.value)}

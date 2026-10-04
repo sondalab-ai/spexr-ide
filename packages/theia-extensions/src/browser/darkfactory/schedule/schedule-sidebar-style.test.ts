@@ -81,3 +81,23 @@ describe("icon-only buttons", () => {
     expect(rule(sel)).not.toMatch(/(^|[\s;{])(background|border|color):/);
   });
 });
+
+// An invalid field drew its own red border at (0,3,0), which outranked focus:
+// a red edge sat inside the accent ring and halo. aria-invalid on the control
+// is the kit's invalid state, so its edge, ring and halo turn danger together.
+describe("invalid schedule fields", () => {
+  const css = readFileSync(fileURLToPath(new URL("../../style/spexr.css", import.meta.url)), "utf8");
+  const source = readFileSync(fileURLToPath(new URL("./schedule-sidebar.tsx", import.meta.url)), "utf8");
+
+  it("leave the invalid edge to the kit", () => {
+    expect(css).not.toMatch(/data-invalid/);
+  });
+
+  it("mark every task field's control with aria-invalid for its own problem", () => {
+    const calls = [...source.matchAll(/field\(\n\s+"[^"]+",\n\s+"([^"]+)",\n([\s\S]*?)(?=field\(\n|$)/g)];
+    expect(calls.length).toBeGreaterThanOrEqual(10);
+    for (const [, name, control] of calls) {
+      expect(control, `the ${name} field`).toMatch(new RegExp(`className="sl-field__input[^"]*"\\s+aria-invalid=\\{invalid\\("${name!.replace(/\./g, "\\.")}"\\)\\}`));
+    }
+  });
+});
