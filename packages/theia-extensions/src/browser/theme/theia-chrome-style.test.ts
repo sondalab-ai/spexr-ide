@@ -38,3 +38,19 @@ describe("Theia's keycaps", () => {
     expect(key).toMatch(/box-shadow:\s*var\(--slc-depth-key\) !important/);
   });
 });
+
+describe("the editor's tabs", () => {
+  it("raise the current tab as a flat tile with no border of its own", () => {
+    const current = rule("#theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,");
+    expect(current).toMatch(/border:\s*0/);
+    expect(current).toMatch(/background-color:\s*var\(--slc-tile\)/);
+    expect(current).toMatch(/box-shadow:\s*var\(--slc-depth-flat\)/);
+  });
+
+  it("leave the other tabs on the canvas, in the muted ink, with no rules between them", () => {
+    const tab = rule("#theia-main-content-panel .lm-TabBar .lm-TabBar-tab {");
+    expect(tab).toMatch(/border:\s*0/);
+    expect(tab).toMatch(/background:\s*transparent/);
+    expect(tab).toMatch(/color:\s*var\(--slc-text-muted\)/);
+  });
+});

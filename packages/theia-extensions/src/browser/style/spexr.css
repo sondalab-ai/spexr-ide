@@ -450,6 +450,46 @@ body {
   box-shadow: var(--slc-depth-key);
 }
 
+/* The editor's tabs are the kit's tile tabs (.sl-tabs--tile): no rules
+   between them, the others on the canvas in the muted ink, hover a flat wash,
+   the current tab a flat tile (lit, ringed, no cast) in the primary ink. A
+   28px tile centred in Theia's 35px strip, 2px apart; the strip pads its
+   ends so the first and last ring are not clipped. Theia's tab participant
+   writes the current tab at (1,3,0) and (1,4,0) for an unfocused group, so
+   these outrank it. */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-content {
+  gap: 2px;
+  padding-inline: 4px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab {
+  height: 28px;
+  line-height: 28px;
+  margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  margin-bottom: round(up, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  border: 0;
+  border-radius: var(--sl-radius-sm);
+  background: transparent;
+  color: var(--slc-text-muted);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab:hover {
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  border: 0;
+  background-color: var(--slc-tile);
+  box-shadow: var(--slc-depth-flat);
+  color: var(--slc-text);
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {
