@@ -94,3 +94,25 @@ describe("power saving the ink hover", () => {
     expect(declarationsFor(":root[data-spexr-power-save] .sl-fx-ink")).toMatch(/display:\s*none/);
   });
 });
+
+// Saving killed every effect host's box-shadow, and with it a glass control's
+// own depth (a secondary's lit line and cast, a selected tile) and its focus
+// halo. The kit restores both after its own kill switches (0.32); saving
+// mirrors that restore, list for list, under spexr's flag.
+describe("power saving keeps a control's depth and focus halo", () => {
+  const kit = readFileSync(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.css"), "utf8");
+  const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
+  const restores = [
+    ...kit.matchAll(/:is\(\[data-sl-fx="off"\], \[data-sl-fx="off"\] \*\)(:is\([^{]*?)\s*\{\s*box-shadow:\s*(var\(--_sl-depth[^;]*);/g),
+  ];
+
+  it("finds the kit's depth and halo restores", () => {
+    expect(restores).toHaveLength(2);
+  });
+
+  it.each(restores.map(([, rest, shadow]) => [rest!, shadow!]))("mirrors %s", (rest, shadow) => {
+    const at = css.indexOf(`:root[data-spexr-power-save] ${rest} {`);
+    expect(at, "the restore under data-spexr-power-save").toBeGreaterThanOrEqual(0);
+    expect(css.slice(at, css.indexOf("}", at))).toContain(`box-shadow: ${shadow};`);
+  });
+});
