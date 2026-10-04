@@ -2,6 +2,7 @@ import { injectable } from "@theia/core/shared/inversify";
 import type { ColorContribution } from "@theia/core/lib/browser/color-application-contribution";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
+import { ACCENT_FILL, mixBlack } from "./spexr-accent.js";
 
 /** SPEXR violet accent, per theme variant. */
 const ACCENT = {
@@ -22,14 +23,18 @@ const ACCENT = {
 function accent(
   colors: ColorRegistry,
   id: string,
-  variant: "fill" | "hover" | "onAccent",
+  variant: "fill" | "hover" | "onAccent" | "labelled" | "labelledHover",
 ): void {
   const value =
     variant === "onAccent"
       ? { dark: ACCENT.onAccent, light: ACCENT.onAccent }
       : variant === "hover"
         ? { dark: ACCENT.darkHover, light: ACCENT.lightHover }
-        : { dark: ACCENT.dark, light: ACCENT.light };
+        : variant === "labelled"
+          ? { dark: ACCENT_FILL, light: ACCENT_FILL }
+          : variant === "labelledHover"
+            ? { dark: mixBlack(ACCENT_FILL, 0.89), light: mixBlack(ACCENT_FILL, 0.89) }
+            : { dark: ACCENT.dark, light: ACCENT.light };
   colors.register({
     id,
     defaults: value,
@@ -54,13 +59,11 @@ export class SpexrColorContribution implements ColorContribution {
     // Focus ring
     accent(colors, "focusBorder", "fill");
 
-    // Native buttons
-    accent(colors, "button.background", "fill");
-    accent(colors, "button.hoverBackground", "hover");
+    // Native buttons and badges carry a white label: the registered fill
+    accent(colors, "button.background", "labelled");
+    accent(colors, "button.hoverBackground", "labelledHover");
     accent(colors, "button.foreground", "onAccent");
-
-    // Badges
-    accent(colors, "badge.background", "fill");
+    accent(colors, "badge.background", "labelled");
     accent(colors, "badge.foreground", "onAccent");
 
     // Progress bar

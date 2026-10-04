@@ -1,4 +1,5 @@
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
+import { ACCENT_FILL } from "./spexr-accent.js";
 
 /**
  * The CSS SpexrThemeContribution injects for a SPEXR theme: `--theia-*`
@@ -15,6 +16,10 @@ export function theiaChromeCss(spexrTheme: string): string {
   const accentActive  = isDark ? "#6b78f0" : "#3645d4";
   const accentSubtle  = isDark ? "rgba(139,150,255,0.12)" : "rgba(91,108,255,0.1)";
   const onAccent      = "#ffffff";
+  // A fill that carries the white label: the registered fill and its hover,
+  // on both themes (the kit's --slc-accent-fill, spexr-overrides.css).
+  const fill          = ACCENT_FILL;
+  const fillHover     = `color-mix(in srgb, ${ACCENT_FILL} 89%, black)`;
 
   // Sondalab surface neutrals — pushed into Theia's native chrome so the
   // editor/sidebar/tabs/terminal share the same indigo-tinted greys as the
@@ -36,23 +41,25 @@ body {
   /* Focus ring */
   --theia-focusBorder: ${accent} !important;
 
-  /* Native buttons */
-  --theia-button-background: ${accent} !important;
-  --theia-button-hoverBackground: ${accentHover} !important;
+  /* Native buttons. Buttons, badges and the menu's selection carry a white
+     label, so they take the registered fill (white 5.41:1, hovered 6.47),
+     never the #5b6cff accent (4.17). */
+  --theia-button-background: ${fill} !important;
+  --theia-button-hoverBackground: ${fillHover} !important;
   --theia-button-foreground: ${onAccent} !important;
   --theia-button-secondaryForeground: ${accent} !important;
   --theia-button-secondaryBackground: ${accentSubtle} !important;
   --theia-button-secondaryHoverBackground: ${accentSubtle} !important;
 
   /* Badges */
-  --theia-badge-background: ${accent} !important;
+  --theia-badge-background: ${fill} !important;
   --theia-badge-foreground: ${onAccent} !important;
 
   /* Activity-bar badge + menu selection: baked into the theme JSON as #007ACC,
      so they beat ColorRegistry overrides — only !important reaches them. */
-  --theia-activityBarBadge-background: ${accent} !important;
+  --theia-activityBarBadge-background: ${fill} !important;
   --theia-activityBarBadge-foreground: ${onAccent} !important;
-  --theia-menu-selectionBackground: ${accent} !important;
+  --theia-menu-selectionBackground: ${fill} !important;
   --theia-menu-selectionForeground: ${onAccent} !important;
 
   /* Progress bar */
