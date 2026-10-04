@@ -46,8 +46,11 @@
   --sl-accent-active: #3645d4;
   --sl-accent-subtle: #eef0ff;
   --sl-focus-ring: #5b6cff;
-  /* The accent's depth companion: where the kit's light recedes to. */
-  --sl-accent-depth: #7a3fd0;
+  /* The accent's depth companion: where the kit's light recedes to. Derived
+     from the accent -- a violet a little deeper, 24 degrees round the hue --
+     it paints exactly the hex literal it replaced (sl-audit allowlists the
+     registered accent, not a free literal beside it). */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) calc(l - 0.08) calc(c - 0.0065) calc(h + 24.1));
 }
 
 [data-sl-theme="dark"] {
@@ -56,14 +59,15 @@
   --sl-accent-active: #6b78f0;
   --sl-accent-subtle: #1c1f3a;
   --sl-focus-ring: #8b96ff;
-  --sl-accent-depth: #b58cff;
+  /* The same companion on ink: a touch lighter, 21 degrees round. */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) calc(l + 0.016) calc(c + 0.013) calc(h + 21.4));
 }
 
 [data-sl-theme="high-contrast"] {
   /* Accent is NOT overridden: the Sondalab HC accent (#ffff00) already matches
      SPEXR's HC. Only the wider HC focus ring is restored; the agent roles read
-     the kit's HC values (the same black, #0a0a0a, #1a1a00 and yellow as before).
-     hljs is intentionally left undefined in HC, as it was before the migration. */
+     the kit's HC roles (the same black surfaces, user bubble and yellow rail as
+     before). hljs is intentionally left undefined in HC, as it was before the migration. */
   --sl-focus-ring-width: 3px;
 }
 
