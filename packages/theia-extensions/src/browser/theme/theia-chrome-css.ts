@@ -1,5 +1,5 @@
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
-import { ACCENT_FILL } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL } from "./spexr-accent.js";
 
 /**
  * The CSS SpexrThemeContribution injects for a SPEXR theme: `--theia-*`
@@ -22,16 +22,21 @@ body {
   if (spexrTheme === "high-contrast") return font;
 
   const isDark = spexrTheme === "dark";
-  const accent        = isDark ? "#8b96ff" : "#5b6cff";
-  const accentSubtle  = isDark ? "rgba(139,150,255,0.12)" : "rgba(91,108,255,0.1)";
+  const theme         = isDark ? "dark" : "light";
+  // The accent and its wash, from the kit's accent registry (12% on ink, 10% on paper).
+  const accent        = ACCENT[theme];
+  const accentSubtle  = `color-mix(in srgb, ${accent} ${isDark ? 12 : 10}%, transparent)`;
   // The accent as text or a thin line: the kit's role, capped on light so it
   // reads at 4.5:1 (#5b6cff itself is 3.37:1 on the light canvas).
   const accentText    = "var(--slc-accent-text)";
+  // A hovered link: one kit shade step further from its ground (deeper on
+  // paper, lighter on ink), so hovering changes lightness and contrast rises.
+  const accentTextActive = `oklch(from var(--slc-accent-text) calc(l ${isDark ? "+" : "-"} var(--slc-shade-step, 0.075)) c h)`;
   const onAccent      = "#ffffff";
   // A fill that carries the white label: the registered fill and its hover,
   // on both themes (the kit's --slc-accent-fill, spexr-overrides.css).
-  const fill          = ACCENT_FILL;
-  const fillHover     = `color-mix(in srgb, ${ACCENT_FILL} 89%, black)`;
+  const fill          = ACCENT_FILL[theme];
+  const fillHover     = `color-mix(in srgb, ${fill} 89%, black)`;
 
   // Sondalab surface neutrals — pushed into Theia's native chrome so the
   // editor/sidebar/tabs/terminal share the same indigo-tinted greys as the
@@ -71,7 +76,7 @@ body {
 
   /* Links, and the quick pick's group labels (the registry cannot hold a var()) */
   --theia-textLink-foreground: ${accentText} !important;
-  --theia-textLink-activeForeground: ${accentText} !important;
+  --theia-textLink-activeForeground: ${accentTextActive} !important;
   --theia-editorLink-activeForeground: ${accentText} !important;
   --theia-pickerGroup-foreground: ${accentText} !important;
 

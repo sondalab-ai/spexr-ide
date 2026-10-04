@@ -2,39 +2,40 @@ import { injectable } from "@theia/core/shared/inversify";
 import type { ColorContribution } from "@theia/core/lib/browser/color-application-contribution";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
-import { ACCENT_FILL, mixBlack } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, accentText, accentTextActive, mixBlack } from "./spexr-accent.js";
 
-/** SPEXR violet accent, per theme variant. */
-const ACCENT = {
-  dark: "#8b96ff",
-  light: "#5b6cff",
-  darkHover: "#a3acff",
-  lightHover: "#4858ee",
-  onAccent: "#ffffff",
-};
+/** The label on a labelled accent fill. */
+const ON_ACCENT = "#ffffff";
 
 /**
- * One accent-color override. `defaults` map dark/light to the violet (high
+ * One accent-color override. `defaults` map dark/light to the accent (high
  * contrast keeps Theia's own values). These re-register monaco's built-in
  * color ids, whose defaults are the Theia/VS Code blue — registering here
  * replaces the default at the source, so Theia regenerates the matching
- * `--theia-*` CSS variable in violet on every theme change.
+ * `--theia-*` CSS variable on every theme change, and Monaco's own widgets
+ * (hovers, the quick pick) read them. Every value comes from the kit's accent
+ * registry: the accent ("fill", for edges and lines), the accent as text
+ * ("text", capped on light like --slc-accent-text; "textActive", one shade
+ * step further from its ground for a hovered link) and the registered fill
+ * with its derived hover ("labelled", "labelledHover").
  */
 function accent(
   colors: ColorRegistry,
   id: string,
-  variant: "fill" | "hover" | "onAccent" | "labelled" | "labelledHover",
+  variant: "fill" | "text" | "textActive" | "onAccent" | "labelled" | "labelledHover",
 ): void {
   const value =
     variant === "onAccent"
-      ? { dark: ACCENT.onAccent, light: ACCENT.onAccent }
-      : variant === "hover"
-        ? { dark: ACCENT.darkHover, light: ACCENT.lightHover }
-        : variant === "labelled"
-          ? { dark: ACCENT_FILL, light: ACCENT_FILL }
-          : variant === "labelledHover"
-            ? { dark: mixBlack(ACCENT_FILL, 0.89), light: mixBlack(ACCENT_FILL, 0.89) }
-            : { dark: ACCENT.dark, light: ACCENT.light };
+      ? { dark: ON_ACCENT, light: ON_ACCENT }
+      : variant === "text"
+        ? { dark: accentText("dark"), light: accentText("light") }
+        : variant === "textActive"
+          ? { dark: accentTextActive("dark"), light: accentTextActive("light") }
+          : variant === "labelled"
+            ? { dark: ACCENT_FILL.dark, light: ACCENT_FILL.light }
+            : variant === "labelledHover"
+              ? { dark: mixBlack(ACCENT_FILL.dark, 0.89), light: mixBlack(ACCENT_FILL.light, 0.89) }
+              : { dark: ACCENT.dark, light: ACCENT.light };
   colors.register({
     id,
     defaults: value,
@@ -69,10 +70,10 @@ export class SpexrColorContribution implements ColorContribution {
     // Progress bar
     accent(colors, "progressBar.background", "fill");
 
-    // Links
-    accent(colors, "textLink.foreground", "fill");
-    accent(colors, "textLink.activeForeground", "hover");
-    accent(colors, "editorLink.activeForeground", "fill");
+    // Links: the accent as text (#5b6cff itself read 4.17:1 on a light hover)
+    accent(colors, "textLink.foreground", "text");
+    accent(colors, "textLink.activeForeground", "textActive");
+    accent(colors, "editorLink.activeForeground", "text");
 
     // Activity bar active highlight
     accent(colors, "activityBar.activeBorder", "fill");
@@ -80,10 +81,10 @@ export class SpexrColorContribution implements ColorContribution {
 
     // Input options (e.g. case-sensitive toggle)
     accent(colors, "inputOption.activeBorder", "fill");
-    accent(colors, "inputOption.activeForeground", "fill");
+    accent(colors, "inputOption.activeForeground", "text");
 
     // Quick-pick group label / picker accents
-    accent(colors, "pickerGroup.foreground", "fill");
+    accent(colors, "pickerGroup.foreground", "text");
 
     // Panel + sash accents
     accent(colors, "panelTitle.activeBorder", "fill");

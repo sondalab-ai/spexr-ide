@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SpexrColorContribution } from "./spexr-color-contribution.js";
-import { ACCENT_FILL, mixBlack } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, accentText, accentTextActive, mixBlack } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 type Defaults = Record<string, string | undefined>;
@@ -23,11 +23,20 @@ describe("SpexrColorContribution", () => {
   const both = (value: string): Defaults => ({ dark: value, light: value });
 
   it("registers the labelled fills on the registered fill and its derived hover", () => {
-    expect(colors.get("button.background")).toEqual(both(ACCENT_FILL));
-    expect(colors.get("button.hoverBackground")).toEqual(both(mixBlack(ACCENT_FILL, 0.89)));
-    expect(colors.get("badge.background")).toEqual(both(ACCENT_FILL));
+    expect(colors.get("button.background")).toEqual(ACCENT_FILL);
+    expect(colors.get("button.hoverBackground")).toEqual({ dark: mixBlack(ACCENT_FILL.dark, 0.89), light: mixBlack(ACCENT_FILL.light, 0.89) });
+    expect(colors.get("badge.background")).toEqual(ACCENT_FILL);
     expect(colors.get("button.foreground")).toEqual(both("#ffffff"));
     expect(colors.get("badge.foreground")).toEqual(both("#ffffff"));
+  });
+
+  it("registers the accent as text from the registry, as the kit derives it", () => {
+    const text = { dark: accentText("dark"), light: accentText("light") };
+    for (const id of ["textLink.foreground", "editorLink.activeForeground", "inputOption.activeForeground", "pickerGroup.foreground"]) {
+      expect(colors.get(id), id).toEqual(text);
+    }
+    expect(colors.get("textLink.activeForeground")).toEqual({ dark: accentTextActive("dark"), light: accentTextActive("light") });
+    expect(colors.get("focusBorder")).toEqual(ACCENT);
   });
 
   it("registers the status bar on the canvas with the muted ink", () => {

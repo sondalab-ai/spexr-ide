@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { theiaChromeCss } from "./theia-chrome-css.js";
-import { ACCENT_FILL } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** The value theiaChromeCss gives a `--theia-*` variable, or undefined. */
@@ -31,7 +31,6 @@ describe("Theia's accent as text", () => {
     for (const name of [
       "button-secondaryForeground",
       "textLink-foreground",
-      "textLink-activeForeground",
       "editorLink-activeForeground",
       "inputOption-activeForeground",
       "gitDecoration-addedResourceForeground",
@@ -40,24 +39,38 @@ describe("Theia's accent as text", () => {
       expect(value(theme, name), name).toBe("var(--slc-accent-text)");
     }
   });
+
+  it("steps a hovered link one shade further from its ground", () => {
+    expect(value("light", "textLink-activeForeground")).toBe("oklch(from var(--slc-accent-text) calc(l - var(--slc-shade-step, 0.075)) c h)");
+    expect(value("dark", "textLink-activeForeground")).toBe("oklch(from var(--slc-accent-text) calc(l + var(--slc-shade-step, 0.075)) c h)");
+  });
 });
 
 // A white label on the #5b6cff accent read 4.17:1; the registered fill reads 5.41.
 describe("Theia's labelled fills", () => {
   it("are spexr's registered fill, the one spexr-overrides.css sets", () => {
     const overrides = readFileSync(fileURLToPath(new URL("../../../../ui-kit/src/themes/spexr-overrides.css", import.meta.url)), "utf8");
-    expect(overrides).toContain(`--slc-accent-fill: ${ACCENT_FILL};`);
+    expect(ACCENT_FILL.dark).toBe(ACCENT_FILL.light);
+    expect(overrides).toContain(`--slc-accent-fill: ${ACCENT_FILL.light};`);
   });
 
-  it.each(["light", "dark"])("carry the white label on the fill on %s", (theme) => {
+  it.each(["light", "dark"] as const)("carry the white label on the fill on %s", (theme) => {
     for (const name of ["button-background", "badge-background", "activityBarBadge-background", "menu-selectionBackground"]) {
-      expect(value(theme, name), name).toBe(ACCENT_FILL);
+      expect(value(theme, name), name).toBe(ACCENT_FILL[theme]);
     }
-    expect(value(theme, "button-hoverBackground")).toBe(`color-mix(in srgb, ${ACCENT_FILL} 89%, black)`);
+    expect(value(theme, "button-hoverBackground")).toBe(`color-mix(in srgb, ${ACCENT_FILL[theme]} 89%, black)`);
   });
 });
 
 // The status bar sits on the canvas in the muted ink, not on an accent strip.
+// The accent and its wash come from the kit's accent registry, not literals.
+describe("Theia's accent", () => {
+  it.each(["light", "dark"] as const)("is the registry's accent on %s", (theme) => {
+    expect(value(theme, "focusBorder")).toBe(ACCENT[theme]);
+    expect(value(theme, "button-secondaryBackground")).toBe(`color-mix(in srgb, ${ACCENT[theme]} ${theme === "dark" ? 12 : 10}%, transparent)`);
+  });
+});
+
 describe("Theia's status bar", () => {
   it.each(["light", "dark"] as const)("is the canvas with the muted ink on %s", (theme) => {
     expect(value(theme, "statusBar-background")).toBe(SPEXR_NEUTRALS[theme].canvas);

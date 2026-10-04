@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import kitAccents from "@sondalab/ui-kit/agent/accent-registry.json";
-import { ACCENT_FILL, mixBlack } from "./spexr-accent.js";
+import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_SHADE_STEP, accentText as registryAccentText, accentTextActive, mixBlack } from "./spexr-accent.js";
 
 type Rgb = [number, number, number];
 
@@ -46,10 +46,12 @@ function srgb([L, C, h]: [number, number, number]): Rgb {
   return lin.map((c) => Math.min(1, Math.max(0, gamma(Math.min(1, Math.max(0, c)))))) as Rgb;
 }
 
+const kitDir = dirname(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.js"));
+const kitFile = (name: string): string => readFileSync(join(kitDir, name), "utf8");
+
 /** The light theme's cap on the accent as text, from the installed kit. */
 function textLmax(): number {
-  const kitDir = dirname(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.js"));
-  return Number(/--sl-accent-text-lmax:\s*([\d.]+)/.exec(readFileSync(join(kitDir, "themes/light.css"), "utf8"))![1]);
+  return Number(/--sl-accent-text-lmax:\s*([\d.]+)/.exec(kitFile("themes/light.css"))![1]);
 }
 
 const WHITE: Rgb = [1, 1, 1];
@@ -65,10 +67,33 @@ const accentText = {
 };
 
 // The owner's rules: text at least 4.5:1, a state indicator at least 3:1.
-describe("spexr's registered fill", () => {
+describe.each(["light", "dark"] as const)("spexr's registered fill on %s", (theme) => {
   it("carries the white label at rest and hovered", () => {
-    expect(contrast(WHITE, hex(ACCENT_FILL))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(WHITE, hex(mixBlack(ACCENT_FILL, 0.89)))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(WHITE, hex(ACCENT_FILL[theme]))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(WHITE, hex(mixBlack(ACCENT_FILL[theme], 0.89)))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+// The colour registry cannot hold a var(), so spexr-accent.ts derives the
+// accent as text as a hex with the kit's own rule and numbers.
+describe("the registry's accent as text", () => {
+  it("uses the installed kit's cap and shade step", () => {
+    expect(KIT_ACCENT_TEXT_LMAX.light).toBe(textLmax());
+    expect(KIT_SHADE_STEP).toBe(Number(/--slc-shade-step:\s*([\d.]+)/.exec(kitFile("components.css"))![1]));
+  });
+
+  it.each(["light", "dark"] as const)("is the kit's --slc-accent-text on %s", (theme) => {
+    expect(hex(registryAccentText(theme)).map((c) => Math.round(c * 255))).toEqual(accentText[theme].map((c) => Math.round(c * 255)));
+  });
+
+  it.each(["light", "dark"] as const)("reads at 4.5:1 at rest and hovered on %s, and hovering changes its lightness", (theme) => {
+    const rest = hex(registryAccentText(theme));
+    const hovered = hex(accentTextActive(theme));
+    for (const ground of ["bg-canvas", "bg-surface", "bg-surface-raised", "bg-tile"] as const) {
+      expect(contrast(rest, hex(neutrals[theme][ground])), ground).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(hovered, hex(neutrals[theme][ground])), ground).toBeGreaterThan(contrast(rest, hex(neutrals[theme][ground])));
+    }
+    expect(contrast(rest, hovered)).toBeGreaterThanOrEqual(1.2);
   });
 });
 
