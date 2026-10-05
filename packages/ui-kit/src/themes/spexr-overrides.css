@@ -72,12 +72,12 @@
 }
 
 /* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28, the
-   kit's --slc-accent-fill role since 0.32). White on the #5b6cff accent reads
+   kit's --slc-accent-fill role since 0.32). White on the #5b6cff accent read
    4.17:1, so every accent fill that carries a label -- the primary, a checked
    check, radio or switch, a count badge -- is the deeper registered fill on
-   both themes: white on it reads 5.41:1, 6.47 hovered, 8.03 pressed. One
-   literal, set once as a role; the kit derives the label, hover, press and
-   edge from it. The accent (#5b6cff / #8b96ff) still drives links, tags, the
+   both themes: white on it reads 5.41:1, 6.67 hovered, 8.21 pressed (the
+   kit's step rule since 0.32.1). One literal, set once as a role; the kit
+   derives the label, hover, press and edge from it. The accent (#5b6cff / #8b96ff) still drives links, tags, the
    agent rail, selection and the focus ring. High contrast keeps its own
    yellow: the kit resets the fill there too. */
 :root:not([data-sl-theme="high-contrast"]) {
