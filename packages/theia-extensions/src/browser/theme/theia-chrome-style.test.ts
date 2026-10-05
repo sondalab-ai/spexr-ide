@@ -107,7 +107,7 @@ describe("Theia's keycaps", () => {
 
 describe("the editor's tabs", () => {
   it("raise the current tab as a flat tile with the seam and no border of its own", () => {
-    const current = rule("#theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,");
+    const current = rule(":is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab.lm-mod-current,");
     expect(current).toMatch(/border:\s*0/);
     expect(current).toMatch(/background-color:\s*var\(--slc-tile\)/);
     expect(current).toMatch(SEAM);
@@ -115,7 +115,7 @@ describe("the editor's tabs", () => {
   });
 
   it("leave the other tabs on the canvas, in the muted ink, with no rules between them", () => {
-    const tab = rule("#theia-main-content-panel .lm-TabBar .lm-TabBar-tab {");
+    const tab = rule(":is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab {");
     expect(tab).toMatch(/border:\s*0/);
     expect(tab).toMatch(/background:\s*transparent/);
     expect(tab).toMatch(/color:\s*var\(--slc-text-muted\)/);
@@ -123,7 +123,7 @@ describe("the editor's tabs", () => {
 
   it("step the current tab's label down in a group without focus", () => {
     // Its own rule, after the shared current-tab rule (which lists the same selector).
-    expect(css).toMatch(/\n:root:not\(\[data-sl-theme="high-contrast"\]\) #theia-main-content-panel \.lm-TabBar:not\(\.theia-tabBar-active\) \.lm-TabBar-tab\.lm-mod-current \{\s*color:\s*var\(--slc-text-secondary\);\s*\}/);
+    expect(css).toMatch(/\n:root:not\(\[data-sl-theme="high-contrast"\]\) :is\(#theia-main-content-panel, #theia-bottom-content-panel\) \.lm-TabBar:not\(\.theia-tabBar-active\) \.lm-TabBar-tab\.lm-mod-current \{\s*color:\s*var\(--slc-text-secondary\);\s*\}/);
   });
 
   it("drop the modified-tab band inside the tile", () => {

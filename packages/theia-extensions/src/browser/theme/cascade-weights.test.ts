@@ -127,7 +127,7 @@ describe("the editor tab's tile", () => {
   it("outranks Theia's current-tab rules", () => {
     const current = theirs(".lm-mod-current").filter((s) => !s.includes("theia-mod-dirty"));
     expect(current.length).toBeGreaterThanOrEqual(2);
-    const mine = specificity(`${NOT_HC} #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current`);
+    const mine = specificity(`${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab.lm-mod-current`);
     for (const s of current) expect(cmp(mine, specificity(s)), s).toBeGreaterThan(0);
   });
 
@@ -141,7 +141,7 @@ describe("the editor tab's tile", () => {
   it("is a 28px tile whose margins fill Theia's 35px strip exactly", () => {
     const tabs = readFileSync(resolve("@theia/core/src/browser/style/tabs.css"), "utf8");
     const strip = Number(/--theia-private-horizontal-tab-height:\s*(\d+)px/.exec(tabs)![1]);
-    const start = spexr.indexOf(`\n${NOT_HC} #theia-main-content-panel .lm-TabBar .lm-TabBar-tab {`);
+    const start = spexr.indexOf(`\n${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab {`);
     const tab = spexr.slice(start, spexr.indexOf("}", start));
     const height = Number(/\bheight:\s*(\d+)px/.exec(tab)![1]);
     expect(tab).toMatch(/margin-top:\s*round\(down, calc\(\(var\(--theia-horizontal-toolbar-height\) - 28px\) \/ 2\), 1px\)/);
@@ -275,17 +275,19 @@ describe("the toasts", () => {
 describe("the bottom island's tile tabs", () => {
   const side = readFileSync(resolve("@theia/core/src/browser/style/sidepanel.css"), "utf8");
   const NOT_HC = ':root:not([data-sl-theme="high-contrast"])';
-  const TAB = `${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab`;
+  const TAB = `${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab`;
+  const LABEL = `${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-tab-icon-label.theia-tab-icon-label`;
 
   it("outrank every one of Theia's bottom tab and label rules", () => {
     const theirs = selectors(side, (s) => s.startsWith("#theia-bottom-content-panel") && s.includes(".lm-TabBar-tab"));
     expect(theirs.length).toBeGreaterThanOrEqual(5);
     for (const s of theirs) {
       const mine = s.includes(".theia-tab-icon-label")
-        ? `${TAB} .theia-tab-icon-label.theia-tab-icon-label`
+        ? LABEL
         : s.includes(".lm-mod-current")
           ? `${TAB}.lm-mod-current`
           : TAB;
+      expect(selectors(spexr, (x) => x === mine).length, mine).toBeGreaterThanOrEqual(1);
       expect(cmp(specificity(mine), specificity(s)), `${mine} vs ${s}`).toBeGreaterThan(0);
     }
   });

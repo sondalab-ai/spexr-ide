@@ -87,8 +87,16 @@ describe("a toast", () => {
     expect(toast).toMatch(/translate var\(--sl-motion-mid\) var\(--sl-motion-enter, var\(--sl-motion-ease\)\)/);
     const starts = [...section.matchAll(/@starting-style\s*\{\s*([^{]+)\{/g)].map((m) => m[1]!.trim());
     expect(starts).toEqual([TOAST]);
-    expect(section).not.toMatch(/animation/);
+    // No animation of spexr's own; the only one named is Theia's sweep, stilled.
+    expect(section.replace(/@media \(prefers-reduced-motion: reduce\)\s*\{[^{}]*\{\s*animation:\s*none;\s*\}\s*\}/, "")).not.toMatch(/animation/);
     expect(theia("@sondalab/ui-kit/tokens.css")).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*:root\s*\{[^}]*--sl-motion-mid:\s*0ms/);
+  });
+
+  // Theia's indeterminate progress sweep is an animation of its own, which
+  // the kit's tokens do not reach.
+  it("stills Theia's indeterminate progress sweep under reduced motion", () => {
+    expect(theia("@theia/messages/src/browser/style/notifications.css")).toMatch(/\.theia-notification-item-progressbar\.indeterminate\s*\{[^}]*animation:/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.theia-notification-item-progressbar\.indeterminate\s*\{\s*animation:\s*none;/);
   });
 
   it("keeps its border on a mouse focus, and joins it to the ring on a keyboard one", () => {
@@ -103,6 +111,13 @@ describe("a toast", () => {
     expect(button).toMatch(/border:\s*1px solid var\(--slc-edge-control\)/);
     expect(button).toMatch(/color:\s*var\(--slc-text-secondary\)/);
     expect(rule(`${NOT_HC} .theia-notification-actions > li:hover`)).toMatch(/border-color:\s*var\(--slc-edge-control-hover\)/);
+  });
+
+  // Theia stacks its toasts column-reverse, newest first, furthest from the
+  // corner; the kit's stack puts the newest last, nearest it.
+  it("stacks the newest toast nearest the corner", () => {
+    expect(theia("@theia/messages/src/browser/style/notifications.css")).toMatch(/\.theia-notification-list\s*\{[^}]*flex-direction:\s*column-reverse/);
+    expect(rule(`${NOT_HC} .theia-notification-toasts .theia-notification-list {`)).toMatch(/flex-direction:\s*column;/);
   });
 
   it("clears the participant's grey from the corners it rounds off", () => {

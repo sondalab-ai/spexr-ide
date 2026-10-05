@@ -647,21 +647,24 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
   white-space: nowrap;
 }
 
-/* The editor's tabs are the kit's tile tabs (.sl-tabs--tile): no rules
-   between them, the others on the canvas in the muted ink, hover a flat wash,
-   the current tab a flat tile (lit, ringed, no cast) in the primary ink with
-   the seam 3px in from its leading edge: the accent in the focused group, the
-   muted ink in another, so the active group is told apart. A 28px tile
-   centred in Theia's 35px strip, 2px apart; the strip pads its ends so the
-   first and last ring are not clipped. Theia's tab participant writes the
-   current tab at (1,3,0), and at (1,4,0) for an unfocused group, so these
-   outrank it. */
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-content {
+/* The editor's tabs, and the bottom island's (S4), are the kit's tile tabs
+   (.sl-tabs--tile): no rules between them, the others on the canvas in the
+   muted ink, hover a flat wash, the current tab a flat tile (lit, ringed, no
+   cast) in the primary ink with the seam 3px in from its leading edge: the
+   accent in the focused group, the muted ink in another, so the active group
+   is told apart (each area keys its seam ink: below, and THE WORKBENCH). A
+   28px tile centred in Theia's 35px strip, 2px apart; the strip pads its ends
+   so the first and last ring are not clipped. Theia's tab participant writes
+   the editor's current tab at (1,3,0), and at (1,4,0) for an unfocused group,
+   and sidepanel.css the bottom's at up to (1,5,0), so these outrank both.
+   The tile's own shadow replaces Theia's 1px line on the bottom's current
+   tab (panelTitle.activeBorder). */
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-content {
   gap: 2px;
   padding-inline: 4px;
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab {
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab {
   height: 28px;
   line-height: 28px;
   margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
@@ -669,6 +672,7 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
   border: 0;
   border-radius: var(--sl-radius-sm);
   background: transparent;
+  box-shadow: none;
   color: var(--slc-text-muted);
   transition:
     color var(--sl-motion-fast) var(--sl-motion-ease),
@@ -676,13 +680,13 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
     box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab:hover {
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab:hover {
   background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
   color: var(--slc-text);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
   border: 0;
   background-color: var(--slc-tile);
   background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
@@ -696,7 +700,7 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
 /* In a group without focus the current tab's label steps down to the
    secondary ink, so the focused group is told apart by lightness as well as
    by its seam's hue (the two seams differ by 1.13:1 on light, 1.04 on dark). */
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
   color: var(--slc-text-secondary);
 }
 
@@ -721,8 +725,8 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
     outline-offset: -1px;
   }
 
-  :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
-  :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  :root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+  :root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
@@ -898,15 +902,9 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
   box-shadow: inset 0 0 0 1px var(--slc-border);
 }
 
-/* The bottom island's tabs are tile tabs, as the editor's are (THEIA'S
-   CHROME IN LUMEN): no rules, the others in the muted ink, hover a flat
-   wash, the current tab a flat tile in the primary ink with the seam 3px in
-   from its leading edge. The seam is the accent only on the active tab bar
-   of the lit bottom island, the muted ink otherwise (one lit seam). The
-   tile's own shadow replaces Theia's 1px line on the current tab
-   (panelTitle.activeBorder). A 28px tile centred in Theia's 35px strip, 2px
-   apart. Theia's sidepanel.css writes these tabs at up to (1,5,0); its
-   participant writes them in high contrast only. */
+/* The bottom island's tabs are the editor's tile tabs (THEIA'S CHROME IN
+   LUMEN). Their seam is the accent only on the active tab bar of the lit
+   bottom island, the muted ink otherwise (one lit seam). */
 :root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar {
   --spexr-seam-ink: var(--slc-text-muted);
 }
@@ -915,60 +913,10 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
   --spexr-seam-ink: var(--slc-seam);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-content {
-  gap: 2px;
-  padding-inline: 4px;
-}
-
-:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab {
-  height: 28px;
-  line-height: 28px;
-  margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
-  margin-bottom: round(up, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
-  border: 0;
-  border-radius: var(--sl-radius-sm);
-  background: transparent;
-  box-shadow: none;
-  color: var(--slc-text-muted);
-  transition:
-    color var(--sl-motion-fast) var(--sl-motion-ease),
-    background-color var(--sl-motion-fast) var(--sl-motion-ease),
-    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
-}
-
-:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab:hover {
-  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
-  color: var(--slc-text);
-}
-
-:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
-:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
-  background-color: var(--slc-tile);
-  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
-  background-repeat: no-repeat;
-  background-size: 2px 50%;
-  background-position: 3px 50%;
-  box-shadow: var(--slc-depth-flat);
-  color: var(--slc-text);
-}
-
-/* In a tab bar without the focus the current tab's label steps down to the
-   secondary ink, as the editor's does. */
-:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
-  color: var(--slc-text-secondary);
-}
-
-/* Theia colours the label itself in a tab bar without the focus, at up to
-   (1,5,0); it takes the tab's ink. */
+/* Theia colours the bottom tab's label itself in a tab bar without the
+   focus, at up to (1,5,0); it takes the tab's ink. */
 :root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-tab-icon-label.theia-tab-icon-label {
   color: inherit;
-}
-
-@media (forced-colors: active) {
-  :root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current {
-    outline: 2px solid Highlight;
-    outline-offset: -2px;
-  }
 }
 
 /* The kit's seam (workbench.css, .sl-pane[data-lit]::before), over the tab
@@ -1150,10 +1098,12 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
 }
 
 /* The text is a flex item of its own (Theia's span), so it can end in an
-   ellipsis; the glyphs keep the icon font and their size. An entry made of
-   several runs between glyphs (the problem counts) keeps its width: an
-   ellipsis inside "0 errors 2 warnings" would say nothing. */
-#theia-statusBar .area:is(.left, .right) > .element > span:not(.codicon) {
+   ellipsis; the glyphs (codicons, and a plugin's Font Awesome glyphs) keep
+   the icon font and their size. An entry made of several runs between
+   glyphs (the problem counts) keeps its width: an ellipsis inside "0 errors
+   2 warnings" would say nothing. So does a live state, whose progress ends
+   its words ("Downloading kev-4b 33%"). */
+#theia-statusBar .area:is(.left, .right) > .element > span:not(.codicon, .fa) {
   min-width: 0;
   margin-inline: 0;
   overflow: hidden;
@@ -1161,7 +1111,8 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
   white-space: nowrap;
 }
 
-#theia-statusBar .area:is(.left, .right) > .element:has(> span:not(.codicon) ~ span:not(.codicon)) {
+#theia-statusBar .area:is(.left, .right) > .element:has(> span:not(.codicon, .fa) ~ span:not(.codicon, .fa)),
+#theia-statusBar .area:is(.left, .right) > .element.spexr-status--live {
   flex-shrink: 0;
 }
 
@@ -1169,7 +1120,7 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
    notification counts, and spexr's branch, project and resource meter. Not
    on the offline bar or on an item with a ground of its own, whose label
    stays theirs. */
-body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, #status-bar-theia-notification-center, .spexr-status--data):not(.has-background) > span:not(.codicon) {
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, #status-bar-theia-notification-center, .spexr-status--data):not(.has-background) > span:not(.codicon, .fa) {
   font-family: var(--sl-font-mono);
   font-weight: 500;
   color: var(--slc-text);
@@ -1228,13 +1179,14 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
 }
 
 /* The offline bar is the kit's warning (theia-chrome-css.ts): the accent dot
-   read 1.13:1 on it and the hairlines 1.1. Both take the bar's label. */
+   read 1.13:1 on it and the hairlines 1.1. Both take the bar's label, the
+   hairlines at 60% of it (3.61:1 light, 3.71 dark). */
 .theia-mod-offline #theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
   background-color: currentColor;
 }
 
 .theia-mod-offline #theia-statusBar .area:is(.left, .right) > .element + .element::before {
-  border-left-color: color-mix(in srgb, currentColor 50%, transparent);
+  border-left-color: color-mix(in srgb, currentColor 60%, transparent);
 }
 
 @media (forced-colors: active) {
@@ -1427,6 +1379,14 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-item-progress {
   margin-inline: var(--sl-radius-lg);
   overflow: hidden;
+}
+
+/* Theia's indeterminate sweep is an animation of its own, which the kit's
+   motion tokens do not reach: under reduced motion the bar stands still. */
+@media (prefers-reduced-motion: reduce) {
+  .theia-notification-item-progressbar.indeterminate {
+    animation: none;
+  }
 }
 
 /* The center: the toast's surface. */

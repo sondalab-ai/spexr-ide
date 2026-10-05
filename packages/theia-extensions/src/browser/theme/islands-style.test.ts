@@ -130,7 +130,9 @@ describe("an island's ring", () => {
 // seam: the current tab's seam is the accent only on the active tab bar of
 // the lit bottom island, the muted ink otherwise.
 describe("the bottom island's tabs", () => {
-  const TAB = `${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab`;
+  // The tile is the editor's rule, shared through :is(); the seam and the
+  // label are the bottom island's own.
+  const TAB = `${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab`;
 
   it("key the accent seam to the lit bottom island's active tab bar", () => {
     expect(rule(`${NOT_HC} #theia-bottom-content-panel .lm-TabBar {`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
@@ -156,7 +158,7 @@ describe("the bottom island's tabs", () => {
   });
 
   it("hand the label the tab's ink, over Theia's own label colours", () => {
-    expect(rule(`${TAB} .theia-tab-icon-label.theia-tab-icon-label`)).toMatch(/color:\s*inherit/);
+    expect(rule(`${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-tab-icon-label.theia-tab-icon-label`)).toMatch(/color:\s*inherit/);
   });
 });
 

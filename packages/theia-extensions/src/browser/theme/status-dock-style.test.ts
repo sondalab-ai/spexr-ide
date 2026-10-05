@@ -65,7 +65,7 @@ describe("the status dock", () => {
   // margins) is the pills' 6px padding now: 12px either way.
   it("keeps Theia's 12px between two facts, as the pills' padding", () => {
     expect(rule(`${ITEM} {`)).toMatch(/padding-inline:\s*0\.375rem/);
-    expect(rule(`${ITEM} > span:not(.codicon) {`)).toMatch(/margin-inline:\s*0/);
+    expect(rule(`${ITEM} > span:not(.codicon, .fa) {`)).toMatch(/margin-inline:\s*0/);
     const bar = theia("@theia/core/src/browser/style/status-bar.css");
     expect(bar).toMatch(/gap:\s*var\(--theia-ui-padding\)/);
     expect(bar).toMatch(/margin-inline:\s*calc\(var\(--theia-ui-padding\) \/ 2\)/);
@@ -76,20 +76,22 @@ describe("the status dock", () => {
   it("ends a fact that does not fit in an ellipsis, on its text, not its glyphs", () => {
     expect(rule("#theia-statusBar .area:is(.left, .right) {")).toMatch(/flex:\s*1 1 auto/);
     expect(rule("#theia-statusBar .area:is(.left, .right) {")).toMatch(/min-width:\s*0/);
-    const text = rule(`${ITEM} > span:not(.codicon) {`);
+    const text = rule(`${ITEM} > span:not(.codicon, .fa) {`);
     expect(text).toMatch(/min-width:\s*0/);
     expect(text).toMatch(/overflow:\s*hidden/);
     expect(text).toMatch(/text-overflow:\s*ellipsis/);
     // An ellipsis inside "0 errors 2 warnings" says nothing: an entry of
     // several runs keeps its width.
-    expect(rule(`${ITEM}:has(> span:not(.codicon) ~ span:not(.codicon)) {`)).toMatch(/flex-shrink:\s*0/);
+    expect(rule(`${ITEM}:has(> span:not(.codicon, .fa) ~ span:not(.codicon, .fa)),`)).toMatch(/flex-shrink:\s*0/);
+    // A live state's progress ends its words: it keeps its width too.
+    expect(css).toContain(`${ITEM}:has(> span:not(.codicon, .fa) ~ span:not(.codicon, .fa)),\n${ITEM}.${STATUS_LIVE} {`);
   });
 
   // The offline bar is the kit's warning: the accent dot read 1.13:1 on it
   // and the hairlines 1.1, so both take the bar's label.
   it("draws the live dot and the hairlines in the offline bar's label", () => {
     expect(rule(`.theia-mod-offline ${ITEM}.${STATUS_LIVE}::after {`)).toMatch(/background-color:\s*currentColor/);
-    expect(rule(`.theia-mod-offline ${ITEM} + .element::before {`)).toMatch(/border-left-color:\s*color-mix\(in srgb, currentColor 50%, transparent\)/);
+    expect(rule(`.theia-mod-offline ${ITEM} + .element::before {`)).toMatch(/border-left-color:\s*color-mix\(in srgb, currentColor 60%, transparent\)/);
   });
 
   it("sets data in the mono at the primary ink, never on the offline bar or a ground of its own", () => {
@@ -100,7 +102,7 @@ describe("the status dock", () => {
       expect(selector, id).toContain(`#status-bar-${id}`);
     }
     expect(selector).toContain(`.${STATUS_DATA}`);
-    expect(selector).toContain(":not(.has-background) > span:not(.codicon)");
+    expect(selector).toContain(":not(.has-background) > span:not(.codicon, .fa)");
     const data = css.slice(css.indexOf("{", start), css.indexOf("}", start));
     expect(data).toMatch(/font-family:\s*var\(--sl-font-mono\)/);
     expect(data).toMatch(/font-weight:\s*500/);
@@ -121,9 +123,15 @@ describe("the status dock", () => {
     const together = `${ITEM}[id^="status-bar-editor-status-"] + .element[id^="status-bar-editor-status-"]`;
     expect(rule(`${together},`)).toMatch(/margin-left:\s*0/);
     expect(rule(`${together}::before,`)).toMatch(/content:\s*none/);
-    for (const id of ["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "editor-status-tabbing-config", "editor-status-language"]) {
-      expect(`status-bar-${id}`.startsWith("status-bar-editor-status-"), id).toBe(true);
-    }
+    // The editor's facts, as Theia names them in its own sources: every one
+    // falls under the prefix the rule keys on.
+    const editorIds = [
+      ...[...theia("@theia/editor/src/browser/editor-contribution.ts").matchAll(/statusBar\.setElement\('([\w-]+)'/g)].map((m) => m[1]!),
+      ...[...theia("@theia/monaco/src/browser/monaco-status-bar-contribution.ts").matchAll(/export const EDITOR_STATUS_\w+ = '([\w-]+)'/g)].map((m) => m[1]!),
+      /LANGUAGE_MODE_ID = '([\w-]+)'/.exec(theia("@theia/editor/src/browser/language-status/editor-language-status-service.ts"))![1]!,
+    ];
+    expect([...editorIds].sort()).toEqual(["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "editor-status-language", "editor-status-tabbing-config"]);
+    for (const id of editorIds) expect(`status-bar-${id}`.startsWith("status-bar-editor-status-"), id).toBe(true);
     expect(dock).toContain(`${ITEM}.compact-left + .element::before`);
     expect(dock).toContain(`${ITEM} + .element.compact-right::before`);
   });
