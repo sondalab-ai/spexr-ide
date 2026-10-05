@@ -10,6 +10,13 @@ function installedKitVersion(): string {
 }
 
 describe("@sondalab/ui-kit", () => {
+  // 0.35.0 emits spexr's registered fill (--slc-accent-fill) from the
+  // registry in themes/products.css, so spexr-overrides.css no longer sets
+  // it, and ships the Lumen ink, hairlines and code palette. 0.34.0 restores
+  // a toast's and a palette's --slc-depth-cast after the effects kill
+  // switches, adds the status item and the title bar's command field to the
+  // depth and halo restores, and stops the status bar's live dot in an
+  // opt-out region, all of which spexr's power saving mirrors (spexr.css).
   // 0.33.0 ships workbench.css, whose lit pane (.sl-pane[data-lit]) the
   // shell's islands wear, and the seam on every selected or current tile.
   // 0.32.1 ships the one label threshold and the hover/press step rule the
@@ -24,8 +31,8 @@ describe("@sondalab/ui-kit", () => {
   // data-sl-product attribute select. 0.25.0 gives every control its press,
   // 0.24.0 carries accent text in --slc-accent-text, 0.23 shipped the list,
   // disclosure and resizer, and 0.22 the segmented aria-pressed paint.
-  it("is at least 0.33.0", () => {
+  it("is at least 0.35.0", () => {
     const [major, minor, patch] = installedKitVersion().split(".").map(Number) as [number, number, number];
-    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(33_000);
+    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(35_000);
   });
 });
