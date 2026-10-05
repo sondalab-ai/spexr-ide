@@ -21,7 +21,9 @@ describe("SpexrGitBackendService", () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-test-"));
-    execSync("git init", { cwd: tmpDir });
+    // Pinned, not left to init.defaultBranch: the stash tests assert "On main: …",
+    // and git's own default is still `master` (Apple's git ships `main`).
+    execSync("git init --initial-branch=main", { cwd: tmpDir });
     execSync('git config user.email "test@test.com"', { cwd: tmpDir });
     execSync('git config user.name "Test"', { cwd: tmpDir });
     fs.writeFileSync(path.join(tmpDir, "README.md"), "init");
