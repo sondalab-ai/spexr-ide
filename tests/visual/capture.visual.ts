@@ -5,7 +5,16 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
 import { probeLog, probeMain, probePage } from "./probes";
-import { QUICK_OPEN, captureStable, firstVisibleLine, parkPointer, runCommand, waitForAck, type SceneResult } from "./scenes";
+import {
+  QUICK_OPEN,
+  captureStable,
+  firstVisibleLine,
+  parkPointer,
+  placeBottomPanel,
+  runCommand,
+  waitForAck,
+  type SceneResult,
+} from "./scenes";
 
 const OS: Os = process.platform === "darwin" ? "mac" : "linux";
 const THEMES = (process.env.VISUAL_THEMES ?? "dark,light")
@@ -18,6 +27,8 @@ const OUT_ROOT = process.env.VISUAL_OUT ?? path.join(__dirname, "out");
  * Profiles, HOME and the fixture workspace. Outside the checkout, and not
  * under /tmp: spexr closes any workspace whose path contains `/tmp/`.
  */
+/** The demo's bottom panel starts at y 666 (reference/demo-regions.json, region "panel"). */
+const DEMO_PANEL_TOP = 666;
 const RUN_ROOT = process.env.RUNNER_TEMP
   ? path.join(process.env.RUNNER_TEMP, "spexr-visual")
   : path.join(__dirname, ".run");
@@ -91,6 +102,7 @@ for (const theme of THEMES) {
         return !panel || panel.classList.contains("lm-mod-hidden") || panel.getBoundingClientRect().height < 10;
       });
       if (meta.bottomPanelOpened) await runCommand(page, "View: Toggle Bottom Panel");
+      meta.bottomPanel = await placeBottomPanel(page, DEMO_PANEL_TOP);
 
       // base: resolve.ts in front, cursor 41:18, line 45 selected, line 36 at the top.
       await runCommand(page, "Parity: Base scene");

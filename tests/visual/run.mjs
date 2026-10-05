@@ -100,6 +100,7 @@ function renderSummary(outRoot) {
   md += row("document.hasFocus", (m) => m.page?.hasFocus);
   md += row("tree focused (focus-tree)", (m) => m.treeFocused);
   md += row("bottom panel opened by the scene", (m) => m.bottomPanelOpened);
+  md += row("bottom panel top edge (dragged to 666)", (m) => (m.bottomPanel ? `${m.bottomPanel.before} → ${m.bottomPanel.after}` : "no sash found"));
   md += row("editor top line (base)", (m) => {
     const scroll = m.scenes?.find((x) => x.scene === "base")?.ack?.scroll;
     return `${m.baseFirstVisibleLine} in the gutter; API ${scroll?.topLine} via ${scroll?.how}`;

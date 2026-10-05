@@ -258,5 +258,31 @@ export async function firstVisibleLine(page: Page): Promise<number | null> {
   });
 }
 
+/**
+ * Drag the sash between the editor and the bottom panel so the panel's top
+ * edge sits at `top`: the demo's panel starts at y 666. Opening the panel
+ * restores a size that differed by about 11 px between two runs of the same
+ * commit. Until spexr sets first-launch sizes itself (slice S5c), the sash is
+ * dragged like a user would. Returns where the edge was and where it landed.
+ */
+export async function placeBottomPanel(page: Page, top: number): Promise<{ before: number; after: number } | null> {
+  const at = await page.evaluate(() => {
+    const split = document.getElementById("theia-bottom-split-panel");
+    const handle = split
+      ? [...split.children].find((c): c is HTMLElement => c.classList.contains("lm-SplitPanel-handle") && c.getBoundingClientRect().width > 0)
+      : undefined;
+    const panel = document.getElementById("theia-bottom-content-panel")?.getBoundingClientRect();
+    const r = handle?.getBoundingClientRect();
+    return r && panel ? { x: r.left + r.width / 2, y: r.top + r.height / 2, panelTop: panel.top } : null;
+  });
+  if (!at) return null;
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x, at.y + (top - at.panelTop), { steps: 5 });
+  await page.mouse.up();
+  const after = await page.evaluate(() => document.getElementById("theia-bottom-content-panel")?.getBoundingClientRect().top ?? -1);
+  return { before: Math.round(at.panelTop * 100) / 100, after: Math.round(after * 100) / 100 };
+}
+
 /** `Meta+P` on macOS, `Control+P` elsewhere: Theia's Quick Open. */
 export const QUICK_OPEN = process.platform === "darwin" ? "Meta+P" : "Control+P";
