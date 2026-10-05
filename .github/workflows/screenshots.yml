@@ -105,6 +105,8 @@ jobs:
           path: tests/visual/out/linux-dark/
           if-no-files-found: warn
           retention-days: 14
+          # "Re-run jobs" on the same run uploads under the same name.
+          overwrite: true
 
       - name: Upload light
         if: always() && contains(env.VISUAL_THEMES, 'light')
@@ -114,6 +116,8 @@ jobs:
           path: tests/visual/out/linux-light/
           if-no-files-found: warn
           retention-days: 14
+          # "Re-run jobs" on the same run uploads under the same name.
+          overwrite: true
 
   mac:
     name: Screenshots (macOS)
@@ -174,6 +178,8 @@ jobs:
           path: tests/visual/out/mac-dark/
           if-no-files-found: warn
           retention-days: 14
+          # "Re-run jobs" on the same run uploads under the same name.
+          overwrite: true
 
       - name: Upload light
         if: always() && contains(env.VISUAL_THEMES, 'light')
@@ -183,3 +189,5 @@ jobs:
           path: tests/visual/out/mac-light/
           if-no-files-found: warn
           retention-days: 14
+          # "Re-run jobs" on the same run uploads under the same name.
+          overwrite: true
