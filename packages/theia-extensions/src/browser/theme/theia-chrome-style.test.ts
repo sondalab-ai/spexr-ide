@@ -83,6 +83,26 @@ describe("Theia's keycaps", () => {
     expect(rule(".lm-Menu .lm-Menu-item {")).toMatch(/display:\s*flex/);
     expect(rule(".lm-Menu :is(.lm-Menu-itemIcon, .lm-Menu-itemShortcut, .lm-Menu-itemSubmenuIcon)")).toMatch(/flex:\s*none/);
   });
+
+  // shell/menu-keycaps.ts draws a menu's shortcut as one .sl-kbd per key; a
+  // shortcut that arrives as text keeps S2's one cap behind it.
+  it("draw a browser menu's shortcut as one 18px cap per key, the separators out of sight", () => {
+    expect(rule(".lm-Menu-itemShortcut:not(:empty):not(:has(> .sl-kbd))::before")).toMatch(/box-shadow:\s*var\(--slc-depth-key\)/);
+    expect(css).not.toContain(`\n${NOT_HC} .lm-Menu-itemShortcut:not(:empty)::before`);
+    const block = (selector: string): string => {
+      const start = css.indexOf(`\n${selector} {`);
+      expect(start, selector).toBeGreaterThanOrEqual(0);
+      return css.slice(css.indexOf("{", start), css.indexOf("}", start));
+    };
+    const cap = block(".lm-Menu-itemShortcut > .sl-kbd");
+    expect(cap).toMatch(/height:\s*18px/);
+    expect(cap).toMatch(/min-width:\s*18px/);
+    expect(block(".lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep + .sl-kbd")).toMatch(/margin-inline-start:\s*3px/);
+    expect(block(".lm-Menu-itemShortcut > .spexr-key-sep--chord + .sl-kbd")).toMatch(/margin-inline-start:\s*6px/);
+    const sep = block(".lm-Menu-itemShortcut > .spexr-key-sep");
+    expect(sep).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(sep).not.toMatch(/display:\s*none/);
+  });
 });
 
 describe("the editor's tabs", () => {

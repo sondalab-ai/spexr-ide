@@ -553,9 +553,12 @@ body {
    table, so a shortcut cell is as wide as the longest shortcut in the menu.
    Its rows are flex rows here, the label taking the free space, so each
    shortcut is a box of its own width and the shortcuts still line up at the
-   right; a separator row keeps its own 9px. The cap is an 18px layer behind
-   the shortcut's text, inside the 24px row, as wide as the text and its
-   padding. */
+   right; a separator row keeps its own 9px. A shortcut is one keycap per
+   key (shell/menu-keycaps.ts draws a kit .sl-kbd per key), 18px inside the
+   24px row, 3px apart, a chord 6px from the next. The "+" and ", " between
+   them stay in the item's accessible name as text, out of sight, so it still
+   reads "Ctrl+Shift+P". A shortcut that arrives as text (a menu with a
+   renderer of its own) keeps one 18px cap behind the text. */
 :root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-content {
   display: flex;
   flex-direction: column;
@@ -588,7 +591,7 @@ body {
   color: var(--slc-text-secondary);
 }
 
-:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty)::before {
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty):not(:has(> .sl-kbd))::before {
   content: "";
   position: absolute;
   inset: 3px 0;
@@ -597,6 +600,36 @@ body {
   background-color: var(--slc-raised);
   background-image: linear-gradient(var(--slc-raised), var(--slc-surface));
   box-shadow: var(--slc-depth-key);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:has(> .sl-kbd) {
+  display: flex;
+  align-items: center;
+  padding-inline: 0;
+}
+
+/* The caps and their hidden separators hold in every theme: in high
+   contrast the menu keeps Theia's table and the kit's own high-contrast cap. */
+.lm-Menu-itemShortcut > .sl-kbd {
+  min-width: 18px;
+  height: 18px;
+}
+
+.lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep + .sl-kbd {
+  margin-inline-start: 3px;
+}
+
+.lm-Menu-itemShortcut > .spexr-key-sep--chord + .sl-kbd {
+  margin-inline-start: 6px;
+}
+
+.lm-Menu-itemShortcut > .spexr-key-sep {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* The editor's tabs are the kit's tile tabs (.sl-tabs--tile): no rules

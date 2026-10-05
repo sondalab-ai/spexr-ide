@@ -51,6 +51,8 @@ import { SpexrShellLayoutContribution } from "./shell/spexr-shell-layout-contrib
 import { SpexrPanelTitleContribution } from "./shell/panel-title-contribution.js";
 import { SpexrRevealOnRestore } from "./shell/reveal-on-restore.js";
 import { SpexrApplicationShell } from "./shell/island-shell.js";
+import { Menu } from "@theia/core/shared/@lumino/widgets";
+import { installMenuKeycaps } from "./shell/menu-keycaps.js";
 import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
@@ -201,6 +203,10 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   rebind(ApplicationShell).to(SpexrApplicationShell).inSingletonScope();
   bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
+
+  // Lumen keycaps: a browser menu's shortcut is one kit keycap per key (see
+  // shell/menu-keycaps.ts), before the shell builds its first menu.
+  installMenuKeycaps(Menu.defaultRenderer);
 
   bind(SpexrShellLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrShellLayoutContribution);
