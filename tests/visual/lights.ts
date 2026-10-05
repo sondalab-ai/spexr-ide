@@ -31,38 +31,58 @@ export interface LightsCheck {
   readonly problems: string[];
 }
 
-/** The lights' saturated colours, unfocused grey excluded: the capture focuses the window first. */
+/**
+ * The lights' saturated colours, unfocused grey excluded: the capture focuses
+ * the window first. Strict enough that a neighbour's anti-aliased edge (the
+ * yellow light's orange rim) is not read as red.
+ */
 function lightColour(r: number, g: number, b: number): Circle["colour"] | null {
-  if (r > 180 && g < 140 && b < 140) return "red";
-  if (r > 180 && g > 140 && b < 120) return "yellow";
-  if (g > 150 && r < 150 && b < 150) return "green";
+  if (r > 200 && g < 130 && b < 130) return "red";
+  if (r > 200 && g > 150 && b < 110) return "yellow";
+  if (g > 160 && r < 120 && b < 120) return "green";
   return null;
 }
 
 /**
  * The traffic lights in a native window capture (native.ts), by colour, in
- * the top-left 200×80pt: one bounding box per colour, in points.
+ * the top-left 200×80pt: for each colour, the bounding box of its largest
+ * connected patch, in points.
  */
 export async function findLights(file: string, windowWidth: number): Promise<{ scale: number; circles: Circle[] }> {
   const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const scale = info.width / windowWidth;
   const rows = Math.min(info.height, Math.round(80 * scale));
   const cols = Math.min(info.width, Math.round(200 * scale));
-  const boxes = new Map<Circle["colour"], { x0: number; y0: number; x1: number; y1: number }>();
+  const colourAt = (x: number, y: number): Circle["colour"] | null => {
+    const i = (y * info.width + x) * info.channels;
+    return lightColour(data[i]!, data[i + 1]!, data[i + 2]!);
+  };
+  const seen = new Uint8Array(rows * cols);
+  const best = new Map<Circle["colour"], { n: number; x0: number; y0: number; x1: number; y1: number }>();
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
-      const i = (y * info.width + x) * info.channels;
-      const colour = lightColour(data[i]!, data[i + 1]!, data[i + 2]!);
-      if (!colour) continue;
-      const box = boxes.get(colour) ?? { x0: x, y0: y, x1: x, y1: y };
-      box.x0 = Math.min(box.x0, x);
-      box.y0 = Math.min(box.y0, y);
-      box.x1 = Math.max(box.x1, x);
-      box.y1 = Math.max(box.y1, y);
-      boxes.set(colour, box);
+      const colour = colourAt(x, y);
+      if (!colour || seen[y * cols + x]) continue;
+      const patch = { n: 0, x0: x, y0: y, x1: x, y1: y };
+      const stack = [[x, y]];
+      seen[y * cols + x] = 1;
+      while (stack.length) {
+        const [px, py] = stack.pop()!;
+        patch.n++;
+        patch.x0 = Math.min(patch.x0, px!);
+        patch.y0 = Math.min(patch.y0, py!);
+        patch.x1 = Math.max(patch.x1, px!);
+        patch.y1 = Math.max(patch.y1, py!);
+        for (const [nx, ny] of [[px! + 1, py!], [px! - 1, py!], [px!, py! + 1], [px!, py! - 1]] as const) {
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows || seen[ny * cols + nx] || colourAt(nx, ny) !== colour) continue;
+          seen[ny * cols + nx] = 1;
+          stack.push([nx, ny]);
+        }
+      }
+      if (patch.n > (best.get(colour)?.n ?? 0)) best.set(colour, patch);
     }
   }
-  const circles = [...boxes].map(([colour, b]) => ({
+  const circles = [...best].map(([colour, b]) => ({
     colour,
     left: b.x0 / scale,
     top: b.y0 / scale,
