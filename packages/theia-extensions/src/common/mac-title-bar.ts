@@ -43,12 +43,14 @@ export const LIGHTS_BEFORE_TAHOE: LightsGeometry = {
 };
 
 /**
- * macOS 26 (Darwin 25) and later. The circles are measured on the macos-26
- * runner (26.6.2, S5b-2's native capture at a known position): 14pt, on a
+ * macOS 26 (Darwin 25) and later, measured on the macos-26 runner (26.6.2).
+ * The circles, from S5b-2's native capture at a known position: 14pt, on a
  * 23pt pitch, starting at the position itself, so the three take 60pt, not
- * 52. The frame is derived, not seen (a capture shows only circles): a 14pt
- * circle with no inset fills a 14pt frame, which is the height VS Code's
- * getMacOSWindowControlsPosition gives from macOS 26 too.
+ * 52. The frame, from a throwaway probe that read the system's title bar
+ * container through titleBarOverlay (navigator.windowControlsOverlay, whose
+ * height Electron takes from the live frame + 2 × y): 44pt at y 15, so the
+ * frame is 14pt, as VS Code's getMacOSWindowControlsPosition has it. The
+ * same probe read 44pt on macOS 14 at y 14, its 16pt frame.
  */
 export const LIGHTS_TAHOE: LightsGeometry = {
   frame: { width: 14, height: 14 },
