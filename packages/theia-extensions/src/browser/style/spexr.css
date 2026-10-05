@@ -158,7 +158,21 @@ body {
   --slfx-fill-a: 100% !important;
 }
 
-/* ...but not a control's own depth and focus halo, as the kit's kill switches
+/* ...but not the kit's own selection, as the kit's kill switches give it
+   back (effects.css, 0.31): a selected tile is drawn in box-shadow, and a
+   current page, a chosen segment, a selected nav item or list row, or the
+   current tile tab that also wears an effect lost its only marker while
+   saving (in high contrast its accent ring). At (0,6,0), with the kit's own
+   lists. */
+:root[data-spexr-power-save] :is(.sl-pagination__item[aria-current]:not([aria-current="false"]), .sl-segmented__item:is([aria-selected="true"], [aria-pressed="true"]), .sl-nav__item[aria-current]:not([aria-current="false"]), .sl-list__row:is([aria-selected="true"], [aria-current]:not([aria-current="false"]))):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-tile) !important;
+}
+
+:root[data-spexr-power-save] :is(.sl-tabs--tile .sl-tabs__tab[aria-selected="true"]):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-flat) !important;
+}
+
+/* ...nor a control's own depth and focus halo, as the kit's kill switches
    give them back (effects.css, 0.32; 0.33 adds the activity item and the
    tree row): a control writes its resting shadow
    into --_sl-depth (a secondary's lit line and cast, a selected tile, a
@@ -172,6 +186,20 @@ body {
 
 :root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
   box-shadow: var(--_sl-depth, 0 0 transparent), var(--_sl-halo, 0 0 transparent) !important;
+}
+
+/* ...nor a surface's own recipe (effects.css, 0.33): an island (a workbench
+   pane, a terminal block) and an overlay that floats (a toast, a palette)
+   wearing an effect keep their ring and cast, as the kit's kill switches
+   give them back, at (0,4,0) and with the kit's own lists. No spexr surface
+   wears an effect today (the shell's islands draw their recipe on ::after,
+   THE WORKBENCH); the mirror keeps power saving in step with the kit. */
+:root[data-spexr-power-save] :is(.sl-pane, .sl-term-block):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-island) !important;
+}
+
+:root[data-spexr-power-save] :is(.sl-toast, .sl-palette):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-float) !important;
 }
 
 :root[data-spexr-power-save] .sl-fx-goo__member {
