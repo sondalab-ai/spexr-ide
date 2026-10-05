@@ -1,0 +1,172 @@
+name: CI
+
+# The fast gates: lint, typecheck, unit tests (vitest) and the Sondalab
+# design-system audit. E2E lives in e2e.yml. Each gate is its own job so a red
+# one does not hide the others, and they run in parallel. Every job installs the
+# same way release.yml does (the native-module headers, then a full install),
+# which is the recipe already proven green in this repo's CI.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "node=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install system dependencies (Linux)
+        run: sudo apt-get update -y && sudo apt-get install -y libx11-dev libxkbfile-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # turbo builds the workspace dependencies first (lint dependsOn ^build).
+      - name: Lint
+        run: pnpm lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "node=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install system dependencies (Linux)
+        run: sudo apt-get update -y && sudo apt-get install -y libx11-dev libxkbfile-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # turbo builds the workspace dependencies first (typecheck dependsOn ^build).
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "node=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install system dependencies (Linux)
+        run: sudo apt-get update -y && sudo apt-get install -y libx11-dev libxkbfile-dev
+
+      # No "Rebuild native modules for Electron" step, unlike e2e.yml: that step
+      # retargets native modules to Electron's ABI, and vitest runs under plain
+      # Node.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The root `pnpm test` script, plus one exclusion passed through to every
+      # package's vitest. turbo builds the workspace dependencies first (test
+      # dependsOn ^build); --continue reports every package, not just the first
+      # red one.
+      #
+      # Excluded: embedding-model.integration.test.ts loads the real ONNX
+      # embedding model from resources/models, which is git-ignored and fetched
+      # by `pnpm --filter @spexr/theia-extensions fetch-model`. No CI job fetches
+      # those weights (e2e.yml does not either), and the file's own header says
+      # to run it explicitly.
+      - name: Unit tests
+        run: >-
+          pnpm exec turbo run test --continue --concurrency=2 --
+          --exclude src/node/search/embedding-model.integration.test.ts
+
+  audit:
+    name: Design-system audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "node=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install system dependencies (Linux)
+        run: sudo apt-get update -y && sudo apt-get install -y libx11-dev libxkbfile-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Runs the .mjs directly: through node_modules/.bin/sl-audit the script's
+      # entry guard compares the symlink path with its real path, so main()
+      # never runs and it exits 0 having printed nothing. The --surface glob
+      # stays single-quoted so the shell does not brace-expand it into two
+      # arguments (the script keeps only the first). --fail-on R makes any R
+      # finding exit 1; without it the script exits 0 whatever it finds.
+      - name: Audit
+        run: >-
+          node node_modules/@sondalab/ui-kit/agent/sl-audit.mjs
+          --product spexr --substrate IDE
+          --surface 'packages/{ui-kit/src,theia-extensions/src}/**/*.css'
+          --fail-on R
