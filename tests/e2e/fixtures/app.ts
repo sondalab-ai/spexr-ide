@@ -9,6 +9,11 @@ const ELECTRON_MAIN = path.join(DESKTOP_DIR, "src-gen/backend/electron-main.js")
 // os.tmpdir() so that the SpexrBootstrapContribution temp-dir check does not
 // close them on startup — the check only targets /tmp and /var/folders paths.
 const WORKSPACE_BASE = path.join(REPO_ROOT, "test-results", "workspaces");
+// The VS Code builtin extensions. `theia download:plugins` puts them in the
+// repository root's plugins/ (theiaPluginsDir in apps/desktop/package.json).
+// A relative `local-dir:plugins` resolved against the launch cwd,
+// apps/desktop, which has none, so the suite ran without them.
+const PLUGINS_DIR = path.join(REPO_ROOT, "plugins");
 // Do NOT set executablePath: when executablePath is omitted, Playwright uses
 // require("electron/index.js") and injects -r loader.js which splices
 // --remote-debugging-port=0 out of process.argv.  With executablePath set,
@@ -36,12 +41,17 @@ export const test = base.extend<AppFixtures>({
   },
 
   app: async ({ workspace }, use) => {
+    // The deployer only logs a missing plugin directory and starts anyway;
+    // fail here instead, before a whole run goes by without the extensions.
+    if (!fs.existsSync(PLUGINS_DIR)) {
+      throw new Error(`No VS Code builtins at ${PLUGINS_DIR}; \`pnpm build:dev\` downloads them.`);
+    }
     const app = await electron.launch({
       cwd: DESKTOP_DIR,
       args: [ELECTRON_MAIN, workspace],
       env: {
         ...process.env,
-        THEIA_DEFAULT_PLUGINS: "local-dir:plugins",
+        THEIA_DEFAULT_PLUGINS: `local-dir:${PLUGINS_DIR}`,
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
         // No multi-GB decision-model download during a test run (spec 0017).
         SPEXR_MODEL_DOWNLOAD: "off",
