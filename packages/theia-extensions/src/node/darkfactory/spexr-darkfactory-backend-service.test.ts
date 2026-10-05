@@ -101,6 +101,26 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect(typeof tiles[0]!.accentId).toBe("number");
   });
 
+  it("currentTiles hands back the last completed scan, without scanning or announcing one", async () => {
+    let transcriptReads = 0;
+    const unscanned = svc({
+      listTranscripts: () => {
+        transcriptReads++;
+        return Promise.resolve([]);
+      },
+    });
+    expect(await unscanned.currentTiles()).toEqual([]);
+    expect(transcriptReads).toBe(0);
+
+    const s = svc();
+    const tiles = await s.listTiles();
+    const announced: AgentTile[][] = [];
+    s.onScanned((t) => announced.push(t));
+    expect(await s.currentTiles()).toEqual(tiles);
+    expect(await s.currentTiles()).toEqual(tiles);
+    expect(announced).toHaveLength(0);
+  });
+
   it("planFocus returns readonly-follow for a working session, resume-terminal for an idle one", async () => {
     const s = svc();
     await s.listTiles();

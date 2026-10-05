@@ -369,6 +369,11 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * as-is rather than re-parsed and re-classified with different inputs.
    */
   private readonly lastTiles = new Map<string, AgentTile>();
+  /**
+   * The last completed scan, whole. `lastTiles` is refilled while a scan runs,
+   * so it is no snapshot; this is assigned once the scan is done.
+   */
+  private snapshot: AgentTile[] = [];
   /** Finds the transcripts a resume copied into a newer one (see {@link SessionLineage}). */
   private readonly lineage: SessionLineage;
   /** Groups sessions by project rather than by folder (see {@link ProjectGroups}). */
@@ -673,8 +678,13 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // The names on disk get the same treatment, on a much longer clock. A failed
     // sweep must not fail the scan: the wall is what the user asked for.
     await this.pruneNames(allRefs).catch(() => {});
+    this.snapshot = tiles;
     this.scanned.fire(tiles);
     return tiles;
+  }
+
+  async currentTiles(): Promise<AgentTile[]> {
+    return [...this.snapshot];
   }
 
   /**
