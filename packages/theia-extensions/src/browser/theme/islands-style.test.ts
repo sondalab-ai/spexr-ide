@@ -49,6 +49,15 @@ describe("the frame", () => {
     expect(split).not.toMatch(/padding(-inline|-left|-right)?:/);
   });
 
+  it("paints a hovered sash as a 2px line centred in the gap, not the whole gap", () => {
+    const across = rule("#theia-app-shell.spexr-islands > #theia-left-right-split-panel > .lm-SplitPanel-handle::after");
+    expect(across).toMatch(/width:\s*2px;/);
+    expect(across).toMatch(/min-width:\s*0;/);
+    const down = rule("#theia-app-shell.spexr-islands #theia-bottom-split-panel > .lm-SplitPanel-handle::after");
+    expect(down).toMatch(/height:\s*2px;/);
+    expect(down).toMatch(/min-height:\s*0;/);
+  });
+
   it("drops the rules the islands replace", () => {
     expect(rule("#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel) > .lm-Panel")).toMatch(/border:\s*0/);
     expect(rule("#theia-bottom-content-panel.spexr-island.sl-pane,")).toMatch(/border:\s*0/);

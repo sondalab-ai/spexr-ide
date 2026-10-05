@@ -173,6 +173,23 @@ describe("the islands", () => {
     expect(cmp(specificity(ours), specificity(theirs))).toBeGreaterThan(0);
   });
 
+  it("narrow the sash over Lumino's and Theia's handle hover paint", () => {
+    const lumino = readFileSync(resolve("@lumino/widgets/style/splitpanel.css"), "utf8");
+    const view = theia("view-container.css");
+    for (const [orientation, ours] of [
+      ["horizontal", "#theia-app-shell.spexr-islands > #theia-left-right-split-panel > .lm-SplitPanel-handle::after"],
+      ["vertical", "#theia-app-shell.spexr-islands #theia-bottom-split-panel > .lm-SplitPanel-handle::after"],
+    ] as const) {
+      const theirs = [
+        ...selectors(lumino, (s) => s.includes(`'${orientation}'`) && /handle:{1,2}after$/.test(s)),
+        ...selectors(view, (s) => s.includes(`"${orientation}"`) && /handle:{1,2}after$/.test(s)),
+      ];
+      expect(theirs.length, orientation).toBeGreaterThanOrEqual(2);
+      expect(exactly(spexr, ours), ours).toHaveLength(1);
+      for (const s of theirs) expect(cmp(specificity(ours), specificity(s)), s).toBeGreaterThan(0);
+    }
+  });
+
   it.each([
     [".sl-pane[data-lit]", ".spexr-island.sl-pane[data-lit]"],
     [".sl-pane[data-lit]::before", ".spexr-island.sl-pane[data-lit]::before"],

@@ -699,6 +699,23 @@ body {
   padding-block: var(--spexr-island-gap);
 }
 
+/* The sash in a gap. Lumino and Theia give a split handle's hover paint
+   (::after, --theia-sash-hoverBorder: the accent) a minimum of 8px, so a
+   hover painted the whole 6px gap, and a pixel of each island beside it, in
+   the accent. It is a 2px line centred in the gap; the handle, the whole gap,
+   stays the grab target. */
+#theia-app-shell.spexr-islands > #theia-left-right-split-panel > .lm-SplitPanel-handle::after {
+  width: 2px;
+  min-width: 0;
+  border-radius: 1px;
+}
+
+#theia-app-shell.spexr-islands #theia-bottom-split-panel > .lm-SplitPanel-handle::after {
+  height: 2px;
+  min-height: 0;
+  border-radius: 1px;
+}
+
 /* The rules the islands replace: between an activity bar and its side
    island, above the bottom panel's tab strip, above the status bar. The
    island's ring is the edge now. Inside an island Theia's own rules stay
