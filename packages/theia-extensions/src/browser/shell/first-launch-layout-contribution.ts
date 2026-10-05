@@ -1,6 +1,8 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
+import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
+import { keepAgentFloor } from "./side-panel.js";
 import { FirstLaunchSizing } from "./workbench-geometry.js";
 
 /**
@@ -11,7 +13,10 @@ import { FirstLaunchSizing } from "./workbench-geometry.js";
  *
  * Bound after SpexrBootstrapContribution, so it runs after the agent
  * terminal's reveal and its floor (ClaudeTerminalManager awaits that resize):
- * the first launch's sizes are the last ones set.
+ * the first launch's sizes are the last ones set. The 264px left island is
+ * the Explorer's: when the agent terminal is the left view in front, its
+ * 432px floor is applied again after the sizes (parity decision, 2026-10-06), so a new
+ * user never meets a 33-column agent.
  */
 @injectable()
 export class SpexrFirstLaunchLayoutContribution implements FrontendApplicationContribution {
@@ -26,7 +31,7 @@ export class SpexrFirstLaunchLayoutContribution implements FrontendApplicationCo
 
   async onDidInitializeLayout(): Promise<void> {
     try {
-      await this.sizing.apply(this.shell);
+      if (await this.sizing.apply(this.shell)) await keepAgentFloor(this.shell, CLAUDE_TERMINAL_ID);
     } catch (err) {
       console.warn("[spexr] first-launch sizes failed", err);
     }

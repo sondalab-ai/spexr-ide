@@ -84,6 +84,26 @@ export function expandLeftPanelWithMinWidth(shell: SidePanelShell): Promise<void
   return expandSidePanelWithMinWidth(shell, "left", MIN_LEFT_PANEL_SIZE);
 }
 
+/** The part of Theia's `ApplicationShell` {@link keepAgentFloor} reads, besides the side handlers. */
+export interface AgentFloorShell extends SidePanelShell {
+  getCurrentWidget(area: "left"): { readonly id: string } | undefined;
+}
+
+/**
+ * After the first launch's sizes: when the left view in front is the agent
+ * terminal (`agentId`), give it back its floor, {@link MIN_LEFT_ISLAND_WIDTH}.
+ * Lumen's 264px island is the Explorer's; the agent terminal at that width
+ * would be about 33 columns. With the Explorer, or any other view, in front,
+ * nothing changes.
+ *
+ * @returns whether the floor was applied.
+ */
+export async function keepAgentFloor(shell: AgentFloorShell, agentId: string): Promise<boolean> {
+  if (shell.getCurrentWidget("left")?.id !== agentId) return false;
+  await expandLeftPanelWithMinWidth(shell);
+  return true;
+}
+
 /** Expand the right side panel and enforce {@link MIN_RIGHT_ISLAND_WIDTH} (as {@link MIN_RIGHT_PANEL_SIZE}). */
 export function expandRightPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
   return expandSidePanelWithMinWidth(shell, "right", MIN_RIGHT_PANEL_SIZE);

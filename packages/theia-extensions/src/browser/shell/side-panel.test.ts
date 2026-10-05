@@ -8,8 +8,10 @@ import {
   expandLeftPanelWithMinWidth,
   expandRightPanelWithMinWidth,
   expandSidePanel,
+  keepAgentFloor,
   type SidePanelShell,
 } from "./side-panel.js";
+import { firstLaunchSizes } from "./workbench-geometry.js";
 
 /** A side handler that records its calls and reports `size` as Theia's measure. */
 function handler(size: number | undefined, calls: string[]) {
@@ -66,5 +68,34 @@ describe("expanding a side with no floor", () => {
     const calls: string[] = [];
     await expandSidePanel(shellWith("left", 100, calls), "left");
     expect(calls).toEqual(["expand"]);
+  });
+});
+
+// The first launch sizes the left island for the Explorer, 264px. When the
+// agent terminal is the left view in front, its floor comes back after
+// those sizes: a 264px agent would be about 33 columns.
+describe("the agent terminal's floor after a first launch's sizes", () => {
+  const AGENT = "spexr-claude";
+  const shellShowing = (id: string | undefined, calls: string[]) => ({
+    ...shellWith("left", firstLaunchSizes().left, calls),
+    getCurrentWidget: (area: "left") => (area === "left" && id ? { id } : undefined),
+  });
+
+  it("widens the left island back to the agent's 432px when the agent terminal is in front", async () => {
+    const calls: string[] = [];
+    expect(await keepAgentFloor(shellShowing(AGENT, calls), AGENT)).toBe(true);
+    expect(calls).toEqual(["expand", `resize:${MIN_LEFT_PANEL_SIZE}`]);
+  });
+
+  it("leaves Lumen's 264px Explorer alone when the Explorer is in front", async () => {
+    const calls: string[] = [];
+    expect(await keepAgentFloor(shellShowing("files", calls), AGENT)).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it("leaves a collapsed left side alone", async () => {
+    const calls: string[] = [];
+    expect(await keepAgentFloor(shellShowing(undefined, calls), AGENT)).toBe(false);
+    expect(calls).toEqual([]);
   });
 });

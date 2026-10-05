@@ -62,12 +62,14 @@ describe("an area's size as Theia measures it", () => {
     expect(firstLaunchSizes()).toEqual({ left: 322, right: 416, bottom: 210 });
   });
 
-  it("matches how Theia reads each size back", () => {
+  it("matches how Theia reads each size back, and which left view is in front", () => {
     // left: the handle's offset; right: the parent's width less the handle's offset.
     const getPanelSize = method(theiaSide, "getPanelSize()");
     expect(getPanelSize).toMatch(/return handle\.offsetLeft;/);
     expect(getPanelSize).toMatch(/return parentWidth - handle\.offsetLeft;/);
     expect(method(theiaShell, "getBottomPanelSize()")).toMatch(/return parentHeight - handle\.offsetTop;/);
+    // keepAgentFloor reads the left view in front as Theia's current left widget: the side bar's current tab.
+    expect(method(theiaShell, "getCurrentWidget(area)")).toMatch(/case 'left':\s*title = this\.leftPanelHandler\.tabBar\.currentTitle;/);
     // And how it writes it: the handle moves to the size, or to the parent's extent less it.
     const startMove = method(theiaSplit, "startMove(move, time)");
     expect(startMove).toMatch(/case 'left':\s*move\.targetPosition = Math\.max\(Math\.min\(move\.targetSize, clientWidth\), 0\);/);
@@ -137,11 +139,14 @@ describe("Theia's layout start, which first-launch sizing relies on", () => {
     expect(sizing).toBeGreaterThan(bootstrap);
     const contribution = own("./first-launch-layout-contribution.ts");
     expect(contribution).toMatch(/initializeLayout\(\): void \{\s*this\.sizing\.markDefaultLayout\(\);/);
-    expect(contribution).toMatch(/await this\.sizing\.apply\(this\.shell\);/);
+    // The agent terminal keeps its floor when it is the left view in front.
+    expect(contribution).toMatch(/if \(await this\.sizing\.apply\(this\.shell\)\) await keepAgentFloor\(this\.shell, CLAUDE_TERMINAL_ID\);/);
   });
 
   it("awaits the agent terminal's floor, so the first launch's resize lands after it", () => {
     const manager = own("../agent/claude-terminal-manager.ts");
+    // side-panel.test.ts drives keepAgentFloor with this id.
+    expect(manager).toMatch(/export const CLAUDE_TERMINAL_ID = "spexr-claude";/);
     expect(manager).toMatch(/if \(this\.placement === "left"\) await this\.expandLeftPanel\(\);/);
     expect(manager).toMatch(/private expandLeftPanel\(\): Promise<void> \{\s*return expandLeftPanelWithMinWidth\(this\.shell\);/);
   });
