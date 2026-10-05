@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SpexrColorContribution } from "./spexr-color-contribution.js";
-import { ACCENT, ACCENT_FILL, accentText, accentTextActive, mixBlack } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 type Defaults = Record<string, string | undefined>;
@@ -22,9 +22,9 @@ describe("SpexrColorContribution", () => {
   const colors = registered();
   const both = (value: string): Defaults => ({ dark: value, light: value });
 
-  it("registers the labelled fills on the registered fill and its derived hover", () => {
+  it("registers the labelled fills on the registered fill and its hover by the kit's step rule", () => {
     expect(colors.get("button.background")).toEqual(ACCENT_FILL);
-    expect(colors.get("button.hoverBackground")).toEqual({ dark: mixBlack(ACCENT_FILL.dark, 0.89), light: mixBlack(ACCENT_FILL.light, 0.89) });
+    expect(colors.get("button.hoverBackground")).toEqual({ dark: fillStep(ACCENT_FILL.dark, "hover"), light: fillStep(ACCENT_FILL.light, "hover") });
     expect(colors.get("badge.background")).toEqual(ACCENT_FILL);
     expect(colors.get("button.foreground")).toEqual(both("#ffffff"));
     expect(colors.get("badge.foreground")).toEqual(both("#ffffff"));

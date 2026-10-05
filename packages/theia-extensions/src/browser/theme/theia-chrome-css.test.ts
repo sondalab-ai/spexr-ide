@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { theiaChromeCss } from "./theia-chrome-css.js";
-import { ACCENT, ACCENT_FILL } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, fillStep } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** The value theiaChromeCss gives a `--theia-*` variable, or undefined. */
@@ -58,7 +58,7 @@ describe("Theia's labelled fills", () => {
     for (const name of ["button-background", "badge-background", "activityBarBadge-background", "menu-selectionBackground"]) {
       expect(value(theme, name), name).toBe(ACCENT_FILL[theme]);
     }
-    expect(value(theme, "button-hoverBackground")).toBe(`color-mix(in srgb, ${ACCENT_FILL[theme]} 89%, black)`);
+    expect(value(theme, "button-hoverBackground")).toBe(fillStep(ACCENT_FILL[theme], "hover"));
   });
 });
 

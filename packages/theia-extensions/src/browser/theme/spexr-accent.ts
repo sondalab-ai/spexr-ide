@@ -13,29 +13,25 @@ export const ACCENT: PerTheme = { light: spexr.light, dark: spexr.dark };
  * (`products.spexr.fill`), the value spexr-overrides.css sets as the kit's
  * --slc-accent-fill: what an accent fill that carries a white label is
  * painted with. White on it reads 5.41:1, where white on the #5b6cff accent
- * reads 4.17.
+ * read 4.17 (the kit gives that accent its dark label since 0.32.1).
  */
 export const ACCENT_FILL: PerTheme = { light: spexr.fill.light, dark: spexr.fill.dark };
 
 /**
- * The kit's numbers behind --slc-accent-text, which a stylesheet can compute
- * and the colour registry cannot (it wants a plain colour): the light theme
- * caps the accent's oklch lightness at --sl-accent-text-lmax (themes/light.css)
- * and the dark theme does not; --slc-shade-step (components.css) is the kit's
- * one step of lightness. A test pins both to the installed kit.
+ * The kit's numbers behind --slc-accent-text and its fill steps, which a
+ * stylesheet can compute and the colour registry cannot (it wants a plain
+ * colour): the light theme caps the accent's oklch lightness at
+ * --sl-accent-text-lmax (themes/light.css) and the dark theme does not;
+ * --slc-shade-step (components.css) is the kit's one step of lightness; a
+ * label turns to the dark pole above oklch L --_sl-pole-l, that pole is
+ * --_sl-pole-dark, and a fill steps toward white only where pressing it
+ * toward black would leave its dark label under --_sl-hold (tokens.css,
+ * 0.32.1). A test pins every number to the installed kit.
  */
 export const KIT_ACCENT_TEXT_LMAX: Record<ThemeKind, number> = { light: 0.46, dark: 1 };
 export const KIT_SHADE_STEP = 0.075;
-
-/**
- * `color-mix(in srgb, <hex> <keep>, black)` as a hex, for the colour registry,
- * which wants a plain colour: the fill's hover keeps 89% (white on it: 6.47:1).
- */
-export function mixBlack(hex: string, keep: number): string {
-  return `#${[1, 3, 5]
-    .map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * keep).toString(16).padStart(2, "0"))
-    .join("")}`;
-}
+export const KIT_LABEL = { poleL: 0.59, poleDark: 0.16, hold: 5.4 };
+export const KIT_FILL_STEP = { hover: 0.05, press: 0.1 };
 
 const linear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const gamma = (c: number): number => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
@@ -65,6 +61,32 @@ function fromOklch([L, C, h]: [number, number, number]): string {
   ]
     .map((c) => Math.round(gamma(Math.min(1, Math.max(0, c))) * 255).toString(16).padStart(2, "0"))
     .join("")}`;
+}
+
+/** WCAG relative luminance of a `#rrggbb`. */
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => linear(parseInt(hex.slice(i, i + 2), 16) / 255)) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * A labelled fill hovered or pressed, as a hex: the kit's step rule
+ * (`--_sl-step-hover` / `--_sl-step-press`, tokens.css, 0.32.1). The fill
+ * moves 0.05 (hover) or 0.10 (press) of oklch lightness toward black, unless
+ * its label is the dark pole and would read under 5.4:1 pressed toward black;
+ * then toward white. It moves along the line to that pole, so it stays in
+ * sRGB: toward black the chroma shrinks with the lightness, toward white it
+ * eases. spexr's fill (white label) hovers #424ccd and presses #3841b1, as
+ * the kit's primaries do.
+ */
+export function fillStep(hex: string, state: keyof typeof KIT_FILL_STEP): string {
+  const step = KIT_FILL_STEP[state];
+  const [L, C, h] = toOklch(hex);
+  const pressedDark = (luminance(hex) * ((L - 0.1) / L) ** 3 + 0.05) / (KIT_LABEL.poleDark ** 3 + 0.05);
+  const lighter = L > KIT_LABEL.poleL && pressedDark < KIT_LABEL.hold;
+  return lighter
+    ? fromOklch([Math.min(1, L + step), C * Math.max(0, 1 - step / Math.max(1 - L, 0.001)) ** 1.5, h])
+    : fromOklch([Math.max(0, L - step), C * Math.max(0, 1 - step / Math.max(L, 0.001)), h]);
 }
 
 /**

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import kitAccents from "@sondalab/ui-kit/agent/accent-registry.json";
-import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_SHADE_STEP, accentText as registryAccentText, accentTextActive, mixBlack } from "./spexr-accent.js";
+import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_FILL_STEP, KIT_LABEL, KIT_SHADE_STEP, accentText as registryAccentText, accentTextActive, fillStep } from "./spexr-accent.js";
 
 type Rgb = [number, number, number];
 
@@ -12,9 +12,11 @@ const hex = (h: string): Rgb => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2),
 const linear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const gamma = (c: number): number => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
 
+/** WCAG relative luminance of an sRGB colour (0-1 channels). */
+const lum = (c: Rgb): number => 0.2126 * linear(c[0]) + 0.7152 * linear(c[1]) + 0.0722 * linear(c[2]);
+
 /** WCAG 2 contrast ratio of two sRGB colours (0-1 channels). */
 function contrast(a: Rgb, b: Rgb): number {
-  const lum = (c: Rgb): number => 0.2126 * linear(c[0]) + 0.7152 * linear(c[1]) + 0.0722 * linear(c[2]);
   const [x, y] = [lum(a), lum(b)];
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
@@ -54,6 +56,26 @@ function textLmax(): number {
   return Number(/--sl-accent-text-lmax:\s*([\d.]+)/.exec(kitFile("themes/light.css"))![1]);
 }
 
+/** A number the kit's tokens.css declares on :root (0.32.1's label and step macros). */
+const kitNumber = (re: RegExp): number => Number(re.exec(kitFile("tokens.css"))![1]);
+const POLE_L = kitNumber(/--_sl-pole-l:\s*([\d.]+)/);
+const POLE_DARK = kitNumber(/--_sl-pole-dark:\s*([\d.]+)/);
+const HOLD = kitNumber(/--_sl-hold:\s*([\d.]+)/);
+const STEP = {
+  hover: kitNumber(/--_sl-step-hover:\s*clamp\(0, l \+ ([\d.]+) \*/),
+  press: kitNumber(/--_sl-step-press:\s*clamp\(0, l \+ ([\d.]+) \*/),
+};
+
+/** The kit's step rule (tokens.css --_sl-step-hover / -press), written again from its CSS. */
+function kitStep(fill: Rgb, step: number): Rgb {
+  const [L, C, h] = oklch(fill);
+  const pressedDark = (lum(fill) * ((L - 0.1) / L) ** 3 + 0.05) / (POLE_DARK ** 3 + 0.05);
+  const lighter = L > POLE_L && pressedDark < HOLD ? 1 : 0;
+  const C2 = C * (lighter * Math.max(0, 1 - step / Math.max(1 - L, 0.001)) ** 1.5 + (1 - lighter) * Math.max(0, 1 - step / Math.max(L, 0.001)));
+  return srgb([Math.min(1, Math.max(0, L + step * (2 * lighter - 1))), C2, h]);
+}
+
+const toBytes = (c: Rgb): number[] => c.map((v) => Math.round(v * 255));
 const WHITE: Rgb = [1, 1, 1];
 const neutrals = kitNeutrals.products.spexr;
 const accent = kitAccents.products.spexr;
@@ -68,9 +90,25 @@ const accentText = {
 
 // The owner's rules: text at least 4.5:1, a state indicator at least 3:1.
 describe.each(["light", "dark"] as const)("spexr's registered fill on %s", (theme) => {
-  it("carries the white label at rest and hovered", () => {
+  it("carries the white label at rest, hovered and pressed", () => {
     expect(contrast(WHITE, hex(ACCENT_FILL[theme]))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(WHITE, hex(mixBlack(ACCENT_FILL[theme], 0.89)))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(WHITE, hex(fillStep(ACCENT_FILL[theme], "hover")))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(WHITE, hex(fillStep(ACCENT_FILL[theme], "press")))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("hovers and presses by the kit's step rule, as the kit's primaries do", () => {
+    for (const state of ["hover", "press"] as const) {
+      expect(toBytes(hex(fillStep(ACCENT_FILL[theme], state))), state).toEqual(toBytes(kitStep(hex(ACCENT_FILL[theme]), STEP[state])));
+    }
+  });
+});
+
+// spexr-accent.ts carries the kit's label and step numbers as constants (the
+// registry cannot run CSS); they must be the installed kit's.
+describe("the kit's label and step numbers", () => {
+  it("match tokens.css", () => {
+    expect(KIT_LABEL).toEqual({ poleL: POLE_L, poleDark: POLE_DARK, hold: HOLD });
+    expect(KIT_FILL_STEP).toEqual(STEP);
   });
 });
 

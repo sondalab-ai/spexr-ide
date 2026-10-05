@@ -2,7 +2,7 @@ import { injectable } from "@theia/core/shared/inversify";
 import type { ColorContribution } from "@theia/core/lib/browser/color-application-contribution";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
-import { ACCENT, ACCENT_FILL, accentText, accentTextActive, mixBlack } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep } from "./spexr-accent.js";
 
 /** The label on a labelled accent fill. */
 const ON_ACCENT = "#ffffff";
@@ -17,7 +17,7 @@ const ON_ACCENT = "#ffffff";
  * registry: the accent ("fill", for edges and lines), the accent as text
  * ("text", capped on light like --slc-accent-text; "textActive", one shade
  * step further from its ground for a hovered link) and the registered fill
- * with its derived hover ("labelled", "labelledHover").
+ * with its hover by the kit's step rule ("labelled", "labelledHover").
  */
 function accent(
   colors: ColorRegistry,
@@ -34,7 +34,7 @@ function accent(
           : variant === "labelled"
             ? { dark: ACCENT_FILL.dark, light: ACCENT_FILL.light }
             : variant === "labelledHover"
-              ? { dark: mixBlack(ACCENT_FILL.dark, 0.89), light: mixBlack(ACCENT_FILL.light, 0.89) }
+              ? { dark: fillStep(ACCENT_FILL.dark, "hover"), light: fillStep(ACCENT_FILL.light, "hover") }
               : { dark: ACCENT.dark, light: ACCENT.light };
   colors.register({
     id,

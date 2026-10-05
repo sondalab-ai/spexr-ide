@@ -1,5 +1,5 @@
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
-import { ACCENT, ACCENT_FILL } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, fillStep } from "./spexr-accent.js";
 
 /**
  * The CSS SpexrThemeContribution injects for a SPEXR theme: `--theia-*`
@@ -36,7 +36,9 @@ body {
   // A fill that carries the white label: the registered fill and its hover,
   // on both themes (the kit's --slc-accent-fill, spexr-overrides.css).
   const fill          = ACCENT_FILL[theme];
-  const fillHover     = `color-mix(in srgb, ${fill} 89%, black)`;
+  // Hovered by the kit's own step rule, so Theia's buttons and the kit's
+  // primaries hover in the same indigo.
+  const fillHover     = fillStep(fill, "hover");
 
   // Sondalab surface neutrals — pushed into Theia's native chrome so the
   // editor/sidebar/tabs/terminal share the same indigo-tinted greys as the
@@ -51,7 +53,7 @@ body {
   --theia-focusBorder: ${accent} !important;
 
   /* Native buttons. Buttons, badges and the menu's selection carry a white
-     label, so they take the registered fill (white 5.41:1, hovered 6.47),
+     label, so they take the registered fill (white 5.41:1, hovered 6.67),
      never the #5b6cff accent (4.17). */
   --theia-button-background: ${fill} !important;
   --theia-button-hoverBackground: ${fillHover} !important;
