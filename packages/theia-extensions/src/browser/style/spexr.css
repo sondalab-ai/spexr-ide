@@ -204,10 +204,10 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* Power saving (power-save-dom.ts): decorative loops stand still. Status
    animations (working LEDs, loading pulses, alerts) keep running because
-   they carry information. The kit's effects are stilled with its own
-   kill-switch list (effects.css) keyed on our flag instead of its
-   data-sl-fx="off", which would stop it dressing content that mounts
-   while saving. */
+   they carry information; the kit's status bar dot is the exception, below.
+   The kit's effects are stilled with its own kill-switch list (effects.css)
+   keyed on our flag instead of its data-sl-fx="off", which would stop it
+   dressing content that mounts while saving. */
 :root[data-spexr-power-save] :is(.sl-fx-glass, .sl-fx-glass__lit, .sl-fx-press, .sl-fx-aurora, .sl-fx-aurora__glow, .sl-fx-liquid, .sl-fx-liquid__skin, .sl-fx-goo, .sl-fx-goo__field, .sl-fx-glitch, .sl-fx-glitch__text, .sl-fx-glitch__shards, .sl-fx-glitch__shard) {
   animation: none !important;
   box-shadow: none !important;
@@ -234,24 +234,27 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* ...nor a control's own depth and focus halo, as the kit's kill switches
    give them back (effects.css, 0.32; 0.33 adds the activity item and the
-   tree row): a control writes its resting shadow
-   into --_sl-depth (a secondary's lit line and cast, a selected tile, a
-   checked box's foot) and its focus rule adds --_sl-halo. They are the
-   control's, not the effect's. The kill above weighs (0,3,0), so these
-   outrank it at (0,4,0) and (0,5,0), with the kit's own lists. The halo
-   stays off in high contrast, where --slc-glow is 0. */
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+   tree row, 0.34 the status item and the title bar's command field): a
+   control writes its resting shadow into --_sl-depth (a secondary's lit
+   line and cast, a selected tile, a checked box's foot) and its focus rule
+   adds --_sl-halo. They are the control's, not the effect's. The kill above
+   weighs (0,3,0), so these outrank it at (0,4,0) and (0,5,0), with the
+   kit's own lists. The halo stays off in high contrast, where --slc-glow
+   is 0. */
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
   box-shadow: var(--_sl-depth, 0 0 transparent) !important;
 }
 
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
   box-shadow: var(--_sl-depth, 0 0 transparent), var(--_sl-halo, 0 0 transparent) !important;
 }
 
 /* ...nor a surface's own recipe (effects.css, 0.33): an island (a workbench
    pane, a terminal block) and an overlay that floats (a toast, a palette)
    wearing an effect keep their ring and cast, as the kit's kill switches
-   give them back, at (0,4,0) and with the kit's own lists. No spexr surface
+   give them back, at (0,4,0) and with the kit's own lists. Since 0.34 a
+   toast and a palette have no border and sit on --slc-depth-cast, whose
+   ring is theirs, so that is what comes back for them. No spexr surface
    wears an effect today (the shell's islands draw their recipe on ::after,
    THE WORKBENCH); the mirror keeps power saving in step with the kit. */
 :root[data-spexr-power-save] :is(.sl-pane, .sl-term-block):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
@@ -259,7 +262,18 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 :root[data-spexr-power-save] :is(.sl-toast, .sl-palette):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
-  box-shadow: var(--slc-depth-float) !important;
+  box-shadow: var(--slc-depth-cast) !important;
+}
+
+/* The status bar's live dot (workbench.css, 0.34) breathes on its own, not
+   as an effect, and the kit stops it only in a data-sl-fx="off" region,
+   which power saving does not set: it is stopped here, as the kit stops it
+   there. It is the one status mark that stands still while saving, because
+   the breath is decoration: the dot stays, and the words beside it say the
+   state. No spexr status item wears the kit's dot today (the dock draws its
+   own, still, THE STATUS DOCK); this keeps power saving in step with the kit. */
+:root[data-spexr-power-save] .sl-statusbar__dot {
+  animation: none !important;
 }
 
 :root[data-spexr-power-save] .sl-fx-goo__member {
