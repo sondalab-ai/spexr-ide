@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
-import { checkLights, findLights, type LightsCheck, type Rect } from "./lights";
+import { checkLights, findLights, inkAfter, type LightsCheck, type Rect } from "./lights";
 import { nativeCapture } from "./native";
 
 /** What the environment gave this capture: read by the step summary, never asserted on. */
@@ -59,6 +59,11 @@ export interface ZoomProbe {
   readonly markLeftPt: number | null;
   readonly markGapPt: number | null;
   readonly lights?: LightsCheck;
+  /**
+   * Whether the native capture shows the zoomed page: the mark's first ink
+   * column where the DOM puts it, within 1pt, after `attempts` captures.
+   */
+  readonly settle: { readonly settled: boolean; readonly attempts: number; readonly inkPt: number | null; readonly expectedPt: number | null };
   readonly ok: boolean;
   readonly problems: string[];
 }
@@ -201,7 +206,29 @@ async function roomProperty(page: Page): Promise<string> {
  */
 export async function probeLights(file: string, page: Page, windowWidth: number): Promise<LightsCheck> {
   const found = await findLights(file, windowWidth);
-  return checkLights(file, found, 1, await parityRect(page, "title"), await parityRect(page, "title.dots"));
+  const bar = await parityRect(page, "title");
+  const check = checkLights(file, found, 1, bar, await parityRect(page, "title.dots"));
+  const mark = await parityRect(page, "title.mark");
+  const right = found.circles.length ? Math.max(...found.circles.map((c) => c.right)) : null;
+  const markInkPt = right !== null && bar ? await inkAfter(file, windowWidth, right, bar.y + bar.h / 2) : null;
+  return { ...check, markPt: mark?.x ?? null, markInkPt };
+}
+
+/** Two animation frames, then a short wait: the compositor has presented what the DOM holds. */
+async function presented(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 1_000);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            clearTimeout(timer);
+            resolve();
+          }),
+        );
+      }),
+  );
+  await page.waitForTimeout(150);
 }
 
 /**
@@ -210,7 +237,7 @@ export async function probeLights(file: string, page: Page, windowWidth: number)
  * lights checked against the bar there: centred on it, and the mark a gap
  * clear of them. Zoom goes back to 100% after.
  */
-export async function probeZoom(app: ElectronApplication, page: Page, base: string, level = -1): Promise<ZoomProbe> {
+export async function probeZoom(app: ElectronApplication, page: Page, base: string, atFull?: LightsCheck, level = -1): Promise<ZoomProbe> {
   const factor = Math.pow(1.2, level);
   const problems: string[] = [];
   const roomBefore = await roomProperty(page);
@@ -221,6 +248,7 @@ export async function probeZoom(app: ElectronApplication, page: Page, base: stri
   let windowButtonPosition: { x: number; y: number } | null = null;
   let markLeftPt: number | null = null;
   let markGapPt: number | null = null;
+  let settle: ZoomProbe["settle"] = { settled: false, attempts: 0, inkPt: null, expectedPt: null };
   try {
     await setZoom(level);
     roomAfter = await page
@@ -237,15 +265,33 @@ export async function probeZoom(app: ElectronApplication, page: Page, base: stri
     if (roomAfter === null) problems.push(`the room stayed ${roomBefore || "unset"}`);
     windowButtonPosition = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getWindowButtonPosition() ?? null);
     const width = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
-    const shots = await nativeCapture(app, base);
-    const shot = shots.find((s) => s.ok);
-    if (!shot) problems.push("no native capture");
-    else {
-      const file = path.join(path.dirname(base), shot.file);
+    const bar = await parityRect(page, "title");
+    const mark = await parityRect(page, "title.mark");
+    // The capture is of the screen, not the DOM: it is taken again until the
+    // mark's ink sits where the DOM puts it, scaled, plus the glyph's side
+    // bearing as the 100% capture measured it.
+    const bearing = typeof atFull?.markInkPt === "number" && typeof atFull.markPt === "number" ? atFull.markInkPt - atFull.markPt : 0;
+    const expectedPt = mark ? mark.x * factor + bearing * factor : null;
+    let file: string | undefined;
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      await presented(page);
+      const shot = (await nativeCapture(app, base)).find((s) => s.ok);
+      if (!shot) break;
+      file = path.join(path.dirname(base), shot.file);
       const found = await findLights(file, width);
-      lights = checkLights(file, found, factor, await parityRect(page, "title"));
+      const right = found.circles.length ? Math.max(...found.circles.map((c) => c.right)) : null;
+      const inkPt = right !== null && bar ? await inkAfter(file, width, right, (bar.y + bar.h / 2) * factor) : null;
+      const settled = inkPt !== null && expectedPt !== null && Math.abs(inkPt - expectedPt) <= 1;
+      settle = { settled, attempts: attempt, inkPt, expectedPt };
+      if (settled) break;
+      await page.waitForTimeout(250);
+    }
+    if (!file) problems.push("no native capture");
+    else {
+      if (!settle.settled) problems.push(`the capture never showed the zoomed page: mark ink at ${settle.inkPt}pt, the DOM's at ${settle.expectedPt}pt`);
+      const found = await findLights(file, width);
+      lights = checkLights(file, found, factor, bar, await parityRect(page, "title.dots"));
       problems.push(...lights.problems);
-      const mark = await parityRect(page, "title.mark");
       const lastRight = Math.max(...found.circles.map((c) => c.right));
       if (mark && found.circles.length) {
         markLeftPt = mark.x * factor;
@@ -261,7 +307,7 @@ export async function probeZoom(app: ElectronApplication, page: Page, base: stri
       })
       .catch(() => problems.push("the room did not come back at 100%"));
   }
-  return { level, factor, roomBefore, roomAfter, windowButtonPosition, markLeftPt, markGapPt, lights, ok: problems.length === 0, problems };
+  return { level, factor, roomBefore, roomAfter, windowButtonPosition, markLeftPt, markGapPt, lights, settle, ok: problems.length === 0, problems };
 }
 
 /**

@@ -180,9 +180,11 @@ jobs:
         run: pnpm build:dev
 
       # The page capture works as on Linux. The native capture (traffic lights,
-      # title bar) uses `screencapture`, which the macos-14 runner allows with
-      # no permission prompt; the summary reports what it produced, and the
-      # traffic-light check fails the lane when it finds no lights.
+      # title bar) uses `screencapture`, which the macos-14, macos-15 and
+      # macos-26 runners all allow with no permission prompt (-R is clipped to
+      # their display; -l is the whole window); the summary reports what it
+      # produced, and the traffic-light check fails the lane when it finds no
+      # lights or never sees the zoomed page.
       - name: Capture
         run: pnpm --filter @spexr/visual capture
         env:

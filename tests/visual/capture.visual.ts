@@ -142,7 +142,7 @@ for (const theme of THEMES) {
       // screen. Full screen last, because it moves the window to a Space of
       // its own and back.
       if (OS === "mac") {
-        meta.zoom = await probeZoom(app, page, path.join(out, "native-zoom-out"));
+        meta.zoom = await probeZoom(app, page, path.join(out, "native-zoom-out"), meta.lights);
         writeMeta();
         meta.fullScreen = await probeFullScreen(app, page, path.join(out, "fullscreen.png"));
         writeMeta();

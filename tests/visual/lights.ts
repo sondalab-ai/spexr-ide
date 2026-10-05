@@ -29,6 +29,9 @@ export interface LightsCheck {
   readonly barCentre: number | null;
   readonly ok: boolean;
   readonly problems: string[];
+  /** The mark's left edge from the DOM, and the first column of its ink in the capture, both in points (see {@link inkAfter}). */
+  readonly markPt?: number | null;
+  readonly markInkPt?: number | null;
 }
 
 /**
@@ -94,9 +97,9 @@ export async function findLights(file: string, windowWidth: number): Promise<{ s
 
 /**
  * The lights against spexr's bar: all three found, each centred within 1pt
- * of the bar's centre, and, when `dots` is given (100% zoom, where the room
- * and the lights are the same pixels), inside the bar's room for them, with
- * 1pt for anti-aliasing. `bar` and `dots` are in CSS px, scaled by `factor`.
+ * of the bar's centre and inside the bar's room for them (`dots`, from the
+ * bar's padding to the lights' right edge), with 1pt for anti-aliasing.
+ * `bar` and `dots` are in CSS px, scaled by `factor` into points.
  */
 export function checkLights(file: string, found: { scale: number; circles: Circle[] }, factor: number, bar?: Rect, dots?: Rect): LightsCheck {
   const problems: string[] = [];
@@ -107,9 +110,38 @@ export function checkLights(file: string, found: { scale: number; circles: Circl
     const centre = (c.top + c.bottom) / 2;
     if (barCentre !== null && Math.abs(centre - barCentre) > 1) problems.push(`${c.colour} centre y ${centre} is not within 1pt of the bar's ${barCentre}`);
     if (dots) {
-      const inside = c.left >= dots.x - 1 && c.right <= dots.x + dots.w + 1 && c.top >= dots.y - 1 && c.bottom <= dots.y + dots.h + 1;
-      if (!inside) problems.push(`${c.colour} ${c.left},${c.top}–${c.right},${c.bottom} is outside title.dots ${dots.x},${dots.y} ${dots.w}×${dots.h}`);
+      const [x, y, w, h] = [dots.x * factor, dots.y * factor, dots.w * factor, dots.h * factor];
+      const inside = c.left >= x - 1 && c.right <= x + w + 1 && c.top >= y - 1 && c.bottom <= y + h + 1;
+      if (!inside) problems.push(`${c.colour} ${c.left},${c.top}–${c.right},${c.bottom} is outside title.dots ${x},${y} ${w}×${h} (pt)`);
     }
   }
   return { file, scale: found.scale, circles: found.circles, factor, barCentre, ok: problems.length === 0, problems };
+}
+
+/**
+ * The first column, in points, where ink starts right of `fromPt` in the
+ * bar's middle rows (centre ± 6pt): the mark's first glyph, when `fromPt` is
+ * the lights' right edge. The background is sampled 3pt right of `fromPt`,
+ * in the gap the bar keeps between the lights and the mark; ink is a pixel
+ * more than 60 levels off it in any channel. Null when none in 60pt.
+ */
+export async function inkAfter(file: string, windowWidth: number, fromPt: number, centrePt: number): Promise<number | null> {
+  const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const scale = info.width / windowWidth;
+  const at = (x: number, y: number): number[] => {
+    const i = (y * info.width + x) * info.channels;
+    return [data[i]!, data[i + 1]!, data[i + 2]!];
+  };
+  const x0 = Math.round((fromPt + 3) * scale);
+  const yc = Math.round(centrePt * scale);
+  const background = at(x0, yc);
+  const top = Math.max(0, Math.round((centrePt - 6) * scale));
+  const bottom = Math.min(info.height - 1, Math.round((centrePt + 6) * scale));
+  for (let x = x0 + 1; x < Math.min(info.width, x0 + Math.round(60 * scale)); x++) {
+    for (let y = top; y <= bottom; y++) {
+      const pixel = at(x, y);
+      if (pixel.some((v, k) => Math.abs(v - background[k]!) > 60)) return x / scale;
+    }
+  }
+  return null;
 }

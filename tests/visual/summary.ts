@@ -103,7 +103,8 @@ function renderSummary(runs: Run[]): string {
     const z = m.zoom;
     if (!z) return "";
     const p = z.windowButtonPosition;
-    return `${z.ok ? "✓" : `✗ ${z.problems.join("; ")}`}: room ${z.roomBefore} → ${z.roomAfter}, lights at ${p ? `${p.x},${p.y}` : "?"}, mark ${z.markLeftPt}pt, gap ${z.markGapPt}pt`;
+    const settle = z.settle ? `, frame ${z.settle.settled ? "settled" : "never settled"} after ${z.settle.attempts} capture(s)` : "";
+    return `${z.ok ? "✓" : `✗ ${z.problems.join("; ")}`}: room ${z.roomBefore} → ${z.roomAfter}, lights at ${p ? `${p.x},${p.y}` : "?"}, mark ${z.markLeftPt}pt, gap ${z.markGapPt}pt${settle}`;
   });
   md += row("full screen (mac)", (m) => {
     const f = m.fullScreen;
