@@ -127,6 +127,18 @@ describe("the bottom island's current tab", () => {
   });
 });
 
+// One lit seam: Theia keeps .theia-tabBar-active on one tab bar per dock
+// panel whatever holds the focus, so with the Explorer lit the editor's current
+// tab was a second accent seam on screen.
+describe("the editor's current tab", () => {
+  it("takes the accent seam only in the active group of the lit main island", () => {
+    const accent = [...css.matchAll(/\n([^{}\n]*)\{\s*--spexr-seam-ink:\s*var\(--slc-seam\);/g)].map((m) => m[1]!.trim());
+    const tabStrips = accent.filter((selector) => selector.includes("#theia-main-content-panel"));
+    expect(tabStrips).toEqual([`${NOT_HC} #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active`]);
+    expect(rule(`${NOT_HC} #theia-main-content-panel .lm-TabBar {`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
+  });
+});
+
 // The kit's seam is z-index 1, first in tree order: a dock panel's tab bar
 // (Lumino, z-index 1) painted over it.
 describe("the stacking inside an island", () => {

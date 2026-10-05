@@ -21,7 +21,7 @@ describe("the seam's ink", () => {
     expect(rule(":is(.theia-Tree, .quick-input-widget, .scm-history-graph-container) {")).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
     expect(rule(":is(.theia-Tree, .quick-input-widget, .scm-history-graph-container):focus-within")).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
     expect(rule("#theia-main-content-panel .lm-TabBar {")).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
-    expect(rule("#theia-main-content-panel .lm-TabBar.theia-tabBar-active")).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
+    expect(rule("#theia-main-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active")).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
   });
 });
 

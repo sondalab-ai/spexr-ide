@@ -375,12 +375,16 @@ body {
   --spexr-seam-ink: var(--slc-seam);
 }
 
-/* The tab strips: the focused group is Theia's .theia-tabBar-active. */
+/* The tab strips: the focused group is Theia's .theia-tabBar-active. Theia
+   keeps that class on one tab bar per dock panel whatever holds the focus, so
+   the accent is also keyed to the lit island (THE WORKBENCH, below): with the
+   focus in another island the editor's current tab is muted, and the lit
+   pane's is the one accent seam on screen. */
 :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar {
   --spexr-seam-ink: var(--slc-text-muted);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar.theia-tabBar-active {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active {
   --spexr-seam-ink: var(--slc-seam);
 }
 
