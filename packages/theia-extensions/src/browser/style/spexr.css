@@ -1,6 +1,7 @@
 @import "@spexr/ui-kit/fonts.css";
 @import "@spexr/ui-kit/tokens.css";
 @import "@spexr/ui-kit/components.css";
+@import "@spexr/ui-kit/workbench.css";
 @import "@spexr/ui-kit/glass.css";
 @import "@spexr/ui-kit/effects.css";
 @import "@spexr/ui-kit/themes/light.css";
@@ -158,17 +159,18 @@ body {
 }
 
 /* ...but not a control's own depth and focus halo, as the kit's kill switches
-   give them back (effects.css, 0.32): a control writes its resting shadow
+   give them back (effects.css, 0.32; 0.33 adds the activity item and the
+   tree row): a control writes its resting shadow
    into --_sl-depth (a secondary's lit line and cast, a selected tile, a
    checked box's foot) and its focus rule adds --_sl-halo. They are the
    control's, not the effect's. The kill above weighs (0,3,0), so these
    outrank it at (0,4,0) and (0,5,0), with the kit's own lists. The halo
    stays off in high contrast, where --slc-glow is 0. */
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
   box-shadow: var(--_sl-depth, 0 0 transparent) !important;
 }
 
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
   box-shadow: var(--_sl-depth, 0 0 transparent), var(--_sl-halo, 0 0 transparent) !important;
 }
 
