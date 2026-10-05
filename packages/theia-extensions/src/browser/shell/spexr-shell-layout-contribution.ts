@@ -18,6 +18,7 @@ import { expandSidePanel } from "./side-panel.js";
 import { SpexrDarkfactorySidebarVisibilityContribution } from "../darkfactory/darkfactory-sidebar-visibility-contribution.js";
 import { consumeProjectLanding } from "../project/project-landing-intent.js";
 import { SpexrRevealOnRestore, type RevealOnRestoreView } from "./reveal-on-restore.js";
+import { SpexrDefaultLayoutContribution } from "./default-layout-contribution.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
 const PINNED_IDS = [WELCOME_VIEW_ID, SPEC_VIEW_ID, CLAUDE_TERMINAL_ID] as const;
@@ -71,6 +72,9 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   @optional()
   private readonly terminalService?: TerminalService;
 
+  @inject(SpexrDefaultLayoutContribution)
+  private readonly defaultLayout!: SpexrDefaultLayoutContribution;
+
   onStart(app: FrontendApplication): void {
     void app;
     this.setupTabPinning();
@@ -111,22 +115,13 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       await this.darkfactorySidebar.syncRightPanel(true);
     } catch (err) {
       console.error("[spexr] onDidInitializeLayout error", err);
-    } finally {
-      this.markLayoutReady();
     }
-  }
-
-  /**
-   * Announce that the default layout is settled.
-   *
-   * The stages above reveal widgets into the same tab bars over several ticks,
-   * so anything that activates a view before this point can be put back behind
-   * by a later stage. The e2e suite waits on this marker before touching the
-   * shell; it is set in a `finally` because a partial layout is still the final
-   * one for that launch.
-   */
-  private markLayoutReady(): void {
-    document.body.dataset.spexrLayoutReady = "1";
+    // The layout's settled mark, which the e2e suite and the capture wait on,
+    // is SpexrDefaultLayoutContribution's: it comes after this, after the
+    // bootstrap's agent terminal and after the panels have their sizes. The
+    // stages above reveal widgets into the same tab bars over several ticks,
+    // so anything that activates a view before the mark can be put back
+    // behind by a later stage.
   }
 
   /**
@@ -168,6 +163,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     }
     await this.detachManagedViews();
     await this.applyDefaultLayout();
+    await this.defaultLayout.resetSizes();
   }
 
   /**

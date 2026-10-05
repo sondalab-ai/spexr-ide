@@ -91,18 +91,16 @@ for (const theme of THEMES) {
         return !panel || panel.classList.contains("lm-mod-hidden") || panel.getBoundingClientRect().height < 10;
       });
       if (meta.bottomPanelOpened) await runCommand(page, "View: Toggle Bottom Panel");
-      // Never dragged (S5c): the capture shows spexr's own first-launch sizes
-      // as a new user gets them. They are set once the agent terminal has
-      // started, which can be after the layout marker the capture waits on,
-      // so the panel is read again once the base scene has settled.
-      meta.bottomPanelAtOpen = await bottomPanelTop(page);
+      // Never dragged (S5c): the capture shows spexr's own default sizes as a
+      // new user gets them, decided before any panel shows and settled before
+      // the layout mark the capture waits on.
+      meta.bottomPanel = await bottomPanelTop(page);
 
       // base: resolve.ts in front, cursor 41:18, line 45 selected, line 36 at the top.
       await runCommand(page, "Parity: Base scene");
       const baseAck = (await waitForAck(ackDir, "base")) as SceneAck;
       await page.locator(".monaco-editor .cursors-layer .cursor").first().waitFor({ state: "attached", timeout: 15_000 });
       await shoot("base", baseAck);
-      meta.bottomPanel = await bottomPanelTop(page);
       meta.baseFirstVisibleLine = await firstVisibleLine(page);
       meta.page = await probePage(page);
       meta.main = await probeMain(app);

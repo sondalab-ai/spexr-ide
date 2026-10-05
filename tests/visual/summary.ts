@@ -60,8 +60,7 @@ function renderSummary(runs: Run[]): string {
 
   md += "\n" + head("Scripted by the capture");
   md += row("bottom panel opened", (m) => m.bottomPanelOpened);
-  md += row("bottom panel top edge, settled (demo 666)", (m) => (m.bottomPanel ? m.bottomPanel.top : "not showing"));
-  md += row("bottom panel top edge, when shown", (m) => (m.bottomPanelAtOpen ? m.bottomPanelAtOpen.top : "not showing"));
+  md += row("bottom panel top edge (demo 666)", (m) => (m.bottomPanel ? m.bottomPanel.top : "not showing"));
   md += row("main tab strips aligned", (m) => m.scenes.map((s) => `${s.scene} ${s.alignedStrips}`).join(", "));
   md += row("infinite animations paused", (m) => m.scenes.map((s) => `${s.scene} ${s.pausedLoops}`).join(", "));
   md += row("editor top line (base)", (m) => `${m.baseFirstVisibleLine} in the gutter; API ${base(m)?.scroll?.topLine} via ${base(m)?.scroll?.how}`);

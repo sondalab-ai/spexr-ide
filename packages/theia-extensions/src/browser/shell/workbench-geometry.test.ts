@@ -5,14 +5,20 @@ import { fileURLToPath } from "node:url";
 import { ISLAND_GAP } from "./islands.js";
 import {
   ACTIVITY_COLUMN,
-  FIRST_LAUNCH_ISLANDS,
-  FirstLaunchSizing,
+  AGENT_ISLAND,
+  BOTTOM_ISLAND,
+  DefaultLayout,
+  EXPLORER_ISLAND,
+  RIGHT_ISLAND,
   WORKBENCH,
   areaSize,
-  firstLaunchSizes,
+  defaultIslands,
+  defaultSizes,
+  type LayoutReporter,
   type ShellArea,
   type SizingShell,
 } from "./workbench-geometry.js";
+import { MIN_LEFT_ISLAND_WIDTH, MIN_RIGHT_ISLAND_WIDTH } from "./side-panel.js";
 
 const resolve = createRequire(import.meta.url).resolve;
 const theiaApp = readFileSync(resolve("@theia/core/lib/browser/frontend-application.js"), "utf8");
@@ -29,7 +35,7 @@ function method(source: string, signature: string): string {
 }
 
 describe("the geometry table", () => {
-  it("is on the kit's 4px grid, but for the documented exceptions", () => {
+  it("is on the kit's 4px grid, every value", () => {
     // Lumen's own numbers where they are on the grid; the kit's where Lumen is between two steps.
     const offGrid = Object.entries(WORKBENCH).filter(([, v]) => v % 4 !== 0);
     expect(offGrid).toEqual([]);
@@ -57,18 +63,26 @@ describe("an area's size as Theia measures it", () => {
     expect(areaSize("bottom", 204)).toBe(6 + 204);
   });
 
-  it("gives the first launch Lumen's islands: Explorer 264, right 352, bottom 204", () => {
-    expect(FIRST_LAUNCH_ISLANDS).toEqual({ left: 264, right: 352, bottom: 204 });
-    expect(firstLaunchSizes()).toEqual({ left: 322, right: 416, bottom: 210 });
+  it("gives a default layout Lumen's islands, the left one the agent terminal's when it is in front", () => {
+    expect(defaultIslands(false)).toEqual({ left: 264, right: 352, bottom: 204 });
+    expect(defaultIslands(true)).toEqual({ left: 432, right: 352, bottom: 204 });
+    expect(defaultSizes(false)).toEqual({ left: 322, right: 416, bottom: 210 });
+    expect(defaultSizes(true)).toEqual({ left: 490, right: 416, bottom: 210 });
+    expect([EXPLORER_ISLAND, AGENT_ISLAND, RIGHT_ISLAND, BOTTOM_ISLAND].every((v) => v % 4 === 0)).toBe(true);
   });
 
-  it("matches how Theia reads each size back, and which left view is in front", () => {
+  it("defines each island once: the floors are the same numbers", () => {
+    expect(MIN_LEFT_ISLAND_WIDTH).toBe(AGENT_ISLAND);
+    expect(MIN_RIGHT_ISLAND_WIDTH).toBe(RIGHT_ISLAND);
+  });
+
+  it("matches how Theia reads each size back and writes it, and which left view is in front", () => {
     // left: the handle's offset; right: the parent's width less the handle's offset.
     const getPanelSize = method(theiaSide, "getPanelSize()");
     expect(getPanelSize).toMatch(/return handle\.offsetLeft;/);
     expect(getPanelSize).toMatch(/return parentWidth - handle\.offsetLeft;/);
     expect(method(theiaShell, "getBottomPanelSize()")).toMatch(/return parentHeight - handle\.offsetTop;/);
-    // keepAgentFloor reads the left view in front as Theia's current left widget: the side bar's current tab.
+    // Reset Layout reads the left view in front as Theia's current left widget: the side bar's current tab.
     expect(method(theiaShell, "getCurrentWidget(area)")).toMatch(/case 'left':\s*title = this\.leftPanelHandler\.tabBar\.currentTitle;/);
     // And how it writes it: the handle moves to the size, or to the parent's extent less it.
     const startMove = method(theiaSplit, "startMove(move, time)");
@@ -78,82 +92,164 @@ describe("an area's size as Theia measures it", () => {
   });
 });
 
-/** A shell that records each resize, and how many pending-update waits came before it. */
-function fakeShell(): SizingShell & { calls: string[] } {
+/**
+ * A shell that records each resize and each wait for Theia's pending moves,
+ * and reads back the sizes it was given, or `readBack`'s where set.
+ */
+function fakeShell(readBack: Partial<Record<ShellArea, number>> = {}, throwOnResize = false): SizingShell & { calls: string[] } {
   const calls: string[] = [];
+  const sizes: Partial<Record<ShellArea, number>> = {};
   return {
     calls,
     get pendingUpdates() {
       calls.push("settle");
       return Promise.resolve();
     },
-    resize: (size: number, area: ShellArea) => calls.push(`${area}:${size}`),
+    resize: (size: number, area: ShellArea) => {
+      if (throwOnResize) throw new Error("no shell");
+      calls.push(`${area}:${size}`);
+      sizes[area] = size;
+    },
+    getLayoutData: () => ({
+      leftPanel: { size: readBack.left ?? sizes.left },
+      rightPanel: { size: readBack.right ?? sizes.right },
+      bottomPanel: { size: readBack.bottom ?? sizes.bottom },
+    }),
   };
 }
 
-describe("first-launch sizing", () => {
-  it("does nothing after a restored layout", async () => {
+/** A reporter that records its warnings and when the layout was marked settled. */
+function reporter(): LayoutReporter & { log: string[] } {
+  const log: string[] = [];
+  return { log, warn: (message: string) => log.push(`warn: ${message}`), markSettled: () => log.push("settled") };
+}
+
+describe("the default layout", () => {
+  it("is sized before any panel shows, once, the left island the agent terminal's when it will be in front", () => {
     const shell = fakeShell();
-    expect(await new FirstLaunchSizing().apply(shell)).toBe(false);
+    new DefaultLayout(reporter()).seed(shell, true);
+    // No wait: Theia keeps a hidden or collapsed area's size for when it opens.
+    expect(shell.calls).toEqual(["left:490", "right:416", "bottom:210"]);
+    const explorer = fakeShell();
+    new DefaultLayout(reporter()).seed(explorer, false);
+    expect(explorer.calls).toEqual(["left:322", "right:416", "bottom:210"]);
+  });
+
+  it("marks the layout settled after reading the sizes back, and is quiet when they landed", async () => {
+    const log = reporter();
+    const layout = new DefaultLayout(log);
+    const shell = fakeShell();
+    layout.seed(shell, true);
+    await layout.settle(shell);
+    expect(shell.calls).toEqual(["left:490", "right:416", "bottom:210", "settle"]);
+    expect(log.log).toEqual(["settled"]);
+  });
+
+  it("warns about a size that did not land, and still marks the layout settled", async () => {
+    const log = reporter();
+    const layout = new DefaultLayout(log);
+    const shell = fakeShell({ left: 400 });
+    layout.seed(shell, true);
+    await layout.settle(shell);
+    expect(log.log).toEqual(["warn: [spexr] the default layout's sizes did not land", "settled"]);
+  });
+
+  it("swallows a shell that throws: a warning, and the mark all the same", async () => {
+    const log = reporter();
+    const layout = new DefaultLayout(log);
+    const shell = fakeShell({}, true);
+    layout.seed(shell, true); // a throw here fails the test
+    await layout.settle(shell);
+    expect(log.log).toEqual(["warn: [spexr] the default layout's sizes could not be set", "settled"]);
+  });
+
+  it("only marks the layout settled after a restored layout: no sizes, no reads", async () => {
+    const log = reporter();
+    const shell = fakeShell();
+    await new DefaultLayout(log).settle(shell);
     expect(shell.calls).toEqual([]);
+    expect(log.log).toEqual(["settled"]);
   });
 
-  it("sizes every area once Theia's pending moves settle, after a default layout", async () => {
-    const sizing = new FirstLaunchSizing();
-    sizing.markDefaultLayout();
+  it("checks a seeded layout once: a later settle leaves the user's sizes alone", async () => {
+    const log = reporter();
+    const layout = new DefaultLayout(log);
     const shell = fakeShell();
-    expect(await sizing.apply(shell)).toBe(true);
-    expect(shell.calls).toEqual(["settle", "left:322", "right:416", "bottom:210", "settle"]);
+    layout.seed(shell, false);
+    await layout.settle(shell);
+    const later = fakeShell({ left: 600 });
+    await layout.settle(later);
+    expect(later.calls).toEqual([]);
+    expect(log.log).toEqual(["settled", "settled"]);
   });
 
-  it("sizes once: a later call leaves the user's layout alone", async () => {
-    const sizing = new FirstLaunchSizing();
-    sizing.markDefaultLayout();
-    await sizing.apply(fakeShell());
-    const later = fakeShell();
-    expect(await sizing.apply(later)).toBe(false);
-    expect(later.calls).toEqual([]);
+  it("reapplies the default sizes on Reset Layout, after Theia's pending moves, the left by the view in front", async () => {
+    const log = reporter();
+    const shell = fakeShell();
+    await new DefaultLayout(log).reset(shell, false);
+    expect(shell.calls).toEqual(["settle", "left:322", "right:416", "bottom:210", "settle"]);
+    const agent = fakeShell();
+    await new DefaultLayout(log).reset(agent, true);
+    expect(agent.calls).toEqual(["settle", "left:490", "right:416", "bottom:210", "settle"]);
+    expect(log.log).toEqual([]);
   });
 });
 
-// The flag rides on Theia's own decision: initializeLayout runs only when
-// restoreLayout found nothing, and onDidInitializeLayout runs after it, for
-// every contribution in binding order, one at a time.
-describe("Theia's layout start, which first-launch sizing relies on", () => {
+// The decisions ride on Theia's own start: initializeLayout runs only when
+// restoreLayout found nothing, before onDidInitializeLayout, which runs for
+// every contribution in binding order, one at a time; and Theia keeps a size
+// given to a hidden or collapsed area for when it opens.
+describe("Theia's layout start, which the default layout relies on", () => {
   it("creates the default layout only when nothing was restored", () => {
     expect(method(theiaApp, "async initializeLayout()")).toMatch(/if \(!await this\.restoreLayout\(\)\) \{[\s\S]*?await this\.createDefaultLayout\(\);/);
     expect(method(theiaApp, "async createDefaultLayout()")).toMatch(/contribution\.initializeLayout\(this\)/);
   });
 
-  it("awaits each contribution's onDidInitializeLayout in turn", () => {
+  it("awaits each contribution's onDidInitializeLayout in turn, and reveals the shell after them", () => {
     expect(method(theiaApp, "async fireOnDidInitializeLayout()")).toMatch(
       /for \(const contribution of this\.contributions\.getContributions\(\)\) \{[\s\S]*?await this\.measureContribution\(contribution, 'onDidInitializeLayout'/,
     );
+    expect(method(theiaApp, "async start()")).toMatch(/initializeLayout\(\)[\s\S]*fireOnDidInitializeLayout\(\)[\s\S]*revealShell/);
   });
 
-  it("is a contribution bound after the bootstrap, whose agent terminal sets its own floor", () => {
+  it("keeps a hidden or collapsed area's size for when it opens", () => {
+    expect(method(theiaShell, "resize(size, area)")).toMatch(/case 'bottom':\s*if \(this\.bottomPanel\.isHidden\) \{\s*this\.bottomPanelState\.lastPanelSize = size;/);
+    expect(method(theiaSide, "resize(size)")).toMatch(/if \(this\.dockPanel\.isHidden\) \{\s*this\.state\.lastPanelSize = size;/);
+    expect(method(theiaSide, "refresh()")).toMatch(/if \(this\.state\.lastPanelSize\) \{\s*size = this\.state\.lastPanelSize;/);
+  });
+
+  it("is a contribution bound after the shell layout and the bootstrap, which marks the layout settled", () => {
     const module = own("../spexr-frontend-module.ts");
+    const layout = module.indexOf("bind(FrontendApplicationContribution).toService(SpexrShellLayoutContribution)");
     const bootstrap = module.indexOf("bind(FrontendApplicationContribution).to(SpexrBootstrapContribution)");
-    const sizing = module.indexOf("bind(FrontendApplicationContribution).to(SpexrFirstLaunchLayoutContribution)");
-    expect(bootstrap).toBeGreaterThanOrEqual(0);
-    expect(sizing).toBeGreaterThan(bootstrap);
-    const contribution = own("./first-launch-layout-contribution.ts");
-    expect(contribution).toMatch(/initializeLayout\(\): void \{\s*this\.sizing\.markDefaultLayout\(\);/);
-    // The agent terminal keeps its floor when it is the left view in front.
-    expect(contribution).toMatch(/if \(await this\.sizing\.apply\(this\.shell\)\) await keepAgentFloor\(this\.shell, CLAUDE_TERMINAL_ID\);/);
+    const sizes = module.indexOf("bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution)");
+    expect(layout).toBeGreaterThanOrEqual(0);
+    expect(bootstrap).toBeGreaterThan(layout);
+    expect(sizes).toBeGreaterThan(bootstrap);
+    const contribution = own("./default-layout-contribution.ts");
+    // The adapter only delegates: the logic is DefaultLayout's, tested above.
+    expect(contribution).toMatch(/async initializeLayout\(\): Promise<void> \{\s*await this\.workspace\.ready;\s*this\.layout\.seed\(this\.shell, this\.workspace\.opened\);/);
+    expect(contribution).toMatch(/onDidInitializeLayout\(\): Promise<void> \{\s*return this\.layout\.settle\(this\.shell\);/);
+    expect(contribution).toMatch(/return this\.layout\.reset\(this\.shell, this\.shell\.getCurrentWidget\("left"\)\?\.id === CLAUDE_TERMINAL_ID\);/);
+    expect(contribution).toMatch(/markSettled: \(\) => document\.body\.setAttribute\(LAYOUT_READY_ATTRIBUTE, "1"\)/);
+    expect(contribution).toContain('export const LAYOUT_READY_ATTRIBUTE = "data-spexr-layout-ready";');
   });
 
-  it("awaits the agent terminal's floor, so the first launch's resize lands after it", () => {
+  it("seeds the agent terminal's island exactly when the bootstrap will put it in front: a workspace is open", () => {
+    const bootstrap = own("../bootstrap/spexr-bootstrap-contribution.ts");
+    expect(bootstrap).toMatch(/if \(!this\.workspace\.opened\) return;[\s\S]*?await this\.terminalManager\.ensureStarted\(\);/);
     const manager = own("../agent/claude-terminal-manager.ts");
-    // side-panel.test.ts drives keepAgentFloor with this id.
     expect(manager).toMatch(/export const CLAUDE_TERMINAL_ID = "spexr-claude";/);
     expect(manager).toMatch(/if \(this\.placement === "left"\) await this\.expandLeftPanel\(\);/);
-    expect(manager).toMatch(/private expandLeftPanel\(\): Promise<void> \{\s*return expandLeftPanelWithMinWidth\(this\.shell\);/);
   });
 
-  it("leaves no floor in the layout contribution's every-launch expansion", () => {
+  it("leaves the settled mark to the default layout, and reapplies the sizes on Reset Layout", () => {
     const layout = own("./spexr-shell-layout-contribution.ts");
-    expect(layout).not.toMatch(/WithMinWidth/);
+    expect(layout).not.toMatch(/spexrLayoutReady|data-spexr-layout-ready/);
+    expect(layout).toMatch(/await this\.applyDefaultLayout\(\);\s*await this\.defaultLayout\.resetSizes\(\);/);
+    // The every-launch expansion keeps a restored width: no floor of its own.
     expect(layout).toMatch(/void expandSidePanel\(this\.shell, "left"\);/);
+    // The e2e suite waits on the same mark.
+    expect(own("../../../../../tests/e2e/fixtures/app.ts")).toContain('page.waitForSelector("body[data-spexr-layout-ready]"');
   });
 });

@@ -28,6 +28,8 @@ export const WORKBENCH = {
   activityGap: 8,
   /** The first activity item's distance from the bar's top: Lumen's 4. */
   activityTop: 4,
+  /** The bar's foot (settings, accounts): its last tile's distance from the bar's bottom, Lumen's 8. */
+  activityBottom: 8,
   /** A tab strip, the editor's and the bottom island's: 36 (Lumen 38). */
   tabStrip: 36,
   /** A tile tab: the kit's 28, the editor's r7 and the bottom's r6 (Lumen 28 and 26). */
@@ -76,49 +78,128 @@ export function areaSize(area: ShellArea, island: number): number {
   }
 }
 
-/** The islands' sizes on a first launch: Lumen's Explorer, agent pane and bottom panel. */
-export const FIRST_LAUNCH_ISLANDS: Readonly<Record<ShellArea, number>> = { left: 264, right: 352, bottom: 204 };
+/** Lumen's Explorer island (px): the left island of a default layout with the Explorer in front. */
+export const EXPLORER_ISLAND = 264;
 
-/** {@link FIRST_LAUNCH_ISLANDS} as Theia's sizes ({@link areaSize}). */
-export function firstLaunchSizes(islands: Readonly<Record<ShellArea, number>> = FIRST_LAUNCH_ISLANDS): Record<ShellArea, number> {
+/**
+ * The agent terminal's island (px), and its floor: the 432px the left island
+ * had when the floor was Theia's 480 with a 48px activity bar. A 264px agent
+ * terminal would be about 33 columns.
+ */
+export const AGENT_ISLAND = 432;
+
+/** The right island (px), Lumen's agent pane: spec/memory/experts default to it, and never go narrower. */
+export const RIGHT_ISLAND = 352;
+
+/** The bottom island (px), Lumen's panel. */
+export const BOTTOM_ISLAND = 204;
+
+/**
+ * The islands of a default layout: Lumen's, with the left island the agent
+ * terminal's when it is the left view in front, the Explorer's otherwise.
+ */
+export function defaultIslands(agentInFront: boolean): Record<ShellArea, number> {
+  return { left: agentInFront ? AGENT_ISLAND : EXPLORER_ISLAND, right: RIGHT_ISLAND, bottom: BOTTOM_ISLAND };
+}
+
+/** {@link defaultIslands} as Theia's sizes ({@link areaSize}). */
+export function defaultSizes(agentInFront: boolean): Record<ShellArea, number> {
+  const islands = defaultIslands(agentInFront);
   return { left: areaSize("left", islands.left), right: areaSize("right", islands.right), bottom: areaSize("bottom", islands.bottom) };
 }
 
-/** The part of Theia's `ApplicationShell` first-launch sizing touches; structural, so a fake shell tests it. */
+/**
+ * The part of Theia's `ApplicationShell` the default layout touches;
+ * structural, so a fake shell tests it. `getLayoutData` is the public way to
+ * read each area's size back: a showing area's measured size, a hidden one's
+ * stored size.
+ */
 export interface SizingShell {
   readonly pendingUpdates: Promise<unknown>;
   resize(size: number, area: ShellArea): void;
+  getLayoutData(): { readonly [K in "leftPanel" | "rightPanel" | "bottomPanel"]?: { readonly size?: number | undefined } };
 }
 
-/**
- * Lumen's sizes for a layout spexr made itself, never for one Theia restored.
- *
- * Theia calls a contribution's `initializeLayout` only when it had no stored
- * layout to restore (a first launch, or after the stored layout was
- * dropped), so that is when {@link markDefaultLayout} runs. {@link apply}
- * runs once the default views are open: it waits for Theia's pending panel
- * moves (an expansion, a floor) to settle first, so the sizes here are the
- * last ones set, and does nothing after a restore.
- */
-export class FirstLaunchSizing {
-  private pending = false;
+/** Where the default layout reports: a warning, and the layout's settled mark. */
+export interface LayoutReporter {
+  warn(message: string, ...detail: unknown[]): void;
+  markSettled(): void;
+}
 
-  /** Theia found no layout to restore: the next {@link apply} sizes the areas. */
-  markDefaultLayout(): void {
-    this.pending = true;
+const LAYOUT_DATA_KEY: Record<ShellArea, "leftPanel" | "rightPanel" | "bottomPanel"> = { left: "leftPanel", right: "rightPanel", bottom: "bottomPanel" };
+
+/**
+ * spexr's default layout sizes, decided once, and the mark that the layout
+ * has settled.
+ *
+ * - {@link seed} runs from `initializeLayout`, which Theia calls only when it
+ *   had no stored layout to restore (the first open of a workspace, or after
+ *   the stored layout was dropped), before any panel shows. Theia keeps a
+ *   size given to a collapsed side or a hidden bottom panel as the size it
+ *   opens at, so the panels open at their final size, with no reflow. The
+ *   left island is decided there: the agent terminal's when it will be in
+ *   front, so its floor never moves it.
+ * - {@link settle} runs from the last `onDidInitializeLayout`: it reads the
+ *   seeded sizes back, warns where one did not land, and marks the layout
+ *   settled, whatever happened, on every launch.
+ * - {@link reset} is Reset Layout: the default sizes again, applied now.
+ *
+ * Nothing here throws: a failure is a warning, and the mark is still set.
+ */
+export class DefaultLayout {
+  private seeded: Record<ShellArea, number> | undefined;
+
+  constructor(private readonly reporter: LayoutReporter) {}
+
+  /** Size every area for a layout spexr makes itself. */
+  seed(shell: SizingShell, agentInFront: boolean): void {
+    const sizes = defaultSizes(agentInFront);
+    try {
+      for (const area of SHELL_AREAS) shell.resize(sizes[area], area);
+      this.seeded = sizes;
+    } catch (err) {
+      this.reporter.warn("[spexr] the default layout's sizes could not be set", err);
+    }
   }
 
-  /**
-   * Resize each area to its first-launch size, once. A collapsed side or a
-   * hidden bottom panel takes the size as the one it opens at (Theia keeps it
-   * as the area's last size). Resolves when Theia has applied them.
-   */
-  async apply(shell: SizingShell, sizes: Readonly<Record<ShellArea, number>> = firstLaunchSizes()): Promise<boolean> {
-    if (!this.pending) return false;
-    this.pending = false;
+  /** Check the seeded sizes landed, then mark the layout settled. */
+  async settle(shell: SizingShell): Promise<void> {
+    try {
+      if (this.seeded) await this.check(shell, this.seeded);
+    } catch (err) {
+      this.reporter.warn("[spexr] the default layout's sizes could not be read back", err);
+    } finally {
+      this.seeded = undefined;
+      this.reporter.markSettled();
+    }
+  }
+
+  /** Reset Layout: apply the default sizes now, the left island by the view in front. */
+  async reset(shell: SizingShell, agentInFront: boolean): Promise<void> {
+    const sizes = defaultSizes(agentInFront);
+    try {
+      await shell.pendingUpdates;
+      for (const area of SHELL_AREAS) shell.resize(sizes[area], area);
+      await this.check(shell, sizes);
+    } catch (err) {
+      this.reporter.warn("[spexr] Reset Layout's sizes could not be set", err);
+    }
+  }
+
+  /** The areas whose size, read back, is more than a pixel off; each is warned about. */
+  private async check(shell: SizingShell, sizes: Readonly<Record<ShellArea, number>>): Promise<ShellArea[]> {
     await shell.pendingUpdates;
-    for (const area of SHELL_AREAS) shell.resize(sizes[area], area);
-    await shell.pendingUpdates;
-    return true;
+    const data = shell.getLayoutData();
+    const off = SHELL_AREAS.filter((area) => {
+      const size = data[LAYOUT_DATA_KEY[area]]?.size;
+      return size !== undefined && Math.abs(size - sizes[area]) > 1;
+    });
+    if (off.length > 0) {
+      this.reporter.warn(
+        "[spexr] the default layout's sizes did not land",
+        Object.fromEntries(off.map((area) => [area, { asked: sizes[area], got: data[LAYOUT_DATA_KEY[area]]?.size }])),
+      );
+    }
+    return off;
   }
 }

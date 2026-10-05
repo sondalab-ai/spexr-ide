@@ -1,4 +1,4 @@
-import { areaSize } from "./workbench-geometry.js";
+import { AGENT_ISLAND, RIGHT_ISLAND, areaSize } from "./workbench-geometry.js";
 
 /**
  * The part of Theia's `ApplicationShell` these helpers actually touch.
@@ -11,14 +11,11 @@ export interface SidePanelShell {
   readonly rightPanelHandler: unknown;
 }
 
-/**
- * Narrowest left island (px) while it shows the agent terminal: the 432px it
- * had when the floor was Theia's 480 with a 48px activity bar.
- */
-export const MIN_LEFT_ISLAND_WIDTH = 432;
+/** Narrowest left island (px) while it shows the agent terminal: its own island (workbench-geometry.ts). */
+export const MIN_LEFT_ISLAND_WIDTH = AGENT_ISLAND;
 
-/** Narrowest right island (px), for spec/memory/experts: Lumen's agent pane, 352. */
-export const MIN_RIGHT_ISLAND_WIDTH = 352;
+/** Narrowest right island (px), for spec/memory/experts: Lumen's agent pane (workbench-geometry.ts). */
+export const MIN_RIGHT_ISLAND_WIDTH = RIGHT_ISLAND;
 
 /**
  * The floors as Theia measures a side (workbench-geometry.ts, `areaSize`):
@@ -30,7 +27,7 @@ export const MIN_RIGHT_PANEL_SIZE = areaSize("right", MIN_RIGHT_ISLAND_WIDTH);
 
 type PanelSide = "left" | "right";
 
-interface SidePanelHandlerLike {
+export interface SidePanelHandlerLike {
   expand?: () => void;
   resize?: (size: number) => void;
   getPanelSize?: () => number | undefined;
@@ -56,11 +53,8 @@ export async function expandSidePanelWithMinWidth(
   side: PanelSide,
   min: number,
 ): Promise<void> {
-  const raw = side === "left" ? shell.leftPanelHandler : shell.rightPanelHandler;
-  const handler = raw as unknown as SidePanelHandlerLike | undefined;
-  if (typeof handler?.expand !== "function") return;
-  handler.expand();
-  await handler.state?.pendingUpdate;
+  const handler = await expandSidePanel(shell, side);
+  if (!handler) return;
   const size = handler.getPanelSize?.();
   if (typeof size !== "number" || size < min) {
     handler.resize?.(min);
@@ -69,39 +63,21 @@ export async function expandSidePanelWithMinWidth(
 
 /**
  * Expand a side panel at whatever size it has, with no floor. Resolves once
- * the expansion has settled.
+ * the expansion has settled, with the side's handler (undefined when the
+ * shell has none to expand).
  */
-export async function expandSidePanel(shell: SidePanelShell, side: PanelSide): Promise<void> {
+export async function expandSidePanel(shell: SidePanelShell, side: PanelSide): Promise<SidePanelHandlerLike | undefined> {
   const raw = side === "left" ? shell.leftPanelHandler : shell.rightPanelHandler;
   const handler = raw as unknown as SidePanelHandlerLike | undefined;
-  if (typeof handler?.expand !== "function") return;
+  if (typeof handler?.expand !== "function") return undefined;
   handler.expand();
   await handler.state?.pendingUpdate;
+  return handler;
 }
 
 /** Expand the left side panel and enforce {@link MIN_LEFT_ISLAND_WIDTH} (as {@link MIN_LEFT_PANEL_SIZE}). */
 export function expandLeftPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
   return expandSidePanelWithMinWidth(shell, "left", MIN_LEFT_PANEL_SIZE);
-}
-
-/** The part of Theia's `ApplicationShell` {@link keepAgentFloor} reads, besides the side handlers. */
-export interface AgentFloorShell extends SidePanelShell {
-  getCurrentWidget(area: "left"): { readonly id: string } | undefined;
-}
-
-/**
- * After the first launch's sizes: when the left view in front is the agent
- * terminal (`agentId`), give it back its floor, {@link MIN_LEFT_ISLAND_WIDTH}.
- * Lumen's 264px island is the Explorer's; the agent terminal at that width
- * would be about 33 columns. With the Explorer, or any other view, in front,
- * nothing changes.
- *
- * @returns whether the floor was applied.
- */
-export async function keepAgentFloor(shell: AgentFloorShell, agentId: string): Promise<boolean> {
-  if (shell.getCurrentWidget("left")?.id !== agentId) return false;
-  await expandLeftPanelWithMinWidth(shell);
-  return true;
 }
 
 /** Expand the right side panel and enforce {@link MIN_RIGHT_ISLAND_WIDTH} (as {@link MIN_RIGHT_PANEL_SIZE}). */
