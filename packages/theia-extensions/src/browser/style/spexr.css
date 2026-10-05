@@ -648,6 +648,173 @@ body {
   }
 }
 
+/* ══ THE WORKBENCH: ISLANDS AND THE LIT PANE (kit 0.33) ═════════════════════
+   Lumen (owner, 2026-10-02): the shell's left, main, bottom and right areas
+   are islands, the kit's .sl-pane (workbench.css), on the canvas 6px apart,
+   and the one that holds the focus is lit (data-lit: the raised rung, a seam
+   of the accent along its top edge and the seam's glow). SpexrApplicationShell
+   (shell/island-shell.ts) lays the gaps out as split spacing, so the sashes
+   fill them, and tags each area .spexr-island.sl-pane; SpexrLitIslandContribution
+   moves data-lit with the shell's active widget. Without the subclass none of
+   these classes exist and every rule here is inert. The island rules key on
+   .spexr-island, never on the shell: a maximised area is re-parented outside
+   it.
+
+   Theia's DOM asks for three adaptations of the kit's pane:
+   - The fill. Theia paints the main and bottom areas from id rules
+     (#theia-main-content-panel { background: var(--theia-editor-background) })
+     and each area's chrome from its own --theia-* surface, which the theme
+     layer pins on :root, so the kit's (0,1,0) fill loses to them. Each island
+     re-binds those surfaces to its own fill instead: --spexr-island-fill, the
+     kit's two rungs (the surface, the raised rung while lit), which reaches
+     every child by inheritance. Light and dark only: high contrast keeps
+     Theia's HC surfaces, and the island is its ring.
+   - The ring. Every Lumino layout item carries an inline contain: strict, the
+     island's parents included, so the kit's outward ring and glow are cut off
+     wherever an island's edge meets its parent's: three sides of four for
+     most islands. The island recipe is drawn inward instead, on an ::after
+     over the island's content (an opaque tab strip or editor would cover a
+     shadow of the island's own): the ring on the outermost pixel, the lit
+     line flush under it, and the lit pane's glow falling inward. It takes no
+     pointer.
+   - The order. Lumino stacks a dock panel's tab bars at z-index 1 and its
+     handles at 2-3, so the kit's seam (z-index 1, first in tree order) sat
+     under the tab strip. The seam is lifted over the ring, and the ring over
+     Theia's chrome; both stay under Theia's drop overlay (2000). */
+
+/* The frame: the shell paints the canvas, and the split panel's padding is
+   layout Lumino reads, so the gaps above and below the islands are real too.
+   Left and right need none: the activity bars sit on the frame there. Only
+   the block axis: Theia reads a side panel's size from its handle's inline
+   offset. */
+#theia-app-shell.spexr-islands {
+  background: var(--slc-canvas);
+}
+
+#theia-app-shell.spexr-islands > #theia-left-right-split-panel {
+  padding-block: var(--spexr-island-gap);
+}
+
+/* The rules the islands replace: between an activity bar and its side
+   island, above the bottom panel's tab strip, above the status bar. The
+   island's ring is the edge now. Inside an island Theia's own rules stay
+   (between editor groups, between a view's sections), and so does
+   --theia-panel-border, which widgets draw their own edges with. */
+#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel) > .lm-Panel {
+  border: 0;
+}
+
+#theia-bottom-content-panel.spexr-island.sl-pane,
+#theia-bottom-content-panel.spexr-island .lm-TabBar {
+  border: 0;
+}
+
+#theia-app-shell.spexr-islands > #theia-statusBar {
+  border-top-color: transparent;
+}
+
+/* The host keeps no shadow of its own: the recipe is the overlay below. */
+.spexr-island.sl-pane,
+.spexr-island.sl-pane[data-lit] {
+  box-shadow: none;
+}
+
+/* The ring's pixel is the island's own: Lumino lays an island's children out
+   inside its padding, so a child that outlines its own edge (a focused tree,
+   Theia's 1px focus outline on a row) sits flush against the ring, never
+   under it. Theia zeroes a split child's padding at (0,2,0). */
+.spexr-island.sl-pane.lm-Widget {
+  padding: 1px;
+}
+
+/* The fill, one variable through Theia's chrome. The tab strip and the
+   breadcrumbs take it too, so the light reaches them. */
+:root:not([data-sl-theme="high-contrast"]) .spexr-island {
+  --spexr-island-fill: var(--slc-surface);
+  --theia-editor-background: var(--spexr-island-fill);
+  --theia-editorGutter-background: var(--spexr-island-fill);
+  --theia-breadcrumb-background: var(--spexr-island-fill);
+  --theia-editorGroupHeader-tabsBackground: var(--spexr-island-fill);
+  --theia-panel-background: var(--spexr-island-fill);
+  --theia-panelSectionHeader-background: var(--spexr-island-fill);
+  --theia-sideBar-background: var(--spexr-island-fill);
+  --theia-sideBarSectionHeader-background: var(--spexr-island-fill);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .spexr-island[data-lit] {
+  --spexr-island-fill: var(--slc-raised);
+}
+
+/* Monaco declares its own colours on .monaco-editor at (0,1,0), from the
+   colour registry, where the theme's editor background is Theia's. An editor
+   (an EditorWidget, .theia-editor: not the SCM message box or another input
+   built on Monaco) paints its body in the island's fill instead, lit too. The
+   minimap paints into a canvas from the registry and keeps the theme's
+   colour; so does xterm (the terminal well, spexr-color-contribution.ts). */
+:root:not([data-sl-theme="high-contrast"]) .spexr-island .theia-editor .monaco-editor {
+  --vscode-editor-background: var(--spexr-island-fill);
+  --vscode-editorGutter-background: var(--spexr-island-fill);
+  --vscode-editorStickyScroll-background: var(--spexr-island-fill);
+  --vscode-editorStickyScrollGutter-background: var(--spexr-island-fill);
+}
+
+/* The island recipe, drawn inward (the kit's --slc-depth-island turned
+   in): the quieter ring on the outermost pixel and the lit line on the next,
+   flush under it. In high contrast the ring is the theme's line and there is
+   no lit line, as the kit's HC island is. */
+.spexr-island::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--slc-border-subtle), inset 0 2px 0 var(--slc-lit);
+  pointer-events: none;
+}
+
+:root[data-sl-theme="high-contrast"] .spexr-island::after {
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+/* The lit pane's glow (the kit's 0 0 24px -6px, at --slc-glow's strength)
+   falls inward, along every edge. --slc-glow is 0 in high contrast. */
+.spexr-island[data-lit]::after {
+  box-shadow:
+    inset 0 0 0 1px var(--slc-border-subtle),
+    inset 0 2px 0 var(--slc-lit),
+    inset 0 0 24px -6px color-mix(in srgb, var(--slc-seam) calc(var(--slc-glow) * 40%), transparent);
+}
+
+:root[data-sl-theme="high-contrast"] .spexr-island[data-lit]::after {
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+/* The kit's seam (workbench.css, .sl-pane[data-lit]::before), over the tab
+   strip and over the ring. */
+.spexr-island.sl-pane[data-lit]::before {
+  z-index: 5;
+}
+
+/* A collapsed side keeps its island in the layout at no width: nothing of
+   it may show beside the activity bar. Its padding goes too, or Lumino would
+   size the side two pixels wider than Theia's collapsed maximum. */
+:is(#theia-left-content-panel, #theia-right-content-panel).theia-mod-collapsed > .spexr-island.sl-pane.lm-Widget {
+  padding: 0;
+}
+
+:is(#theia-left-content-panel, #theia-right-content-panel).theia-mod-collapsed > .spexr-island::after {
+  display: none;
+}
+
+/* A maximised area fills a fixed overlay painted in the frame's colour; it
+   stays an island, inset by the gap. Two classes outrank Theia's rule. */
+.spexr-island.theia-maximized {
+  top: var(--spexr-island-gap) !important;
+  left: var(--spexr-island-gap) !important;
+  width: calc(100% - 2 * var(--spexr-island-gap)) !important;
+  height: calc(100% - 2 * var(--spexr-island-gap)) !important;
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {

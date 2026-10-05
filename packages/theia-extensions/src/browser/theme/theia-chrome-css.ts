@@ -114,7 +114,10 @@ body {
 
   const neutralsCss = `
 :root {
-  /* Base surfaces */
+  /* Base surfaces. The editor's is the canvas here, the frame behind the
+     islands (Theia paints the shell and a maximised area with it); each
+     island re-binds the editor, tab strip, breadcrumb, panel and side bar
+     surfaces to its own fill (spexr.css, THE WORKBENCH). */
   --theia-editor-background: ${canvas} !important;
   --theia-editorGutter-background: ${canvas} !important;
   --theia-breadcrumb-background: ${canvas} !important;

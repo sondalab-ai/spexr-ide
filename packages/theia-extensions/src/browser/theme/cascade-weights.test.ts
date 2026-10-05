@@ -150,3 +150,36 @@ describe("the editor tab's tile", () => {
     expect(height + Math.floor((strip - height) / 2) + Math.ceil((strip - height) / 2)).toBe(strip);
   });
 });
+
+// Theia paints the shell's areas from id rules, and the kit's pane is one
+// class: the island rules must outrank both, whatever order the sheets load in.
+describe("the islands", () => {
+  const theia = (file: string): string => readFileSync(resolve(`@theia/core/src/browser/style/${file}`), "utf8");
+  const workbench = readFileSync(resolve("@sondalab/ui-kit/workbench.css"), "utf8");
+  const NOT_HC = ':root:not([data-sl-theme="high-contrast"])';
+  const exactly = (css: string, selector: string): string[] => selectors(css, (s) => s === selector);
+
+  it.each([
+    ["sidepanel.css", "#theia-left-content-panel > .lm-Panel", "#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel) > .lm-Panel"],
+    ["sidepanel.css", "#theia-bottom-content-panel .lm-TabBar", "#theia-bottom-content-panel.spexr-island .lm-TabBar"],
+    ["sidepanel.css", "#theia-bottom-content-panel:not(:has(.lm-TabBar))", "#theia-bottom-content-panel.spexr-island.sl-pane"],
+    ["status-bar.css", "#theia-statusBar", "#theia-app-shell.spexr-islands > #theia-statusBar"],
+    ["index.css", ".theia-maximized", ".spexr-island.theia-maximized"],
+    ["index.css", ".theia-ApplicationShell", "#theia-app-shell.spexr-islands"],
+    ["dockpanel.css", ".lm-DockPanel.lm-SplitPanel-child", ".spexr-island.sl-pane.lm-Widget"],
+  ])("outrank %s's %s", (file, theirs, ours) => {
+    expect(exactly(theia(file), theirs), theirs).toHaveLength(1);
+    expect(exactly(spexr, ours), ours).toHaveLength(1);
+    expect(cmp(specificity(ours), specificity(theirs))).toBeGreaterThan(0);
+  });
+
+  it.each([
+    [".sl-pane[data-lit]", ".spexr-island.sl-pane[data-lit]"],
+    [".sl-pane[data-lit]::before", ".spexr-island.sl-pane[data-lit]::before"],
+  ])("outrank the kit's %s", (theirs, ours) => {
+    // Once at rest and once again under forced colours.
+    expect(exactly(workbench, theirs).length, theirs).toBeGreaterThanOrEqual(1);
+    expect(exactly(spexr, ours), ours).toHaveLength(1);
+    expect(cmp(specificity(ours), specificity(theirs))).toBeGreaterThan(0);
+  });
+});
