@@ -234,3 +234,38 @@ describe("the status dock", () => {
     expect(cmp(specificity(ours), specificity(theirs))).toBeGreaterThan(0);
   });
 });
+
+// Theia's notifications.css, and its participant's grey container and hover,
+// set the same properties as spexr.css's toasts: spexr wins on weight.
+describe("the toasts", () => {
+  const sheet = readFileSync(resolve("@theia/messages/src/browser/style/notifications.css"), "utf8");
+  const participant = [...readFileSync(resolve("@theia/messages/lib/browser/notifications-contribution.js"), "utf8").matchAll(/addRule\(`([\s\S]*?)`\)/g)]
+    .map((m) => m[1]!.replace(/\$\{[^{}]*\}/g, "X"))
+    .join("\n");
+  const NOT_HC = ':root:not([data-sl-theme="high-contrast"])';
+
+  it.each([
+    [".theia-notifications-container.theia-notification-toasts .theia-notification-list-item", `${NOT_HC} .theia-notification-toasts .theia-notification-list-item`],
+    [".theia-notifications-container.theia-notification-toasts .theia-notification-list-item-container", `${NOT_HC} .theia-notification-toasts .theia-notification-list-item-container`],
+    [".theia-notification-list-item:focus", `${NOT_HC} .theia-notification-toasts .theia-notification-list-item:focus:not(:focus-visible)`],
+    [".theia-notifications-container.theia-notification-center", `${NOT_HC} .theia-notifications-container.theia-notification-center`],
+    [".theia-notification-center .theia-notification-list-item:not(:last-child)", `${NOT_HC} .theia-notification-center .theia-notification-list-item`],
+    [".theia-notification-icon:before", `${NOT_HC} .theia-notification-icon::before`],
+    [".theia-notification-actions > li", `${NOT_HC} .theia-notification-actions > li`],
+  ])("outranks %s", (theirs, ours) => {
+    expect(selectors(sheet, (s) => s === theirs).length, theirs).toBeGreaterThanOrEqual(1);
+    // The toast's own rule, and its @starting-style.
+    expect(selectors(spexr, (s) => s === ours).length, ours).toBeGreaterThanOrEqual(1);
+    expect(cmp(specificity(ours), specificity(theirs))).toBeGreaterThan(0);
+  });
+
+  it("outranks the participant's grey container and its hover", () => {
+    const theirs = selectors(participant, (s) => s.startsWith(".theia-notification-list-item"));
+    expect(theirs).toEqual(expect.arrayContaining([".theia-notification-list-item-container", ".theia-notification-list-item:hover:not(:focus)"]));
+    const container = specificity(`${NOT_HC} .theia-notification-list-item-container`);
+    const toast = specificity(`${NOT_HC} .theia-notification-toasts .theia-notification-list-item`);
+    const row = specificity(`${NOT_HC} .theia-notification-center .theia-notification-list-item:hover`);
+    expect(cmp(container, specificity(".theia-notification-list-item-container"))).toBeGreaterThan(0);
+    for (const mine of [toast, row]) expect(cmp(mine, specificity(".theia-notification-list-item:hover:not(:focus)"))).toBeGreaterThan(0);
+  });
+});

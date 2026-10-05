@@ -256,3 +256,28 @@ describe.each(["light", "dark"] as const)("the status dock on %s", (theme) => {
     for (const ground of [canvas, surface]) expect(contrast(accentText[theme], ground)).toBeGreaterThanOrEqual(3);
   });
 });
+
+// A toast (spexr.css): the words on the raised rung, the glyph in its tone on
+// a 12% wash of itself over it (the kit's badge recipe), and the tick in the
+// tone against the raised rung.
+describe.each(["light", "dark"] as const)("a toast on %s", (theme) => {
+  const raised = hex(neutrals[theme]["bg-surface-raised"]);
+  const tone = (name: string): Rgb => hex(new RegExp(`--sl-status-${name}:\\s*(#[0-9a-f]{6})`).exec(kitFile(`themes/${theme}.css`))![1]!);
+  const over = (ink: Rgb, alpha: number, ground: Rgb): Rgb => ground.map((c, i) => c * (1 - alpha) + ink[i]! * alpha) as Rgb;
+
+  it("reads its words, its source and its buttons' glyphs at 4.5:1", () => {
+    for (const ink of ["text-primary", "text-secondary", "text-muted"] as const) {
+      expect(contrast(hex(neutrals[theme][ink]), raised), ink).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it.each(["info", "warning", "danger"])("draws the %s glyph at 4.5:1 on its wash, and its tick at 3:1", (name) => {
+    const ink = tone(name);
+    expect(contrast(ink, over(ink, 0.12, raised))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(ink, raised)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("lifts the focused row in the center as a tile that carries the primary ink", () => {
+    expect(contrast(hex(neutrals[theme]["text-primary"]), hex(neutrals[theme]["bg-tile"]))).toBeGreaterThanOrEqual(4.5);
+  });
+});

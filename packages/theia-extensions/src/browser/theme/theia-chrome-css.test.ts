@@ -104,6 +104,16 @@ describe("Theia's status bar", () => {
   });
 });
 
+// A notification's glyph (and the language status's) was the editor's error,
+// warning and info colours; it is the kit's tone, as the toast's tick is.
+describe("Theia's notification glyphs", () => {
+  it.each(["light", "dark"] as const)("are the kit's tones on %s", (theme) => {
+    expect(value(theme, "notificationsInfoIcon-foreground")).toBe("var(--slc-info-text, var(--slc-info))");
+    expect(value(theme, "notificationsWarningIcon-foreground")).toBe("var(--slc-warning-text, var(--slc-warning))");
+    expect(value(theme, "notificationsErrorIcon-foreground")).toBe("var(--slc-danger-text, var(--slc-danger))");
+  });
+});
+
 // The activity bars are the kit's (0.33): muted glyphs on the canvas, the
 // hovered and current one in the primary ink.
 describe("Theia's activity bars", () => {

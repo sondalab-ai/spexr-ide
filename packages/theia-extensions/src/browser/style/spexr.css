@@ -1130,6 +1130,255 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
   }
 }
 
+/* ══ TOASTS AND THE NOTIFICATION CENTER (kit 0.33, .sl-toast) ═══════════════
+   Theia's notifications (@theia/messages) take the kit's toast on their own
+   DOM; nothing is re-rendered.
+   - A toast floats: the raised rung, its own border in shade as the ring,
+     the float recipe and the kit's large radius, newest last (nearest the
+     corner), as in the kit's stack.
+   - Its severity is a tone tick on its top edge (the kit's 2.75rem measure,
+     with the tone's glow at --slc-glow's strength) and its glyph's 12% wash;
+     the words stay neutral. Theia knows info, warning, error and progress,
+     and marks them only with its glyph, so the tone is read off the glyph:
+     error is the kit's danger, and progress, which wears the info glyph,
+     the info tone. Theia has no success.
+   - It arrives as the kit's toast does: a 6px rise and a fade on the arrival
+     curve, transitions only, so reduced motion (which zeroes the tokens)
+     shows it at once. Only a toast: the center's rows never animate.
+   - The expand and clear glyphs are the kit's small icon buttons, in the one
+     control edge. Theia makes neither focusable; that is left as it is.
+   - ARIA: Theia gives a notification no role and no live region, so there is
+     none to double. Toasts are not announced; that gap is Theia's, and
+     closing it needs a region that exists before the toast does.
+   The center is the same surface, its rows tiles in a list: a flat wash on
+   hover, and the row that holds the focus a flat tile with the seam in the
+   accent (only a focused row is a tile, so the center holds the focus).
+   Light and dark only: high contrast keeps Theia's own. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item {
+  --spexr-tone: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item:has(.theia-notification-icon.info) {
+  --spexr-tone: var(--slc-info-text, var(--slc-info));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item:has(.theia-notification-icon.warning) {
+  --spexr-tone: var(--slc-warning-text, var(--slc-warning));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item:has(.theia-notification-icon.error) {
+  --spexr-tone: var(--slc-danger-text, var(--slc-danger));
+}
+
+/* Theia's styling participant paints each item's container in the
+   registry's notification background, Theia's own grey: it would show at
+   the corners the toast rounds off. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-container {
+  border-radius: var(--sl-radius-lg);
+  background-color: transparent;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list {
+  flex-direction: column;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-container {
+  margin-top: var(--sl-space-2);
+  border-radius: var(--sl-radius-lg);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item {
+  position: relative;
+  background-color: var(--slc-raised);
+  border: 1px solid var(--slc-edge-raised);
+  border-radius: var(--sl-radius-lg);
+  box-shadow: var(--slc-depth-float);
+  transition:
+    opacity var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease)),
+    translate var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease));
+}
+
+@starting-style {
+  :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: var(--sl-space-4);
+  width: 2.75rem;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background-color: var(--spexr-tone);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--spexr-tone) calc(var(--slc-glow) * 100%), transparent);
+  pointer-events: none;
+}
+
+/* Theia turns the border the accent on any focus, a mouse click included:
+   the ring is the flush focus-visible outline, and the border joins it. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item:focus:not(:focus-visible) {
+  border-color: var(--slc-edge-raised);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item:focus-visible {
+  border-color: var(--slc-focus);
+}
+
+/* The kit's toast row: its padding, and the glyph, the words and the
+   buttons on one line, 12px apart. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content {
+  margin: 0;
+  padding: var(--sl-space-3) var(--sl-space-3) var(--sl-space-3) var(--sl-space-4);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content-main {
+  align-items: center;
+  gap: var(--sl-space-3);
+  padding: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-message {
+  margin-top: 0;
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content-bottom {
+  padding-top: var(--sl-space-2);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-source {
+  padding: 0;
+  font-size: var(--sl-text-xs);
+  color: var(--slc-text-muted);
+}
+
+/* The mark: the glyph in its tone on a 12% wash of itself (the kit's badge
+   recipe), 24px round. Theia colours the glyph through its icon variables,
+   which the theme layer sets to the same tones. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  border-radius: 50%;
+  color: var(--spexr-tone);
+  background-color: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-icon::before {
+  font-size: 16px;
+}
+
+/* The expand and clear glyphs, and the center's own: the kit's small icon
+   button (24px), transparent in the one control edge, the glyph in the
+   secondary ink, hover bringing the surface rung up under it. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-actions {
+  align-items: center;
+  gap: var(--sl-space-1);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-actions > li {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  color: var(--slc-text-secondary);
+  border: 1px solid var(--slc-edge-control);
+  border-radius: var(--sl-radius-sm);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    border-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-actions > li:hover {
+  color: var(--slc-text);
+  background-color: var(--slc-surface);
+  border-color: var(--slc-edge-control-hover);
+}
+
+/* A progress bar keeps clear of the rounded corners. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-item-progress {
+  margin-inline: var(--sl-radius-lg);
+  overflow: hidden;
+}
+
+/* The center: the toast's surface. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notifications-container.theia-notification-center {
+  background-color: var(--slc-raised);
+  border: 1px solid var(--slc-edge-raised);
+  border-radius: var(--sl-radius-lg);
+  box-shadow: var(--slc-depth-float);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header {
+  min-height: 2.25rem;
+  padding-inline: var(--sl-space-4) var(--sl-space-2);
+  color: var(--slc-text-secondary);
+  background-color: transparent;
+  border-bottom: 1px solid var(--slc-edge-raised);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header-title {
+  margin: 0;
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header-actions {
+  margin: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list {
+  gap: 2px;
+  padding: var(--sl-space-2);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item {
+  border: 0;
+  border-radius: var(--sl-radius-md);
+  background-color: transparent;
+  transition: background-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item:hover {
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item:focus-within {
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: var(--slc-depth-flat);
+}
+
+/* Forced colours drop the tick's fill and the focused row's tile: the tick
+   is drawn in the palette's ink, as the kit's is, and the row keeps a
+   Highlight outline, as S2's tiles do. */
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+    box-shadow: none;
+  }
+
+  :root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {

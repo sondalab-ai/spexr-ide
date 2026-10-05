@@ -19,7 +19,7 @@ function rule(selector: string): string {
 const dock = (() => {
   const start = css.indexOf("/* ══ THE STATUS DOCK");
   expect(start).toBeGreaterThanOrEqual(0);
-  return css.slice(start, css.indexOf("/* Resource meter hover", start)).replace(/\/\*[\s\S]*?\*\//g, "");
+  return css.slice(start, css.indexOf("/* ══ TOASTS AND THE NOTIFICATION CENTER", start)).replace(/\/\*[\s\S]*?\*\//g, "");
 })();
 
 const ITEM = "#theia-statusBar .area:is(.left, .right) > .element";

@@ -165,6 +165,13 @@ body {
   --theia-editorWidget-background: ${raised} !important;
   --theia-notifications-background: ${raised} !important;
 
+  /* A notification's severity glyph (and the language status's) in the kit's
+     tones: spexr.css washes the glyph in its own tone and ticks the toast
+     with it. Theia's were the editor's error, warning and info blues. */
+  --theia-notificationsInfoIcon-foreground: var(--slc-info-text, var(--slc-info)) !important;
+  --theia-notificationsWarningIcon-foreground: var(--slc-warning-text, var(--slc-warning)) !important;
+  --theia-notificationsErrorIcon-foreground: var(--slc-danger-text, var(--slc-danger)) !important;
+
   /* Selection is a tile (kit 0.31): the tile rung under the primary ink on
      Theia's lists and trees and the quick pick, focused or not. The tile is
      found by the seam spexr.css draws on it (the accent where the list has
