@@ -498,6 +498,31 @@ describe("SpexrGitBackendService", () => {
     expect(await service.getRemoteUrl(tmpDir)).toBe("https://github.com/foo/bar");
   });
 
+  it("getUserName: reads the repository's user.name", async () => {
+    expect(await service.getUserName(tmpDir)).toBe("Test");
+  });
+
+  it("getUserName: outside a repository reads the global user.name, and is undefined when none is set", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-global-"));
+    const config = path.join(home, "gitconfig");
+    const saved = { global: process.env.GIT_CONFIG_GLOBAL, noSystem: process.env.GIT_CONFIG_NOSYSTEM };
+    process.env.GIT_CONFIG_GLOBAL = config;
+    process.env.GIT_CONFIG_NOSYSTEM = "1";
+    try {
+      fs.writeFileSync(config, "[user]\n\tname = Global Name\n");
+      expect(await service.getUserName(home)).toBe("Global Name");
+      expect(await service.getUserName(path.join(home, "missing"))).toBe("Global Name");
+      fs.writeFileSync(config, "");
+      expect(await new SpexrGitBackendService().getUserName(home)).toBeUndefined();
+    } finally {
+      for (const [key, value] of [["GIT_CONFIG_GLOBAL", saved.global], ["GIT_CONFIG_NOSYSTEM", saved.noSystem]] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("git(): returns the same instance for one root and serializes it", () => {
     const svc = service as unknown as { git(root: string): unknown };
     const a = svc.git(tmpDir);

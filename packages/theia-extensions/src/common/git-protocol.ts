@@ -211,6 +211,13 @@ export interface SpexrGitService {
   /** Normalized https URL of the `origin` remote, or undefined if none. */
   getRemoteUrl(root: string): Promise<string | undefined>;
   /**
+   * The name git would commit under (`user.name`: the repository's config over
+   * the global one), or undefined when none is set. Without `root`, or with one
+   * that is not a repository, the global config alone. Read by the title bar's
+   * avatar.
+   */
+  getUserName(root?: string): Promise<string | undefined>;
+  /**
    * Workspace-relative paths ignored by git — honoring the repo `.gitignore`
    * (including nested ones), the global `core.excludesFile`, and `.git/info/exclude`.
    * Fully-ignored directories are collapsed to a single entry ending in `/`.

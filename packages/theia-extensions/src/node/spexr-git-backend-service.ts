@@ -2,6 +2,7 @@ import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { isAbsolute, resolve as resolvePath, join } from "node:path";
 import { existsSync, statSync, watch, type FSWatcher } from "node:fs";
 import { rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from "simple-git";
 import type {
   SpexrGitService,
@@ -789,6 +790,17 @@ export class SpexrGitBackendService implements SpexrGitService {
       const origin = remotes.find((r) => r.name === "origin") ?? remotes[0];
       const url = origin?.refs?.fetch;
       return url ? normalizeRemoteUrl(url) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async getUserName(root?: string): Promise<string | undefined> {
+    const dir = root && existsSync(root) ? root : homedir();
+    try {
+      // `--get` exits 1 when the key is unset, which simple-git raises.
+      const name = (await this.git(dir).raw(["config", "--get", "user.name"])).trim();
+      return name || undefined;
     } catch {
       return undefined;
     }
