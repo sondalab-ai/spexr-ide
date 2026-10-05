@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EventEmitter } from "node:events";
 import { FULL_SCREEN_EVENTS, LIGHTS_BEFORE_TAHOE, LIGHTS_ROOM_PROPERTY, LIGHTS_TAHOE, type LightsGeometry } from "../common/mac-title-bar.js";
-import { MacLights, reportFullScreen, type LightsWebContents, type LightsWindow } from "./mac-lights.js";
+import { followZoom, MacLights, reportFullScreen, type LightsWebContents, type LightsWindow } from "./mac-lights.js";
 
 /**
  * A BrowserWindow stand-in: events through EventEmitter, every call recorded.
@@ -14,6 +14,9 @@ class FakeWindow extends EventEmitter implements LightsWindow {
   fullScreen = false;
   zoom = 0;
   hold = false;
+  /** The next insert's promise rejects; the next insert throws at once. */
+  rejectNext = false;
+  throwNext = false;
   positions: Array<{ x: number; y: number } | null> = [];
   sheets = new Map<string, string>();
   removed: string[] = [];
@@ -25,6 +28,16 @@ class FakeWindow extends EventEmitter implements LightsWindow {
   readonly webContents: LightsWebContents = {
     getZoomLevel: () => this.zoom,
     insertCSS: (css) => {
+      if (this.throwNext) {
+        this.throwNext = false;
+        this.log.push(`throw ${roomOf(css)}`);
+        throw new Error("webContents destroyed");
+      }
+      if (this.rejectNext) {
+        this.rejectNext = false;
+        this.log.push(`reject ${roomOf(css)}`);
+        return Promise.reject(new Error("insertCSS failed"));
+      }
       const key = `k${this.next++}`;
       this.sheets.set(key, css);
       this.log.push(`insert ${key} ${roomOf(css)} at zoom ${this.zoom}`);
@@ -195,6 +208,43 @@ describe("MacLights", () => {
     expect(window.room()).toBe("52px");
   });
 
+  // A sheet that never went in must not dedupe the next try at the same css.
+  it("tries a sheet again after its insert was rejected", async () => {
+    const { lights, window } = await setup();
+    window.rejectNext = true;
+    window.zoom = -1;
+    lights.syncAll();
+    await settle();
+    expect(window.room()).toBe("52px");
+    lights.syncAll();
+    await settle();
+    expect(window.room()).toBe("65.6px");
+  });
+
+  // The review's overlap case: the early room rejected, then the zoom lands.
+  it("gives the room after the zoom when the early insert was rejected", async () => {
+    const { lights, window } = await setup();
+    window.rejectNext = true;
+    lights.prepareZoom(-1);
+    await settle();
+    window.zoom = -1;
+    lights.syncAll();
+    await settle();
+    expect(window.room()).toBe("65.6px");
+  });
+
+  it("tries a sheet again after its insert threw", async () => {
+    const { lights, window } = await setup();
+    window.throwNext = true;
+    window.zoom = -1;
+    lights.syncAll();
+    await settle();
+    expect(window.room()).toBe("52px");
+    lights.syncAll();
+    await settle();
+    expect(window.room()).toBe("65.6px");
+  });
+
   // Chromium zooms every window of an origin, so one change moves them all.
   it("syncs every window it keeps, and forgets a closed one", async () => {
     const lights = new MacLights(LIGHTS_BEFORE_TAHOE);
@@ -250,5 +300,54 @@ describe("MacLights", () => {
     const { window, sent } = await setup();
     window.emit("enter-full-screen");
     expect(sent).toEqual([FULL_SCREEN_EVENTS.enter]);
+  });
+});
+
+describe("followZoom", () => {
+  /** ipcMain stand-in: spexr's listener first, then Theia's, as the main process adds them. */
+  function channel(lights: Pick<MacLights, "prepareZoom" | "syncAll">) {
+    const ipc = new EventEmitter();
+    const later: Array<() => void> = [];
+    const reported: unknown[] = [];
+    const applied: unknown[] = [];
+    ipc.on("SetZoomLevel", followZoom(lights, (run) => later.push(run), (error) => reported.push(error)));
+    ipc.on("SetZoomLevel", (_event: unknown, level: unknown) => applied.push(level));
+    return { ipc, later, reported, applied };
+  }
+
+  it("gives the early room for the requested level, then syncs a turn later", () => {
+    const calls: string[] = [];
+    const { ipc, later, applied } = channel({ prepareZoom: (level) => calls.push(`prepare ${level}`), syncAll: () => calls.push("sync") });
+    ipc.emit("SetZoomLevel", {}, -1);
+    expect(calls).toEqual(["prepare -1"]);
+    expect(applied).toEqual([-1]);
+    later.forEach((run) => run());
+    expect(calls).toEqual(["prepare -1", "sync"]);
+  });
+
+  // An EventEmitter stops at a listener that throws: unguarded, Theia's
+  // handler would never apply the zoom.
+  it("lets Theia apply the zoom, and still syncs, when the early room throws", () => {
+    const calls: string[] = [];
+    const failure = new Error("destroyed webContents");
+    const { ipc, later, reported, applied } = channel({
+      prepareZoom: () => {
+        throw failure;
+      },
+      syncAll: () => calls.push("sync"),
+    });
+    ipc.emit("SetZoomLevel", {}, -1);
+    expect(applied).toEqual([-1]);
+    expect(reported).toEqual([failure]);
+    later.forEach((run) => run());
+    expect(calls).toEqual(["sync"]);
+  });
+
+  it("skips the early room for a level that is not a number, and still syncs", () => {
+    const calls: string[] = [];
+    const { ipc, later } = channel({ prepareZoom: () => calls.push("prepare"), syncAll: () => calls.push("sync") });
+    ipc.emit("SetZoomLevel", {}, "x");
+    later.forEach((run) => run());
+    expect(calls).toEqual(["sync"]);
   });
 });

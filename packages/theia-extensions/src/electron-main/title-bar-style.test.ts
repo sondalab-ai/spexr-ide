@@ -235,10 +235,7 @@ describe("spexr's main application on macOS", () => {
   it("hears every zoom change Theia makes first: a growing room at once, the lights a turn after Theia applies it", () => {
     const hook = between(ours, "protected override hookApplicationEvents(): void {", "\n  }\n");
     expect(hook).toContain("super.hookApplicationEvents();");
-    expect(hook).toContain('if (process.platform !== "darwin") return;');
-    expect(hook).toMatch(
-      /ipcMain\.on\(CHANNEL_SET_ZOOM_LEVEL, \(_event, level: unknown\) => \{\s*if \(typeof level === "number"\) this\.macLights\.prepareZoom\(level\);\s*setTimeout\(\(\) => this\.macLights\.syncAll\(\)\);\s*\}\);/,
-    );
+    expect(hook).toContain('if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, followZoom(this.macLights));');
   });
 });
 
@@ -260,7 +257,7 @@ describe("Theia's zoom, which the lights follow", () => {
   it("is applied synchronously, so a turn later it has landed", () => {
     expect(theiaApiMain).toContain("ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL, (event, zoomLevel, windowName) => {");
     const handler = between(theiaApiMain, "ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL,", "});");
-    expect(handler).not.toMatch(/\basync\b|\bawait\b|\.then\(|setTimeout|setImmediate/);
+    expect(handler).not.toMatch(/\basync\b|\bawait\b|\.then\(|setTimeout|setImmediate|\bPromise\b|queueMicrotask/);
   });
 
   it("comes from window.zoomLevel, which Theia's zoom commands set", () => {

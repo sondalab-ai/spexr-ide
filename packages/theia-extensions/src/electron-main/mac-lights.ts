@@ -104,8 +104,18 @@ export class MacLights {
     if (window.isDestroyed() || state.css === css) return;
     state.css = css;
     const generation = state.generation;
-    const inserted = window.webContents.insertCSS(css);
-    inserted.catch(() => undefined);
+    // A sheet that never went in must not stop the next try at the same css.
+    const failed = (): void => {
+      if (state.generation === generation && state.css === css) state.css = undefined;
+    };
+    let inserted: Promise<string>;
+    try {
+      inserted = window.webContents.insertCSS(css);
+    } catch {
+      failed();
+      return;
+    }
+    inserted.catch(failed);
     state.queue = state.queue
       .then(async () => {
         const key = await inserted;
@@ -116,6 +126,28 @@ export class MacLights {
       })
       .catch(() => undefined);
   }
+}
+
+/**
+ * The main process's SetZoomLevel listener (spexr-electron-main-application):
+ * the early room for the requested level, then the lights a turn later. It
+ * runs before Theia's listener in the same emit, and an EventEmitter stops at
+ * a listener that throws, so the early room is guarded: whatever it meets, the
+ * zoom still reaches Theia's listener, and the sync is still scheduled.
+ */
+export function followZoom(
+  lights: Pick<MacLights, "prepareZoom" | "syncAll">,
+  later: (run: () => void) => unknown = (run) => setTimeout(run),
+  report: (error: unknown) => void = (error) => console.error("spexr: the traffic lights' early room failed", error),
+): (event: unknown, level: unknown) => void {
+  return (_event, level) => {
+    try {
+      if (typeof level === "number") lights.prepareZoom(level);
+    } catch (error) {
+      report(error);
+    }
+    later(() => lights.syncAll());
+  };
 }
 
 /** One window's injected stylesheet: its key, the css asked for last, and the document it belongs to. */

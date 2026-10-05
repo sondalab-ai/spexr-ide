@@ -7,7 +7,7 @@ import { TheiaRendererAPI } from "@theia/core/lib/electron-main/electron-api-mai
 import { ElectronMainApplication } from "@theia/core/lib/electron-main/electron-main-application";
 import type { TheiaBrowserWindowOptions } from "@theia/core/lib/electron-main/theia-electron-window";
 import { darwinMajor, lightsGeometry, macWindowChrome } from "../common/mac-title-bar.js";
-import { MacLights } from "./mac-lights.js";
+import { followZoom, MacLights } from "./mac-lights.js";
 import { hardenWebviewAttach, isWebUrl } from "./webview-policy.js";
 import { applyTitleBarStyle, type TitleBarStore, type TitleBarStyle } from "./title-bar-style.js";
 
@@ -70,15 +70,12 @@ export class SpexrElectronMainApplication extends ElectronMainApplication {
    * process). This listener is added before Theia's, so it hears the level
    * before Theia applies it: a room that grows goes to the pages at once
    * (MacLights.prepareZoom), and the lights move, with the exact room, a
-   * turn later, once Theia's synchronous handler has applied the level.
+   * turn later, once Theia's synchronous handler has applied the level
+   * (followZoom, which never lets the early room stop Theia's handler).
    */
   protected override hookApplicationEvents(): void {
     super.hookApplicationEvents();
-    if (process.platform !== "darwin") return;
-    ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, (_event, level: unknown) => {
-      if (typeof level === "number") this.macLights.prepareZoom(level);
-      setTimeout(() => this.macLights.syncAll());
-    });
+    if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, followZoom(this.macLights));
   }
 
   /**
