@@ -6,18 +6,18 @@ import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-servi
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import * as monaco from "@theia/monaco-editor-core";
 import {
-  FONT_GATE_LOADS,
-  afterRelease,
+  CODE_FONT_LOADS,
+  UI_FONT_LOADS,
   gateCodeFont,
-  isHeld,
   remeasureTerminals,
   type CodeFontMark,
   type TerminalHandle,
 } from "./code-font.js";
 
 /**
- * Holds start-up until the faces (Geist Mono for code, Geist for the UI) are
- * in, then has Monaco and every terminal measure the code face again.
+ * Holds start-up until the code face (Geist Mono) is in, then has Monaco and
+ * every terminal measure it again. The UI face (Geist) gets the rest of the
+ * same wait, best effort, and never changes the outcome.
  *
  * Monaco and xterm measure the character box once and keep it: Monaco caches
  * it per font until told to forget, xterm until its font option changes.
@@ -40,22 +40,22 @@ export class SpexrFontReadinessContribution implements FrontendApplicationContri
   @inject(TerminalService) private readonly terminals!: TerminalService;
 
   private loading: Promise<readonly (readonly unknown[])[]> = Promise.resolve([]);
-  private held = false;
+  private uiLoading: Promise<unknown> = Promise.resolve();
   private remeasured = 0;
 
-  /** Starts the load: `initialize` runs before any contribution's `onStart`. */
+  /** Starts the loads: `initialize` runs before any contribution's `onStart`. */
   initialize(): void {
-    this.held = isHeld(storage());
-    this.loading = this.held ? afterRelease(window, loadFaces) : loadFaces();
+    this.loading = loadFaces(CODE_FONT_LOADS);
     // Settled through gateCodeFont in onStart; this only keeps a rejection
     // before then from being reported as unhandled.
     this.loading.catch(() => undefined);
+    this.uiLoading = Promise.allSettled([loadFaces(UI_FONT_LOADS)]);
   }
 
   async onStart(): Promise<void> {
     await gateCodeFont({
       load: this.loading,
-      held: this.held,
+      uiLoad: this.uiLoading,
       timers: window,
       remeasure: () => this.remeasure(),
       mark: (value) => setBodyData("spexrCodeFont", value),
@@ -96,19 +96,11 @@ function handle(widget: TerminalWidget): TerminalHandle {
   };
 }
 
-/** Asks for every gated face; one empty list when the page has no font API. */
-function loadFaces(): Promise<readonly (readonly unknown[])[]> {
+/** Asks for each face; one empty list when the page has no font API. */
+function loadFaces(faces: readonly string[]): Promise<readonly (readonly unknown[])[]> {
   const fonts = typeof document !== "undefined" ? document.fonts : undefined;
   if (!fonts || typeof fonts.load !== "function") return Promise.resolve([[]]);
-  return Promise.all(FONT_GATE_LOADS.map((face) => fonts.load(face)));
-}
-
-function storage(): Storage | undefined {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
+  return Promise.all(faces.map((face) => fonts.load(face)));
 }
 
 function setBodyData(key: "spexrCodeFont" | "spexrCodeFontTerminals", value: CodeFontMark | string): void {

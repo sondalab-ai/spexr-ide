@@ -9,15 +9,10 @@ import {
   CODE_FONT_PREFERENCES,
   CODE_FONT_STACK,
   CODE_FONT_WAIT_MS,
-  FONT_GATE_LOADS,
-  HOLD_CODE_FONT_KEY,
-  RELEASE_CODE_FONT_EVENT,
   UI_FONT_LOADS,
-  afterRelease,
   families,
   firstFamily,
   gateCodeFont,
-  isHeld,
   isXtermFontLike,
   remeasureTerminals,
   remeasureXterm,
@@ -60,6 +55,9 @@ function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: 
 async function flush(): Promise<void> {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 }
+
+/** The UI face's load once settled; it never rejects (Promise.allSettled). */
+const SETTLED: Promise<unknown> = Promise.resolve([]);
 
 /** One face found for each requested load: what document.fonts.load gives when all is well. */
 const FOUND: readonly (readonly unknown[])[] = [[{}], [{}]];
@@ -179,7 +177,6 @@ describe("the code face", () => {
 
   it("gates the UI face, Geist, in the weights spexr's chrome sets", () => {
     expect(UI_FONT_LOADS).toEqual(['400 13px "Geist"', '500 13px "Geist"', '600 13px "Geist"', '700 13px "Geist"']);
-    expect(FONT_GATE_LOADS).toEqual([...CODE_FONT_LOADS, ...UI_FONT_LOADS]);
     expect(families(kitToken("--sl-font-sans") ?? "")[0]).toBe("Geist");
   });
 
@@ -330,12 +327,10 @@ describe("gateCodeFont", () => {
     expect(CODE_FONT_WAIT_MS).toBe(1500);
   });
 
-  it("caps the wait at CODE_FONT_WAIT_MS, and at 0 when held", () => {
-    for (const held of [false, true]) {
-      const t = fakeTimers();
-      void gateCodeFont({ load: new Promise(() => undefined), held, timers: t.timers, remeasure: () => undefined, mark: () => undefined });
-      expect(t.scheduled).toEqual([held ? 0 : 1500]);
-    }
+  it("caps the wait at CODE_FONT_WAIT_MS", () => {
+    const t = fakeTimers();
+    void gateCodeFont({ load: new Promise(() => undefined), uiLoad: SETTLED, timers: t.timers, remeasure: () => undefined, mark: () => undefined });
+    expect(t.scheduled).toEqual([1500]);
   });
 
   it("marks loaded, re-measures, and stops the cap's timer when the faces win", async () => {
@@ -344,7 +339,7 @@ describe("gateCodeFont", () => {
     const calls: boolean[] = [];
     const outcome = await gateCodeFont({
       load: Promise.resolve(FOUND),
-      held: false,
+      uiLoad: SETTLED,
       timers: t.timers,
       remeasure: (late) => calls.push(late),
       mark: (m) => marks.push(m),
@@ -359,7 +354,7 @@ describe("gateCodeFont", () => {
     const t = fakeTimers();
     const load = deferred<readonly (readonly unknown[])[]>();
     const marks: CodeFontMark[] = [];
-    const gated = gateCodeFont({ load: load.promise, held: false, timers: t.timers, remeasure: () => undefined, mark: (m) => marks.push(m) });
+    const gated = gateCodeFont({ load: load.promise, uiLoad: SETTLED, timers: t.timers, remeasure: () => undefined, mark: (m) => marks.push(m) });
     t.fire();
     expect(await gated).toBe<CodeFontOutcome>("timeout");
     expect(marks).toEqual(["timeout"]);
@@ -377,7 +372,7 @@ describe("gateCodeFont", () => {
     const calls: boolean[] = [];
     const gated = gateCodeFont({
       load: load.promise,
-      held: false,
+      uiLoad: SETTLED,
       timers: immediate,
       remeasure: (late) => calls.push(late),
       mark: (m) => marks.push(m),
@@ -390,31 +385,61 @@ describe("gateCodeFont", () => {
   });
 });
 
-describe("the visual capture's hold switch", () => {
-  it("is off unless the key is exactly 1, and off when storage throws", () => {
-    expect(isHeld(undefined)).toBe(false);
-    expect(isHeld({ getItem: () => null })).toBe(false);
-    expect(isHeld({ getItem: () => "true" })).toBe(false);
-    expect(isHeld({ getItem: (key) => (key === HOLD_CODE_FONT_KEY ? "1" : null) })).toBe(true);
-    expect(
-      isHeld({
-        getItem: () => {
-          throw new Error("SecurityError");
-        },
-      }),
-    ).toBe(false);
+// The UI face waits within the same cap, best effort: it never vetoes, fails
+// or delays the code face's outcome, and never stretches the wait past the cap.
+describe("gateCodeFont and the UI face", () => {
+  it.each([
+    ["is missing", Promise.allSettled([Promise.resolve([[]])])],
+    ["failed", Promise.allSettled([Promise.reject(new Error("decode"))])],
+  ])("leaves the code face's outcome alone when the UI face %s", async (_how, uiLoad) => {
+    const t = fakeTimers();
+    const marks: CodeFontMark[] = [];
+    const calls: boolean[] = [];
+    const outcome = await gateCodeFont({ load: Promise.resolve(FOUND), uiLoad, timers: t.timers, remeasure: (late) => calls.push(late), mark: (m) => marks.push(m) });
+    expect(outcome).toBe<CodeFontOutcome>("loaded");
+    expect(calls).toEqual([false]);
+    expect(marks).toEqual(["loaded"]);
   });
 
-  it("asks for the faces only once the release event arrives", async () => {
-    const target = new EventTarget();
-    let started = 0;
-    const held = afterRelease(target, async () => (started++, FOUND));
+  it("is missing when the code face is, whatever the UI face does", async () => {
+    const t = fakeTimers();
+    const outcome = await gateCodeFont({ load: Promise.resolve([[], []]), uiLoad: SETTLED, timers: t.timers, remeasure: () => undefined, mark: () => undefined });
+    expect(outcome).toBe<CodeFontOutcome>("missing");
+  });
+
+  it("waits for a slow UI face, after re-measuring the code face, and no longer than the cap", async () => {
+    const t = fakeTimers();
+    const marks: CodeFontMark[] = [];
+    const calls: boolean[] = [];
+    let resolved = false;
+    const gated = gateCodeFont({
+      load: Promise.resolve(FOUND),
+      uiLoad: new Promise(() => undefined),
+      timers: t.timers,
+      remeasure: (late) => calls.push(late),
+      mark: (m) => marks.push(m),
+    }).then((o) => ((resolved = true), o));
     await flush();
-    expect(started).toBe(0);
-    target.dispatchEvent(new Event(RELEASE_CODE_FONT_EVENT));
-    expect(await held).toEqual(FOUND);
-    target.dispatchEvent(new Event(RELEASE_CODE_FONT_EVENT));
-    expect(started).toBe(1);
+    expect(calls).toEqual([false]);
+    expect(marks).toEqual(["loaded"]);
+    expect(resolved).toBe(false);
+    t.fire();
+    expect(await gated).toBe<CodeFontOutcome>("loaded");
+  });
+
+  it("goes on as soon as the UI face settles", async () => {
+    const t = fakeTimers();
+    const ui = deferred<unknown>();
+    let resolved = false;
+    void gateCodeFont({ load: Promise.resolve(FOUND), uiLoad: ui.promise, timers: t.timers, remeasure: () => undefined, mark: () => undefined }).then(
+      () => (resolved = true),
+    );
+    await flush();
+    expect(resolved).toBe(false);
+    ui.resolve([]);
+    await flush();
+    expect(resolved).toBe(true);
+    expect(t.pendingCount()).toBe(0);
   });
 });
 

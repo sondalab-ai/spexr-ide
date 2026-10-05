@@ -44,11 +44,13 @@ export const UI_FONT_FAMILY = "Geist";
 
 /**
  * What `document.fonts.load` is asked for. The code face in the regular and
- * bold the editor and terminal draw, which Monaco and xterm measure once and
- * keep. The UI face in the weights spexr's chrome sets, so tab bars and
- * toolbars lay out in it from the first frame. Each bundled face is one
- * variable file, so any one load brings in every weight; asking for each
- * keeps that true if the kit ever splits a file.
+ * bold the editor and terminal draw: Monaco and xterm measure it once and
+ * keep it, so these loads decide the outcome and the re-measure. The UI face
+ * in the weights spexr's chrome sets, so tab bars and toolbars lay out in it
+ * from the first frame: waited for within the same cap, best effort, and
+ * never part of the outcome. Each bundled face is one variable file, so any
+ * one load brings in every weight; asking for each keeps that true if the
+ * kit ever splits a file.
  */
 export const CODE_FONT_LOADS: readonly string[] = [
   `400 13px "${CODE_FONT_FAMILY}"`,
@@ -57,7 +59,6 @@ export const CODE_FONT_LOADS: readonly string[] = [
 export const UI_FONT_LOADS: readonly string[] = ["400", "500", "600", "700"].map(
   (weight) => `${weight} 13px "${UI_FONT_FAMILY}"`,
 );
-export const FONT_GATE_LOADS: readonly string[] = [...CODE_FONT_LOADS, ...UI_FONT_LOADS];
 
 /**
  * How long start-up waits for the faces before it goes on without them. They
@@ -67,21 +68,11 @@ export const FONT_GATE_LOADS: readonly string[] = [...CODE_FONT_LOADS, ...UI_FON
 export const CODE_FONT_WAIT_MS = 1500;
 
 /**
- * The visual capture's switch for the capped path, and nothing else's: with
- * this localStorage key at "1", start-up does not wait at all and the faces
- * are not asked for until the page receives `RELEASE_CODE_FONT_EVENT`. It
- * lets CI open terminals first and have the faces arrive late. Unset, which
- * is every real install, it changes nothing.
- */
-export const HOLD_CODE_FONT_KEY = "spexr.visual.holdCodeFont";
-export const RELEASE_CODE_FONT_EVENT = "spexr:release-code-font";
-
-/**
- * How the wait ended:
- * - `loaded`: the faces arrived within the cap and everything was re-measured;
- * - `timeout`: the cap came first; the re-measure runs when the faces arrive;
- * - `missing`: a requested face matched nothing (the stylesheet is not in the page);
- * - `failed`: the browser could not load a face.
+ * How the wait for the code face ended:
+ * - `loaded`: it arrived within the cap and everything was re-measured;
+ * - `timeout`: the cap came first; the re-measure runs when it arrives;
+ * - `missing`: a requested code face matched nothing (the stylesheet is not in the page);
+ * - `failed`: the browser could not load it.
  */
 export type CodeFontOutcome = "loaded" | "timeout" | "missing" | "failed";
 
@@ -102,11 +93,11 @@ export function families(stack: string): string[] {
 }
 
 /**
- * Wait for the faces, up to `cap`, and call `remeasure` once they are in.
+ * Wait for the code face, up to `cap`, and call `remeasure` once it is in.
  *
  * Arrived before the cap: `remeasure(false)` runs before this resolves, so
  * whatever start-up creates next measures the real face. The cap first: this
- * resolves `timeout` at once, and `remeasure(true)` runs when the faces do
+ * resolves `timeout` at once, and `remeasure(true)` runs when the face does
  * arrive. A load that matched nothing, or failed, re-measures nothing: the
  * fallback face is what was measured, and it is what stays.
  *
@@ -150,10 +141,10 @@ export function startCap(ms: number, timers: Timers): { readonly promise: Promis
 
 /** What the contribution's `onStart` hands the gate. */
 export interface CodeFontGate {
-  /** The faces' load, as `initialize` started it (one list per requested face). */
+  /** The code face's load, as `initialize` started it (one list per requested face). */
   readonly load: Promise<readonly (readonly unknown[])[]>;
-  /** True under the visual capture's hold switch: no wait at all. */
-  readonly held: boolean;
+  /** The UI face's load, settled whatever happens (`Promise.allSettled`). */
+  readonly uiLoad: Promise<unknown>;
   readonly timers: Timers;
   /** Re-measure Monaco and the terminals; `late` when the cap came first. */
   remeasure(late: boolean): void;
@@ -162,13 +153,16 @@ export interface CodeFontGate {
 }
 
 /**
- * The contribution's `onStart`: wait for the faces up to `CODE_FONT_WAIT_MS`
- * (0 when held), re-measure on arrival, and mark how it went. The cap's timer
- * is stopped once the wait is over. A late arrival can be re-measured before
- * the wait's own `timeout` is marked; `late` is the newer news, so it stays.
+ * The contribution's `onStart`: wait for the code face up to
+ * `CODE_FONT_WAIT_MS`, re-measure on arrival, and mark how it went; then
+ * give the UI face whatever is left of the same cap. The UI face never
+ * changes the outcome: missing, failed or slow, it only ends its own wait.
+ * The cap's timer is stopped once both waits are over. A late arrival can
+ * be re-measured before the wait's own `timeout` is marked; `late` is the
+ * newer news, so it stays.
  */
 export async function gateCodeFont(gate: CodeFontGate): Promise<CodeFontOutcome> {
-  const cap = startCap(gate.held ? 0 : CODE_FONT_WAIT_MS, gate.timers);
+  const cap = startCap(CODE_FONT_WAIT_MS, gate.timers);
   let late = false;
   try {
     const outcome = await settleCodeFont(gate.load, cap.promise, (isLate) => {
@@ -179,29 +173,11 @@ export async function gateCodeFont(gate: CodeFontGate): Promise<CodeFontOutcome>
       }
     });
     if (!late) gate.mark(outcome);
+    await Promise.race([gate.uiLoad.catch(() => undefined), cap.promise]);
     return outcome;
   } finally {
     cap.cancel();
   }
-}
-
-/** Whether the visual capture's hold switch is on; a storage that throws means off. */
-export function isHeld(storage: { getItem(key: string): string | null } | undefined): boolean {
-  try {
-    return storage?.getItem(HOLD_CODE_FONT_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-/** Starts `load` only once `target` receives the release event. */
-export function afterRelease<T>(
-  target: { addEventListener(type: string, listener: () => void, options: { once: boolean }): void },
-  load: () => Promise<T>,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    target.addEventListener(RELEASE_CODE_FONT_EVENT, () => load().then(resolve, reject), { once: true });
-  });
 }
 
 /** The slice of an xterm instance a re-measure touches. */
