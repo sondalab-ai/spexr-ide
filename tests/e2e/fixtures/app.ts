@@ -41,10 +41,11 @@ export const test = base.extend<AppFixtures>({
   },
 
   app: async ({ workspace }, use) => {
-    // The deployer only logs a missing plugin directory and starts anyway;
-    // fail here instead, before a whole run goes by without the extensions.
-    if (!fs.existsSync(PLUGINS_DIR)) {
-      throw new Error(`No VS Code builtins at ${PLUGINS_DIR}; \`pnpm build:dev\` downloads them.`);
+    // The deployer only logs a missing plugin directory and starts anyway,
+    // and an empty one deploys nothing; fail here instead, before a whole run
+    // goes by without the extensions. tests/plugins.spec.ts checks they are live.
+    if (!fs.existsSync(PLUGINS_DIR) || fs.readdirSync(PLUGINS_DIR).length === 0) {
+      throw new Error(`No VS Code builtins in ${PLUGINS_DIR}; \`pnpm build:dev\` downloads them.`);
     }
     const app = await electron.launch({
       cwd: DESKTOP_DIR,
@@ -58,7 +59,6 @@ export const test = base.extend<AppFixtures>({
         DISPLAY: process.env.DISPLAY ?? ":99",
       },
     });
-    echoPluginDeployer(app);
     await use(app);
     await app.close();
   },
@@ -85,26 +85,6 @@ export const test = base.extend<AppFixtures>({
 });
 
 export { expect } from "@playwright/test";
-
-/** The plugin deployer's verdicts: how many plugins deployed, and any path it could not find. */
-const PLUGIN_DEPLOYER_LINE = /Deploy batch of \d+ accepted plugins|The local plugin referenced by .* does not exist/;
-
-/**
- * Echo the plugin deployer's lines from the backend into the test output.
- *
- * The backend's stdout never reaches the CI log otherwise, and the suite
- * cannot tell an app with its VS Code extensions from one without: both
- * start, only one colours code. These lines say which one ran.
- */
-function echoPluginDeployer(app: ElectronApplication): void {
-  const echo = (chunk: Buffer): void => {
-    for (const line of chunk.toString().split("\n")) {
-      if (PLUGIN_DEPLOYER_LINE.test(line)) console.info(`[backend] ${line.trim()}`);
-    }
-  };
-  app.process().stdout?.on("data", echo);
-  app.process().stderr?.on("data", echo);
-}
 
 // ── Selectors ──────────────────────────────────────────────────────────────
 
