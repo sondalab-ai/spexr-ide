@@ -6,9 +6,8 @@ export interface ToastNote {
   readonly message: string;
 }
 
-/** What NotificationManager.onUpdated hands the announcer. */
+/** What the announcer reads of a NotificationManager update. */
 export interface ToastUpdate {
-  readonly notifications: readonly Pick<ToastNote, "messageId">[];
   readonly toasts: readonly ToastNote[];
   readonly visibilityState: "hidden" | "toasts" | "center";
 }
@@ -20,35 +19,61 @@ export interface Announcement {
   readonly text: string;
 }
 
+/** How many toasts Theia shows at once: NotificationToastsComponent renders `toasts.slice(-3)`. */
+export const TOASTS_SHOWN = 3;
+
+/** The longest announcement, in characters; a longer message ends in an ellipsis. */
+export const ANNOUNCEMENT_MAX = 1000;
+
 /** The words a severity is announced with: the tone a sighted user reads off the glyph. */
 const PREFIX: Record<ToastNote["type"], string> = { info: "", progress: "", warning: "Warning: ", error: "Error: " };
 
 /**
- * What to announce for an update of Theia's notifications, and the ids
- * announced so far. Each toast is announced once, the first time it shows,
- * so a progress toast's updates are not read again. Nothing is announced
- * while the toasts are not showing (the center is open, or they are
- * hidden) or notifications are silent, and those toasts count as seen, so
- * they are not read out later. Ids that have left the notifications are
- * dropped from the seen set. `plain` turns Theia's message HTML into text.
+ * What to announce for an update of Theia's notifications, and the toasts
+ * it shows. A toast is announced when it newly appears among the toasts on
+ * screen: the last TOASTS_SHOWN, while the toasts are showing and
+ * notifications are not silent. Theia names a message by a hash of its type,
+ * text and actions, so the same message twice has the same id: it is
+ * announced again once it has left the screen (it timed out, and stays in the
+ * center) and comes back. A progress toast's updates keep it on screen, so
+ * they are not read again. `plain` turns Theia's message HTML into text.
  */
 export function toastAnnouncements(
   update: ToastUpdate,
-  seen: ReadonlySet<string>,
+  shownBefore: ReadonlySet<string>,
   silent: boolean,
   plain: (html: string) => string,
-): { announce: Announcement[]; seen: Set<string> } {
-  const live = new Set([...update.notifications, ...update.toasts].map((n) => n.messageId));
-  const next = new Set([...seen].filter((id) => live.has(id)));
-  const speak = !silent && update.visibilityState === "toasts";
-  const announce: Announcement[] = [];
-  for (const toast of update.toasts) {
-    if (next.has(toast.messageId)) continue;
-    next.add(toast.messageId);
-    const text = plain(toast.message).replace(/\s+/g, " ").trim();
-    if (speak && text) {
-      announce.push({ messageId: toast.messageId, region: toast.type === "error" ? "alert" : "polite", text: PREFIX[toast.type] + text });
-    }
-  }
-  return { announce, seen: next };
+): { announce: Announcement[]; shown: Set<string> } {
+  if (silent || update.visibilityState !== "toasts") return { announce: [], shown: new Set() };
+  const onScreen = update.toasts.slice(-TOASTS_SHOWN);
+  const announce = onScreen.flatMap((toast): Announcement[] => {
+    if (shownBefore.has(toast.messageId)) return [];
+    let text = plain(toast.message).replace(/\s+/g, " ").trim();
+    if (!text) return [];
+    if (text.length > ANNOUNCEMENT_MAX) text = `${text.slice(0, ANNOUNCEMENT_MAX - 1).trimEnd()}…`;
+    return [{ messageId: toast.messageId, region: toast.type === "error" ? "alert" : "polite", text: PREFIX[toast.type] + text }];
+  });
+  return { announce, shown: new Set(onScreen.map((toast) => toast.messageId)) };
+}
+
+/** The part of a DOM node flattenText reads. */
+export interface TextNode {
+  readonly nodeType: number;
+  readonly nodeName: string;
+  readonly textContent: string | null;
+  readonly childNodes: ArrayLike<TextNode>;
+}
+
+/** Elements that end a line: their text is set apart from their neighbours'. */
+const BLOCK = /^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|BR|DD|DIV|DL|DT|FIGCAPTION|FIGURE|FOOTER|H[1-6]|HEADER|HR|LI|MAIN|NAV|OL|P|PRE|SECTION|TABLE|TBODY|TD|TH|THEAD|TR|UL)$/;
+
+/**
+ * A message's text, from its parsed HTML: the text nodes in order, with a
+ * space around every block element, so "<p>Saved</p><p>3 files</p>" reads
+ * "Saved 3 files", not "Saved3 files" (textContent alone joins them).
+ */
+export function flattenText(node: TextNode): string {
+  if (node.nodeType === 3) return node.textContent ?? "";
+  const inner = Array.from(node.childNodes, flattenText).join("");
+  return BLOCK.test(node.nodeName.toUpperCase()) ? ` ${inner} ` : inner;
 }

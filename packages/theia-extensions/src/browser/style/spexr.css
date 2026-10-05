@@ -1264,7 +1264,7 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
    - ARIA: Theia gives a notification no role and no live region. The kit's
      two regions, polite and alert, are spexr's (messages/toast-announcer.ts):
      they exist from start, outside Theia's container, which is display: none
-     while closed, and each toast is said there once.
+     while closed, and a toast is said there when it appears on screen.
    The center is the same surface, its rows tiles in a list: a flat wash on
    hover, and the row that holds the focus a flat tile with the seam in the
    accent (only a focused row is a tile, so the center holds the focus).
