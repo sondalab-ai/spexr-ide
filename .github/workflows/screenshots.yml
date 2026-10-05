@@ -1,0 +1,185 @@
+name: Screenshots
+
+# A viewing tool for the Lumen parity work, not a test. It launches the built
+# app on a runner, opens a fixture workspace that reproduces the Lumen demo
+# (tests/visual/fixtures/probe-engine) and uploads PNGs of four scenes per
+# theme: base, palette, toast, focus-tree. Nothing is compared and nothing is
+# gated; the images are looked at side by side with the demo, because spexr is
+# never launched on a workstation.
+#
+# How to run it:
+# - On a pull request: add the label `screenshots` (Linux) and/or
+#   `screenshots-mac` (macOS). Every push to a labelled PR captures again.
+# - By hand: Actions → Screenshots → Run workflow, with theme and OS. This
+#   trigger exists only once this file is on the default branch.
+on:
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: Theme to capture
+        type: choice
+        options: [both, dark, light]
+        default: both
+      os:
+        description: Runner
+        type: choice
+        options: [linux, mac, both]
+        default: linux
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+# Concurrency is per job, not per workflow: a workflow-level group is entered
+# before a job's `if`, so adding any unrelated label would cancel a capture in
+# flight and then skip its own jobs.
+jobs:
+  linux:
+    name: Screenshots (Linux)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.os != 'mac') ||
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'labeled' && github.event.label.name == 'screenshots') ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'screenshots'))
+      ))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    concurrency:
+      group: screenshots-linux-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    env:
+      VISUAL_THEMES: ${{ (github.event_name == 'workflow_dispatch' && inputs.theme != 'both') && inputs.theme || 'dark,light' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "node=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libx11-dev libxkbfile-dev \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libgbm1 libasound2t64 \
+            xvfb
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rebuild native modules for Electron
+        run: pnpm --filter @spexr/desktop run rebuild
+
+      - name: Build (dev)
+        run: pnpm build:dev
+
+      # The screen is larger than the 1440×900 content area the capture sets,
+      # so the window is never clipped by the display.
+      - name: Capture
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1200x24" \
+            pnpm --filter @spexr/visual capture
+
+      - name: Upload dark
+        if: always() && contains(env.VISUAL_THEMES, 'dark')
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-linux-dark
+          path: tests/visual/out/linux-dark/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload light
+        if: always() && contains(env.VISUAL_THEMES, 'light')
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-linux-light
+          path: tests/visual/out/linux-light/
+          if-no-files-found: warn
+          retention-days: 14
+
+  mac:
+    name: Screenshots (macOS)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.os != 'linux') ||
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'labeled' && github.event.label.name == 'screenshots-mac') ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'screenshots-mac'))
+      ))
+    runs-on: macos-14
+    timeout-minutes: 45
+    concurrency:
+      group: screenshots-mac-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    env:
+      VISUAL_THEMES: ${{ (github.event_name == 'workflow_dispatch' && inputs.theme != 'both') && inputs.theme || 'dark,light' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "node=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rebuild native modules for Electron
+        run: pnpm --filter @spexr/desktop run rebuild
+
+      - name: Build (dev)
+        run: pnpm build:dev
+
+      # The page capture works as on Linux. The native capture (traffic lights,
+      # title bar) uses `screencapture`, which needs Screen Recording
+      # permission; the summary reports what it produced.
+      - name: Capture
+        run: pnpm --filter @spexr/visual capture
+
+      - name: Upload dark
+        if: always() && contains(env.VISUAL_THEMES, 'dark')
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-mac-dark
+          path: tests/visual/out/mac-dark/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload light
+        if: always() && contains(env.VISUAL_THEMES, 'light')
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-mac-light
+          path: tests/visual/out/mac-light/
+          if-no-files-found: warn
+          retention-days: 14

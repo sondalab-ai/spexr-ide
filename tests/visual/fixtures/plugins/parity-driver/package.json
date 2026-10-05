@@ -1,0 +1,28 @@
+{
+  "name": "parity-driver",
+  "displayName": "Parity driver (visual fixture)",
+  "description": "Fixture-only extension for tests/visual: sets up each screenshot scene. Never shipped.",
+  "publisher": "spexr-visual",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:parity.probe",
+    "onCommand:parity.base",
+    "onCommand:parity.toast",
+    "onCommand:parity.focusTree"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "parity.probe", "title": "Probe environment", "category": "Parity" },
+      { "command": "parity.base", "title": "Base scene", "category": "Parity" },
+      { "command": "parity.toast", "title": "Toast scene", "category": "Parity" },
+      { "command": "parity.focusTree", "title": "Focus tree scene", "category": "Parity" }
+    ]
+  }
+}
