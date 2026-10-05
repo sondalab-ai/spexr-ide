@@ -131,8 +131,8 @@ body {
   --theia-editorGroupHeader-tabsBackground: ${canvas} !important;
 
   /* Status items that paint a ground of their own, through these variables
-     (a plugin's error and warning items take literals from the registry,
-     spexr-color-contribution.ts). The fill is the boundary, at least 3:1
+     (a plugin's items take literals from the registry instead, which holds
+     the same fills: spexr-color-contribution.ts). The fill is the boundary, at least 3:1
      against the canvas; the label is the kit's label rule on it, at least
      4.5:1 (contrast.test.ts). A prominent item (Restricted Mode, Session
      Preferences) is neutral: the muted ink as a fill; Theia's default was a

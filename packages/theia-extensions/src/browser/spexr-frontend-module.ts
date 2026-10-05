@@ -59,6 +59,7 @@ import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
+import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-contribution.js";
 import { ClaudeTerminalManager } from "./agent/claude-terminal-manager.js";
 import { SpexrLaunchProfilesService } from "./agent/launch-profiles-service.js";
 import {
@@ -230,6 +231,9 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
+  // Theia's theme data outranks those registry defaults for the light error
+  // and the remote status grounds; it gives them up (status-theme-data.ts).
+  bind(FrontendApplicationContribution).to(SpexrStatusThemeDataContribution).inSingletonScope();
 
   bind(ClaudeTerminalManager).toSelf().inSingletonScope();
   bind(SpexrLaunchProfilesService).toSelf().inSingletonScope();
