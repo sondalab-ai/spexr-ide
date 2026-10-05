@@ -91,7 +91,10 @@ export async function probePage(page: Page): Promise<PageProbes> {
     const top = document.getElementById("theia-top-panel");
     const parity: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {};
     const round = (n: number): number => Math.round(n * 100) / 100;
-    const tagged: Array<[string, Element]> = [...document.querySelectorAll<HTMLElement>("[data-parity]")].map((el) => [el.dataset.parity ?? "?", el]);
+    // Monaco's list rows carry data-parity too, as even/odd.
+    const tagged: Array<[string, Element]> = [...document.querySelectorAll<HTMLElement>("[data-parity]")]
+      .map((el): [string, Element] => [el.dataset.parity ?? "?", el])
+      .filter(([key]) => key !== "even" && key !== "odd");
     const controls = document.getElementById("window-controls");
     if (controls) tagged.push(["title.controls", controls]);
     for (const [key, el] of tagged) {
