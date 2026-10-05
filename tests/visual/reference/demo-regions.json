@@ -6,7 +6,7 @@
     "kitVersion": "0.33.1",
     "page": "showcase/screens-stage.html?screen=ide&dir=lumen&accent=indigo&theme=<theme>"
   },
-  "browser": "154.0.8037.98",
+  "browser": "Chrome 154.0.8037.98",
   "viewport": {
     "width": 1440,
     "height": 900,

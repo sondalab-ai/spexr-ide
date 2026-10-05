@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// @ts-check
 
 /**
  * Measure the Lumen IDE demo as it renders, to freeze the reference the
@@ -35,7 +34,7 @@ const VIEWPORT = { width: 1440, height: 900 };
 const STAGE = "showcase/screens-stage.html";
 const QUERY = (theme) => `screen=ide&dir=lumen&accent=indigo&theme=${theme}`;
 const PORTS = { from: 8788, to: 8799 };
-/** Taken on this machine (Okta Verify) or by other local previews. */
+/** Never bound, even when passed with --port: other local services use them. */
 const NEVER = new Set([8769, 8780]);
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -218,194 +217,193 @@ const REGIONS = [
 ];
 
 // ── catalogue checks ─────────────────────────────────────────────────────
-// The computed catalogue's numbers, with its own tags: [lit] a literal in the
-// CSS, [arith] its layout arithmetic, [spec] a specificity reading. Sources
-// are the catalogue's (L = dir-lumen.css, S = screens.css, C = components.css,
-// W = workbench.css, J = screens.js). `get` reads a region's first item
-// unless an index is given; `expect` may differ per theme.
+// The numbers computed from the demo's CSS before anything was rendered,
+// with their tags: [lit] a literal in the CSS, [arith] layout arithmetic,
+// [spec] a specificity reading. `get` reads a region's first item unless an
+// index is given; `expect` may differ per theme.
 const px = (v) => (v == null ? null : Math.round(parseFloat(v) * 100) / 100);
-/** @typedef {{ id: string; get: (q: Query) => unknown; expect: unknown; tol?: number; tag: string; src: string }} Check */
+/** @typedef {{ id: string; get: (q: Query) => unknown; expect: unknown; tol?: number; tag: string }} Check */
 /** @typedef {(region: string, index?: number) => any} Query */
 /** @type {Check[]} */
 const CHECKS = [
   // shell
-  { id: "title bar height", get: (q) => q("title").rect.h, expect: 44, tag: "lit", src: "L:70" },
-  { id: "status bar y", get: (q) => q("status").rect.y, expect: 870, tag: "arith", src: "§1" },
-  { id: "status bar height", get: (q) => q("status").rect.h, expect: 30, tag: "lit", src: "L:70" },
-  { id: "activity bar x", get: (q) => q("activity").rect.x, expect: 0, tag: "arith", src: "§1" },
-  { id: "activity bar width", get: (q) => q("activity").rect.w, expect: 52, tag: "lit", src: "L:116" },
-  { id: "Explorer x", get: (q) => q("left").rect.x, expect: 58, tag: "arith", src: "§1" },
-  { id: "Explorer width", get: (q) => q("left").rect.w, expect: 264, tag: "lit", src: "S:104" },
-  { id: "Explorer y", get: (q) => q("left").rect.y, expect: 44, tag: "arith", src: "§1" },
-  { id: "Explorer height", get: (q) => q("left").rect.h, expect: 826, tag: "arith", src: "§1" },
-  { id: "editor x", get: (q) => q("main").rect.x, expect: 328, tag: "arith", src: "§1" },
-  { id: "editor width", get: (q) => q("main").rect.w, expect: 748, tag: "arith", src: "§1" },
-  { id: "agent pane x", get: (q) => q("agent").rect.x, expect: 1082, tag: "arith", src: "§1" },
-  { id: "agent pane width", get: (q) => q("agent").rect.w, expect: 352, tag: "lit", src: "L:202" },
-  { id: "agent pane right edge", get: (q) => q("agent").rect.x + q("agent").rect.w, expect: 1434, tag: "arith", src: "§1" },
-  { id: "tab strip y", get: (q) => q("tabs").rect.y, expect: 44, tag: "arith", src: "§1" },
-  { id: "tab strip height", get: (q) => q("tabs").rect.h, expect: 38, tag: "lit", src: "L:73" },
-  { id: "crumbs y", get: (q) => q("crumbs").rect.y, expect: 82, tag: "arith", src: "§1" },
-  { id: "crumbs height", get: (q) => q("crumbs").rect.h, expect: 30, tag: "lit", src: "L:73" },
-  { id: "code y", get: (q) => q("code").rect.y, expect: 112, tag: "arith", src: "§1" },
-  { id: "code height", get: (q) => q("code").rect.h, expect: 548, tag: "arith", src: "§1" },
-  { id: "panel y", get: (q) => q("panel").rect.y, expect: 666, tag: "arith", src: "§1" },
-  { id: "panel height", get: (q) => q("panel").rect.h, expect: 204, tag: "arith", src: "§1" },
+  { id: "title bar height", get: (q) => q("title").rect.h, expect: 44, tag: "lit" },
+  { id: "status bar y", get: (q) => q("status").rect.y, expect: 870, tag: "arith" },
+  { id: "status bar height", get: (q) => q("status").rect.h, expect: 30, tag: "lit" },
+  { id: "activity bar x", get: (q) => q("activity").rect.x, expect: 0, tag: "arith" },
+  { id: "activity bar width", get: (q) => q("activity").rect.w, expect: 52, tag: "lit" },
+  { id: "Explorer x", get: (q) => q("left").rect.x, expect: 58, tag: "arith" },
+  { id: "Explorer width", get: (q) => q("left").rect.w, expect: 264, tag: "lit" },
+  { id: "Explorer y", get: (q) => q("left").rect.y, expect: 44, tag: "arith" },
+  { id: "Explorer height", get: (q) => q("left").rect.h, expect: 826, tag: "arith" },
+  { id: "editor x", get: (q) => q("main").rect.x, expect: 328, tag: "arith" },
+  { id: "editor width", get: (q) => q("main").rect.w, expect: 748, tag: "arith" },
+  { id: "agent pane x", get: (q) => q("agent").rect.x, expect: 1082, tag: "arith" },
+  { id: "agent pane width", get: (q) => q("agent").rect.w, expect: 352, tag: "lit" },
+  { id: "agent pane right edge", get: (q) => q("agent").rect.x + q("agent").rect.w, expect: 1434, tag: "arith" },
+  { id: "tab strip y", get: (q) => q("tabs").rect.y, expect: 44, tag: "arith" },
+  { id: "tab strip height", get: (q) => q("tabs").rect.h, expect: 38, tag: "lit" },
+  { id: "crumbs y", get: (q) => q("crumbs").rect.y, expect: 82, tag: "arith" },
+  { id: "crumbs height", get: (q) => q("crumbs").rect.h, expect: 30, tag: "lit" },
+  { id: "code y", get: (q) => q("code").rect.y, expect: 112, tag: "arith" },
+  { id: "code height", get: (q) => q("code").rect.h, expect: 548, tag: "arith" },
+  { id: "panel y", get: (q) => q("panel").rect.y, expect: 666, tag: "arith" },
+  { id: "panel height", get: (q) => q("panel").rect.h, expect: 204, tag: "arith" },
 
   // title bar
-  { id: "title bar padding", get: (q) => q("title").style.padding, expect: "0px 9.6px 0px 14.4px", tag: "lit", src: "L:109" },
-  { id: "command field x", get: (q) => q("title.cmd").rect.x, expect: 466.4, tag: "arith", src: "§2.1" },
-  { id: "command field width", get: (q) => q("title.cmd").rect.w, expect: 512, tag: "arith", src: "§2.1" },
-  { id: "command field height", get: (q) => q("title.cmd").rect.h, expect: 30, tag: "lit", src: "L:113" },
-  { id: "command field radius", get: (q) => q("title.cmd").style.borderRadius, expect: "8px", tag: "lit", src: "L:113" },
-  { id: "command field font size", get: (q) => q("title.cmd").style.fontSize, expect: "13px", tag: "lit", src: "L:113" },
-  { id: "wordmark weight", get: (q) => q("title.mark").style.fontWeight, expect: "700", tag: "lit", src: "L:110" },
-  { id: "wordmark size", get: (q) => q("title.mark").style.fontSize, expect: "15px", tag: "lit", src: "L:110" },
-  { id: "wordmark tracking", get: (q) => q("title.mark").style.letterSpacing, expect: "-0.6px", tag: "lit", src: "L:110" },
-  { id: "wordmark dot size", get: (q) => `${q("title.mark").pseudo["::after"].width} × ${q("title.mark").pseudo["::after"].height}`, expect: "5px × 5px", tag: "lit", src: "L:111" },
-  { id: "traffic dot size", get: (q) => `${q("title.dot").rect.w} × ${q("title.dot").rect.h}`, expect: "11 × 11", tag: "lit", src: "S:86" },
-  { id: "agents pill height", get: (q) => q("title.agents").rect.h, expect: 20.4, tag: "arith", src: "§2.1" },
-  { id: "agents pill radius", get: (q) => q("title.agents").style.borderRadius, expect: "6px", tag: "lit", src: "L:282" },
-  { id: "agents pill padding", get: (q) => q("title.agents").style.padding, expect: "3.2px 8px 3.2px 7.2px", tag: "lit", src: "L:115" },
-  { id: "agents pill type", get: (q) => `${q("title.agents").style.fontSize} ${q("title.agents").style.fontWeight}`, expect: "12px 500", tag: "lit", src: "L:115" },
-  { id: "title icon button size", get: (q) => `${q("title.bell").rect.w} × ${q("title.bell").rect.h}`, expect: "32 × 32", tag: "lit", src: "C:1951" },
-  { id: "title icon button radius", get: (q) => q("title.bell").style.borderRadius, expect: "8px", tag: "lit", src: "C:1951" },
-  { id: "bell dot size", get: (q) => `${q("title.bell").pseudo["::after"].width} × ${q("title.bell").pseudo["::after"].height}`, expect: "6px × 6px", tag: "lit", src: "L:278" },
-  { id: "avatar size", get: (q) => `${q("title.avatar").rect.w} × ${q("title.avatar").rect.h}`, expect: "26 × 26", tag: "lit", src: "S:94" },
-  { id: "avatar radius", get: (q) => q("title.avatar").style.borderRadius, expect: "8px", tag: "lit", src: "L:284" },
-  { id: "avatar type", get: (q) => `${q("title.avatar").style.fontSize} ${q("title.avatar").style.fontWeight}`, expect: "10px 600", tag: "lit", src: "S:94" },
+  { id: "title bar padding", get: (q) => q("title").style.padding, expect: "0px 9.6px 0px 14.4px", tag: "lit" },
+  { id: "command field x", get: (q) => q("title.cmd").rect.x, expect: 466.4, tag: "arith" },
+  { id: "command field width", get: (q) => q("title.cmd").rect.w, expect: 512, tag: "arith" },
+  { id: "command field height", get: (q) => q("title.cmd").rect.h, expect: 30, tag: "lit" },
+  { id: "command field radius", get: (q) => q("title.cmd").style.borderRadius, expect: "8px", tag: "lit" },
+  { id: "command field font size", get: (q) => q("title.cmd").style.fontSize, expect: "13px", tag: "lit" },
+  { id: "wordmark weight", get: (q) => q("title.mark").style.fontWeight, expect: "700", tag: "lit" },
+  { id: "wordmark size", get: (q) => q("title.mark").style.fontSize, expect: "15px", tag: "lit" },
+  { id: "wordmark tracking", get: (q) => q("title.mark").style.letterSpacing, expect: "-0.6px", tag: "lit" },
+  { id: "wordmark dot size", get: (q) => `${q("title.mark").pseudo["::after"].width} × ${q("title.mark").pseudo["::after"].height}`, expect: "5px × 5px", tag: "lit" },
+  { id: "traffic dot size", get: (q) => `${q("title.dot").rect.w} × ${q("title.dot").rect.h}`, expect: "11 × 11", tag: "lit" },
+  { id: "agents pill height", get: (q) => q("title.agents").rect.h, expect: 20.4, tag: "arith" },
+  { id: "agents pill radius", get: (q) => q("title.agents").style.borderRadius, expect: "6px", tag: "lit" },
+  { id: "agents pill padding", get: (q) => q("title.agents").style.padding, expect: "3.2px 8px 3.2px 7.2px", tag: "lit" },
+  { id: "agents pill type", get: (q) => `${q("title.agents").style.fontSize} ${q("title.agents").style.fontWeight}`, expect: "12px 500", tag: "lit" },
+  { id: "title icon button size", get: (q) => `${q("title.bell").rect.w} × ${q("title.bell").rect.h}`, expect: "32 × 32", tag: "lit" },
+  { id: "title icon button radius", get: (q) => q("title.bell").style.borderRadius, expect: "8px", tag: "lit" },
+  { id: "bell dot size", get: (q) => `${q("title.bell").pseudo["::after"].width} × ${q("title.bell").pseudo["::after"].height}`, expect: "6px × 6px", tag: "lit" },
+  { id: "avatar size", get: (q) => `${q("title.avatar").rect.w} × ${q("title.avatar").rect.h}`, expect: "26 × 26", tag: "lit" },
+  { id: "avatar radius", get: (q) => q("title.avatar").style.borderRadius, expect: "8px", tag: "lit" },
+  { id: "avatar type", get: (q) => `${q("title.avatar").style.fontSize} ${q("title.avatar").style.fontWeight}`, expect: "10px 600", tag: "lit" },
 
   // activity bar
-  { id: "activity item size", get: (q) => `${q("activity.item").rect.w} × ${q("activity.item").rect.h}`, expect: "38 × 38", tag: "lit", src: "L:117" },
-  { id: "activity item radius", get: (q) => q("activity.item").style.borderRadius, expect: "9px", tag: "lit", src: "L:117" },
-  { id: "activity item x", get: (q) => q("activity.item").rect.x, expect: 7, tag: "arith", src: "§2.2" },
-  { id: "activity item 1 y", get: (q) => q("activity.item", 0).rect.y, expect: 48, tag: "arith", src: "§2.2" },
-  { id: "activity item 2 y", get: (q) => q("activity.item", 1).rect.y, expect: 92, tag: "arith", src: "§2.2" },
-  { id: "activity item 5 y", get: (q) => q("activity.item", 4).rect.y, expect: 224, tag: "arith", src: "§2.2" },
-  { id: "activity gear y", get: (q) => q("activity.item", 5).rect.y, expect: 824, tag: "arith", src: "§2.2" },
-  { id: "activity count badge", get: (q) => { const a = q("activity.count").pseudo["::after"]; return `${a.minWidth} × ${a.height}, ${a.fontSize} ${a.fontWeight}`; }, expect: "14px × 14px, 9px 600", tag: "lit", src: "L:120" },
+  { id: "activity item size", get: (q) => `${q("activity.item").rect.w} × ${q("activity.item").rect.h}`, expect: "38 × 38", tag: "lit" },
+  { id: "activity item radius", get: (q) => q("activity.item").style.borderRadius, expect: "9px", tag: "lit" },
+  { id: "activity item x", get: (q) => q("activity.item").rect.x, expect: 7, tag: "arith" },
+  { id: "activity item 1 y", get: (q) => q("activity.item", 0).rect.y, expect: 48, tag: "arith" },
+  { id: "activity item 2 y", get: (q) => q("activity.item", 1).rect.y, expect: 92, tag: "arith" },
+  { id: "activity item 5 y", get: (q) => q("activity.item", 4).rect.y, expect: 224, tag: "arith" },
+  { id: "activity gear y", get: (q) => q("activity.item", 5).rect.y, expect: 824, tag: "arith" },
+  { id: "activity count badge", get: (q) => { const a = q("activity.count").pseudo["::after"]; return `${a.minWidth} × ${a.height}, ${a.fontSize} ${a.fontWeight}`; }, expect: "14px × 14px, 9px 600", tag: "lit" },
 
   // Explorer
-  { id: "pane head height", get: (q) => q("left.head").rect.h, expect: 40, tag: "lit", src: "L:136" },
-  { id: "pane head padding", get: (q) => q("left.head").style.padding, expect: "0px 8px 0px 15.2px", tag: "lit", src: "L:136" },
-  { id: "pane label type", get: (q) => `${q("left.label").style.fontSize} ${q("left.label").style.fontWeight}`, expect: "13px 600", tag: "lit", src: "L:137" },
-  { id: "pane tool button size", get: (q) => `${q("left.tool").rect.w} × ${q("left.tool").rect.h}`, expect: "26 × 26", tag: "lit", src: "S:109" },
-  { id: "pane sub height", get: (q) => q("left.sub").rect.h, expect: 29.6, tag: "arith", src: "S:111" },
-  { id: "pane sub type", get: (q) => `${q("left.sub").style.fontSize} ${q("left.sub").style.fontWeight}`, expect: "10.5px 500", tag: "lit", src: "L:138" },
-  { id: "tree row height", get: (q) => q("tree.row").rect.h, expect: 26, tag: "lit", src: "L:147" },
-  { id: "tree row type", get: (q) => `${q("tree.row").style.fontSize}/${q("tree.row").style.lineHeight}`, expect: "13px/20px", tag: "lit", src: "L:147, W:251" },
-  { id: "tree row radius", get: (q) => q("tree.row").style.borderRadius, expect: "6px", tag: "lit", src: "W:259" },
-  { id: "tree first row y", get: (q) => q("tree.row", 0).rect.y, expect: 113.6, tag: "arith", src: "§2.3" },
-  { id: "tree row x", get: (q) => q("tree.row", 0).rect.x, expect: 65.2, tag: "arith", src: "L:146" },
-  { id: "tree row width", get: (q) => q("tree.row", 0).rect.w, expect: 249.6, tag: "arith", src: "L:146" },
-  { id: "tree last row bottom", get: (q) => q("tree.row", 11).rect.y + q("tree.row", 11).rect.h, expect: 425.6, tag: "arith", src: "§2.3" },
-  { id: "tree twisty box", get: (q) => `${q("tree.twisty").rect.w} × ${q("tree.twisty").rect.h}`, expect: "16 × 16", tag: "lit", src: "W:280" },
-  { id: "tree git mark type", get: (q) => `${q("tree.git").style.fontSize} ${q("tree.git").style.fontWeight}`, expect: "10.5px 600", tag: "lit", src: "L:158" },
-  { id: "session row height", get: (q) => q("sessions.row").rect.h, expect: 46.4, tag: "arith", src: "§2.3" },
-  { id: "session meta size", get: (q) => q("sessions.meta").style.fontSize, expect: "11px", tag: "lit", src: "L:162" },
+  { id: "pane head height", get: (q) => q("left.head").rect.h, expect: 40, tag: "lit" },
+  { id: "pane head padding", get: (q) => q("left.head").style.padding, expect: "0px 8px 0px 15.2px", tag: "lit" },
+  { id: "pane label type", get: (q) => `${q("left.label").style.fontSize} ${q("left.label").style.fontWeight}`, expect: "13px 600", tag: "lit" },
+  { id: "pane tool button size", get: (q) => `${q("left.tool").rect.w} × ${q("left.tool").rect.h}`, expect: "26 × 26", tag: "lit" },
+  { id: "pane sub height", get: (q) => q("left.sub").rect.h, expect: 29.6, tag: "arith" },
+  { id: "pane sub type", get: (q) => `${q("left.sub").style.fontSize} ${q("left.sub").style.fontWeight}`, expect: "10.5px 500", tag: "lit" },
+  { id: "tree row height", get: (q) => q("tree.row").rect.h, expect: 26, tag: "lit" },
+  { id: "tree row type", get: (q) => `${q("tree.row").style.fontSize}/${q("tree.row").style.lineHeight}`, expect: "13px/20px", tag: "lit" },
+  { id: "tree row radius", get: (q) => q("tree.row").style.borderRadius, expect: "6px", tag: "lit" },
+  { id: "tree first row y", get: (q) => q("tree.row", 0).rect.y, expect: 113.6, tag: "arith" },
+  { id: "tree row x", get: (q) => q("tree.row", 0).rect.x, expect: 65.2, tag: "arith" },
+  { id: "tree row width", get: (q) => q("tree.row", 0).rect.w, expect: 249.6, tag: "arith" },
+  { id: "tree last row bottom", get: (q) => q("tree.row", 11).rect.y + q("tree.row", 11).rect.h, expect: 425.6, tag: "arith" },
+  { id: "tree twisty box", get: (q) => `${q("tree.twisty").rect.w} × ${q("tree.twisty").rect.h}`, expect: "16 × 16", tag: "lit" },
+  { id: "tree git mark type", get: (q) => `${q("tree.git").style.fontSize} ${q("tree.git").style.fontWeight}`, expect: "10.5px 600", tag: "lit" },
+  { id: "session row height", get: (q) => q("sessions.row").rect.h, expect: 46.4, tag: "arith" },
+  { id: "session meta size", get: (q) => q("sessions.meta").style.fontSize, expect: "11px", tag: "lit" },
 
   // editor
-  { id: "tab height", get: (q) => q("tab.active").rect.h, expect: 28, tag: "lit", src: "L:168" },
-  { id: "tab y", get: (q) => q("tab.active").rect.y, expect: 49, tag: "arith", src: "§2.4" },
-  { id: "tab radius", get: (q) => q("tab.active").style.borderRadius, expect: "7px", tag: "lit", src: "L:168" },
-  { id: "tab padding", get: (q) => q("tab.active").style.padding, expect: "0px 11.2px", tag: "lit", src: "L:168" },
-  { id: "tab type", get: (q) => `${q("tab.active").style.fontSize} ${q("tab.active").style.fontWeight}`, expect: "13px 500", tag: "lit", src: "L:168" },
-  { id: "tab strip wash height", get: (q) => q("tabs").pseudo["::after"].height, expect: "38px", tag: "lit", src: "L:106" },
-  { id: "lit seam inset", get: (q) => `${q("tabs").pseudo["::before"].left} / ${q("tabs").pseudo["::before"].height}`, expect: "10px / 2px", tag: "lit", src: "L:85" },
-  { id: "crumbs type", get: (q) => q("crumbs").style.fontSize, expect: "12px", tag: "lit", src: "S:127" },
-  { id: "crumbs padding", get: (q) => q("crumbs").style.padding, expect: "0px 16px", tag: "lit", src: "L:174" },
-  { id: "crumbs meta size", get: (q) => q("crumbs.meta").style.fontSize, expect: "11px", tag: "lit", src: "S:130" },
-  { id: "code type", get: (q) => `${q("code").style.fontSize}/${q("code").style.lineHeight}`, expect: "13px/22px", tag: "lit", src: "L:178" },
-  { id: "code padding top", get: (q) => q("code").style.paddingTop, expect: "12px", tag: "lit", src: "L:178" },
-  { id: "line 36 y", get: (q) => q("code.line", 0).rect.y, expect: 124, tag: "arith", src: "§2.4" },
-  { id: "current line y", get: (q) => q("code.line.cur").rect.y, expect: 234, tag: "arith", src: "§2.4" },
-  { id: "current line height", get: (q) => q("code.line.cur").rect.h, expect: 22, tag: "lit", src: "L:178" },
-  { id: "gutter width", get: (q) => q("code.no").rect.w, expect: 56, tag: "lit", src: "S:134" },
-  { id: "gutter padding right", get: (q) => q("code.no").style.paddingRight, expect: "18px", tag: "lit", src: "S:134" },
-  { id: "diagnostic pill", get: (q) => `${q("code.diag").style.borderRadius} ${q("code.diag").style.fontSize}`, expect: "5px 12px", tag: "lit", src: "L:181" },
+  { id: "tab height", get: (q) => q("tab.active").rect.h, expect: 28, tag: "lit" },
+  { id: "tab y", get: (q) => q("tab.active").rect.y, expect: 49, tag: "arith" },
+  { id: "tab radius", get: (q) => q("tab.active").style.borderRadius, expect: "7px", tag: "lit" },
+  { id: "tab padding", get: (q) => q("tab.active").style.padding, expect: "0px 11.2px", tag: "lit" },
+  { id: "tab type", get: (q) => `${q("tab.active").style.fontSize} ${q("tab.active").style.fontWeight}`, expect: "13px 500", tag: "lit" },
+  { id: "tab strip wash height", get: (q) => q("tabs").pseudo["::after"].height, expect: "38px", tag: "lit" },
+  { id: "lit seam inset", get: (q) => `${q("tabs").pseudo["::before"].left} / ${q("tabs").pseudo["::before"].height}`, expect: "10px / 2px", tag: "lit" },
+  { id: "crumbs type", get: (q) => q("crumbs").style.fontSize, expect: "12px", tag: "lit" },
+  { id: "crumbs padding", get: (q) => q("crumbs").style.padding, expect: "0px 16px", tag: "lit" },
+  { id: "crumbs meta size", get: (q) => q("crumbs.meta").style.fontSize, expect: "11px", tag: "lit" },
+  { id: "code type", get: (q) => `${q("code").style.fontSize}/${q("code").style.lineHeight}`, expect: "13px/22px", tag: "lit" },
+  { id: "code padding top", get: (q) => q("code").style.paddingTop, expect: "12px", tag: "lit" },
+  { id: "line 36 y", get: (q) => q("code.line", 0).rect.y, expect: 124, tag: "arith" },
+  { id: "current line y", get: (q) => q("code.line.cur").rect.y, expect: 234, tag: "arith" },
+  { id: "current line height", get: (q) => q("code.line.cur").rect.h, expect: 22, tag: "lit" },
+  { id: "gutter width", get: (q) => q("code.no").rect.w, expect: 56, tag: "lit" },
+  { id: "gutter padding right", get: (q) => q("code.no").style.paddingRight, expect: "18px", tag: "lit" },
+  { id: "diagnostic pill", get: (q) => `${q("code.diag").style.borderRadius} ${q("code.diag").style.fontSize}`, expect: "5px 12px", tag: "lit" },
 
   // bottom panel
-  { id: "panel tab row height", get: (q) => q("panel.tabs").rect.h, expect: 38, tag: "lit", src: "L:184" },
-  { id: "panel tab height", get: (q) => q("ptab.active").rect.h, expect: 26, tag: "lit", src: "S:145" },
-  { id: "panel tab radius", get: (q) => q("ptab.active").style.borderRadius, expect: "6px", tag: "lit", src: "S:145" },
-  { id: "panel tab type", get: (q) => `${q("ptab.active").style.fontSize} ${q("ptab.active").style.fontWeight}`, expect: "12.5px 500", tag: "lit", src: "L:186" },
-  { id: "panel tab padding", get: (q) => q("ptab.active").style.padding, expect: "0px 9.6px", tag: "lit", src: "L:186" },
-  { id: "terminal type", get: (q) => q("term").style.fontSize, expect: "12.5px", tag: "lit", src: "S:149" },
-  { id: "terminal padding", get: (q) => q("term").style.padding, expect: "2.4px 9.6px 8px", tag: "lit", src: "L:189" },
-  { id: "term block type", get: (q) => `${q("term.block").style.fontSize}/${q("term.block").style.lineHeight}`, expect: "12px/18px", tag: "lit", src: "W:448" },
-  { id: "term block height", get: (q) => q("term.block").rect.h, expect: 62.7, tag: "arith", src: "§2.5" },
-  { id: "term block radius", get: (q) => q("term.block").style.borderRadius, expect: "8px", tag: "lit", src: "L:190" },
-  { id: "caret", get: (q) => `${q("term.caret").rect.w} × ${q("term.caret").rect.h}, r ${q("term.caret").style.borderRadius}`, expect: "7 × 15, r 1px", tag: "lit", src: "L:199" },
+  { id: "panel tab row height", get: (q) => q("panel.tabs").rect.h, expect: 38, tag: "lit" },
+  { id: "panel tab height", get: (q) => q("ptab.active").rect.h, expect: 26, tag: "lit" },
+  { id: "panel tab radius", get: (q) => q("ptab.active").style.borderRadius, expect: "6px", tag: "lit" },
+  { id: "panel tab type", get: (q) => `${q("ptab.active").style.fontSize} ${q("ptab.active").style.fontWeight}`, expect: "12.5px 500", tag: "lit" },
+  { id: "panel tab padding", get: (q) => q("ptab.active").style.padding, expect: "0px 9.6px", tag: "lit" },
+  { id: "terminal type", get: (q) => q("term").style.fontSize, expect: "12.5px", tag: "lit" },
+  { id: "terminal padding", get: (q) => q("term").style.padding, expect: "2.4px 9.6px 8px", tag: "lit" },
+  { id: "term block type", get: (q) => `${q("term.block").style.fontSize}/${q("term.block").style.lineHeight}`, expect: "12px/18px", tag: "lit" },
+  { id: "term block height", get: (q) => q("term.block").rect.h, expect: 62.7, tag: "arith" },
+  { id: "term block radius", get: (q) => q("term.block").style.borderRadius, expect: "8px", tag: "lit" },
+  { id: "caret", get: (q) => `${q("term.caret").rect.w} × ${q("term.caret").rect.h}, r ${q("term.caret").style.borderRadius}`, expect: "7 × 15, r 1px", tag: "lit" },
 
   // agent pane
-  { id: "agent head padding", get: (q) => q("agent.head").style.padding, expect: "13.6px 16px", tag: "lit", src: "L:203" },
-  { id: "agent title type", get: (q) => `${q("agent.title").style.fontSize} ${q("agent.title").style.fontWeight} ${q("agent.title").style.letterSpacing}`, expect: "16px 600 -0.4px", tag: "lit", src: "L:204" },
-  { id: "agent eyebrow size", get: (q) => q("agent.eyebrow").style.fontSize, expect: "10.5px", tag: "lit", src: "L:138" },
-  { id: "model tag height", get: (q) => q("agent.model").rect.h, expect: 19.9, tag: "arith", src: "§2.6" },
-  { id: "model tag", get: (q) => `${q("agent.model").style.borderRadius} ${q("agent.model").style.fontSize}`, expect: "6px 11.5px", tag: "lit", src: "L:205" },
-  { id: "tool list radius", get: (q) => q("agent.tools").style.borderRadius, expect: "8px", tag: "lit", src: "L:209" },
-  { id: "tool row height", get: (q) => q("agent.tool", 0).rect.h, expect: 30.9, tag: "arith", src: "§2.6" },
-  { id: "composer width", get: (q) => q("agent.composer").rect.w, expect: 328, tag: "arith", src: "S:178" },
-  { id: "composer radius", get: (q) => q("agent.composer").style.borderRadius, expect: "12px", tag: "lit", src: "L:216" },
-  { id: "composer textarea height", get: (q) => q("agent.textarea").rect.h, expect: 46.9, tag: "arith", src: "§2.6" },
-  { id: "chip height", get: (q) => q("agent.chip").rect.h, expect: 24.1, tag: "arith", src: "§2.6" },
-  { id: "chip radius", get: (q) => q("agent.chip").style.borderRadius, expect: "6px", tag: "lit", src: "L:279" },
-  { id: "small button", get: (q) => `${q("agent.send").rect.h} ${q("agent.send").style.borderRadius} ${q("agent.send").style.fontSize}`, expect: "24 7px 12.5px", tag: "lit", src: "L:222" },
-  { id: "check box", get: (q) => `${q("agent.check.box").rect.w} × ${q("agent.check.box").rect.h}, r ${q("agent.check.box").style.borderRadius}`, expect: "16 × 16, r 5px", tag: "lit", src: "L:264" },
-  { id: "plan label size", get: (q) => q("agent.check.label").style.fontSize, expect: "13.5px", tag: "spec", src: "trap 9" },
+  { id: "agent head padding", get: (q) => q("agent.head").style.padding, expect: "13.6px 16px", tag: "lit" },
+  { id: "agent title type", get: (q) => `${q("agent.title").style.fontSize} ${q("agent.title").style.fontWeight} ${q("agent.title").style.letterSpacing}`, expect: "16px 600 -0.4px", tag: "lit" },
+  { id: "agent eyebrow size", get: (q) => q("agent.eyebrow").style.fontSize, expect: "10.5px", tag: "lit" },
+  { id: "model tag height", get: (q) => q("agent.model").rect.h, expect: 19.9, tag: "arith" },
+  { id: "model tag", get: (q) => `${q("agent.model").style.borderRadius} ${q("agent.model").style.fontSize}`, expect: "6px 11.5px", tag: "lit" },
+  { id: "tool list radius", get: (q) => q("agent.tools").style.borderRadius, expect: "8px", tag: "lit" },
+  { id: "tool row height", get: (q) => q("agent.tool", 0).rect.h, expect: 30.9, tag: "arith" },
+  { id: "composer width", get: (q) => q("agent.composer").rect.w, expect: 328, tag: "arith" },
+  { id: "composer radius", get: (q) => q("agent.composer").style.borderRadius, expect: "12px", tag: "lit" },
+  { id: "composer textarea height", get: (q) => q("agent.textarea").rect.h, expect: 46.9, tag: "arith" },
+  { id: "chip height", get: (q) => q("agent.chip").rect.h, expect: 24.1, tag: "arith" },
+  { id: "chip radius", get: (q) => q("agent.chip").style.borderRadius, expect: "6px", tag: "lit" },
+  { id: "small button", get: (q) => `${q("agent.send").rect.h} ${q("agent.send").style.borderRadius} ${q("agent.send").style.fontSize}`, expect: "24 7px 12.5px", tag: "lit" },
+  { id: "check box", get: (q) => `${q("agent.check.box").rect.w} × ${q("agent.check.box").rect.h}, r ${q("agent.check.box").style.borderRadius}`, expect: "16 × 16, r 5px", tag: "lit" },
+  { id: "plan label size", get: (q) => q("agent.check.label").style.fontSize, expect: "13.5px", tag: "spec" },
 
   // status bar
-  { id: "status bar padding", get: (q) => q("status").style.padding, expect: "0px 8px 0px 4px", tag: "lit", src: "L:124" },
-  { id: "status item height", get: (q) => q("status.item").rect.h, expect: 22, tag: "lit", src: "L:125" },
-  { id: "status item radius", get: (q) => q("status.item").style.borderRadius, expect: "6px", tag: "lit", src: "L:125" },
-  { id: "status item padding", get: (q) => q("status.item").style.padding, expect: "0px 8px", tag: "lit", src: "L:125" },
-  { id: "status first item x", get: (q) => q("status.item", 0).rect.x, expect: 4, tag: "arith", src: "L:124" },
-  { id: "live dot size", get: (q) => `${q("status.dot").rect.w} × ${q("status.dot").rect.h}`, expect: "6 × 6", tag: "lit", src: "W:136" },
+  { id: "status bar padding", get: (q) => q("status").style.padding, expect: "0px 8px 0px 4px", tag: "lit" },
+  { id: "status item height", get: (q) => q("status.item").rect.h, expect: 22, tag: "lit" },
+  { id: "status item radius", get: (q) => q("status.item").style.borderRadius, expect: "6px", tag: "lit" },
+  { id: "status item padding", get: (q) => q("status.item").style.padding, expect: "0px 8px", tag: "lit" },
+  { id: "status first item x", get: (q) => q("status.item", 0).rect.x, expect: 4, tag: "arith" },
+  { id: "live dot size", get: (q) => `${q("status.dot").rect.w} × ${q("status.dot").rect.h}`, expect: "6 × 6", tag: "lit" },
 
   // palette
-  { id: "palette x", get: (q) => q("palette").rect.x, expect: 409, tag: "arith", src: "§2.8" },
-  { id: "palette y", get: (q) => q("palette").rect.y, expect: 118, tag: "arith", src: "§2.8" },
-  { id: "palette width", get: (q) => q("palette").rect.w, expect: 580, tag: "lit", src: "L:289" },
-  { id: "palette height", get: (q) => q("palette").rect.h, expect: 312, tol: 4, tag: "arith", src: "§2.8 (approximate)" },
-  { id: "palette radius", get: (q) => q("palette").style.borderRadius, expect: "14px", tag: "lit", src: "W:350" },
-  { id: "palette head height", get: (q) => q("palette.head").rect.h, expect: 54, tag: "lit", src: "L:291" },
-  { id: "palette input", get: (q) => `${q("palette.input").style.fontSize} h${q("palette.input").rect.h} r ${q("palette.input").style.borderRadius}`, expect: "16px h34 r 8px", tag: "lit", src: "L:292" },
-  { id: "palette list padding", get: (q) => q("palette.list").style.padding, expect: "5.6px 8px 8px", tag: "lit", src: "L:295" },
-  { id: "palette row height", get: (q) => q("palette.row").rect.h, expect: 38, tag: "lit", src: "L:296" },
-  { id: "palette row radius", get: (q) => q("palette.row").style.borderRadius, expect: "8px", tag: "lit", src: "L:296" },
-  { id: "palette scope chip", get: (q) => `${q("palette.scope").style.borderRadius} ${q("palette.scope").style.fontSize}`, expect: "6px 12px", tag: "lit", src: "L:294" },
-  { id: "palette match weight", get: (q) => q("palette.mark").style.fontWeight, expect: "600", tag: "spec", src: "trap 5" },
+  { id: "palette x", get: (q) => q("palette").rect.x, expect: 409, tag: "arith" },
+  { id: "palette y", get: (q) => q("palette").rect.y, expect: 118, tag: "arith" },
+  { id: "palette width", get: (q) => q("palette").rect.w, expect: 580, tag: "lit" },
+  { id: "palette height", get: (q) => q("palette").rect.h, expect: 312, tol: 4, tag: "arith" },
+  { id: "palette radius", get: (q) => q("palette").style.borderRadius, expect: "14px", tag: "lit" },
+  { id: "palette head height", get: (q) => q("palette.head").rect.h, expect: 54, tag: "lit" },
+  { id: "palette input", get: (q) => `${q("palette.input").style.fontSize} h${q("palette.input").rect.h} r ${q("palette.input").style.borderRadius}`, expect: "16px h34 r 8px", tag: "lit" },
+  { id: "palette list padding", get: (q) => q("palette.list").style.padding, expect: "5.6px 8px 8px", tag: "lit" },
+  { id: "palette row height", get: (q) => q("palette.row").rect.h, expect: 38, tag: "lit" },
+  { id: "palette row radius", get: (q) => q("palette.row").style.borderRadius, expect: "8px", tag: "lit" },
+  { id: "palette scope chip", get: (q) => `${q("palette.scope").style.borderRadius} ${q("palette.scope").style.fontSize}`, expect: "6px 12px", tag: "lit" },
+  { id: "palette match weight", get: (q) => q("palette.mark").style.fontWeight, expect: "600", tag: "spec" },
 
   // toast
-  { id: "toast x", get: (q) => q("toast").rect.x, expect: 708, tag: "arith", src: "§2.9" },
-  { id: "toast right edge", get: (q) => q("toast").rect.x + q("toast").rect.w, expect: 1068, tag: "arith", src: "L:303" },
-  { id: "toast bottom edge", get: (q) => q("toast").rect.y + q("toast").rect.h, expect: 852, tag: "arith", src: "L:303" },
-  { id: "toast width", get: (q) => q("toast").rect.w, expect: 360, tag: "lit", src: "S:208" },
-  { id: "toast height", get: (q) => q("toast").rect.h, expect: 66.2, tag: "arith", src: "§2.9" },
-  { id: "toast radius", get: (q) => q("toast").style.borderRadius, expect: "12px", tag: "lit", src: "L:304" },
-  { id: "toast padding", get: (q) => q("toast").style.padding, expect: "12.8px 12.8px 14.4px 16px", tag: "lit", src: "L:304" },
-  { id: "toast mark size", get: (q) => `${q("toast.mark").rect.w} × ${q("toast.mark").rect.h}`, expect: "26 × 26", tag: "lit", src: "L:307" },
-  { id: "toast dismiss", get: (q) => `${q("toast.dismiss").rect.w} × ${q("toast.dismiss").rect.h}, r ${q("toast.dismiss").style.borderRadius}`, expect: "32 × 32, r 8px", tag: "lit", src: "S:70" },
+  { id: "toast x", get: (q) => q("toast").rect.x, expect: 708, tag: "arith" },
+  { id: "toast right edge", get: (q) => q("toast").rect.x + q("toast").rect.w, expect: 1068, tag: "arith" },
+  { id: "toast bottom edge", get: (q) => q("toast").rect.y + q("toast").rect.h, expect: 852, tag: "arith" },
+  { id: "toast width", get: (q) => q("toast").rect.w, expect: 360, tag: "lit" },
+  { id: "toast height", get: (q) => q("toast").rect.h, expect: 66.2, tag: "arith" },
+  { id: "toast radius", get: (q) => q("toast").style.borderRadius, expect: "12px", tag: "lit" },
+  { id: "toast padding", get: (q) => q("toast").style.padding, expect: "12.8px 12.8px 14.4px 16px", tag: "lit" },
+  { id: "toast mark size", get: (q) => `${q("toast.mark").rect.w} × ${q("toast.mark").rect.h}`, expect: "26 × 26", tag: "lit" },
+  { id: "toast dismiss", get: (q) => `${q("toast.dismiss").rect.w} × ${q("toast.dismiss").rect.h}, r ${q("toast.dismiss").style.borderRadius}`, expect: "32 × 32, r 8px", tag: "lit" },
 
-  // colours (§3), per theme
-  { id: "canvas", get: (q) => q("app").style.backgroundColor, expect: { dark: "#08080b", light: "#e5e7ec" }, tag: "arith", src: "L:25, L:41" },
-  { id: "surface (Explorer fill)", get: (q) => q("left").style.backgroundColor, expect: { dark: "#101114", light: "#fafbfd" }, tag: "arith", src: "L:26, L:42" },
-  { id: "raised (code fill)", get: (q) => q("code").style.backgroundColor, expect: { dark: "#18191d", light: "#ffffff" }, tag: "arith", src: "L:27, L:43" },
-  { id: "tile (active tab fill)", get: (q) => q("tab.active").style.backgroundColor, expect: { dark: "#212228", light: "#ffffff" }, tag: "arith", src: "L:35, L:51" },
-  { id: "text (agent title)", get: (q) => q("agent.title").style.color, expect: { dark: "#eaebef", light: "#14161b" }, tag: "arith", src: "L:28, L:44" },
-  { id: "text-secondary (tree row)", get: (q) => q("tree.name").style.color, expect: { dark: "#b9bac0", light: "#404249" }, tag: "arith", src: "L:29, L:45" },
-  { id: "text-muted (command field)", get: (q) => q("title.cmd").style.color, expect: { dark: "#9a9ba2", light: "#585a63" }, tag: "arith", src: "L:30, L:46" },
-  { id: "accent-text (selected tree icon)", get: (q) => q("tree.icon.sel").style.color, expect: { dark: "#8b96ff", light: "#393ccd" }, tag: "arith", src: "L:156" },
-  { id: "accent (wordmark dot)", get: (q) => q("title.mark").pseudo["::after"].backgroundColor, expect: { dark: "#8b96ff", light: "#5b6cff" }, tag: "arith", src: "L:111" },
-  { id: "accent fill (activity count)", get: (q) => q("activity.count").pseudo["::after"].backgroundColor, expect: { dark: "#4c58e9", light: "#4c58e9" }, tag: "arith", src: "S:32" },
-  { id: "code fg", get: (q) => q("syntax.variable").style.color, expect: { dark: "#dcdee3", light: "#25262b" }, tag: "arith", src: "L:60, L:64" },
-  { id: "syntax keyword", get: (q) => q("syntax.keyword").style.color, expect: { dark: "#a9b0fd", light: "#5847b7" }, tag: "arith", src: "L:61, L:65" },
-  { id: "syntax string", get: (q) => q("syntax.string").style.color, expect: { dark: "#9ccf7f", light: "#316a23" }, tag: "arith", src: "§3" },
-  { id: "syntax function", get: (q) => q("syntax.function").style.color, expect: { dark: "#75caf2", light: "#006197" }, tag: "arith", src: "§3 (light clipped)" },
-  { id: "syntax number", get: (q) => q("syntax.number").style.color, expect: { dark: "#fd9976", light: "#b13e06" }, tag: "arith", src: "§3" },
-  { id: "syntax builtin", get: (q) => q("syntax.type").style.color, expect: { dark: "#e5bf6d", light: "#875800" }, tag: "arith", src: "§3 (light clipped)" },
-  { id: "syntax comment", get: (q) => q("syntax.comment").style.color, expect: { dark: "#9698a0", light: "#61636a" }, tag: "arith", src: "L:60, L:64" },
-  { id: "term block fill (sunken)", get: (q) => q("term.block").style.backgroundColor, expect: { dark: "#0b0c0f", light: "#f6f7f9" }, tag: "spec", src: "trap 4" },
+  // colours, per theme
+  { id: "canvas", get: (q) => q("app").style.backgroundColor, expect: { dark: "#08080b", light: "#e5e7ec" }, tag: "arith" },
+  { id: "surface (Explorer fill)", get: (q) => q("left").style.backgroundColor, expect: { dark: "#101114", light: "#fafbfd" }, tag: "arith" },
+  { id: "raised (code fill)", get: (q) => q("code").style.backgroundColor, expect: { dark: "#18191d", light: "#ffffff" }, tag: "arith" },
+  { id: "tile (active tab fill)", get: (q) => q("tab.active").style.backgroundColor, expect: { dark: "#212228", light: "#ffffff" }, tag: "arith" },
+  { id: "text (agent title)", get: (q) => q("agent.title").style.color, expect: { dark: "#eaebef", light: "#14161b" }, tag: "arith" },
+  { id: "text-secondary (tree row)", get: (q) => q("tree.name").style.color, expect: { dark: "#b9bac0", light: "#404249" }, tag: "arith" },
+  { id: "text-muted (command field)", get: (q) => q("title.cmd").style.color, expect: { dark: "#9a9ba2", light: "#585a63" }, tag: "arith" },
+  { id: "accent-text (selected tree icon)", get: (q) => q("tree.icon.sel").style.color, expect: { dark: "#8b96ff", light: "#393ccd" }, tag: "arith" },
+  { id: "accent (wordmark dot)", get: (q) => q("title.mark").pseudo["::after"].backgroundColor, expect: { dark: "#8b96ff", light: "#5b6cff" }, tag: "arith" },
+  { id: "accent fill (activity count)", get: (q) => q("activity.count").pseudo["::after"].backgroundColor, expect: { dark: "#4c58e9", light: "#4c58e9" }, tag: "arith" },
+  { id: "code fg", get: (q) => q("syntax.variable").style.color, expect: { dark: "#dcdee3", light: "#25262b" }, tag: "arith" },
+  { id: "syntax keyword", get: (q) => q("syntax.keyword").style.color, expect: { dark: "#a9b0fd", light: "#5847b7" }, tag: "arith" },
+  { id: "syntax string", get: (q) => q("syntax.string").style.color, expect: { dark: "#9ccf7f", light: "#316a23" }, tag: "arith" },
+  { id: "syntax function", get: (q) => q("syntax.function").style.color, expect: { dark: "#75caf2", light: "#006197" }, tag: "arith" },
+  { id: "syntax number", get: (q) => q("syntax.number").style.color, expect: { dark: "#fd9976", light: "#b13e06" }, tag: "arith" },
+  { id: "syntax builtin", get: (q) => q("syntax.type").style.color, expect: { dark: "#e5bf6d", light: "#875800" }, tag: "arith" },
+  { id: "syntax comment", get: (q) => q("syntax.comment").style.color, expect: { dark: "#9698a0", light: "#61636a" }, tag: "arith" },
+  { id: "term block fill (sunken)", get: (q) => q("term.block").style.backgroundColor, expect: { dark: "#0b0c0f", light: "#f6f7f9" }, tag: "spec" },
 ];
 
 // ── main ─────────────────────────────────────────────────────────────────
@@ -420,7 +418,7 @@ const port = args.port ? Number(args.port) : await freePort();
 if (NEVER.has(port)) fail(`port ${port} is reserved on this machine`);
 if (!(await isFree(port))) fail(`port ${port} is in use`);
 const server = serve(kit, port);
-const browser = await launchBrowser();
+const { browser, label: browserLabel } = await launchBrowser();
 try {
   /** @type {Record<string, any>} */
   const measured = {};
@@ -438,7 +436,7 @@ try {
       kitVersion: JSON.parse(fs.readFileSync(path.join(kit, "packages/ui-kit/package.json"), "utf8")).version,
       page: `${STAGE}?${QUERY("<theme>")}`,
     },
-    browser: browser.version(),
+    browser: browserLabel,
     viewport: { ...VIEWPORT, deviceScaleFactor: 1 },
     measuredOn: new Date().toISOString().slice(0, 10),
     themes: measured,
@@ -631,19 +629,19 @@ function renderCheck(doc) {
   const same = (r) => THEMES.every((t) => fmt(r.values[t]) === fmt(r.values.dark)) && THEMES.every((t) => fmt(r.expect[t]) === fmt(r.expect.dark));
   const line = (r) =>
     same(r)
-      ? `| ${r.c.id} | ${cell(fmt(r.expect.dark))} | ${cell(fmt(r.values.dark))} | ${r.c.tag} | ${r.c.src} |`
-      : `| ${r.c.id} | ${THEMES.map((t) => `${t}: ${cell(fmt(r.expect[t]))}`).join("<br>")} | ${THEMES.map((t) => `${t}: ${cell(fmt(r.values[t]))}${r.ok[t] ? "" : " ✗"}`).join("<br>")} | ${r.c.tag} | ${r.c.src} |`;
+      ? `| ${r.c.id} | ${cell(fmt(r.expect.dark))} | ${cell(fmt(r.values.dark))} | ${r.c.tag} |`
+      : `| ${r.c.id} | ${THEMES.map((t) => `${t}: ${cell(fmt(r.expect[t]))}`).join("<br>")} | ${THEMES.map((t) => `${t}: ${cell(fmt(r.values[t]))}${r.ok[t] ? "" : " ✗"}`).join("<br>")} | ${r.c.tag} |`;
   const byTag = (tag) => off.filter((r) => r.c.tag === tag).length;
   const missing = THEMES.flatMap((t) => doc.themes[t].missing.map((m) => `${t}: ${m}`));
 
   let md = `# Catalogue check: the Lumen IDE demo, measured\n\n`;
-  md += `> **What this file is.** Where the demo, measured as it renders, disagrees with the catalogue of numbers computed from its CSS (the parity plan's catalogue, tagged [lit] for a CSS literal, [arith] for layout arithmetic and [spec] for a specificity reading). **Audience:** whoever implements a Lumen parity slice in spexr. **Owner:** the parity work. **Companions:** \`demo-regions.json\` (the measurement, authoritative), \`demo-dark.png\` and \`demo-light.png\` (the renders), \`demo-base-dark.png\` and \`demo-base-light.png\` (the same without the palette and the toast). Generated by \`tests/visual/measure-demo.mjs\`; do not edit by hand.\n\n`;
+  md += `> **What this file is.** Where the demo, measured as it renders, disagrees with the catalogue of numbers computed from its CSS before anything was rendered (tagged [lit] for a CSS literal, [arith] for layout arithmetic and [spec] for a specificity reading). **Audience:** whoever implements a Lumen parity slice in spexr. **Owner:** the parity work. **Companions:** \`demo-regions.json\` (the measurement, authoritative), \`demo-dark.png\` and \`demo-light.png\` (the renders), \`demo-base-dark.png\` and \`demo-base-light.png\` (the same without the palette and the toast). Generated by \`tests/visual/measure-demo.mjs\`; do not edit by hand.\n\n`;
   md += `Source: sondalab-ui \`${doc.source.commit}\` (ui-kit ${doc.source.kitVersion}), \`${doc.source.page}\`, ${doc.viewport.width}×${doc.viewport.height} at device scale 1, ${doc.browser}, measured ${doc.measuredOn}. Lengths within ±0.5px agree (±${CHECKS.find((c) => c.tol)?.tol ?? 0}px where the catalogue says approximate); colours agree within 3 per channel.\n\n`;
   md += `**${off.length} of ${rows.length} checks disagree** (${byTag("arith")} [arith], ${byTag("lit")} [lit], ${byTag("spec")} [spec]). Where they disagree, \`demo-regions.json\` is the number to build to.\n\n`;
   if (missing.length) md += `Regions with no element in the demo: ${missing.join(", ")}.\n\n`;
-  md += `## Disagreements\n\n| Check | Catalogue | Measured | Tag | Source |\n|---|---|---|---|---|\n`;
+  md += `## Disagreements\n\n| Check | Catalogue | Measured | Tag |\n|---|---|---|---|\n`;
   md += off.map(line).join("\n") + "\n\n";
-  md += `## Agreements\n\n<details><summary>${rows.length - off.length} checks agree</summary>\n\n| Check | Catalogue | Measured | Tag | Source |\n|---|---|---|---|---|\n`;
+  md += `## Agreements\n\n<details><summary>${rows.length - off.length} checks agree</summary>\n\n| Check | Catalogue | Measured | Tag |\n|---|---|---|---|\n`;
   md += rows.filter((r) => r.agree).map(line).join("\n") + "\n\n</details>\n";
   return md;
 }
@@ -716,12 +714,23 @@ async function freePort() {
 }
 
 
-/** A read-only static server for `root`, on loopback only. @param {string} root @param {number} p */
+/**
+ * A read-only static server for `root`, on loopback only. A malformed URL
+ * gets a 400 instead of taking the server down, and nothing under a dot
+ * directory (`.git`) is served. @param {string} root @param {number} p
+ */
 function serve(root, p) {
   const server = http.createServer((req, res) => {
-    const rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+    let rel;
+    try {
+      rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
     const file = path.join(root, rel);
-    if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    const hidden = path.relative(root, file).split(path.sep).some((part) => part.startsWith("."));
+    if (hidden || !file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
       res.writeHead(404).end();
       return;
     }
@@ -732,12 +741,14 @@ function serve(root, p) {
   return server;
 }
 
-/** System Chrome when installed, else Playwright's own Chromium. */
+/** System Chrome when installed, else Playwright's own Chromium; labelled for the record. */
 async function launchBrowser() {
   try {
-    return await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    return { browser, label: `Chrome ${browser.version()}` };
   } catch {
-    return chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true });
+    return { browser, label: `Chromium ${browser.version()}` };
   }
 }
 
