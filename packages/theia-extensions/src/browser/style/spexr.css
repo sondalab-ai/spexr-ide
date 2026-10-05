@@ -632,7 +632,8 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
   margin-inline-start: 3px;
 }
 
-.lm-Menu-itemShortcut > .spexr-key-sep--chord + .sl-kbd {
+/* A chord's separator is a key separator too, so it outweighs that rule. */
+.lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep.spexr-key-sep--chord + .sl-kbd {
   margin-inline-start: 6px;
 }
 

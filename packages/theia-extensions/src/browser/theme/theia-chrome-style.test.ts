@@ -98,7 +98,7 @@ describe("Theia's keycaps", () => {
     expect(cap).toMatch(/height:\s*18px/);
     expect(cap).toMatch(/min-width:\s*18px/);
     expect(block(".lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep + .sl-kbd")).toMatch(/margin-inline-start:\s*3px/);
-    expect(block(".lm-Menu-itemShortcut > .spexr-key-sep--chord + .sl-kbd")).toMatch(/margin-inline-start:\s*6px/);
+    expect(block(".lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep.spexr-key-sep--chord + .sl-kbd")).toMatch(/margin-inline-start:\s*6px/);
     const sep = block(".lm-Menu-itemShortcut > .spexr-key-sep");
     expect(sep).toMatch(/clip-path:\s*inset\(50%\)/);
     expect(sep).not.toMatch(/display:\s*none/);

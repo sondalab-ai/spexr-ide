@@ -315,3 +315,16 @@ describe("the global focus ring", () => {
     for (const s of kitRings) expect(cmp(specificity(s), specificity(ring)), s).toBeGreaterThan(0);
   });
 });
+
+// A chord's separator carries both separator classes, so the key gap rule
+// matches the cap after it too: the chord's 6px must outweigh the key's 3px.
+describe("a menu shortcut's chord gap", () => {
+  const key = ".lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep + .sl-kbd";
+  const chord = ".lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep.spexr-key-sep--chord + .sl-kbd";
+
+  it("outweighs the key gap it also matches", () => {
+    expect(selectors(spexr, (s) => s === key)).toHaveLength(1);
+    expect(selectors(spexr, (s) => s === chord)).toHaveLength(1);
+    expect(cmp(specificity(chord), specificity(key))).toBeGreaterThan(0);
+  });
+});
