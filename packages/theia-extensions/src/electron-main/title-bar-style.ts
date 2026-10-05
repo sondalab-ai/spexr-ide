@@ -60,3 +60,50 @@ function styleFrom(inputs: TitleBarInputs, storedFrame: boolean | undefined): Ti
   if (inputs.configured === "native" || inputs.configured === "custom") return inputs.configured;
   return "custom";
 }
+
+/** The slice of Theia's electron-store the startup decision reads and writes. */
+export interface TitleBarStore {
+  get(key: string): unknown;
+  set(key: string, value: unknown): void;
+}
+
+/** What the main process knows apart from the store. */
+export type TitleBarEnvironment = Pick<TitleBarInputs, "platform" | "forceCustom" | "configured">;
+
+/**
+ * Decide the style from the store and write the decision back: drop the
+ * stored frame, then set the migration flag. Runs on the startup path, before
+ * any window opens, so a failed write (a full disk, a read-only profile) is
+ * reported and never thrown, as Theia's saveWindowState does.
+ *
+ * - If the frame cannot be dropped, the store still holds it, and Theia's
+ *   getLastWindowOptions will open the window with it: the style returned is
+ *   then the one that frame implies, so the page and the window agree, and
+ *   the flag stays unset so the next launch tries again.
+ * - If only the flag cannot be written, this run is right and the next one
+ *   migrates again, which finds no frame left to drop.
+ */
+export function applyTitleBarStyle(
+  store: TitleBarStore,
+  env: TitleBarEnvironment,
+  report: (message: string, error: unknown) => void = (message, error) => console.warn(message, error),
+): TitleBarStyle {
+  const windowState = store.get("windowstate") as ({ frame?: boolean } & Record<string, unknown>) | undefined;
+  const inputs: TitleBarInputs = { ...env, storedFrame: windowState?.frame, migrated: store.get(TITLE_BAR_MIGRATION_KEY) === true };
+  const decision = decideTitleBarStyle(inputs);
+  const write = (what: string, key: string, value: unknown): boolean => {
+    try {
+      store.set(key, value);
+      return true;
+    } catch (error) {
+      report(`[spexr] could not ${what} in the window state store`, error);
+      return false;
+    }
+  };
+  if (decision.dropStoredFrame && windowState) {
+    const { frame: _dropped, ...rest } = windowState;
+    if (!write("drop the stored window frame", "windowstate", rest)) return decideTitleBarStyle({ ...inputs, migrated: true }).style;
+  }
+  if (decision.markMigrated) write("record the title bar migration", TITLE_BAR_MIGRATION_KEY, true);
+  return decision.style;
+}

@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { decideTitleBarStyle, TITLE_BAR_MIGRATION_KEY, type TitleBarInputs } from "./title-bar-style.js";
+import {
+  applyTitleBarStyle,
+  decideTitleBarStyle,
+  TITLE_BAR_MIGRATION_KEY,
+  type TitleBarEnvironment,
+  type TitleBarInputs,
+  type TitleBarStore,
+} from "./title-bar-style.js";
 
 const base: TitleBarInputs = { platform: "linux", forceCustom: false, storedFrame: undefined, migrated: false, configured: undefined };
 const decide = (over: Partial<TitleBarInputs>) => decideTitleBarStyle({ ...base, ...over });
@@ -53,6 +60,77 @@ describe("decideTitleBarStyle", () => {
   });
 });
 
+/** An in-memory electron-store that counts its writes and can be told to fail one key. */
+function fakeStore(initial: Record<string, unknown>, failing?: string): TitleBarStore & { data: Record<string, unknown>; writes: string[] } {
+  const data: Record<string, unknown> = structuredClone(initial);
+  const writes: string[] = [];
+  return {
+    data,
+    writes,
+    get: (key) => data[key],
+    set: (key, value) => {
+      if (key === failing) throw new Error(`ENOSPC writing ${key}`);
+      writes.push(key);
+      data[key] = value;
+    },
+  };
+}
+
+const linux: TitleBarEnvironment = { platform: "linux", forceCustom: false, configured: undefined };
+const quiet = (): void => undefined;
+
+describe("applyTitleBarStyle", () => {
+  const upgraded = { windowstate: { frame: true, width: 1280, height: 800 } };
+
+  it("drops a stored native frame once, keeps the rest of the window state, and sets the flag once", () => {
+    const store = fakeStore(upgraded);
+    expect(applyTitleBarStyle(store, linux, quiet)).toBe("custom");
+    expect(store.data["windowstate"]).toEqual({ width: 1280, height: 800 });
+    expect(store.data[TITLE_BAR_MIGRATION_KEY]).toBe(true);
+    expect(store.writes).toEqual(["windowstate", TITLE_BAR_MIGRATION_KEY]);
+    expect(applyTitleBarStyle(store, linux, quiet)).toBe("custom");
+    expect(store.writes).toHaveLength(2);
+  });
+
+  it("sets only the flag when no window state is stored", () => {
+    const store = fakeStore({});
+    expect(applyTitleBarStyle(store, linux, quiet)).toBe("custom");
+    expect(store.writes).toEqual([TITLE_BAR_MIGRATION_KEY]);
+    expect("windowstate" in store.data).toBe(false);
+  });
+
+  it("keeps the escape hatch after the migration: a native frame stored later wins and nothing is written", () => {
+    const store = fakeStore({ ...upgraded, [TITLE_BAR_MIGRATION_KEY]: true });
+    expect(applyTitleBarStyle(store, linux, quiet)).toBe("native");
+    expect(store.writes).toEqual([]);
+  });
+
+  it("never throws when the frame cannot be dropped: it follows the frame the window will open with, and tries again next time", () => {
+    const store = fakeStore(upgraded, "windowstate");
+    const reports: string[] = [];
+    expect(applyTitleBarStyle(store, linux, (message) => reports.push(message))).toBe("native");
+    expect(store.data[TITLE_BAR_MIGRATION_KEY]).toBeUndefined();
+    expect(reports).toHaveLength(1);
+  });
+
+  it("never throws when the flag cannot be written, and this run is still right", () => {
+    const store = fakeStore(upgraded, TITLE_BAR_MIGRATION_KEY);
+    const reports: string[] = [];
+    expect(applyTitleBarStyle(store, linux, (message) => reports.push(message))).toBe("custom");
+    expect(store.data["windowstate"]).toEqual({ width: 1280, height: 800 });
+    expect(reports).toHaveLength(1);
+  });
+
+  it("writes only the flag on macOS and Windows", () => {
+    const mac = fakeStore(upgraded);
+    expect(applyTitleBarStyle(mac, { ...linux, platform: "darwin" }, quiet)).toBe("native");
+    expect(mac.writes).toEqual([TITLE_BAR_MIGRATION_KEY]);
+    const win = fakeStore(upgraded);
+    expect(applyTitleBarStyle(win, { ...linux, platform: "win32" }, quiet)).toBe("native");
+    expect(win.writes).toEqual([TITLE_BAR_MIGRATION_KEY]);
+  });
+});
+
 const theiaMain = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-main/electron-main-application.js"), "utf8");
 const ours = readFileSync(fileURLToPath(new URL("./spexr-electron-main-application.ts", import.meta.url)), "utf8");
 
@@ -86,10 +164,8 @@ describe("Theia's title bar style, which the main application overrides", () => 
     expect(method("saveWindowState(electronWindow)")).toContain("frame: this.useNativeWindowFrame");
   });
 
-  it("is overridden through decideTitleBarStyle, dropping the stored frame and setting the flag", () => {
+  it("is overridden through applyTitleBarStyle on Theia's own store", () => {
     expect(ours).toMatch(/protected override getTitleBarStyle\(config: ElectronMainApplication\["config"\]\): TitleBarStyle/);
-    expect(ours).toContain("decideTitleBarStyle({");
-    expect(ours).toContain('this.electronStore.set("windowstate", rest);');
-    expect(ours).toContain("flags.set(TITLE_BAR_MIGRATION_KEY, true);");
+    expect(ours).toContain("return applyTitleBarStyle(this.electronStore as unknown as TitleBarStore, {");
   });
 });
