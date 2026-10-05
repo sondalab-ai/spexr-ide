@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
 import { probeLog, probeMain, probePage } from "./probes";
-import { QUICK_OPEN, captureStable, parkPointer, runCommand, waitForAck, type SceneResult } from "./scenes";
+import { QUICK_OPEN, captureStable, firstVisibleLine, parkPointer, runCommand, waitForAck, type SceneResult } from "./scenes";
 
 const OS: Os = process.platform === "darwin" ? "mac" : "linux";
 const THEMES = (process.env.VISUAL_THEMES ?? "dark,light")
@@ -97,6 +97,7 @@ for (const theme of THEMES) {
       const baseAck = await waitForAck(ackDir, "base");
       await page.locator(".monaco-editor .cursors-layer .cursor").first().waitFor({ state: "attached", timeout: 15_000 });
       await shoot("base", baseAck);
+      meta.baseFirstVisibleLine = await firstVisibleLine(page);
       meta.page = await probePage(page);
       meta.main = await probeMain(app);
       if (OS === "mac") meta.native = await nativeCapture(app, path.join(out, "native-base"));

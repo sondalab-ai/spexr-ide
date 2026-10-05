@@ -91,8 +91,10 @@ async function show(relative) {
 
 /**
  * Cursor at 41:18, line 45 selected, line 36 at the top: the demo's editor
- * state. Focusing an editor re-centres its cursor a moment later, so the
- * scroll is re-applied until line 36 stays first. Returns the first visible line.
+ * state. The scroll is re-applied until line 36 stays first for three checks
+ * in a row; if `revealRange` never gets there, `revealLine` and then
+ * `editorScroll` are tried. Returns the first visible line and how it got
+ * there, for the summary.
  */
 async function placeCursor(editor) {
   const selected = editor.document.lineAt(SELECTED_LINE - 1);
@@ -101,17 +103,39 @@ async function placeCursor(editor) {
     new vscode.Selection(SELECTED_LINE - 1, 0, SELECTED_LINE - 1, selected.text.length),
   ];
   const top = () => (editor.visibleRanges[0] ? editor.visibleRanges[0].start.line + 1 : 0);
-  let steady = 0;
-  for (let i = 0; i < 20 && steady < 3; i++) {
-    if (top() !== TOP_LINE) {
-      steady = 0;
-      editor.revealRange(new vscode.Range(TOP_LINE - 1, 0, TOP_LINE - 1, 0), vscode.TextEditorRevealType.AtTop);
-    } else {
-      steady++;
+  const trace = [];
+  const attempts = [
+    ["revealRange", () => editor.revealRange(new vscode.Range(TOP_LINE - 1, 0, TOP_LINE - 1, 0), vscode.TextEditorRevealType.AtTop)],
+    ["revealLine", () => tryCommand("revealLine", { lineNumber: TOP_LINE - 1, at: "top" })],
+    ["editorScroll", () => tryCommand("editorScroll", { to: top() > TOP_LINE ? "up" : "down", by: "line", value: Math.abs(top() - TOP_LINE) })],
+  ];
+  for (const [how, run] of attempts) {
+    let steady = 0;
+    for (let i = 0; i < 8 && steady < 3; i++) {
+      if (top() === TOP_LINE) {
+        steady++;
+      } else {
+        steady = 0;
+        const result = await run();
+        trace.push(`${how}: ${top()}${result === true || result === undefined ? "" : ` (${result})`}`);
+      }
+      await delay(250);
     }
-    await delay(250);
+    if (steady >= 3) return { topLine: top(), how, trace };
   }
-  return top();
+  return { topLine: top(), how: "none", trace };
+}
+
+/**
+ * Put the shell terminal in front of the bottom panel, as the demo has it,
+ * without taking focus. The agent terminal lives in the left panel and is
+ * left alone; returns every terminal's name, for the summary.
+ */
+function showShellTerminal() {
+  const names = vscode.window.terminals.map((t) => t.name);
+  const shell = vscode.window.terminals.find((t) => /^(bash|zsh|sh|fish)$/.test(t.name));
+  if (shell) shell.show(true);
+  return { names, shown: shell ? shell.name : null };
 }
 
 /** @param {vscode.ExtensionContext} context */
@@ -160,16 +184,19 @@ function activate(context) {
     // The Explorer goes in front of the agent terminal the left panel reveals
     // at startup; explorer.autoReveal then selects resolve.ts in the tree.
     const explorer = await tryCommand("workbench.view.explorer");
+    const terminal = showShellTerminal();
     // Focus back to the editor, then the cursor again: showing the Explorer can move it.
     const { editor } = await show("src/probe/resolve.ts");
-    const topLine = await placeCursor(editor);
+    const scroll = await placeCursor(editor);
 
     ack("base", {
       ok: true,
       cleared,
       explorer,
       language,
-      topLine,
+      terminal,
+      topLine: scroll.topLine,
+      scroll,
       file: path.basename(editor.document.fileName),
       selections: editor.selections.map((s) => [s.start.line + 1, s.start.character + 1, s.end.line + 1, s.end.character + 1]),
       visible: editor.visibleRanges.map((r) => [r.start.line + 1, r.end.line + 1]),

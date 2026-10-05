@@ -98,7 +98,15 @@ function renderSummary(outRoot) {
   md += row("document.hasFocus", (m) => m.page?.hasFocus);
   md += row("tree focused (focus-tree)", (m) => m.treeFocused);
   md += row("bottom panel opened by the scene", (m) => m.bottomPanelOpened);
-  md += row("editor top line (base)", (m) => m.scenes?.find((x) => x.scene === "base")?.ack?.topLine);
+  md += row("editor top line (base)", (m) => {
+    const scroll = m.scenes?.find((x) => x.scene === "base")?.ack?.scroll;
+    return `${m.baseFirstVisibleLine} in the gutter; API ${scroll?.topLine} via ${scroll?.how}`;
+  });
+  md += row("bottom panel terminals", (m) => {
+    const t = m.scenes?.find((x) => x.scene === "base")?.ack?.terminal;
+    return t ? `${t.names.join(", ")}; shown: ${t.shown}` : "";
+  });
+  md += row("infinite animations paused", (m) => (m.scenes ?? []).map((x) => `${x.scene} ${x.pausedLoops}`).join(", "));
   md += row("TypeScript symbols (base)", (m) => {
     const lang = m.scenes?.find((x) => x.scene === "base")?.ack?.language;
     return lang ? `${lang.symbols} after ${lang.waitedMs} ms` : "";

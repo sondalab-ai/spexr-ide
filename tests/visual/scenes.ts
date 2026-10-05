@@ -14,6 +14,8 @@ export interface SceneResult {
   readonly stable: boolean;
   /** The last comparison: changed pixels outside the volatile regions, and where. */
   readonly lastDiff: PixelDiff | null;
+  /** Infinite animations paused at t=0 before the capture. */
+  readonly pausedLoops: number;
   /** What the fixture extension reported, when the scene goes through it. */
   readonly ack?: unknown;
 }
@@ -166,6 +168,27 @@ async function diffShots(page: Page, a: Buffer, b: Buffer): Promise<PixelDiff> {
 }
 
 /**
+ * Pause every infinite animation at t=0, the treatment measure-demo.mjs gives
+ * the demo: a looping sweep or breath is then the same frame in every capture
+ * and in the reference. Run before each screenshot, because a scene can start
+ * new loops. Canvas loops driven by requestAnimationFrame are not touched.
+ */
+async function pauseInfiniteAnimations(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    let paused = 0;
+    for (const a of document.getAnimations()) {
+      if (a.effect?.getComputedTiming().endTime !== Infinity) continue;
+      if (a.playState !== "paused" || a.currentTime !== 0) {
+        a.pause();
+        a.currentTime = 0;
+        paused++;
+      }
+    }
+    return paused;
+  });
+}
+
+/**
  * Screenshot the window once two consecutive captures match outside the
  * volatile regions. Async work (semantic colours, decorations, a toast
  * sliding in) lands in its own time, and this waits for the pixels rather
@@ -176,22 +199,38 @@ export async function captureStable(
   page: Page,
   file: string,
   maxAttempts = 12,
-): Promise<{ attempts: number; stable: boolean; lastDiff: PixelDiff | null }> {
+): Promise<{ attempts: number; stable: boolean; lastDiff: PixelDiff | null; pausedLoops: number }> {
   await waitForFiniteAnimations(page);
+  let pausedLoops = await pauseInfiniteAnimations(page);
   let previous = await page.screenshot({ animations: "allow" });
   let lastDiff: PixelDiff | null = null;
   for (let attempt = 2; attempt <= maxAttempts; attempt++) {
     await page.waitForTimeout(400);
+    pausedLoops += await pauseInfiniteAnimations(page);
     const next = await page.screenshot({ animations: "allow" });
     lastDiff = next.equals(previous) ? { changed: 0, box: null } : await diffShots(page, previous, next);
     if (lastDiff.changed === 0) {
       fs.writeFileSync(file, next);
-      return { attempts: attempt, stable: true, lastDiff };
+      return { attempts: attempt, stable: true, lastDiff, pausedLoops };
     }
     previous = next;
   }
   fs.writeFileSync(file, previous);
-  return { attempts: maxAttempts, stable: false, lastDiff };
+  return { attempts: maxAttempts, stable: false, lastDiff, pausedLoops };
+}
+
+/** The first editor line whose number is fully in view, read from Monaco's gutter. */
+export async function firstVisibleLine(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const editor = [...document.querySelectorAll<HTMLElement>(".monaco-editor")].find((e) => e.getBoundingClientRect().width > 0 && e.querySelector(".view-lines"));
+    if (!editor) return null;
+    const top = editor.getBoundingClientRect().top;
+    const numbers = [...editor.querySelectorAll<HTMLElement>(".margin-view-overlays .line-numbers")]
+      .map((el) => ({ n: Number(el.textContent?.trim()), y: el.getBoundingClientRect().top - top }))
+      .filter((l) => Number.isFinite(l.n) && l.n > 0 && l.y >= 0)
+      .sort((a, b) => a.y - b.y);
+    return numbers[0]?.n ?? null;
+  });
 }
 
 /** `Meta+P` on macOS, `Control+P` elsewhere: Theia's Quick Open. */
