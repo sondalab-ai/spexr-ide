@@ -98,9 +98,11 @@ describe("the status dock", () => {
     const start = css.indexOf("\nbody:not(.theia-mod-offline) #theia-statusBar");
     expect(start).toBeGreaterThanOrEqual(0);
     const selector = css.slice(start, css.indexOf("{", start));
-    for (const id of ["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "problem-marker-status", "theia-notification-center"]) {
+    for (const id of ["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "problem-marker-status"]) {
       expect(selector, id).toContain(`#status-bar-${id}`);
     }
+    // The title bar's bell replaced the notification item (S5b-1).
+    expect(selector).not.toContain("#status-bar-theia-notification-center");
     expect(selector).toContain(`.${STATUS_DATA}`);
     expect(selector).toContain(":not(.has-background) > span:not(.codicon, .fa)");
     const data = css.slice(css.indexOf("{", start), css.indexOf("}", start));

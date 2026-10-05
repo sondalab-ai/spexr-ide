@@ -175,6 +175,17 @@ export interface FocusPlan {
 /** Backend service consumed by the Darkfactory wall. */
 export interface SpexrDarkfactoryService {
   listTiles(): Promise<AgentTile[]>;
+  /**
+   * The tiles of the newest completed scan, without scanning: no side
+   * effects, unlike {@link listTiles}, which rebuilds the index, prunes names
+   * and fires the scan event. Before the first scan it returns [] and starts
+   * the backend's own single-flight push (unless one is running), whose
+   * tiles arrive through {@link SpexrDarkfactoryClient.onTilesChanged}. For
+   * readers that only need the current picture (the title bar's agents
+   * badge), including a window the pushes do not reach: they go to the
+   * newest window only.
+   */
+  currentTiles(): Promise<AgentTile[]>;
   /** Claude config dirs a new session can be started under; one entry per discovered account. */
   listConfigDirs(): Promise<ClaudeConfigDir[]>;
   /** Two-level AI description (now + overview) from the local model; cached, empty fields if unavailable. */

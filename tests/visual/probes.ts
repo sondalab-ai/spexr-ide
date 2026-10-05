@@ -15,9 +15,16 @@ export interface PageProbes {
   readonly editorFont: string;
   /** Advance of one character in the editor, measured on a rendered line. */
   readonly monacoCharWidth: number | null;
-  /** Theia's in-page title bar: present only with a custom (frameless) window. */
+  /** The top panel, spexr's title bar: shown in either frame since S5b-1. */
   readonly topPanelVisible: boolean;
+  /** Theia's in-page window controls: present only with a custom (frameless) window. */
   readonly windowControls: boolean;
+  /**
+   * Where each part tagged `data-parity` is, in CSS px, keyed like the regions
+   * of reference/demo-regions.json (`title.cmd`, …), plus Theia's window
+   * controls as `title.controls`; one rect per element, in DOM order.
+   */
+  readonly parity: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
 }
 
 export interface MainProbes {
@@ -82,6 +89,18 @@ export async function probePage(page: Page): Promise<PageProbes> {
       monacoCharWidth = text.length ? Math.round((range.getBoundingClientRect().width / text.length) * 1000) / 1000 : null;
     }
     const top = document.getElementById("theia-top-panel");
+    const parity: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {};
+    const round = (n: number): number => Math.round(n * 100) / 100;
+    // Monaco's list rows carry data-parity too, as even/odd.
+    const tagged: Array<[string, Element]> = [...document.querySelectorAll<HTMLElement>("[data-parity]")]
+      .map((el): [string, Element] => [el.dataset.parity ?? "?", el])
+      .filter(([key]) => key !== "even" && key !== "odd");
+    const controls = document.getElementById("window-controls");
+    if (controls) tagged.push(["title.controls", controls]);
+    for (const [key, el] of tagged) {
+      const r = el.getBoundingClientRect();
+      (parity[key] ??= []).push({ x: round(r.x), y: round(r.y), w: round(r.width), h: round(r.height) });
+    }
     return {
       webgl2,
       xtermRenderer,
@@ -93,6 +112,7 @@ export async function probePage(page: Page): Promise<PageProbes> {
       monacoCharWidth,
       topPanelVisible: !!top && !top.classList.contains("lm-mod-hidden") && top.getBoundingClientRect().height > 0,
       windowControls: !!document.getElementById("window-controls"),
+      parity,
     };
   });
 }

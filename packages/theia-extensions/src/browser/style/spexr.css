@@ -1112,6 +1112,132 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   }
 }
 
+/* ══ THE TITLE BAR (kit 0.34, .sl-titlebar) ══════════════════════════════════
+   Lumen's title bar on every OS (owner, 2026-10-05): the kit's .sl-titlebar,
+   drawn by SpexrTitleBarWidget (titlebar/spexr-titlebar-widget.tsx) in
+   Theia's top panel, which SpexrElectronMenuContribution always shows. A
+   custom (frameless) window on Windows or Linux adds Theia's own window
+   controls (#window-controls) at the panel's end; a native window, macOS and
+   Linux's escape hatch, keeps the system's frame and menus above the bar.
+
+   - The panel is the bar's 44px on the canvas, with no rule under it:
+     Theia's height variable drives both its minimum and the controls.
+   - The drag region is the kit's: the bar drags, its buttons do not. Theia
+     makes every child of the panel no-drag, the widget's own node included;
+     the header inside it drags again, and the controls stay no-drag.
+   - The controls sit over the bar's end, so the right cluster gives up their
+     width as padding and the command field stays centred on the window. One
+     property sizes both. The cluster never shrinks below its content:
+     between the 1100px minimum window and about 1400px the kit's 1fr track
+     is narrower than the cluster and the controls, and an overflowing
+     cluster ran under the command field; the centre track gives way instead,
+     a little off centre.
+   - A popup from elsewhere that overlaps the bar (a menu, Quick Open, a
+     Monaco context view or hover, a dialog) is no-drag, or the bar's region,
+     hit-tested as a rectangle, would eat its clicks.
+   - The close button hovers in the kit's danger fill and its label, not
+     Theia's red literal; the others in the raised rung. All of them take
+     the keyboard, with the kit's ring drawn inside.
+   - The bell replaces Theia's notification item in the status bar. */
+:root {
+  --theia-private-menubar-height: 44px;
+}
+
+#theia-top-panel {
+  --spexr-window-control: 48px;
+  color: var(--slc-text);
+  background: var(--slc-canvas);
+  border-bottom: 0;
+}
+
+#theia-top-panel > .spexr-titlebar-host {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#theia-top-panel > .spexr-titlebar-host > .sl-titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.spexr-titlebar-host .sl-titlebar__r {
+  min-width: max-content;
+}
+
+#theia-top-panel:has(> #window-controls) .sl-titlebar__r {
+  padding-inline-end: calc(3 * var(--spexr-window-control));
+}
+
+.spexr-titlebar-host .sl-titlebar__cmd > .codicon {
+  flex: none;
+}
+
+/* The menu button keeps its room while the window's style is not known
+   yet, and shows nothing: it must not flash in a native window. */
+.spexr-titlebar-host .spexr-titlebar__menu--pending {
+  visibility: hidden;
+}
+
+/* The avatar is an icon button in the avatar's box: the kit's ring, halo
+   and hover, its initials in the mono. .sl-avatar comes later in the kit
+   and draws its box in --slc-border, a step dimmer than the icon buttons
+   beside it, so its edge at rest is pinned to theirs; hover and focus keep
+   the icon button's own edge, so the flush ring still joins the border. */
+.spexr-titlebar-host .spexr-titlebar__avatar {
+  font-family: var(--sl-font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.spexr-titlebar-host .spexr-titlebar__avatar:not(:hover, :focus-visible) {
+  border-color: var(--slc-edge-control);
+}
+
+:is(.lm-Menu, .quick-input-widget, .context-view, .monaco-hover, .theia-hover, .dialogOverlay) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+#window-controls {
+  grid-template-columns: repeat(3, var(--spexr-window-control));
+  color: var(--slc-text-secondary);
+  background: var(--slc-canvas);
+}
+
+#window-controls .control-button:hover {
+  color: var(--slc-text);
+  background: var(--slc-raised);
+}
+
+#window-controls #close-button:hover {
+  color: var(--slc-on-danger);
+  background: var(--slc-danger);
+}
+
+#window-controls #close-button:hover::before {
+  color: var(--slc-on-danger);
+}
+
+/* The controls take the keyboard (SpexrElectronMenuContribution gives them
+   a role, a name and a tab stop). Their ring is the kit's, drawn inside:
+   they sit flush against the window's edge, which would clip it outside. */
+#window-controls .control-button:focus-visible {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+/* Hovered, the close button is the danger fill, which the focus colour
+   barely parts from (1.09:1 on ink, 1.68:1 on paper): the ring takes the
+   fill's label instead, as the glyph does. */
+#window-controls #close-button:hover:focus-visible {
+  outline-color: var(--slc-on-danger);
+}
+
+#theia-statusBar #status-bar-theia-notification-center {
+  display: none;
+}
+
 /* ══ THE STATUS DOCK (kit 0.33, .sl-statusbar) ═════════════════════════════
    Theia's status bar takes the kit's status bar look on its own elements; it
    is not re-implemented. It sits on the canvas, in the frame's strip below
@@ -1195,11 +1321,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   flex-shrink: 0;
 }
 
-/* Data: the caret's place, the encoding, the line ends, the problem and
-   notification counts, and spexr's branch, project and resource meter. Not
-   on the offline bar or on an item with a ground of its own, whose label
-   stays theirs. */
-body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, #status-bar-theia-notification-center, .spexr-status--data):not(.has-background) > span:not(.codicon, .fa) {
+/* Data: the caret's place, the encoding, the line ends, the problem count,
+   and spexr's branch, project and resource meter. Not on the offline bar or
+   on an item with a ground of its own, whose label stays theirs. The
+   notification count left with its item: the title bar's bell has it. */
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, .spexr-status--data):not(.has-background) > span:not(.codicon, .fa) {
   font-family: var(--sl-font-mono);
   font-weight: 500;
   color: var(--slc-text);
@@ -1539,8 +1665,8 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
 }
 
 /* Visually hidden, still read: the toast announcer's two live regions
-   (messages/toast-announcer.ts). Never display: none, which would take a
-   region out of the accessibility tree. */
+   (messages/toast-announcer.ts) and the title bar crumb's full path. Never
+   display: none, which would take a region out of the accessibility tree. */
 .spexr-sr-only {
   position: absolute;
   width: 1px;

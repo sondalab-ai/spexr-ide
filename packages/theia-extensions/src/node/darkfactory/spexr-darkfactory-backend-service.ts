@@ -369,6 +369,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * as-is rather than re-parsed and re-classified with different inputs.
    */
   private readonly lastTiles = new Map<string, AgentTile>();
+  /**
+   * The newest completed scan, whole. `lastTiles` is refilled while a scan
+   * runs, so it is no snapshot; this is assigned once a scan is done, and
+   * only by a scan that started after the one it holds (see scanSeq).
+   */
+  private snapshot: AgentTile[] = [];
+  /** Numbers each listTiles as it starts; scans can overlap (a push, the wall's own refresh). */
+  private scanSeq = 0;
+  /** The number of the scan {@link snapshot} came from; 0 until one completes. */
+  private snapshotSeq = 0;
   /** Finds the transcripts a resume copied into a newer one (see {@link SessionLineage}). */
   private readonly lineage: SessionLineage;
   /** Groups sessions by project rather than by folder (see {@link ProjectGroups}). */
@@ -597,6 +607,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
+    const seq = ++this.scanSeq;
     const [allRefs, live, names, projectNames] = await Promise.all([
       this.listTranscripts(),
       this.cachedLiveDirs(),
@@ -673,8 +684,25 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // The names on disk get the same treatment, on a much longer clock. A failed
     // sweep must not fail the scan: the wall is what the user asked for.
     await this.pruneNames(allRefs).catch(() => {});
+    // An older scan that finishes after a newer one must not take the snapshot back.
+    if (seq > this.snapshotSeq) {
+      this.snapshot = tiles;
+      this.snapshotSeq = seq;
+    }
     this.scanned.fire(tiles);
     return tiles;
+  }
+
+  /**
+   * Before any scan has completed there is nothing to hand back, and nothing
+   * may be scanning: setClient only starts the 20s poll, and the folder
+   * watcher is inert on Linux. So the first read starts the shared
+   * single-flight push, unless one is already running, and its tiles reach
+   * the caller through onTilesChanged. The caller never scans.
+   */
+  async currentTiles(): Promise<AgentTile[]> {
+    if (this.snapshotSeq === 0 && !this.scanInFlight) void this.pushTiles();
+    return [...this.snapshot];
   }
 
   /**
