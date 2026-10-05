@@ -1,3 +1,5 @@
+import { ISLAND_GAP } from "./islands.js";
+
 /**
  * The part of Theia's `ApplicationShell` these helpers actually touch.
  *
@@ -59,7 +61,17 @@ export function expandLeftPanelWithMinWidth(shell: SidePanelShell): Promise<void
   return expandSidePanelWithMinWidth(shell, "left", MIN_LEFT_PANEL_WIDTH);
 }
 
-/** Expand the right side panel and enforce {@link MIN_RIGHT_PANEL_WIDTH}. */
+/**
+ * The right panel's floor as Theia measures it. Theia reads and writes the
+ * right panel's size from its split handle's offset (`parentWidth -
+ * handle.offsetLeft`), so the size includes the handle, which is the 6px
+ * island gap since the islands (SpexrApplicationShell): asking for
+ * {@link MIN_RIGHT_PANEL_WIDTH} alone left a 394px panel. The left panel's
+ * size is the handle's offset itself and needs no correction.
+ */
+export const MIN_RIGHT_PANEL_SIZE = MIN_RIGHT_PANEL_WIDTH + ISLAND_GAP;
+
+/** Expand the right side panel and enforce {@link MIN_RIGHT_PANEL_WIDTH} (as {@link MIN_RIGHT_PANEL_SIZE}). */
 export function expandRightPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
-  return expandSidePanelWithMinWidth(shell, "right", MIN_RIGHT_PANEL_WIDTH);
+  return expandSidePanelWithMinWidth(shell, "right", MIN_RIGHT_PANEL_SIZE);
 }
