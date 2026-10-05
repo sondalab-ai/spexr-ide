@@ -457,13 +457,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    theia-chrome-css.ts. Light and dark only: high contrast stays Theia's own
    HC theme, as its neutrals do.
 
-   THE SEAM. A tile alone is found by its ring, about 1.4:1 against its pane,
-   which is no state indicator (owner, 2026-10-04). Every selected or current
-   tile here carries the kit's seam: a 2px line, half the tile's height, at
-   its leading edge (a layer of its background, as on the kit's current nav
-   item). It is the accent (--slc-seam) where its container has focus, the
-   muted ink where it has not; both read at least 5.7:1 against the tile on
-   either theme. Containers set the ink; the tiles paint it. */
+   THE SEAM. A tile alone is found by its ring, 1.25-1.34:1 against spexr's
+   canvas, surface and raised rung since the kit's 0.35 hairlines (1.32-1.41
+   before), which is no state indicator (owner, 2026-10-04). Every selected
+   or current tile here carries the kit's seam: a 2px line, half the tile's
+   height, at its leading edge (a layer of its background, as on the kit's
+   current nav item). It is the accent (--slc-seam) where its container has
+   focus, the muted ink where it has not; both read at least 5.7:1 against
+   the tile on either theme. Containers set the ink; the tiles paint it. */
 :root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container) {
   --spexr-seam-ink: var(--slc-text-muted);
 }
@@ -875,7 +876,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   border-top-color: transparent;
 }
 
-/* The host keeps no shadow of its own: the recipe is the overlay below. */
+/* The host keeps no shadow of its own: the recipe is the overlay below.
+   That also drops the kit's drop below a lit pane (0.34, --slc-lit-drop),
+   which S5f wears inward on the bottom split panel's handle. */
 .spexr-island.sl-pane,
 .spexr-island.sl-pane[data-lit] {
   box-shadow: none;
@@ -950,8 +953,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   box-shadow: inset 0 0 0 1px var(--slc-border);
 }
 
-/* The lit pane's glow (the kit's 0 0 24px -6px, at --slc-glow's strength)
-   falls inward, along every edge. --slc-glow is 0 in high contrast. */
+/* The lit pane's glow (the kit's 0.33 glow, 0 0 24px -6px, at --slc-glow's
+   strength) falls inward, along every edge. --slc-glow is 0 in high
+   contrast. Kit 0.34 replaced that glow with a drop below the pane and a
+   wash and tint for the chrome inside it (--slc-lit-drop, --slc-lit-wash,
+   --slc-lit-tint); S5f takes them, and this glow goes then. */
 .spexr-island[data-lit]::after {
   box-shadow:
     inset 0 0 0 1px var(--slc-border-subtle),
@@ -1266,12 +1272,12 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
    - A toast floats: the raised rung, its own border in shade as the ring,
      the float recipe and the kit's large radius, newest last (nearest the
      corner), as in the kit's stack.
-   - Its severity is a tone tick on its top edge (the kit's 2.75rem measure,
-     with the tone's glow at --slc-glow's strength) and its glyph's 12% wash;
-     the words stay neutral. Theia knows info, warning, error and progress,
-     and marks them only with its glyph, so the tone is read off the glyph:
-     error is the kit's danger, and progress, which wears the info glyph,
-     the info tone. Theia has no success.
+   - Its severity is a tone tick on its top edge (the kit's 0.33 measure,
+     2.75rem, with the tone's glow at --slc-glow's strength) and its glyph's
+     12% wash; the words stay neutral. Theia knows info, warning, error and
+     progress, and marks them only with its glyph, so the tone is read off
+     the glyph: error is the kit's danger, and progress, which wears the
+     info glyph, the info tone. Theia has no success.
    - It arrives as the kit's toast does: a 6px rise and a fade on the arrival
      curve, transitions only, so reduced motion (which zeroes the tokens)
      shows it at once. Only a toast: the center's rows never animate.
@@ -1284,7 +1290,9 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
    The center is the same surface, its rows tiles in a list: a flat wash on
    hover, and the row that holds the focus a flat tile with the seam in the
    accent (only a focused row is a tile, so the center holds the focus).
-   Light and dark only: high contrast keeps Theia's own. */
+   Light and dark only: high contrast keeps Theia's own.
+   This is the kit's 0.33 toast. Kit 0.34 redrew it (no border, the cast,
+   a 1px tick to the middle, a 16% mark, a 32px dismiss); S5f takes that. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item {
   --spexr-tone: var(--slc-text-muted);
 }

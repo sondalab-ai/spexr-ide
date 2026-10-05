@@ -14,8 +14,9 @@ function rule(selector: string): string {
 }
 
 // Theia's chrome in Lumen (kit 0.31 / 0.32), light and dark only. A tile
-// alone is found at ~1.4:1 (its ring), so every selected or current tile
-// carries the seam: the accent where its container has focus, muted elsewhere.
+// alone is found at ~1.3:1 (its ring, since the kit's 0.35 hairlines), so
+// every selected or current tile carries the seam: the accent where its
+// container has focus, muted elsewhere.
 describe("the seam's ink", () => {
   it("is muted by default and the accent where the container has focus", () => {
     expect(rule(":is(.theia-Tree, .quick-input-widget, .scm-history-graph-container) {")).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
