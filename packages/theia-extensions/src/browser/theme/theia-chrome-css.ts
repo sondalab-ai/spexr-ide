@@ -9,8 +9,10 @@ import { ACCENT, ACCENT_FILL, fillStep, labelOn } from "./spexr-accent.js";
  * kit's UI face (Geist) instead of the platform font. High contrast gets the
  * face only: its colours stay Theia's own HC theme and the kit's yellow.
  * Pure, so it can be rendered outside Theia.
+ * `fills`: the labelled fill per theme, the registry's unless a test hands
+ * it another.
  */
-export function theiaChromeCss(spexrTheme: string): string {
+export function theiaChromeCss(spexrTheme: string, fills: { light: string; dark: string } = ACCENT_FILL): string {
   const font = `
 /* Theia's chrome in the kit's UI face (Geist). On body too: Theia's os.css sets
    this variable on body.mac / .windows / .linux, which would shadow :root. The
@@ -40,7 +42,7 @@ body {
   // A fill that carries a label: the registered fill and its hover, per
   // theme (the kit's --slc-accent-fill, which its products.css sets from the
   // same registry).
-  const fill          = ACCENT_FILL[theme];
+  const fill          = fills[theme];
   // Hovered by the kit's own step rule, so Theia's buttons and the kit's
   // primaries hover in the same indigo.
   const fillHover     = fillStep(fill, "hover");

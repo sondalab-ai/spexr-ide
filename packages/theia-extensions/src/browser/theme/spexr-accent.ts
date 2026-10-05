@@ -115,7 +115,10 @@ export const KIT_STATUS_FILL: Record<ThemeKind, { danger: string; warning: strin
  * The label on a fill, as a hex: the kit's one label rule (--_sl-on,
  * tokens.css), white below oklch L --_sl-pole-l and the dark pole, a grey at
  * L --_sl-pole-dark, above it. The kit's --slc-on-danger and the rest are
- * this rule on their tone.
+ * this rule on their tone. It approximates the kit's rule, which is a steep
+ * ramp (clamp(pole-dark, (pole-l - l) * 1000, 1)), not a step: in the 0.001
+ * of lightness just under --_sl-pole-l the kit paints a mid grey where this
+ * returns white.
  */
 export function labelOn(hex: string): string {
   return toOklch(hex)[0] < KIT_LABEL.poleL ? "#ffffff" : fromOklch([KIT_LABEL.poleDark, 0, 0]);

@@ -266,9 +266,10 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 /* The status bar's live dot (workbench.css, 0.34) breathes on its own, not
-   as an effect, and the kit stops it only in a data-sl-fx="off" region,
-   which power saving does not set: it is stopped here, as the kit stops it
-   there. It is the one status mark that stands still while saving, because
+   as an effect. The kit stops it in a data-sl-fx="off" region and pauses it
+   under data-sl-fx-still (which spexr sets only while motion is paused);
+   power saving sets neither on the root, so it is stopped here, as the kit
+   stops it in an opt-out region. It is the one status mark that stands still while saving, because
    the breath is decoration: the dot stays, and the words beside it say the
    state. No spexr status item wears the kit's dot today (the dock draws its
    own, still, THE STATUS DOCK); this keeps power saving in step with the kit. */
@@ -538,7 +539,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    outside (the quick pick has no room above its first row or below its last,
    the history list is full-width), so the ring is drawn inside, and there is
    no cast to clip. The lit line goes: on light it is white on the white tile.
-   The seam sits 1-2px inside, clear of the text. */
+   The seam sits 1-2px inside, clear of the text.
+   Kit 0.34's palette (580px, no border, the cast, translucent, a 52px head,
+   36px rows, its own seam) is S5f's. */
 :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
   border-radius: var(--sl-radius-sm);
   background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
@@ -720,7 +723,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    the editor's current tab at (1,3,0), and at (1,4,0) for an unfocused group,
    and sidepanel.css the bottom's at up to (1,5,0), so these outrank both.
    The tile's own shadow replaces Theia's 1px line on the bottom's current
-   tab (panelTitle.activeBorder). */
+   tab (panelTitle.activeBorder).
+   Kit 0.34's tile tab (r7, 13px at 500, hover to the secondary ink) is S5c's. */
 :root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-content {
   gap: 2px;
   padding-inline: 4px;
@@ -1019,7 +1023,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    focus, as on the kit's bar. A 36px tile centred in Theia's 48px column with
    a 20px glyph; Theia sizes each tab to its icon box, inline, so the box is
    the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
-   codicon does. The count badge moves inside the tile: the tab clips. */
+   codicon does. The count badge moves inside the tile: the tab clips.
+   Kit 0.34's bar (a 52px column, items r9 and 8px apart, the count badge
+   child) is S5c's. */
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides {
   --spexr-seam-ink: var(--slc-text-muted);
 }
@@ -1086,7 +1092,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* The tree, toward the kit's .sl-tree (workbench.css): the twisty in the
    muted ink, turning on the kit's motion tokens (no turn under reduced
    motion; never while it spins as busy). The guides are the theme layer's
-   (theia-chrome-css.ts); the selected row is S2's tile. */
+   (theia-chrome-css.ts); the selected row is S2's tile.
+   Kit 0.34's rows (13px, a 12px chevron, guides opt-in) are S5c's. */
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle {
   color: var(--slc-text-muted);
 }
@@ -1114,6 +1121,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    a hairline separates groups of facts; a live state (a job running, a
    download) carries a dot of the accent, and the words say the state; a
    fact that does not fit ends in an ellipsis.
+   - Kit 0.34's bar (28px, 20px pill items at r6, separators opt-in) is
+     S5c's; until then the dock keeps 0.33's look, as below.
    - Height. Theia's own 22px row (--theia-statusBar-height, which only the
      bar reads), not the kit's 28px: a deliberate deviation, for the owner to
      approve. Theia places its toasts at a literal 36px above the window's

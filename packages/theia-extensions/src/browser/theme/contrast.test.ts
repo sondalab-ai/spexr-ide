@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import kitAccents from "@sondalab/ui-kit/agent/accent-registry.json";
 import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_FILL_STEP, KIT_LABEL, KIT_SHADE_STEP, KIT_STATUS_FILL, accentText as registryAccentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
+import { theiaChromeCss } from "./theia-chrome-css.js";
+import { labelledFillColors } from "./spexr-color-contribution.js";
 
 type Rgb = [number, number, number];
 
@@ -116,6 +118,45 @@ describe.each(["light", "dark"] as const)("spexr's registered fill on %s", (them
   it("hovers and presses by the kit's step rule, as the kit's primaries do", () => {
     for (const state of ["hover", "press"] as const) {
       expect(toBytes(hex(fillStep(ACCENT_FILL[theme], state))), state).toEqual(toBytes(kitStep(hex(ACCENT_FILL[theme]), STEP[state])));
+    }
+  });
+});
+
+// A fill the registry may name instead: the owner's pending dark fill is the
+// accent itself, #8b96ff, where white reads 2.66:1. Theia's chrome and the
+// colour registry are handed it, and their labels are read back and measured
+// with this file's own contrast(), so a label hard-coded to white fails here.
+describe("a light fill handed to Theia's chrome and the colour registry", () => {
+  const fills = { light: ACCENT_FILL.light, dark: "#8b96ff" };
+  const css = theiaChromeCss("dark", fills);
+  const chrome = (name: string): string => new RegExp(`--theia-${name}:\\s*([^;]+?)\\s*!important;`).exec(css)![1]!;
+  const rest = hex(fills.dark);
+  const pressed = kitStep(rest, STEP.press);
+
+  it("labels the button, the badges and the menu selection in the dark pole, at 4.5:1 at rest, hovered and pressed", () => {
+    expect(chrome("button-background")).toBe(fills.dark);
+    const hovered = hex(chrome("button-hoverBackground"));
+    for (const name of ["button-foreground", "badge-foreground", "activityBarBadge-foreground", "menu-selectionForeground"]) {
+      const label = chrome(name);
+      expect(label, name).toBe("#0d0d0d");
+      for (const [state, ground] of [["rest", rest], ["hovered", hovered], ["pressed", pressed]] as const) {
+        expect(contrast(hex(label), ground), `${name} ${state}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it("registers the same label for the button and badge, at 4.5:1 at rest, hovered and pressed", () => {
+    const colors = labelledFillColors(fills);
+    expect(colors.background.dark).toBe(fills.dark);
+    expect(colors.foreground.dark).toBe("#0d0d0d");
+    for (const [state, ground] of [["rest", rest], ["hovered", hex(colors.hoverBackground.dark)], ["pressed", pressed]] as const) {
+      expect(contrast(hex(colors.foreground.dark), ground), state).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("is hard-coded white in neither source", () => {
+    for (const file of ["./theia-chrome-css.ts", "./spexr-color-contribution.ts"]) {
+      expect(readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8"), file).not.toMatch(/#fff(fff)?\b/i);
     }
   });
 });
