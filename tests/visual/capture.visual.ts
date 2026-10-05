@@ -22,8 +22,6 @@ const RUN_ROOT = process.env.RUNNER_TEMP
   ? path.join(process.env.RUNNER_TEMP, "spexr-visual")
   : path.join(__dirname, ".run");
 
-test.describe.configure({ mode: "serial" });
-
 for (const theme of THEMES) {
   test(`${OS} ${theme}`, async () => {
     test.setTimeout(15 * 60_000);
@@ -100,7 +98,7 @@ for (const theme of THEMES) {
       // palette: Quick Open with "probe" typed.
       await page.keyboard.press("Escape");
       await page.keyboard.press(QUICK_OPEN);
-      const input = page.locator(".quick-input-widget input");
+      const input = page.locator(".quick-input-widget input.input");
       await input.waitFor({ state: "visible", timeout: 15_000 });
       await page.keyboard.type("probe");
       await page

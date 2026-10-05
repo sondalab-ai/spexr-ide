@@ -31,8 +31,7 @@ export interface Launched {
  * Separate from tests/e2e/fixtures/app.ts on purpose: this launcher redirects
  * the Electron profile, Theia's config dir and HOME, puts the `claude` stub
  * first on PATH and loads the fixture extension, none of which the e2e suite
- * wants. Flags are passed as `--name=value` so yargs cannot take the
- * workspace path as an option's value.
+ * wants.
  */
 export async function launch({ run, swiftshader, logFile }: LaunchOptions): Promise<Launched> {
   const env: Record<string, string> = {};
@@ -54,12 +53,15 @@ export async function launch({ run, swiftshader, logFile }: LaunchOptions): Prom
     LANG: "en_US.UTF-8",
   });
 
+  // The workspace comes right after the entry point and every flag after it:
+  // yargs reads a bare flag followed by a path as that flag's value, which
+  // silently started the app with no workspace.
   const args = [
     ENTRY,
+    run.workspace,
     `--electronUserData=${run.userData}`,
     "--force-device-scale-factor=1",
     ...(swiftshader ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : []),
-    run.workspace,
   ];
   const app = await electron.launch({ cwd: DESKTOP_DIR, args, env, timeout: 120_000 });
 

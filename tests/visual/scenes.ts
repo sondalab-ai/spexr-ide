@@ -19,21 +19,42 @@ export interface SceneResult {
 /**
  * Run a command through the command palette, the way a user would.
  *
- * F1 opens the palette with the `>` prefix; the label is typed in full and
- * the run waits until the focused row is that command before pressing Enter,
+ * Focus is first handed back to the page body: a key pressed while focus sits
+ * in an iframe (a webview) never reaches Theia's keybindings. F1 opens the
+ * palette with the `>` prefix, and the other binding is tried if it does not.
+ * The run waits until the focused row is the command before pressing Enter,
  * so a slow filter cannot run a different one.
  */
 export async function runCommand(page: Page, label: string): Promise<void> {
   await page.keyboard.press("Escape");
-  await page.keyboard.press("F1");
-  const input = page.locator(".quick-input-widget input");
-  await input.waitFor({ state: "visible", timeout: 15_000 });
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+  const input = page.locator(".quick-input-widget input.input");
+  let opened = false;
+  for (const key of ["F1", process.platform === "darwin" ? "Meta+Shift+P" : "Control+Shift+P"]) {
+    await page.keyboard.press(key);
+    opened = await input
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (opened) break;
+  }
+  if (!opened) throw new Error(`the command palette did not open (focus: ${await describeFocus(page)})`);
   await input.fill(`>${label}`);
   await page
     .locator(".quick-input-list .monaco-list-row.focused", { hasText: label })
     .waitFor({ state: "visible", timeout: 15_000 });
   await page.keyboard.press("Enter");
   await page.locator(".quick-input-widget").waitFor({ state: "hidden", timeout: 15_000 });
+}
+
+/** The focused element as `tag#id.class`, for error messages. */
+export async function describeFocus(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const el = document.activeElement;
+    if (!el) return "none";
+    const cls = typeof el.className === "string" && el.className ? `.${el.className.trim().split(/\s+/).join(".")}` : "";
+    return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${cls}; document.hasFocus=${document.hasFocus()}`;
+  });
 }
 
 /** Wait for the fixture extension's acknowledgement file, and return what it wrote. */
