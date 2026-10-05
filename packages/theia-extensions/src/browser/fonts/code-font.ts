@@ -1,11 +1,13 @@
 /**
  * The code face: Geist Mono in the editor and the terminal (owner, 2026-10-05,
- * reversing JetBrains Mono from 2026-10-02). One stack for both, held here so
- * a test can keep `apps/desktop/package.json`'s preference defaults on it.
+ * reversing JetBrains Mono from 2026-10-02). The stack is the kit's own
+ * `--sl-font-mono`, family for family, so the editor, the terminal and every
+ * `--sl-font-code` surface fall back the same way; a test keeps the two from
+ * drifting, and another keeps `apps/desktop/package.json` on this one.
  * Geist Mono is bundled (the kit's fonts.css, inlined by the build); the rest
  * of the stack only serves a glyph the face lacks.
  */
-export const CODE_FONT_STACK = "'Geist Mono', 'SF Mono', Menlo, Consolas, monospace";
+export const CODE_FONT_STACK = "'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace";
 
 /**
  * The defaults `apps/desktop/package.json` gives the code face; a test holds
@@ -37,56 +39,88 @@ export const CODE_FONT_PREFERENCES = {
 /** The stack's first family, unquoted: the face start-up waits for. */
 export const CODE_FONT_FAMILY = firstFamily(CODE_FONT_STACK);
 
+/** The UI face (the kit's `--sl-font-sans`), which Theia's chrome is set in. */
+export const UI_FONT_FAMILY = "Geist";
+
 /**
- * What `document.fonts.load` is asked for: the regular and bold the editor and
- * terminal draw. The bundled face is one variable file, so either load brings
- * in both; asking for each keeps that true if the kit ever splits the file.
+ * What `document.fonts.load` is asked for. The code face in the regular and
+ * bold the editor and terminal draw, which Monaco and xterm measure once and
+ * keep. The UI face in the weights spexr's chrome sets, so tab bars and
+ * toolbars lay out in it from the first frame. Each bundled face is one
+ * variable file, so any one load brings in every weight; asking for each
+ * keeps that true if the kit ever splits a file.
  */
 export const CODE_FONT_LOADS: readonly string[] = [
   `400 13px "${CODE_FONT_FAMILY}"`,
   `700 13px "${CODE_FONT_FAMILY}"`,
 ];
+export const UI_FONT_LOADS: readonly string[] = ["400", "500", "600", "700"].map(
+  (weight) => `${weight} 13px "${UI_FONT_FAMILY}"`,
+);
+export const FONT_GATE_LOADS: readonly string[] = [...CODE_FONT_LOADS, ...UI_FONT_LOADS];
 
 /**
- * How long start-up waits for the face before it goes on without it. The face
- * is a data URL in the bundle, so it normally decodes in milliseconds; the cap
- * only bounds a broken load.
+ * How long start-up waits for the faces before it goes on without them. They
+ * are data URLs in the bundle, so they normally decode in milliseconds; the
+ * cap only bounds a broken load.
  */
 export const CODE_FONT_WAIT_MS = 1500;
 
 /**
+ * The visual capture's switch for the capped path, and nothing else's: with
+ * this localStorage key at "1", start-up does not wait at all and the faces
+ * are not asked for until the page receives `RELEASE_CODE_FONT_EVENT`. It
+ * lets CI open terminals first and have the faces arrive late. Unset, which
+ * is every real install, it changes nothing.
+ */
+export const HOLD_CODE_FONT_KEY = "spexr.visual.holdCodeFont";
+export const RELEASE_CODE_FONT_EVENT = "spexr:release-code-font";
+
+/**
  * How the wait ended:
- * - `loaded`: the face arrived within the cap and everything was re-measured;
- * - `timeout`: the cap came first; the re-measure runs when the face arrives;
- * - `missing`: no declared face matched (the stylesheet is not in the page);
- * - `failed`: the browser could not load the face.
+ * - `loaded`: the faces arrived within the cap and everything was re-measured;
+ * - `timeout`: the cap came first; the re-measure runs when the faces arrive;
+ * - `missing`: a requested face matched nothing (the stylesheet is not in the page);
+ * - `failed`: the browser could not load a face.
  */
 export type CodeFontOutcome = "loaded" | "timeout" | "missing" | "failed";
 
+/** The body marker: the outcome, or `late` once a capped wait's faces arrive. */
+export type CodeFontMark = CodeFontOutcome | "late";
+
 /** The first family of a CSS font stack, without its quotes. */
 export function firstFamily(stack: string): string {
-  return (stack.split(",")[0] ?? "").trim().replace(/^(['"])(.*)\1$/, "$2");
+  return families(stack)[0] ?? "";
+}
+
+/** Every family of a CSS font stack, in order, without quotes. */
+export function families(stack: string): string[] {
+  return stack
+    .split(",")
+    .map((family) => family.trim().replace(/^(['"])(.*)\1$/, "$2"))
+    .filter(Boolean);
 }
 
 /**
- * Wait for the code face, up to `cap`, and call `remeasure` once it is in.
+ * Wait for the faces, up to `cap`, and call `remeasure` once they are in.
  *
  * Arrived before the cap: `remeasure(false)` runs before this resolves, so
  * whatever start-up creates next measures the real face. The cap first: this
- * resolves `timeout` at once, and `remeasure(true)` runs when the face does
- * arrive. A load that matched no face, or failed, re-measures nothing: the
+ * resolves `timeout` at once, and `remeasure(true)` runs when the faces do
+ * arrive. A load that matched nothing, or failed, re-measures nothing: the
  * fallback face is what was measured, and it is what stays.
  *
- * `load` resolves to the faces it loaded, as `document.fonts.load` does; that
- * resolves to an empty list, not a rejection, when no face matches.
+ * `load` resolves to one list per requested face, as `document.fonts.load`
+ * gives them; that resolves to an empty list, not a rejection, when no
+ * declared face matches, so every list must be non-empty to count as loaded.
  */
 export async function settleCodeFont(
-  load: Promise<readonly unknown[]>,
+  load: Promise<readonly (readonly unknown[])[]>,
   cap: Promise<void>,
   remeasure: (late: boolean) => void,
 ): Promise<CodeFontOutcome> {
   const arrived = load.then(
-    (faces): CodeFontOutcome => (faces.length > 0 ? "loaded" : "missing"),
+    (lists): CodeFontOutcome => (lists.length > 0 && lists.every((faces) => faces.length > 0) ? "loaded" : "missing"),
     (): CodeFontOutcome => "failed",
   );
   const outcome = await Promise.race([arrived, cap.then((): CodeFontOutcome => "timeout")]);
@@ -97,6 +131,77 @@ export async function settleCodeFont(
     });
   }
   return outcome;
+}
+
+/** The two timer calls the gate uses, so a test can stand in for the window's. */
+export interface Timers {
+  setTimeout(handler: () => void, ms: number): unknown;
+  clearTimeout(id: unknown): void;
+}
+
+/** A promise that resolves after `ms`, and the call that stops its timer. */
+export function startCap(ms: number, timers: Timers): { readonly promise: Promise<void>; cancel(): void } {
+  let id: unknown;
+  const promise = new Promise<void>((resolve) => {
+    id = timers.setTimeout(resolve, ms);
+  });
+  return { promise, cancel: () => timers.clearTimeout(id) };
+}
+
+/** What the contribution's `onStart` hands the gate. */
+export interface CodeFontGate {
+  /** The faces' load, as `initialize` started it (one list per requested face). */
+  readonly load: Promise<readonly (readonly unknown[])[]>;
+  /** True under the visual capture's hold switch: no wait at all. */
+  readonly held: boolean;
+  readonly timers: Timers;
+  /** Re-measure Monaco and the terminals; `late` when the cap came first. */
+  remeasure(late: boolean): void;
+  /** Write the body marker. */
+  mark(value: CodeFontMark): void;
+}
+
+/**
+ * The contribution's `onStart`: wait for the faces up to `CODE_FONT_WAIT_MS`
+ * (0 when held), re-measure on arrival, and mark how it went. The cap's timer
+ * is stopped once the wait is over. A late arrival can be re-measured before
+ * the wait's own `timeout` is marked; `late` is the newer news, so it stays.
+ */
+export async function gateCodeFont(gate: CodeFontGate): Promise<CodeFontOutcome> {
+  const cap = startCap(gate.held ? 0 : CODE_FONT_WAIT_MS, gate.timers);
+  let late = false;
+  try {
+    const outcome = await settleCodeFont(gate.load, cap.promise, (isLate) => {
+      gate.remeasure(isLate);
+      if (isLate) {
+        late = true;
+        gate.mark("late");
+      }
+    });
+    if (!late) gate.mark(outcome);
+    return outcome;
+  } finally {
+    cap.cancel();
+  }
+}
+
+/** Whether the visual capture's hold switch is on; a storage that throws means off. */
+export function isHeld(storage: { getItem(key: string): string | null } | undefined): boolean {
+  try {
+    return storage?.getItem(HOLD_CODE_FONT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Starts `load` only once `target` receives the release event. */
+export function afterRelease<T>(
+  target: { addEventListener(type: string, listener: () => void, options: { once: boolean }): void },
+  load: () => Promise<T>,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    target.addEventListener(RELEASE_CODE_FONT_EVENT, () => load().then(resolve, reject), { once: true });
+  });
 }
 
 /** The slice of an xterm instance a re-measure touches. */
@@ -123,6 +228,7 @@ export function isXtermFontLike(term: unknown): term is XtermFontLike {
  * Glyphs live in a texture atlas that terminals with the same options share,
  * so one drawn in the fallback face survives the round trip: it is cleared.
  * A terminal not opened yet only has its option written; it measures on open.
+ * A hidden one (display: none) cannot measure at all: see remeasureTerminals.
  *
  * Returns false, touching nothing, when the terminal has no family set.
  */
@@ -133,4 +239,68 @@ export function remeasureXterm(term: XtermFontLike): boolean {
   term.options.fontFamily = family;
   term.clearTextureAtlas?.();
   return true;
+}
+
+/** What remeasureTerminals needs from one terminal widget. */
+export interface TerminalHandle {
+  /** The widget's xterm instance, read when it is re-measured. */
+  readonly xterm: unknown;
+  readonly isVisible: boolean;
+  /** Subscribes to the widget's visibility changes; `dispose` stops it. */
+  onDidChangeVisibility(listener: (visible: boolean) => void): { dispose(): void };
+  /** Has Theia refit the terminal's rows and columns to its box. */
+  refit(): void;
+}
+
+export interface RemeasureHooks {
+  /** Once per terminal actually re-measured: now, or when a hidden one is next shown. */
+  remeasured(): void;
+  /** What a terminal threw; the others go on regardless. */
+  failed(err: unknown): void;
+}
+
+/**
+ * Re-measure every terminal, each on its own, so one that throws does not
+ * stop the rest.
+ *
+ * A visible terminal is re-measured and refitted now. A hidden one is
+ * `display: none`, where xterm's measure reads zero and keeps the box it had,
+ * and showing it later refits to that same stale box; so it is left alone
+ * until it is next shown, then re-measured and refitted once. Returns how
+ * many were deferred that way.
+ */
+export function remeasureTerminals(terminals: Iterable<TerminalHandle>, hooks: RemeasureHooks): number {
+  const run = (terminal: TerminalHandle): void => {
+    try {
+      const xterm = terminal.xterm;
+      if (!isXtermFontLike(xterm) || !remeasureXterm(xterm)) return;
+      terminal.refit();
+      hooks.remeasured();
+    } catch (err) {
+      hooks.failed(err);
+    }
+  };
+  let deferred = 0;
+  for (const terminal of terminals) {
+    try {
+      if (!isXtermFontLike(terminal.xterm)) continue;
+      if (terminal.isVisible) {
+        run(terminal);
+        continue;
+      }
+      let done = false;
+      let subscription: { dispose(): void } | undefined;
+      subscription = terminal.onDidChangeVisibility((visible) => {
+        if (!visible || done) return;
+        done = true;
+        subscription?.dispose();
+        run(terminal);
+      });
+      if (done) subscription.dispose();
+      deferred++;
+    } catch (err) {
+      hooks.failed(err);
+    }
+  }
+  return deferred;
 }

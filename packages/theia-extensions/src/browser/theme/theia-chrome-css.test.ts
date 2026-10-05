@@ -163,6 +163,19 @@ describe("Theia's code font", () => {
   });
 });
 
+// Monaco's hovers, suggest details and parameter hints read
+// --monaco-monospace-font, which Monaco declares on .monaco-editor ("SF Mono",
+// Monaco, Menlo, …); the code face must win there as well as on :root.
+describe("Monaco's own code font", () => {
+  it.each(["light", "dark", "high-contrast"])("is the code face, inside the editor too, on %s", (theme) => {
+    const rule = [...theiaChromeCss(theme).replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) =>
+      m[2]!.includes("--monaco-monospace-font"),
+    );
+    expect(rule?.[1]!.split(",").map((s) => s.trim())).toEqual([":root", "body", ".monaco-editor"]);
+    expect(rule?.[2]).toContain("--monaco-monospace-font: var(--sl-font-code) !important;");
+  });
+});
+
 // --sl-font-code was JetBrains Mono first (owner, 2026-10-02); it is the
 // kit's mono since the owner reversed that on 2026-10-05.
 describe("the code face role", () => {

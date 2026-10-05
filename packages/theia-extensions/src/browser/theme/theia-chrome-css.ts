@@ -15,14 +15,25 @@ export function theiaChromeCss(spexrTheme: string): string {
   const font = `
 /* Theia's chrome in the kit's UI face (Geist). On body too: Theia's os.css sets
    the UI variable on body.mac / .windows / .linux, which would shadow :root.
-   Theia's code variable (its console, hovers, the workspace trust dialog and
-   spexr's own mono text) takes the code face, Geist Mono. Monaco and xterm
-   take theirs from editor.fontFamily and terminal.integrated.fontFamily
+   Theia's code variable (its console, its own hovers, the workspace trust
+   dialog and spexr's own mono text) takes the code face, Geist Mono. Monaco
+   and xterm draw code in editor.fontFamily and terminal.integrated.fontFamily
    (apps/desktop/package.json), the same face. */
 :root,
 body {
   --theia-ui-font-family: var(--sl-font-sans) !important;
   --theia-code-font-family: var(--sl-font-code) !important;
+}
+
+/* Monaco's hovers, suggest details and parameter hints set their code in
+   --monaco-monospace-font, which Monaco declares on .monaco-editor itself
+   ("SF Mono", Monaco, Menlo, …), so the variable on :root alone would lose
+   inside the editor. Important on both, so the code face wins in and out of
+   the editor (a hover rendered outside it still reads :root). */
+:root,
+body,
+.monaco-editor {
+  --monaco-monospace-font: var(--sl-font-code) !important;
 }`;
   if (spexrTheme === "high-contrast") return font;
 
