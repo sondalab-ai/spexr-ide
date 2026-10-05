@@ -718,13 +718,26 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    cast) in the primary ink with the seam 3px in from its leading edge: the
    accent in the focused group, the muted ink in another, so the active group
    is told apart (each area keys its seam ink: below, and THE WORKBENCH). A
-   28px tile centred in Theia's 35px strip, 2px apart; the strip pads its ends
+   28px tile centred in the 36px strip, 2px apart; the strip pads its ends
    so the first and last ring are not clipped. Theia's tab participant writes
    the editor's current tab at (1,3,0), and at (1,4,0) for an unfocused group,
    and sidepanel.css the bottom's at up to (1,5,0), so these outrank both.
    The tile's own shadow replaces Theia's 1px line on the bottom's current
    tab (panelTitle.activeBorder).
-   Kit 0.34's tile tab (r7, 13px at 500, hover to the secondary ink) is S5c's. */
+   Kit 0.34's tile tab (S5c): the editor's r7, 13px at 500, 12px in (Lumen's
+   11.2); the bottom island's r6 at 12.5px, 8px in (Lumen's 9.6), as Lumen
+   draws its panel tabs smaller. Lumen's panel tab is 26px; on the grid it is
+   the strip's 28, so it sits 4px in from the strip's edges as the editor's
+   does.
+   The strips (S5c): Theia's tab row is 36px (Lumen's 38) and the
+   breadcrumbs under the editor's 32px (Lumen's 30), so the code starts
+   where Lumen's does. Both are Theia's own variables, read by every
+   horizontal tab bar and toolbar (a side island's head sets its own 40px). */
+:root {
+  --theia-private-horizontal-tab-height: 36px;
+  --theia-breadcrumbs-height: 32px;
+}
+
 :root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-content {
   gap: 2px;
   padding-inline: 4px;
@@ -735,11 +748,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   line-height: 28px;
   margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
   margin-bottom: round(up, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  padding-inline: 12px;
   border: 0;
-  border-radius: var(--sl-radius-sm);
+  border-radius: 7px;
   background: transparent;
   box-shadow: none;
   color: var(--slc-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
   transition:
     color var(--sl-motion-fast) var(--sl-motion-ease),
     background-color var(--sl-motion-fast) var(--sl-motion-ease),
@@ -761,6 +777,19 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   background-position: 3px 50%;
   box-shadow: var(--slc-depth-flat);
   color: var(--slc-text);
+}
+
+/* The bottom island's tabs: Lumen's smaller panel tab. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab {
+  padding-inline: 8px;
+  border-radius: var(--sl-radius-sm);
+  font-size: 0.78125rem;
+}
+
+/* The breadcrumbs under the editor's tabs: Lumen's, 16px in at 12px. */
+#theia-main-content-panel .theia-breadcrumbs {
+  padding-inline: 16px;
+  font-size: var(--sl-text-xs);
 }
 
 /* In a group without focus the current tab's label steps down to the
@@ -832,17 +861,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      under the tab strip. The seam is lifted over the ring, and the ring over
      Theia's chrome; both stay under Theia's drop overlay (2000). */
 
-/* The frame: the shell paints the canvas, and the split panel's padding is
-   layout Lumino reads, so the gaps above and below the islands are real too.
-   Left and right need none: the activity bars sit on the frame there. Only
-   the block axis: Theia reads a side panel's size from its handle's inline
-   offset. */
+/* The frame (S5c): Lumen's 44 / 1fr / 28, the title bar, the islands and
+   the status bar, on the canvas. The islands touch both bars, as Lumen's do:
+   the gaps are between the islands and between an activity bar and its
+   island, never above or below them. The split panel takes no padding:
+   Theia reads a side panel's size from its handle's inline offset, and the
+   bottom panel's from the split's height. */
 #theia-app-shell.spexr-islands {
   background: var(--slc-canvas);
-}
-
-#theia-app-shell.spexr-islands > #theia-left-right-split-panel {
-  padding-block: var(--spexr-island-gap);
 }
 
 /* The sash in a gap. Lumino and Theia give a split handle's hover paint
@@ -877,7 +903,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 #theia-app-shell.spexr-islands > #theia-statusBar {
-  border-top-color: transparent;
+  border-top: 0;
 }
 
 /* The host keeps no shadow of its own: the recipe is the overlay below.
@@ -1020,12 +1046,52 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    glyphs on the frame in the muted ink, hover a flat wash, the current view a
    flat tile (lit and ringed, no cast) with the seam on its leading edge and
    its glyph in the accent. The seam is the muted ink unless the bar holds the
-   focus, as on the kit's bar. A 36px tile centred in Theia's 48px column with
-   a 20px glyph; Theia sizes each tab to its icon box, inline, so the box is
-   the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
-   codicon does. The count badge moves inside the tile: the tab clips.
-   Kit 0.34's bar (a 52px column, items r9 and 8px apart, the count badge
-   child) is S5c's. */
+   focus, as on the kit's bar. Kit 0.34's geometry (S5c): a 52px bar, 36px
+   tiles at r9 with a 20px glyph, 8px apart (Lumen's 44px pitch), the first
+   4px from the top; Theia sizes each tab to its icon box, inline, so the box
+   is the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
+   codicon does. The count badge is the kit's, inside the tile's corner: the
+   tab clips. The bar's foot (the settings and accounts menus) takes the same
+   tiles.
+   The column is the bar and the 6px island gap to its island, padded on the
+   island's side, so Theia's measure of a side (the handle's offset) holds
+   the gap (shell/workbench-geometry.ts). A collapsed side has no island,
+   and its column drops the gap. This is layout, so it holds in high
+   contrast too; Theia's own CSS reads --theia-private-sidebar-tab-width for
+   the bar and for a collapsed side's width. */
+:root {
+  --theia-private-sidebar-tab-width: 52px;
+}
+
+#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel) > .theia-app-sidebar-container {
+  min-width: calc(var(--theia-private-sidebar-tab-width) + var(--spexr-island-gap));
+  max-width: calc(var(--theia-private-sidebar-tab-width) + var(--spexr-island-gap));
+}
+
+#theia-app-shell.spexr-islands #theia-left-content-panel > .theia-app-sidebar-container {
+  padding-right: var(--spexr-island-gap);
+}
+
+#theia-app-shell.spexr-islands #theia-right-content-panel > .theia-app-sidebar-container {
+  padding-left: var(--spexr-island-gap);
+}
+
+#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel).theia-mod-collapsed > .theia-app-sidebar-container {
+  min-width: var(--theia-private-sidebar-tab-width);
+  max-width: var(--theia-private-sidebar-tab-width);
+  padding-inline: 0;
+}
+
+#theia-app-shell .lm-TabBar.theia-app-sides .lm-TabBar-content {
+  row-gap: 8px;
+  padding-top: 4px;
+}
+
+#theia-app-shell .theia-app-sidebar-container > .theia-sidebar-menu:last-child {
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides {
   --spexr-seam-ink: var(--slc-text-muted);
 }
@@ -1045,7 +1111,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   margin-inline: auto;
   padding: 0;
   border: 0;
-  border-radius: var(--sl-radius-md);
+  border-radius: 9px;
   color: var(--slc-text-muted);
   background-color: transparent;
   box-shadow: none;
@@ -1084,22 +1150,95 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar {
-  top: auto;
-  right: 1px;
-  bottom: 1px;
+  top: 4px;
+  right: 4px;
+  bottom: auto;
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 1rem;
+  padding: 0 4px;
+  font: 600 9px/1rem var(--sl-font-mono);
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--slc-canvas);
+}
+
+/* The bar's foot: Theia's settings and accounts menus, as the bar's tiles. */
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container .theia-sidebar-menu-item {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-inline: auto;
+  border-radius: 9px;
+  color: var(--slc-text-muted);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container .theia-sidebar-menu-item > i {
+  padding: 0;
+  color: inherit;
+  background-color: transparent;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container .theia-sidebar-menu-item:hover {
+  color: var(--slc-text);
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
 }
 
 /* The tree, toward the kit's .sl-tree (workbench.css): the twisty in the
    muted ink, turning on the kit's motion tokens (no turn under reduced
    motion; never while it spins as busy). The guides are the theme layer's
    (theia-chrome-css.ts); the selected row is S2's tile.
-   Kit 0.34's rows (13px, a 12px chevron, guides opt-in) are S5c's. */
+   Kit 0.34's geometry (S5c), as layout in every theme:
+   - A file tree's row (the Explorer, a file dialog) is the kit's 24px
+     (Lumen's 26): Theia sizes a row, and its indent guides, from
+     --theia-content-line-height, so the file tree re-binds it.
+   - Each level is indented 16px, Lumen's (the `workbench.tree.indent`
+     default, apps/desktop/package.json; spexr's patch to Theia's tree makes
+     every level that step, where Theia stepped from depth 1 to 2 by twice
+     it).
+   - The twisty is Theia's codicon chevron in a 16px box with 4px after it,
+     Lumen's twisty and gap. Theia keeps 22px for a leaf's missing twisty,
+     so the twisty takes 2 + 16 + 2 and a 2px margin: a leaf's icon lines up
+     with its folder siblings' (it sat 2px to their right). A margin, not
+     padding: a collapsed twisty turns about its box's centre, which must
+     stay the glyph's. */
+.theia-FileTree {
+  --theia-content-line-height: 24px;
+}
+
+.theia-Tree .theia-ExpansionToggle {
+  margin-inline-end: 2px;
+}
+
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle {
   color: var(--slc-text-muted);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle:not(.theia-mod-busy) {
   transition: transform var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+/* A side island's head (S5c), Lumen's pane head: 40px, its label the view's
+   name as written ("Explorer", not Theia's EXPLORER), 13px at 600 in the
+   primary ink, 16px in from the island's edge (15 inside its 1px ring).
+   Layout in every theme; the ink is light and dark only. */
+#theia-app-shell .theia-sidepanel-toolbar {
+  min-height: 40px;
+}
+
+#theia-app-shell .theia-sidepanel-toolbar .theia-sidepanel-title {
+  margin-left: 15px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-app-shell .theia-sidepanel-toolbar .theia-sidepanel-title {
+  color: var(--slc-text);
 }
 
 /* Forced colours drop the tile, the seam and the glyph's accent: the current
@@ -1258,32 +1397,25 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   display: none;
 }
 
-/* ══ THE STATUS DOCK (kit 0.33, .sl-statusbar) ═════════════════════════════
+/* ══ THE STATUS DOCK (kit 0.34, .sl-statusbar) ═════════════════════════════
    Theia's status bar takes the kit's status bar look on its own elements; it
    is not re-implemented. It sits on the canvas, in the frame's strip below
    the islands. Facts are the kit's sans at the small step, in the muted ink,
    as written (no case change); a fact read as data -- a branch, a project,
    a count, the caret's place, an encoding -- is the mono at the primary ink;
-   a hairline separates groups of facts; a live state (a job running, a
-   download) carries a dot of the accent, and the words say the state; a
-   fact that does not fit ends in an ellipsis.
-   - Kit 0.34's bar (28px, 20px pill items at r6, separators opt-in) is
-     S5c's; until then the dock keeps 0.33's look, as below.
-   - Height. Theia's own 22px row (--theia-statusBar-height, which only the
-     bar reads), not the kit's 28px: a deliberate deviation, for the owner to
-     approve. Theia places its toasts at a literal 36px above the window's
-     bottom, sized for that row. Each item is a pill inside it (19px under
-     the bar's transparent 1px top border), so a hover is the kit's flat
+   a live state (a job running, a download) carries a dot of the accent, and
+   the words say the state; a fact that does not fit ends in an ellipsis.
+   - Height (S5c). The kit's 28px bar (Lumen's 30 on the 4px grid), through
+     Theia's --theia-statusBar-height, which only the bar reads; the islands
+     sit right on it, with no rule between. Each item is the kit's 20px pill
+     at r6, centred, 4px from the bar's edges, so a hover is the kit's flat
      wash with the small radius.
-   - Width. Theia's spacing: 12px between two facts, as Theia had them (each
-     pill's 6px padding replaces Theia's gap and its text's margins); a
-     hairline adds 9px.
+   - Width (S5c). The kit's and Lumen's: 8px into each pill, pills side by
+     side, 4px into the bar at its start and 8 at its end. No hairlines
+     between groups: Lumen draws none, and the kit's are opt-in since 0.34.
+     The toasts sit 48px above the window's bottom (TOASTS, below).
    - Hooks. Theia's entries are reached by their ids; spexr's own entries
      carry STATUS_DATA / STATUS_LIVE as their className (shell/status-dock.ts).
-   - Groups. Every item is a group of its own except Theia's editor facts
-     (the caret, the indentation, the encoding, the line ends, the language),
-     which run together, and an entry Theia compacts onto its neighbour.
-     Entries sit by priority, so a group can fall between two editor facts.
    - Grounds. An item with a ground of its own (an error, a warning, a
      prominent fact, the offline bar) keeps it: its fill is its boundary and
      its label is the kit's label on it (theia-chrome-css.ts and
@@ -1293,9 +1425,21 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    ground: the :is(.left, .right) step, and .lm-Widget on the bar for an item
    with a ground, put the dock's rules ahead of every one of Theia's that
    sets the same property to something else (status-dock-style.test.ts). */
+:root {
+  --theia-statusBar-height: 28px;
+}
+
 #theia-statusBar {
   font-family: var(--sl-font-sans);
   font-size: var(--sl-text-xs);
+}
+
+#theia-statusBar.lm-Widget .area.left {
+  padding-left: 4px;
+}
+
+#theia-statusBar.lm-Widget .area.right {
+  padding-right: 8px;
 }
 
 /* Theia gives each area half the bar (flex: 1, a zero basis), so a busy
@@ -1312,8 +1456,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 #theia-statusBar .area:is(.left, .right) > .element {
   position: relative;
   flex: 0 1 auto;
-  margin-block: 1px;
-  padding-inline: 0.375rem;
+  align-self: center;
+  box-sizing: border-box;
+  height: 1.25rem;
+  margin-block: 0;
+  padding-inline: 0.5rem;
   border-radius: var(--sl-radius-sm);
   font-family: var(--sl-font-sans);
   font-size: var(--sl-text-xs);
@@ -1351,43 +1498,12 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
   color: var(--slc-text);
 }
 
-/* The hairline between groups: a border, so forced colours keep it, in the
-   middle of the 9px margin between two pills. */
-#theia-statusBar .area:is(.left, .right) > .element + .element {
-  margin-left: 0.5625rem;
-}
-
-#theia-statusBar .area:is(.left, .right) > .element + .element::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: -0.3125rem;
-  height: 0.75rem;
-  translate: 0 -50%;
-  border-left: 1px solid var(--slc-border);
-  pointer-events: none;
-}
-
-#theia-statusBar .area:is(.left, .right) > .element[id^="status-bar-editor-status-"] + .element[id^="status-bar-editor-status-"],
-#theia-statusBar .area:is(.left, .right) > .element.compact-left + .element,
+/* Theia pulls a left item with a ground, and an entry it compacts onto its
+   left neighbour, 6px left, into the gap it had between items; the pills
+   sit side by side instead. */
+#theia-statusBar.lm-Widget .area:is(.left, .right) > .element.has-background:not(#session-preference-status),
 #theia-statusBar .area:is(.left, .right) > .element + .element.compact-right {
   margin-left: 0;
-}
-
-#theia-statusBar .area:is(.left, .right) > .element[id^="status-bar-editor-status-"] + .element[id^="status-bar-editor-status-"]::before,
-#theia-statusBar .area:is(.left, .right) > .element.compact-left + .element::before,
-#theia-statusBar .area:is(.left, .right) > .element + .element.compact-right::before {
-  content: none;
-}
-
-/* Theia pulls a left item with a ground 6px left, into the gap it had
-   between items; the dock's own spacing replaces that gap. */
-#theia-statusBar.lm-Widget .area:is(.left, .right) > .element.has-background:not(#session-preference-status) {
-  margin-left: 0;
-}
-
-#theia-statusBar.lm-Widget .area:is(.left, .right) > .element + .element.has-background:not(#session-preference-status) {
-  margin-left: 0.5625rem;
 }
 
 /* A live state: the accent dot before its words (it is only the mark; the
@@ -1404,14 +1520,9 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
 }
 
 /* The offline bar is the kit's warning (theia-chrome-css.ts): the accent dot
-   read 1.13:1 on it and the hairlines 1.1. Both take the bar's label, the
-   hairlines at 60% of it (3.61:1 light, 3.71 dark). */
+   read 1.13:1 on it, so it takes the bar's label. */
 .theia-mod-offline #theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
   background-color: currentColor;
-}
-
-.theia-mod-offline #theia-statusBar .area:is(.left, .right) > .element + .element::before {
-  border-left-color: color-mix(in srgb, currentColor 60%, transparent);
 }
 
 @media (forced-colors: active) {
@@ -1447,7 +1558,16 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
    accent (only a focused row is a tile, so the center holds the focus).
    Light and dark only: high contrast keeps Theia's own.
    This is the kit's 0.33 toast. Kit 0.34 redrew it (no border, the cast,
-   a 1px tick to the middle, a 16% mark, a 32px dismiss); S5f takes that. */
+   a 1px tick to the middle, a 16% mark, a 32px dismiss); S5f takes that,
+   and anchors the toasts to the editor's right edge.
+   The stack sits 48px above the window's bottom (S5c), Lumen's toast offset:
+   20px clear of the 28px status bar, where Theia's literal 36px was sized
+   for its own 22px row. The notification center opens from the same
+   corner, so it moves with it. Layout, so in every theme. */
+body .theia-notifications-container {
+  bottom: 48px;
+}
+
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item {
   --spexr-tone: var(--slc-text-muted);
 }

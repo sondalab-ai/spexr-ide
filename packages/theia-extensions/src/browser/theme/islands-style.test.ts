@@ -39,14 +39,15 @@ describe("the kit's workbench.css", () => {
   });
 });
 
-// Lumen: the shell's areas are islands on the canvas with real gaps.
+// Lumen: the shell's areas are islands on the canvas with real gaps between
+// them, touching the title bar and the status bar (S5c).
 describe("the frame", () => {
-  it("is the canvas, with the gap above and below the islands as layout", () => {
+  it("is the canvas, the islands touching both bars", () => {
     expect(rule("#theia-app-shell.spexr-islands {")).toMatch(/background:\s*var\(--slc-canvas\)/);
-    const split = rule("#theia-app-shell.spexr-islands > #theia-left-right-split-panel");
-    expect(split).toMatch(/padding-block:\s*var\(--spexr-island-gap\)/);
-    // Theia reads a side panel's size from its handle's inline offset.
-    expect(split).not.toMatch(/padding(-inline|-left|-right)?:/);
+    // No padding on the split: Theia reads a side's size from its handle's
+    // inline offset and the bottom panel's from the split's height.
+    expect(css).not.toMatch(/#theia-left-right-split-panel\s*\{[^}]*padding/);
+    expect(css).not.toMatch(/padding-block:\s*var\(--spexr-island-gap\)/);
   });
 
   it("paints a hovered sash as a 2px line centred in the gap, not the whole gap", () => {
@@ -61,7 +62,8 @@ describe("the frame", () => {
   it("drops the rules the islands replace", () => {
     expect(rule("#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel) > .lm-Panel")).toMatch(/border:\s*0/);
     expect(rule("#theia-bottom-content-panel.spexr-island.sl-pane,")).toMatch(/border:\s*0/);
-    expect(rule("#theia-app-shell.spexr-islands > #theia-statusBar")).toMatch(/border-top-color:\s*transparent/);
+    // No rule above the status bar, and no transparent pixel either: the bar's 28px are its own.
+    expect(rule("#theia-app-shell.spexr-islands > #theia-statusBar")).toMatch(/border-top:\s*0;/);
   });
 });
 
@@ -148,7 +150,13 @@ describe("the bottom island's tabs", () => {
   it("are 28px tiles, the current one a flat tile with the seam that replaces Theia's accent line", () => {
     const tab = rule(`${TAB} {`);
     expect(tab).toMatch(/height:\s*28px/);
-    expect(tab).toMatch(/border-radius:\s*var\(--sl-radius-sm\)/);
+    // Lumen's panel tab: r6 at 12.5px, 8px in (the editor's is r7, 13px, 12px in).
+    const own = rule(`${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab {`);
+    expect(own).toMatch(/border-radius:\s*var\(--sl-radius-sm\)/);
+    expect(own).toMatch(/font-size:\s*0\.78125rem/);
+    expect(own).toMatch(/padding-inline:\s*8px/);
+    // It follows the shared tile rule, which it outweighs only by order.
+    expect(css.indexOf(`\n${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab {`)).toBeGreaterThan(css.indexOf(`\n${TAB} {`));
     expect(tab).toMatch(/color:\s*var\(--slc-text-muted\)/);
     const current = rule(`${TAB}.lm-mod-current,`);
     expect(current).toMatch(/background-color:\s*var\(--slc-tile\)/);
@@ -206,9 +214,10 @@ describe("a maximised island", () => {
 
 // The kit's .sl-activitybar on Theia's side tab bars.
 describe("the activity bars", () => {
-  it("draw borderless glyphs in the muted ink, a 36px tile with no edge at rest", () => {
+  it("draw borderless glyphs in the muted ink, a 36px tile at r9 with no edge at rest", () => {
     const tab = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab {`);
     expect(tab).toMatch(/width:\s*2\.25rem/);
+    expect(tab).toMatch(/border-radius:\s*9px/);
     expect(tab).toMatch(/border:\s*0/);
     expect(tab).toMatch(/color:\s*var\(--slc-text-muted\)/);
     expect(tab).toMatch(/background-color:\s*transparent/);
@@ -229,10 +238,18 @@ describe("the activity bars", () => {
     expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides:focus-within`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
   });
 
-  it("keep the count badge inside the tile, which clips", () => {
+  it("draw the kit's count badge 4px into the tile's corner, which clips: mono 9px, a 16px pill ringed in the canvas", () => {
     const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar`);
-    expect(badge).toMatch(/top:\s*auto/);
-    expect(badge).toMatch(/bottom:\s*1px/);
+    expect(badge).toMatch(/top:\s*4px/);
+    expect(badge).toMatch(/right:\s*4px/);
+    expect(badge).toMatch(/bottom:\s*auto/);
+    expect(badge).toMatch(/min-width:\s*20px/);
+    expect(badge).toMatch(/height:\s*1rem/);
+    expect(badge).toMatch(/font:\s*600 9px\/1rem var\(--sl-font-mono\)/);
+    expect(badge).toMatch(/border-radius:\s*8px/);
+    expect(badge).toMatch(/box-shadow:\s*0 0 0 2px var\(--slc-canvas\)/);
+    // The fill and its label stay Theia's badge variables, which the theme layer sets to the kit's fill.
+    expect(badge).not.toMatch(/background|(^|[^-])color:/);
   });
 });
 
