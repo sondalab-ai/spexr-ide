@@ -7,6 +7,8 @@ import {
   SpexrDarkfactoryBackendService,
   defaultOpencodeDataDir,
   forEachConcurrent,
+  type DarkfactoryDeps,
+  type NameStore,
 } from "./spexr-darkfactory-backend-service.js";
 import { stitchBoundedLines } from "./bounded-read.js";
 import { configDirs as discoverConfigDirs } from "./config-dirs.js";
@@ -549,6 +551,28 @@ function fakeWatch(
 
 const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {} };
 
+type NameStoreDeps = Required<Pick<DarkfactoryDeps, "sessionNameStore" | "projectNameStore">>;
+
+/**
+ * In-memory name stores for the fake-timer tests. The default stores read a
+ * file, which is real I/O `advanceTimersByTimeAsync` cannot drive: on a busy
+ * runner the first scan was still in flight at the next tick, the poll skips a
+ * tick while a scan runs, and the test counted one scan where it expected two.
+ */
+function memoryNameStores(): NameStoreDeps {
+  const store = (): NameStore => {
+    let saved = new Map<string, string>();
+    return {
+      load: () => Promise.resolve(new Map(saved)),
+      save: (names) => {
+        saved = new Map(names);
+        return Promise.resolve();
+      },
+    };
+  };
+  return { sessionNameStore: store(), projectNameStore: store() };
+}
+
 describe("wall watcher", () => {
   it("watches the opencode data dir alongside the Claude config dirs when opencode is installed", async () => {
     const calls: WatchCall[] = [];
@@ -723,6 +747,7 @@ describe("wall polling", () => {
         configDirs: [],
         detect: () => false,
         watchDir: fakeWatch([]),
+        ...memoryNameStores(),
         listTranscripts: async () => {
           scans++;
           return [];
@@ -750,6 +775,7 @@ describe("requestScans (the plant schedule's shared scan ticker)", () => {
       configDirs: [],
       detect: () => false,
       watchDir: fakeWatch([]),
+      ...memoryNameStores(),
       listTranscripts: async () => {
         c.scans++;
         await c.gate;
@@ -847,6 +873,7 @@ describe("setPollingPaused", () => {
         configDirs: [],
         detect: () => false,
         watchDir: fakeWatch([]),
+        ...memoryNameStores(),
         listTranscripts: async () => {
           scans++;
           return [];
