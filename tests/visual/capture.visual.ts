@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForReady, type Launched } from "./app";
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
+import { lateFontScene } from "./late-font";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
 import { probeLog, probeMain, probePage } from "./probes";
@@ -132,6 +133,13 @@ for (const theme of THEMES) {
       await page.waitForFunction(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"), undefined, { timeout: 15_000 }).catch(() => undefined);
       meta.treeFocused = await page.evaluate(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"));
       await shoot("focus-tree", treeAck);
+
+      // late-font: the code-font wait's capped path, end to end. Last, since it
+      // reloads the page; it fails the capture when that path misbehaves.
+      meta.lateFont = await lateFontScene(page, ackDir, meta.page?.terminalFont?.cell ?? null);
+      await sizeWindow(app);
+      await shoot("late-font");
+      if (meta.lateFont.problems.length > 0) throw new Error(`late font path: ${meta.lateFont.problems.join("; ")}`);
     } catch (err) {
       meta.error = String(err instanceof Error ? err.stack : err);
       if (launched) {

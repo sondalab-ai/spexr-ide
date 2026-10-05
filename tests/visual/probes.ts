@@ -18,6 +18,31 @@ export interface PageProbes {
   /** Theia's in-page title bar: present only with a custom (frameless) window. */
   readonly topPanelVisible: boolean;
   readonly windowControls: boolean;
+  /**
+   * spexr's font-readiness contribution: how the wait for Geist Mono ended
+   * (`loaded`, `timeout`, `late`, `missing`, `failed`) and how many terminals
+   * already existed when it re-measured (0: none had measured the fallback).
+   */
+  readonly codeFont: string | null;
+  readonly codeFontTerminals: string | null;
+  /** The bottom terminal's font as xterm resolves it now. */
+  readonly terminalFont: TerminalFontProbe | null;
+}
+
+export interface TerminalFontProbe {
+  /** The family and size xterm measures with (its measure element's inline style). */
+  readonly family: string;
+  readonly size: string;
+  /** The character box that element gives now, in CSS px: what a re-measure would read. */
+  readonly box: { readonly width: number; readonly height: number } | null;
+  /**
+   * The cell xterm draws with, from its helper textarea: sized to one cell at
+   * the cursor on every cursor move, so the shell's prompt leaves it current.
+   */
+  readonly cell: { readonly width: number; readonly height: number } | null;
+  /** The drawn screen's height in CSS px, and that over the cell height: whole when the cell is current. */
+  readonly screenHeight: number | null;
+  readonly rows: number | null;
 }
 
 export interface MainProbes {
@@ -81,6 +106,25 @@ export async function probePage(page: Page): Promise<PageProbes> {
       const text = line.textContent ?? "";
       monacoCharWidth = text.length ? Math.round((range.getBoundingClientRect().width / text.length) * 1000) / 1000 : null;
     }
+    let terminalFont: TerminalFontProbe | null = null;
+    if (term) {
+      const measure = term.querySelector<HTMLElement>(".xterm-char-measure-element");
+      const textarea = term.querySelector<HTMLElement>(".xterm-helper-textarea");
+      const screen = term.querySelector<HTMLElement>(".xterm-screen");
+      const len = measure?.textContent?.length ?? 0;
+      const px = (v: string | undefined): number | null => (v && Number.isFinite(parseFloat(v)) ? parseFloat(v) : null);
+      const cellW = px(textarea?.style.width);
+      const cellH = px(textarea?.style.height);
+      const screenHeight = px(screen?.style.height) ?? (screen ? screen.getBoundingClientRect().height : null);
+      terminalFont = {
+        family: measure?.style.fontFamily ?? "",
+        size: measure?.style.fontSize ?? "",
+        box: measure && len ? { width: Math.round((measure.offsetWidth / len) * 1000) / 1000, height: measure.offsetHeight } : null,
+        cell: cellW !== null && cellH !== null ? { width: cellW, height: cellH } : null,
+        screenHeight,
+        rows: screenHeight !== null && cellH ? Math.round((screenHeight / cellH) * 1000) / 1000 : null,
+      };
+    }
     const top = document.getElementById("theia-top-panel");
     return {
       webgl2,
@@ -93,6 +137,9 @@ export async function probePage(page: Page): Promise<PageProbes> {
       monacoCharWidth,
       topPanelVisible: !!top && !top.classList.contains("lm-mod-hidden") && top.getBoundingClientRect().height > 0,
       windowControls: !!document.getElementById("window-controls"),
+      codeFont: document.body.dataset.spexrCodeFont ?? null,
+      codeFontTerminals: document.body.dataset.spexrCodeFontTerminals ?? null,
+      terminalFont,
     };
   });
 }
