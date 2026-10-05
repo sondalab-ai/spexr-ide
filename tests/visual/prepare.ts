@@ -224,7 +224,10 @@ function writeClaudeStub(bin: string): void {
  * - the theme, and on Linux the native frame Theia would pick anyway, so it
  *   never asks to restart;
  * - no trust prompt, no fetch, no local model, no launch-profile scan;
- * - a solid caret, so two captures of the same scene are the same picture;
+ * - a solid caret and no occurrence highlights, so two captures of the same
+ *   scene are the same picture: the highlights arrive from the language
+ *   server on their own clock and leave when the editor loses focus, so one
+ *   run caught them and the next did not;
  * - no TypeScript diagnostics: the fixture imports a `./types` that the demo
  *   never shows, and a red squiggle there is not the demo's warning;
  * - the folders spexr writes into a workspace at runtime stay out of the tree.
@@ -237,6 +240,7 @@ function seedSettings(configDir: string, theme: Theme, os: Os): void {
     "spexr.search.aiDescriptions.enabled": false,
     "spexr.claude.launchProfilesDetected": true,
     "editor.cursorBlinking": "solid",
+    "editor.occurrencesHighlight": "off",
     "terminal.integrated.cursorBlinking": false,
     "typescript.validate.enable": false,
     "files.exclude": {
