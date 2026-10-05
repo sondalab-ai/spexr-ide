@@ -12,11 +12,13 @@ if (process.env.GITHUB_ACTIONS !== "true") {
 /**
  * The screenshot capture, started by run.mjs in screenshots.yml. Its own
  * config and file pattern, so tests/e2e never picks it up and this never
- * picks up the e2e specs.
+ * picks up the e2e specs. summary.ts writes the step summary afterwards,
+ * whether the capture passed or not.
  */
 export default defineConfig({
   testDir: ".",
   testMatch: "capture.visual.ts",
+  globalTeardown: "./summary.ts",
   timeout: 30 * 60_000,
   retries: 0,
   workers: 1,

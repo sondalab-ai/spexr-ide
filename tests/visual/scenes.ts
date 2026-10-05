@@ -16,8 +16,22 @@ export interface SceneResult {
   readonly lastDiff: PixelDiff | null;
   /** Infinite animations paused at t=0 before the capture. */
   readonly pausedLoops: number;
+  /** Main tab strips scrolled by script so the current tab comes first; the PNG is not untouched spexr there. */
+  readonly alignedStrips: number;
   /** What the fixture extension reported, when the scene goes through it. */
-  readonly ack?: unknown;
+  readonly ack?: SceneAck;
+}
+
+/** The fixture extension's acknowledgement of a scene (fixtures/plugins/parity-driver/extension.js). */
+export interface SceneAck {
+  readonly ok?: boolean;
+  /** base: how long the TypeScript extension took to answer with document symbols. */
+  readonly language?: { readonly symbols: number; readonly waitedMs: number };
+  /** base: every terminal's name, and the one put in front of the bottom panel. */
+  readonly terminal?: { readonly names: readonly string[]; readonly shown: string | null };
+  /** base: the first visible line, and which of revealRange / revealLine / editorScroll got it there. */
+  readonly scroll?: { readonly topLine: number; readonly how: string; readonly trace: readonly string[] };
+  readonly [key: string]: unknown;
 }
 
 /**
@@ -222,26 +236,26 @@ export async function captureStable(
   page: Page,
   file: string,
   maxAttempts = 12,
-): Promise<{ attempts: number; stable: boolean; lastDiff: PixelDiff | null; pausedLoops: number }> {
+): Promise<Omit<SceneResult, "scene" | "file" | "ack">> {
   await waitForFiniteAnimations(page);
   let pausedLoops = await pauseInfiniteAnimations(page);
-  await alignMainTabs(page);
+  let alignedStrips = await alignMainTabs(page);
   let previous = await page.screenshot({ animations: "allow" });
   let lastDiff: PixelDiff | null = null;
   for (let attempt = 2; attempt <= maxAttempts; attempt++) {
     await page.waitForTimeout(400);
     pausedLoops += await pauseInfiniteAnimations(page);
-    await alignMainTabs(page);
+    alignedStrips += await alignMainTabs(page);
     const next = await page.screenshot({ animations: "allow" });
     lastDiff = next.equals(previous) ? { changed: 0, box: null } : await diffShots(page, previous, next);
     if (lastDiff.changed === 0) {
       fs.writeFileSync(file, next);
-      return { attempts: attempt, stable: true, lastDiff, pausedLoops };
+      return { attempts: attempt, stable: true, lastDiff, pausedLoops, alignedStrips };
     }
     previous = next;
   }
   fs.writeFileSync(file, previous);
-  return { attempts: maxAttempts, stable: false, lastDiff, pausedLoops };
+  return { attempts: maxAttempts, stable: false, lastDiff, pausedLoops, alignedStrips };
 }
 
 /** The first editor line whose number is fully in view, read from Monaco's gutter. */

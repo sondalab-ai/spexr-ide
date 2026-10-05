@@ -2,6 +2,7 @@ import { test } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForReady, type Launched } from "./app";
+import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
 import { probeLog, probeMain, probePage } from "./probes";
@@ -13,7 +14,8 @@ import {
   placeBottomPanel,
   runCommand,
   waitForAck,
-  type SceneResult,
+  type Scene,
+  type SceneAck,
 } from "./scenes";
 
 const OS: Os = process.platform === "darwin" ? "mac" : "linux";
@@ -21,14 +23,14 @@ const THEMES = (process.env.VISUAL_THEMES ?? "dark,light")
   .split(",")
   .map((t) => t.trim())
   .filter((t): t is Theme => t === "dark" || t === "light");
-/** Artifacts: one folder per OS and theme, uploaded as `screenshots-<os>-<theme>`. */
-const OUT_ROOT = process.env.VISUAL_OUT ?? path.join(__dirname, "out");
-/**
- * Profiles, HOME and the fixture workspace. Outside the checkout, and not
- * under /tmp: spexr closes any workspace whose path contains `/tmp/`.
- */
 /** The demo's bottom panel starts at y 666 (reference/demo-regions.json, region "panel"). */
 const DEMO_PANEL_TOP = 666;
+/**
+ * Profiles, HOME and the fixture workspace: under the runner's temp
+ * directory, which is outside the checkout and not under /tmp (spexr closes
+ * any workspace whose path contains `/tmp/`). The `.run` fallback inside the
+ * checkout is only for a runner without RUNNER_TEMP.
+ */
 const RUN_ROOT = process.env.RUNNER_TEMP
   ? path.join(process.env.RUNNER_TEMP, "spexr-visual")
   : path.join(__dirname, ".run");
@@ -39,7 +41,7 @@ for (const theme of THEMES) {
     const out = path.join(OUT_ROOT, `${OS}-${theme}`);
     fs.rmSync(out, { recursive: true, force: true });
     fs.mkdirSync(out, { recursive: true });
-    const meta: Record<string, unknown> = { os: OS, theme, content: CONTENT, scenes: [] as SceneResult[] };
+    const meta: CaptureMeta = { os: OS, theme, content: CONTENT, provenance: provenance(), scenes: [] };
     const writeMeta = (): void => fs.writeFileSync(path.join(out, "meta.json"), JSON.stringify(meta, null, 2));
 
     let launched: Launched | undefined;
@@ -60,39 +62,28 @@ for (const theme of THEMES) {
         await closeApp(launched.app);
         launched = undefined;
       }
-      if (!launched) throw new Error("no launch");
+      if (!launched || !meta.run) throw new Error("no launch");
       const { app, page } = launched;
-      const ackDir = (meta.run as { ackDir: string }).ackDir;
+      const ackDir = meta.run.ackDir;
 
       await sizeWindow(app);
       meta.readiness = await waitForReady(page);
       // The window can be resized by the restored state while the shell starts.
       await sizeWindow(app);
 
-      meta.theme = await readTheme(page, theme);
-      if (!(meta.theme as { confirmed: boolean }).confirmed) {
-        // The settings route did not land: fall back to the key spexr reads
-        // first. The reload goes through the restored-layout path, a different
-        // state from a first launch, so the summary says which route it took.
-        await page.evaluate((t) => localStorage.setItem("spexr.theme", t), theme);
-        await page.reload();
-        meta.readinessAfterReload = await waitForReady(page);
-        meta.themeRoute = "localStorage spexr.theme + reload";
-        meta.theme = await readTheme(page, theme);
-      } else {
-        meta.themeRoute = "settings.json workbench.colorTheme";
-      }
+      // Set through workbench.colorTheme in the seeded settings; confirmed on
+      // both html[data-sl-theme] and Theia's body class, and reported if not.
+      meta.themeCheck = await readTheme(page, theme);
       writeMeta();
 
       await runCommand(page, "Parity: Probe environment");
-      meta.extensions = await waitForAck(ackDir, "probe");
+      meta.extensions = (await waitForAck(ackDir, "probe")) as CaptureMeta["extensions"];
 
-      const scenes = meta.scenes as SceneResult[];
-      const shoot = async (scene: SceneResult["scene"], ack?: unknown): Promise<void> => {
+      const shoot = async (scene: Scene, ack?: SceneAck): Promise<void> => {
         await parkPointer(page);
         const file = path.join(out, `${scene}.png`);
         const shot = await captureStable(page, file);
-        scenes.push({ scene, file: path.basename(file), ...shot, ack });
+        meta.scenes.push({ scene, file: path.basename(file), ...shot, ack });
         writeMeta();
       };
 
@@ -106,7 +97,7 @@ for (const theme of THEMES) {
 
       // base: resolve.ts in front, cursor 41:18, line 45 selected, line 36 at the top.
       await runCommand(page, "Parity: Base scene");
-      const baseAck = await waitForAck(ackDir, "base");
+      const baseAck = (await waitForAck(ackDir, "base")) as SceneAck;
       await page.locator(".monaco-editor .cursors-layer .cursor").first().waitFor({ state: "attached", timeout: 15_000 });
       await shoot("base", baseAck);
       meta.baseFirstVisibleLine = await firstVisibleLine(page);
@@ -131,13 +122,13 @@ for (const theme of THEMES) {
 
       // toast: an info message with an Undo action.
       await runCommand(page, "Parity: Toast scene");
-      const toastAck = await waitForAck(ackDir, "toast");
+      const toastAck = (await waitForAck(ackDir, "toast")) as SceneAck;
       await page.locator(".theia-notification-list-item", { hasText: "Probe saved" }).first().waitFor({ state: "visible", timeout: 15_000 });
       await shoot("toast", toastAck);
 
       // focus-tree: the Explorer focused, resolve.ts its selected row.
       await runCommand(page, "Parity: Focus tree scene");
-      const treeAck = await waitForAck(ackDir, "focusTree");
+      const treeAck = (await waitForAck(ackDir, "focusTree")) as SceneAck;
       await page.waitForFunction(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"), undefined, { timeout: 15_000 }).catch(() => undefined);
       meta.treeFocused = await page.evaluate(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"));
       await shoot("focus-tree", treeAck);
@@ -149,8 +140,7 @@ for (const theme of THEMES) {
       throw err;
     } finally {
       if (launched) meta.close = await closeApp(launched.app);
-      const logFile = path.join(out, (meta.backendLog as string | undefined) ?? "backend.log");
-      meta.log = probeLog(logFile, (meta.run as { configDir?: string } | undefined)?.configDir ?? "");
+      meta.log = probeLog(path.join(out, meta.backendLog ?? "backend.log"), meta.run?.configDir ?? "");
       writeMeta();
     }
   });

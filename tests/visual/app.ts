@@ -75,7 +75,8 @@ export async function launch({ run, swiftshader, logFile }: LaunchOptions): Prom
   log.write(`# launch ${new Date().toISOString()} swiftshader=${swiftshader}\n`);
   app.process().stdout?.on("data", (chunk: Buffer) => log.write(chunk));
   app.process().stderr?.on("data", (chunk: Buffer) => log.write(chunk));
-  app.process().on("exit", () => log.end());
+  // `close`, not `exit`: stdio can still deliver data after the process exits.
+  app.process().on("close", () => log.end());
 
   const page = await app.firstWindow({ timeout: 120_000 });
   return { app, page };
