@@ -26,9 +26,96 @@ export interface PageProbes {
   /**
    * Where each part tagged `data-parity` is, in CSS px, keyed like the regions
    * of reference/demo-regions.json (`title.cmd`, …), plus Theia's window
-   * controls as `title.controls`; one rect per element, in DOM order.
+   * controls as `title.controls` and the shell's own regions
+   * ({@link SHELL_REGIONS}); one rect per element, in DOM order.
    */
-  readonly parity: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
+  readonly parity: Record<string, Rects>;
+}
+
+type Rects = Array<{ x: number; y: number; w: number; h: number }>;
+
+/**
+ * One region of Theia's own DOM, keyed like reference/demo-regions.json where
+ * the demo has the same part (`tree.row`, `status.item`, …) and named for
+ * spexr where it has none (`activity.right`). Measured by selector, so Theia's
+ * DOM carries no attribute for the capture. `content` takes the element's
+ * padding off its rect: an activity column holds the bar and the gap to its
+ * island, and the demo's `activity` is the bar.
+ */
+export interface ShellRegion {
+  readonly key: string;
+  readonly selector: string;
+  readonly content?: boolean;
+}
+
+/** The shell's regions in the base scene (S5c's geometry). */
+export const SHELL_REGIONS: readonly ShellRegion[] = [
+  { key: "body", selector: "#theia-left-right-split-panel" },
+  { key: "activity", selector: "#theia-left-content-panel > .theia-app-sidebar-container", content: true },
+  { key: "activity.item", selector: "#theia-left-content-panel .lm-TabBar.theia-app-left .lm-TabBar-tab, #theia-left-content-panel .theia-sidebar-menu-item" },
+  { key: "activity.current", selector: "#theia-left-content-panel .lm-TabBar.theia-app-left .lm-TabBar-tab.lm-mod-current" },
+  { key: "activity.badge", selector: "#theia-left-content-panel .lm-TabBar.theia-app-left .theia-badge-decorator-sidebar" },
+  { key: "activity.right", selector: "#theia-right-content-panel > .theia-app-sidebar-container", content: true },
+  { key: "activity.right.item", selector: "#theia-right-content-panel .lm-TabBar.theia-app-right .lm-TabBar-tab, #theia-right-content-panel .theia-sidebar-menu-item" },
+  { key: "left", selector: '.spexr-island[data-island="left"]' },
+  { key: "left.head", selector: "#theia-left-content-panel .theia-sidepanel-toolbar" },
+  { key: "left.label", selector: "#theia-left-content-panel .theia-sidepanel-toolbar .theia-sidepanel-title" },
+  { key: "left.sub", selector: "#theia-left-content-panel .theia-view-container-part-header" },
+  { key: "tree.row", selector: "#files .theia-TreeNode" },
+  { key: "tree.sel", selector: "#files .theia-TreeNode.theia-mod-selected" },
+  { key: "tree.twisty", selector: "#files .theia-ExpansionToggle" },
+  { key: "tree.name", selector: "#files .theia-TreeNode .theia-TreeNodeSegmentGrow" },
+  { key: "main", selector: '.spexr-island[data-island="main"]' },
+  { key: "tabs", selector: "#theia-main-content-panel .theia-tabBar-tab-row" },
+  { key: "tab", selector: "#theia-main-content-panel .lm-TabBar-tab" },
+  { key: "tab.active", selector: "#theia-main-content-panel .lm-TabBar.theia-tabBar-active .lm-TabBar-tab.lm-mod-current" },
+  { key: "crumbs", selector: "#theia-main-content-panel .theia-tabBar-breadcrumb-row" },
+  { key: "crumbs.item", selector: "#theia-main-content-panel .theia-breadcrumb-item" },
+  { key: "code", selector: "#theia-main-content-panel .theia-editor" },
+  { key: "panel", selector: '.spexr-island[data-island="bottom"]' },
+  { key: "panel.tabs", selector: "#theia-bottom-content-panel .lm-TabBar" },
+  { key: "ptab", selector: "#theia-bottom-content-panel .lm-TabBar-tab" },
+  { key: "ptab.active", selector: "#theia-bottom-content-panel .lm-TabBar-tab.lm-mod-current" },
+  { key: "agent", selector: '.spexr-island[data-island="right"]' },
+  { key: "right.head", selector: "#theia-right-content-panel .theia-sidepanel-toolbar" },
+  { key: "status", selector: "#theia-statusBar" },
+  { key: "status.item", selector: "#theia-statusBar .area .element" },
+];
+
+/** The toast scene's regions: the toast and its stack. */
+export const TOAST_REGIONS: readonly ShellRegion[] = [
+  { key: "toasts", selector: ".theia-notifications-container.theia-notification-toasts" },
+  { key: "toast", selector: ".theia-notification-toasts .theia-notification-list-item" },
+];
+
+/**
+ * Each region's rects, in CSS px, in DOM order: only elements that render
+ * inside the window (Theia keeps hidden editors and tabs scrolled out of a
+ * strip in the DOM).
+ */
+export async function probeRegions(page: Page, regions: readonly ShellRegion[]): Promise<Record<string, Rects>> {
+  return page.evaluate((regions) => {
+    const out: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {};
+    const round = (n: number): number => Math.round(n * 100) / 100;
+    for (const { key, selector, content } of regions) {
+      for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0 || !el.checkVisibility()) continue;
+        if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) continue;
+        let { x, y, width: w, height: h } = r;
+        if (content) {
+          const cs = getComputedStyle(el);
+          const [l, t, rt, b] = [cs.paddingLeft, cs.paddingTop, cs.paddingRight, cs.paddingBottom].map(parseFloat) as [number, number, number, number];
+          x += l;
+          y += t;
+          w -= l + rt;
+          h -= t + b;
+        }
+        (out[key] ??= []).push({ x: round(x), y: round(y), w: round(w), h: round(h) });
+      }
+    }
+    return out;
+  }, regions);
 }
 
 export interface MainProbes {
@@ -99,6 +186,11 @@ export interface LogProbes {
 }
 
 export async function probePage(page: Page): Promise<PageProbes> {
+  const probes = await probeTagged(page);
+  return { ...probes, parity: { ...probes.parity, ...(await probeRegions(page, SHELL_REGIONS)) } };
+}
+
+async function probeTagged(page: Page): Promise<PageProbes> {
   return page.evaluate(() => {
     let webgl2 = false;
     try {

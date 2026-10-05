@@ -43,10 +43,12 @@ export interface CaptureMeta {
   extensions?: ProbeAck;
   /** True when the bottom panel started collapsed and the scene opened it. */
   bottomPanelOpened?: boolean;
-  /** The sash drag that puts the bottom panel at the demo's y; null when no sash was found. */
-  bottomPanel?: { before: number; after: number } | null;
+  /** Where the bottom panel's top edge is, as spexr laid it out (S5c: never dragged); null when it is not showing. */
+  bottomPanel?: { top: number } | null;
   baseFirstVisibleLine?: number | null;
   page?: PageProbes;
+  /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */
+  toastParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
   main?: MainProbes;
   native?: NativeShot[];
   treeFocused?: boolean;

@@ -5,13 +5,13 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { probeFullScreen, probeLights, probeLog, probeMain, probePage, probeZoom } from "./probes";
+import { TOAST_REGIONS, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   QUICK_OPEN,
   captureStable,
+  bottomPanelTop,
   firstVisibleLine,
   parkPointer,
-  placeBottomPanel,
   runCommand,
   waitForAck,
   type Scene,
@@ -23,8 +23,6 @@ const THEMES = (process.env.VISUAL_THEMES ?? "dark,light")
   .split(",")
   .map((t) => t.trim())
   .filter((t): t is Theme => t === "dark" || t === "light");
-/** The demo's bottom panel starts at y 666 (reference/demo-regions.json, region "panel"). */
-const DEMO_PANEL_TOP = 666;
 /**
  * Profiles, HOME and the fixture workspace: under the runner's temp
  * directory, which is outside the checkout and not under /tmp (spexr closes
@@ -93,7 +91,9 @@ for (const theme of THEMES) {
         return !panel || panel.classList.contains("lm-mod-hidden") || panel.getBoundingClientRect().height < 10;
       });
       if (meta.bottomPanelOpened) await runCommand(page, "View: Toggle Bottom Panel");
-      meta.bottomPanel = await placeBottomPanel(page, DEMO_PANEL_TOP);
+      // Where spexr's own first-launch sizes put it (S5c); never dragged, so
+      // the capture shows the sizing as a new user gets it.
+      meta.bottomPanel = await bottomPanelTop(page);
 
       // base: resolve.ts in front, cursor 41:18, line 45 selected, line 36 at the top.
       await runCommand(page, "Parity: Base scene");
@@ -130,6 +130,8 @@ for (const theme of THEMES) {
       const toastAck = (await waitForAck(ackDir, "toast")) as SceneAck;
       await page.locator(".theia-notification-list-item", { hasText: "Probe saved" }).first().waitFor({ state: "visible", timeout: 15_000 });
       await shoot("toast", toastAck);
+      meta.toastParity = await probeRegions(page, TOAST_REGIONS);
+      writeMeta();
 
       // focus-tree: the Explorer focused, resolve.ts its selected row.
       await runCommand(page, "Parity: Focus tree scene");
