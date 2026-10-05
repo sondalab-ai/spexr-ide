@@ -74,7 +74,9 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
   .theia-settings-container li.single-pref:focus,
   .theia-settings-container .theia-input[type="checkbox"]:focus,
   .theia-settings-container .theia-input[type="number"]:focus,
-  .theia-scm-input-message-container textarea:focus
+  .theia-scm-input-message-container textarea:focus,
+  .window-zoom-button:focus-visible,
+  .monaco-editor .review-widget .body .comment-form .review-thread-reply-button:focus
 ) {
   outline-width: var(--sl-focus-ring-width);
   outline-offset: calc(-1 * var(--sl-focus-ring-width));

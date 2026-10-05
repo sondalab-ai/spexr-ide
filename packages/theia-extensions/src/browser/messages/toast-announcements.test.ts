@@ -45,6 +45,14 @@ describe("toastAnnouncements", () => {
     expect(said([update([A]), update([]), update([A])])).toEqual([["A"], [], ["A"]]);
   });
 
+  // Opening the center or hiding the toasts takes them off screen: the shown
+  // set is reset, so a toast that is on screen again afterwards is new.
+  it("says a toast again when it reappears after the center opens or the toasts are hidden", () => {
+    const A = note("A", "info", "Pushed.");
+    expect(said([update([A]), update([A], "center"), update([A])])).toEqual([["A"], [], ["A"]]);
+    expect(said([update([A]), update([A], "hidden"), update([A])])).toEqual([["A"], [], ["A"]]);
+  });
+
   it("says only the toasts Theia shows, its last three", () => {
     expect(TOASTS_SHOWN).toBe(3);
     const toasts = ["a", "b", "c", "d"].map((id) => note(id, "info", id));

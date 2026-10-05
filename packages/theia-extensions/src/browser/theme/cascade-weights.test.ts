@@ -351,7 +351,7 @@ describe("the ring's width and offset", () => {
       .filter((pkg) => pkg !== "monaco-editor-core")
       .flatMap((pkg) => {
         try {
-          return cssFiles(join(theiaDir, pkg, "src", "browser"));
+          return cssFiles(join(theiaDir, pkg, "src"));
         } catch {
           return [];
         }
@@ -399,6 +399,8 @@ describe("the ring's width and offset", () => {
         ".monaco-text-button:focus",
         ".monaco-button-dropdown > .monaco-button:focus",
         ".theia-scm-input-message-container textarea:focus",
+        ".window-zoom-button:focus-visible",
+        ".monaco-editor .review-widget .body .comment-form .review-thread-reply-button:focus",
       ]),
     );
   });
