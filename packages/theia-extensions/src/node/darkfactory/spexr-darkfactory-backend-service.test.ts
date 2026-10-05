@@ -36,51 +36,56 @@ afterAll(async () => {
   await rm(namesDir, { recursive: true, force: true });
 });
 
-function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]> = {}) {
+type ServiceOptions = NonNullable<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]>;
+
+/** The one working Claude session svc() lists by default: s1 in /Users/x/src/proj. */
+const defaultTranscripts: NonNullable<ServiceOptions["listTranscripts"]> = () =>
+  Promise.resolve([
+    {
+      harness: claudeHarness,
+      ref: {
+        sessionId: "s1",
+        projectPath: "",
+        mtimeMs: NOW - 5_000,
+        loadEntries: async () => [
+          { type: "mode", mode: "normal" },
+          {
+            cwd: "/Users/x/src/proj",
+            type: "assistant",
+            message: {
+              role: "assistant",
+              content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }],
+            },
+          },
+          {
+            type: "user",
+            message: {
+              role: "user",
+              content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+            },
+          },
+        ],
+      },
+      claude: {
+        sessionId: "s1",
+        transcriptPath: "/PD/-proj/s1.jsonl",
+        configDir: "/Users/x/.claude",
+        mtimeMs: NOW - 5_000,
+        readLines: () =>
+          Promise.resolve([
+            `{"type":"mode","mode":"normal"}`,
+            `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
+            `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
+          ]),
+      },
+    },
+  ]);
+
+function svc(over: Partial<ServiceOptions> = {}) {
   return new SpexrDarkfactoryBackendService({
     now: () => NOW,
     resumableConfigDir: "/Users/x/.claude",
-    listTranscripts: () =>
-      Promise.resolve([
-        {
-          harness: claudeHarness,
-          ref: {
-            sessionId: "s1",
-            projectPath: "",
-            mtimeMs: NOW - 5_000,
-            loadEntries: async () => [
-              { type: "mode", mode: "normal" },
-              {
-                cwd: "/Users/x/src/proj",
-                type: "assistant",
-                message: {
-                  role: "assistant",
-                  content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }],
-                },
-              },
-              {
-                type: "user",
-                message: {
-                  role: "user",
-                  content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
-                },
-              },
-            ],
-          },
-          claude: {
-            sessionId: "s1",
-            transcriptPath: "/PD/-proj/s1.jsonl",
-            configDir: "/Users/x/.claude",
-            mtimeMs: NOW - 5_000,
-            readLines: () =>
-              Promise.resolve([
-                `{"type":"mode","mode":"normal"}`,
-                `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
-                `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
-              ]),
-          },
-        },
-      ]),
+    listTranscripts: defaultTranscripts,
     liveProjectDirs: () => Promise.resolve(new Set(["/Users/x/src/proj"])),
     ...over,
   });
@@ -99,6 +104,54 @@ describe("SpexrDarkfactoryBackendService v2", () => {
       tool: "Edit",
     });
     expect(typeof tiles[0]!.accentId).toBe("number");
+  });
+
+  it("currentTiles starts one push before the first scan, and no other while it runs", async () => {
+    let scans = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const pushed: AgentTile[][] = [];
+    const s = svc({
+      configDirs: [],
+      detect: () => false,
+      listTranscripts: async () => {
+        scans++;
+        await gate;
+        return defaultTranscripts();
+      },
+    });
+    s.setClient({ ...fakeClient, onTilesChanged: (tiles) => pushed.push(tiles) });
+    expect(await s.currentTiles()).toEqual([]);
+    expect(await s.currentTiles()).toEqual([]);
+    expect(scans).toBe(1);
+    release();
+    await vi.waitFor(() => expect(pushed).toHaveLength(1), { timeout: 1000 });
+    expect(pushed[0]).toHaveLength(1);
+    expect(await s.currentTiles()).toEqual(pushed[0]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(scans).toBe(1);
+    s.dispose();
+  });
+
+  it("currentTiles keeps the newest scan when an older one finishes last", async () => {
+    let calls = 0;
+    let releaseOlder!: () => void;
+    const olderGate = new Promise<void>((r) => (releaseOlder = r));
+    const s = svc({
+      listTranscripts: async () => {
+        calls++;
+        if (calls === 1) {
+          await olderGate;
+          return defaultTranscripts();
+        }
+        return [];
+      },
+    });
+    const older = s.listTiles();
+    expect(await s.listTiles()).toEqual([]);
+    releaseOlder();
+    expect(await older).toHaveLength(1);
+    expect(await s.currentTiles()).toEqual([]);
   });
 
   it("currentTiles hands back the last completed scan, without scanning or announcing one", async () => {
