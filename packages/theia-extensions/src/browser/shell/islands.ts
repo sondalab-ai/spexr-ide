@@ -102,3 +102,34 @@ export function markLit(islands: ReadonlyMap<IslandArea, IslandNode>, lit: Islan
     node.toggleAttribute(LIT_ATTR, area === lit);
   }
 }
+
+/**
+ * The part of Theia's `ApplicationShell` the lit tracking reads: its focus
+ * tracking, never the DOM's. Structural so it can be tested with a fake shell.
+ */
+export interface LitShell<W> {
+  readonly activeWidget: W | undefined;
+  readonly currentWidget: W | undefined;
+  getAreaFor(widget: W): string | undefined;
+  onDidChangeActiveWidget(listener: () => void): unknown;
+  onDidChangeCurrentWidget(listener: () => void): unknown;
+}
+
+/**
+ * The island to light: the area of the shell's active widget, or of its
+ * current (last focused) one while the focus is in a menu, a dialog or the
+ * quick pick. Nothing for a widget outside the four islands (the top panel, a
+ * secondary window) or before any widget has had the focus.
+ */
+export function litArea<W>(shell: LitShell<W>): IslandArea | undefined {
+  const widget = shell.activeWidget ?? shell.currentWidget;
+  return toIslandArea(widget === undefined ? undefined : shell.getAreaFor(widget));
+}
+
+/** Light the island {@link litArea} names now, and again whenever the shell's active or current widget changes. */
+export function trackLitIsland<W>(shell: LitShell<W>, islands: ReadonlyMap<IslandArea, IslandNode>): void {
+  const update = (): void => markLit(islands, litArea(shell));
+  shell.onDidChangeActiveWidget(update);
+  shell.onDidChangeCurrentWidget(update);
+  update();
+}
