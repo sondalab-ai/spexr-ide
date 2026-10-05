@@ -36,8 +36,8 @@ describe("Theia's notification", () => {
     expect(component).toContain("className={`theia-notification-icon ${codicon(icon)} ${icon}`}");
   });
 
-  // No live region and no role: there is nothing to double, and a toast is
-  // not announced. If Theia adds one, the dock should not add its own.
+  // No live region and no role: spexr's announcer (messages/toast-announcer.ts)
+  // adds the kit's two. If Theia adds its own, the announcer would double it.
   it("carries no role and no live region", () => {
     for (const file of ["notification-component.tsx", "notification-toasts-component.tsx", "notification-center-component.tsx"]) {
       expect(theia(`@theia/messages/src/browser/${file}`), file).not.toMatch(/aria-live|role=|ariaLive/);

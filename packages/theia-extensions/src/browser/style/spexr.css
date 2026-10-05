@@ -1261,9 +1261,10 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
      shows it at once. Only a toast: the center's rows never animate.
    - The expand and clear glyphs are the kit's small icon buttons, in the one
      control edge. Theia makes neither focusable; that is left as it is.
-   - ARIA: Theia gives a notification no role and no live region, so there is
-     none to double. Toasts are not announced; that gap is Theia's, and
-     closing it needs a region that exists before the toast does.
+   - ARIA: Theia gives a notification no role and no live region. The kit's
+     two regions, polite and alert, are spexr's (messages/toast-announcer.ts):
+     they exist from start, outside Theia's container, which is display: none
+     while closed, and each toast is said there once.
    The center is the same surface, its rows tiles in a list: a flat wash on
    hover, and the row that holds the focus a flat tile with the seam in the
    accent (only a focused row is a tile, so the center holds the focus).
@@ -1493,6 +1494,21 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
+}
+
+/* Visually hidden, still read: the toast announcer's two live regions
+   (messages/toast-announcer.ts). Never display: none, which would take a
+   region out of the accessibility tree. */
+.spexr-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every

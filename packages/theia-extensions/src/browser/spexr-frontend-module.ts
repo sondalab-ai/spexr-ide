@@ -60,6 +60,7 @@ import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribu
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
 import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-contribution.js";
+import { SpexrToastAnnouncer } from "./messages/toast-announcer.js";
 import { ClaudeTerminalManager } from "./agent/claude-terminal-manager.js";
 import { SpexrLaunchProfilesService } from "./agent/launch-profiles-service.js";
 import {
@@ -237,6 +238,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   // Theia's theme data outranks those registry defaults for the light error
   // and the remote status grounds; it gives them up (status-theme-data.ts).
   bind(FrontendApplicationContribution).to(SpexrStatusThemeDataContribution).inSingletonScope();
+  // Theia's toasts have no live region: two of the kit's, said once each.
+  bind(FrontendApplicationContribution).to(SpexrToastAnnouncer).inSingletonScope();
 
   bind(ClaudeTerminalManager).toSelf().inSingletonScope();
   bind(SpexrLaunchProfilesService).toSelf().inSingletonScope();
