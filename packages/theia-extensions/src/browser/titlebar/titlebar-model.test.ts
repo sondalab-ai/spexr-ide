@@ -4,9 +4,12 @@ import type { Keybinding } from "@theia/core/lib/common/keybinding";
 import { boundKeyCaps, type KeyBindings } from "../views/key-caps.js";
 import {
   agentsLabel,
+  avatarLabel,
   bellLabel,
   CRUMB_ELLIPSIS,
+  crumbLabel,
   fieldKeys,
+  initialMenuButton,
   initials,
   QUICK_OPEN_COMMAND,
   runningAgents,
@@ -80,10 +83,35 @@ describe("the agents badge", () => {
   });
 });
 
+describe("crumbLabel", () => {
+  it("names every folder the visible crumb folds away", () => {
+    const ws = "/home/me/probe-engine";
+    expect(crumbLabel([ws], `${ws}/a/b/c/d.ts`)).toBe("probe-engine / a / b / c / d.ts");
+    expect(crumbLabel([ws])).toBe("probe-engine");
+    expect(crumbLabel([])).toBe("");
+  });
+});
+
 describe("bellLabel", () => {
-  it("says the unread count in the name, which forced colours keep when they drop the dot", () => {
+  // Theia's count is everything in the centre, read or not, so the name says "unread" nowhere.
+  it("says the count in the name, which forced colours keep when they drop the dot", () => {
     expect(bellLabel(0)).toBe("Notifications");
-    expect(bellLabel(3)).toBe("Notifications, 3 unread");
+    expect(bellLabel(3)).toBe("Notifications, 3");
+    expect(bellLabel(3)).not.toMatch(/unread/);
+  });
+});
+
+describe("avatarLabel", () => {
+  it("starts with the initials it shows (label in name)", () => {
+    expect(avatarLabel("MB")).toBe("MB, Manage");
+    expect(avatarLabel(undefined)).toBe("Manage");
+  });
+});
+
+describe("initialMenuButton", () => {
+  it("is off on macOS and undecided elsewhere until the window's style is known", () => {
+    expect(initialMenuButton(true)).toBe(false);
+    expect(initialMenuButton(false)).toBeUndefined();
   });
 });
 

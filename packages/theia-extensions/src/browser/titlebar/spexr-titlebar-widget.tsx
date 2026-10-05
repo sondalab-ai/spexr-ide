@@ -19,17 +19,24 @@ import { SpexrDarkfactoryServiceProxy, type SpexrDarkfactoryService } from "../d
 import { SpexrDarkfactoryClientDispatcher } from "../darkfactory/darkfactory-client.js";
 import { SpexrGitServiceProxySymbol } from "../scm/git-service-proxy.js";
 import type { SpexrGitService } from "../../common/git-protocol.js";
+import type { AgentTile } from "../../common/darkfactory-protocol.js";
 import { boundKeyCaps, keyPlatform } from "../views/key-caps.js";
 import {
   agentsLabel,
+  avatarLabel,
   bellLabel,
+  crumbLabel,
   fieldKeys,
+  initialMenuButton,
   initials,
   QUICK_OPEN_COMMAND,
-  runningAgents,
   titleCrumb,
   type FieldKeys,
 } from "./titlebar-model.js";
+import { AgentsCount, type AgentsView } from "./agents-count.js";
+
+/** Theia's right side panel, which the split button discloses. */
+const RIGHT_PANEL_ID = "theia-right-content-panel";
 
 /**
  * spexr's title bar: the kit's `.sl-titlebar` (workbench.css, 0.34) in
@@ -42,9 +49,10 @@ import {
  * - `__mark` and `__dot`: "spexr".
  * - `__crumb`: the workspace root, the active editor's folders, its file.
  * - `__cmd`: runs Quick Open, its keys read from the keybinding registry.
- * - `__r`: Dark Factory's running agents (hidden at 0), the right panel's
- *   toggle, the notification centre's bell (dotted while it holds any), and
- *   the git user's initials, which open Theia's Manage menu.
+ * - `__r`: Dark Factory's running agents (hidden at 0, held as the wall
+ *   holds them, see AgentsCount), the right panel's disclosure, the
+ *   notification centre's bell (dotted while it holds any), and the git
+ *   user's initials, which open Theia's Manage menu.
  *
  * Every interactive part is a `<button>`, which the kit takes out of the
  * window's drag region. `data-parity` names each part after its region in
@@ -66,16 +74,18 @@ export class SpexrTitleBarWidget extends ReactWidget {
   @inject(SpexrDarkfactoryClientDispatcher) private readonly darkfactoryClient!: SpexrDarkfactoryClientDispatcher;
   @inject(SpexrGitServiceProxySymbol) private readonly git!: SpexrGitService;
 
-  /** Shown until the window turns out to have a native menu (macOS, or Linux's native escape hatch). */
-  private menuButton = !isOSX;
+  /** The compact menu button: undefined (room kept, nothing drawn) until the window's style is known. */
+  private menuButton = initialMenuButton(isOSX);
   private crumb: string[] = [];
+  private crumbName = "";
   private keys: FieldKeys | undefined;
+  private readonly agentsCount = new AgentsCount();
   private agents = 0;
+  private holdTimer: ReturnType<typeof setTimeout> | undefined;
   private notificationCount = 0;
   private centerOpen = false;
   private rightOpen = false;
   private userName: string | undefined;
-  private tilesInFlight = false;
 
   constructor() {
     super();
@@ -102,13 +112,14 @@ export class SpexrTitleBarWidget extends ReactWidget {
       this.update();
     }));
 
-    this.toDispose.push(this.darkfactoryClient.onTilesChanged$((tiles) => this.setAgents(runningAgents(tiles))));
+    this.toDispose.push(this.darkfactoryClient.onTilesChanged$((tiles) => this.showAgents(this.agentsCount.push(tiles, Date.now()))));
     void this.readTiles();
     // Dark Factory pushes reach only the newest window, so every other one
-    // re-reads when it comes to the front.
+    // reads the last scan when it comes to the front.
     const onFocus = (): void => void this.readTiles();
     window.addEventListener("focus", onFocus);
     this.toDispose.push(Disposable.create(() => window.removeEventListener("focus", onFocus)));
+    this.toDispose.push(Disposable.create(() => clearTimeout(this.holdTimer)));
 
     this.watchRightPanel();
     this.update();
@@ -132,6 +143,24 @@ export class SpexrTitleBarWidget extends ReactWidget {
     this.update();
   }
 
+  /** Whether the bar shows the compact menu button now. */
+  hasMenuButton(): boolean {
+    return this.menuButton === true;
+  }
+
+  /**
+   * Open the application menus from the compact menu button, for the keyboard
+   * (SpexrElectronMenuContribution's command). False when the bar has no
+   * button: macOS, a native window, or before the window's style is known.
+   */
+  openApplicationMenu(): boolean {
+    const button = this.node.querySelector<HTMLElement>(".sl-titlebar__menu");
+    if (this.menuButton !== true || !button) return false;
+    button.focus();
+    this.openMenu(MAIN_MENU_BAR, button);
+    return true;
+  }
+
   private readKeys(): void {
     this.keys = fieldKeys(boundKeyCaps(this.keybindings, QUICK_OPEN_COMMAND, keyPlatform(isOSX, isWindows)));
     this.update();
@@ -141,6 +170,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
     const roots = this.workspace.tryGetRoots().map((r) => r.resource.path.toString());
     const file = this.editors.currentEditor?.editor.uri.path.toString();
     this.crumb = titleCrumb(roots, file);
+    this.crumbName = crumbLabel(roots, file);
     this.update();
   }
 
@@ -154,29 +184,40 @@ export class SpexrTitleBarWidget extends ReactWidget {
     this.update();
   }
 
-  /** listTiles re-scans the transcripts, so a focus storm runs it once at a time. */
+  /**
+   * Read the backend's last scan (currentTiles: no scan, no side effects),
+   * one read at a time; a push that lands meanwhile wins (AgentsCount).
+   */
   private async readTiles(): Promise<void> {
-    if (this.tilesInFlight) return;
-    this.tilesInFlight = true;
+    const token = this.agentsCount.startRead();
+    if (token === undefined) return;
+    let tiles: AgentTile[] | undefined;
     try {
-      this.setAgents(runningAgents(await this.darkfactory.listTiles()));
+      tiles = await this.darkfactory.currentTiles();
     } catch {
-      // The backend is not up yet, or the scan failed: the next push or focus reads again.
-    } finally {
-      this.tilesInFlight = false;
+      // The backend is not up yet: the next push or focus reads again.
     }
+    this.showAgents(this.agentsCount.finishRead(token, tiles, Date.now()));
   }
 
-  private setAgents(count: number): void {
-    if (this.agents === count) return;
-    this.agents = count;
+  /** Show a count, and look again when the earliest hold runs out, with no new scan. */
+  private showAgents(view: AgentsView | undefined): void {
+    if (!view) return;
+    clearTimeout(this.holdTimer);
+    this.holdTimer = undefined;
+    if (view.nextExpiry !== undefined) {
+      this.holdTimer = setTimeout(() => this.showAgents(this.agentsCount.expire(Date.now())), Math.max(0, view.nextExpiry - Date.now()));
+    }
+    if (this.agents === view.count) return;
+    this.agents = view.count;
     this.update();
   }
 
   /**
-   * The right panel's toggle is pressed while the panel shows. Theia sends no
-   * event for a side panel collapsing; its handler hides the dock panel, on
-   * every path (the toggle, a drag to zero, Dark Factory's sidebar policy).
+   * The right panel's disclosure is expanded while the panel shows. Theia
+   * sends no event for a side panel collapsing; its handler hides the dock
+   * panel, on every path (the toggle, a drag to zero, Dark Factory's sidebar
+   * policy).
    */
   private watchRightPanel(): void {
     const dock = this.shell.rightPanelHandler.dockPanel;
@@ -214,14 +255,13 @@ export class SpexrTitleBarWidget extends ReactWidget {
     const agents = agentsLabel(this.agents);
     const bell = bellLabel(this.notificationCount);
     const monogram = initials(this.userName);
-    const manage = this.userName ? `Manage, ${this.userName}` : "Manage";
     return (
       <header className="sl-titlebar" data-parity="title">
         <div className="sl-titlebar__l" data-parity="title.left">
-          {this.menuButton && (
+          {this.menuButton !== false && (
             <button
               type="button"
-              className="sl-icon-btn sl-titlebar__btn sl-titlebar__menu"
+              className={`sl-icon-btn sl-titlebar__btn sl-titlebar__menu${this.menuButton === undefined ? " spexr-titlebar__menu--pending" : ""}`}
               aria-label="Application menu"
               aria-haspopup="menu"
               title="Application menu"
@@ -235,17 +275,20 @@ export class SpexrTitleBarWidget extends ReactWidget {
             spexr<span className="sl-titlebar__dot" aria-hidden="true" />
           </span>
           {this.crumb.length > 0 && (
-            <span className="sl-titlebar__crumb" title={this.crumb.join(" / ")} data-parity="title.crumb">
-              {this.crumb.map((part, i) => (
-                <React.Fragment key={i}>
-                  {i > 0 && (
-                    <span className="sl-titlebar__sep" aria-hidden="true" data-parity="title.crumb.sep">
-                      /
-                    </span>
-                  )}
-                  {part}
-                </React.Fragment>
-              ))}
+            <span className="sl-titlebar__crumb" data-parity="title.crumb">
+              <span aria-hidden="true">
+                {this.crumb.map((part, i) => (
+                  <React.Fragment key={i}>
+                    {i > 0 && (
+                      <span className="sl-titlebar__sep" data-parity="title.crumb.sep">
+                        /
+                      </span>
+                    )}
+                    {part}
+                  </React.Fragment>
+                ))}
+              </span>
+              <span className="spexr-sr-only">{this.crumbName}</span>
             </span>
           )}
         </div>
@@ -280,7 +323,8 @@ export class SpexrTitleBarWidget extends ReactWidget {
             type="button"
             className="sl-icon-btn sl-titlebar__btn"
             aria-label="Right panel"
-            aria-pressed={this.rightOpen}
+            aria-expanded={this.rightOpen}
+            aria-controls={RIGHT_PANEL_ID}
             title="Toggle the right panel"
             onClick={this.onRightPanel}
             data-parity="title.split"
@@ -301,9 +345,9 @@ export class SpexrTitleBarWidget extends ReactWidget {
           <button
             type="button"
             className="sl-icon-btn sl-avatar sl-avatar--sm spexr-titlebar__avatar"
-            aria-label={manage}
+            aria-label={avatarLabel(monogram)}
             aria-haspopup="menu"
-            title={manage}
+            title={this.userName ? `${this.userName}: Manage` : "Manage"}
             onClick={this.onManage}
             data-parity="title.avatar"
           >

@@ -8,6 +8,7 @@ const own = (file: string): string => readFileSync(fileURLToPath(new URL(file, i
 const theiaMenu = readFileSync(resolve("@theia/core/lib/electron-browser/menu/electron-menu-contribution.js"), "utf8");
 const theiaContextMenu = readFileSync(resolve("@theia/core/lib/electron-browser/menu/electron-context-menu-renderer.js"), "utf8");
 const theiaMenuModule = readFileSync(resolve("@theia/core/lib/electron-browser/menu/electron-menu-module.js"), "utf8");
+const theiaCommon = readFileSync(resolve("@theia/core/lib/browser/common-frontend-contribution.js"), "utf8");
 const appPackage = readFileSync(resolve("@theia/application-package/lib/application-package.js"), "utf8");
 
 /** The body of a method of Theia's ElectronMenuContribution, from its compiled source. */
@@ -85,10 +86,29 @@ describe("spexr's Electron menu contribution", () => {
   });
 
   it("adds window controls and the compact menu only in a custom window off macOS, the system's menus otherwise", () => {
-    const setMenu = ours.slice(ours.indexOf("protected override setMenu("), ours.indexOf("protected override createCustomTitleBar("));
-    expect(setMenu).toContain('const custom = !isOSX && this.titleBarStyle === "custom";');
+    const setMenu = ours.slice(ours.indexOf("protected override setMenu("), ours.indexOf("protected isCustom("));
+    expect(ours).toMatch(/protected isCustom\(\): boolean \{\s*return !isOSX && this\.titleBarStyle === "custom";/);
+    expect(setMenu).toContain("const custom = this.isCustom();");
     expect(setMenu).toContain("this.titleBar.setMenuButton(custom);");
-    expect(setMenu).toMatch(/if \(custom\) \{\s*this\.addWindowControls\(app\);\s*return;\s*\}\s*this\.factory\.setMenuBar\(\);/);
+    expect(setMenu).toMatch(/if \(custom\) \{\s*this\.addWindowControls\(app\);\s*this\.dropSidebarMenu\(\);\s*return;\s*\}\s*this\.factory\.setMenuBar\(\);/);
+  });
+
+  // Theia's base setMenu was its only caller; spexr's setMenu adds the controls itself.
+  it("leaves no override of createCustomTitleBar behind", () => {
+    expect(ours).not.toMatch(/override createCustomTitleBar|this\.createCustomTitleBar\(/);
+  });
+
+  it("makes each of Theia's window controls a keyboard button", () => {
+    expect(ours).toMatch(/protected override createControlButton\(id: string, handler: \(\) => void\): HTMLElement \{\s*const button = super\.createControlButton\(id, handler\);\s*keyboardButton\(button, WINDOW_CONTROL_LABELS\[id\] \?\? id, handler\);/);
+    expect(method("createControlButton(id, handler)")).toContain("document.createElement('div')");
+  });
+
+  it("takes Theia's compact-mode sidebar menu out in a custom window, where the bar has the button", () => {
+    expect(theiaCommon).toContain("const mainMenuId = 'main-menu';");
+    expect(theiaCommon).toMatch(/if \(menuBarVisibility === 'compact'\) \{\s*this\.shell\.leftPanelHandler\.addTopMenu\(\{\s*id: mainMenuId,/);
+    expect(ours).toContain('const THEIA_SIDEBAR_MENU_ID = "main-menu";');
+    expect(ours).toMatch(/protected dropSidebarMenu\(\): void \{\s*if \(this\.isCustom\(\)\) this\.shell\.leftPanelHandler\.removeTopMenu\(THEIA_SIDEBAR_MENU_ID\);/);
+    expect(ours).toMatch(/if \(e\.preferenceName === "window\.menuBarVisibility"\) setTimeout\(\(\) => this\.dropSidebarMenu\(\)\);/);
   });
 
   it("adds Theia's menu bar and title widget nowhere", () => {

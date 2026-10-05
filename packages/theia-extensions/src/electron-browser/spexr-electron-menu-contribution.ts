@@ -1,8 +1,15 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
 import type { FrontendApplication } from "@theia/core/lib/browser/frontend-application";
+import type { KeybindingRegistry } from "@theia/core/lib/browser/keybinding";
+import type { CommandRegistry } from "@theia/core/lib/common/command";
 import { isOSX } from "@theia/core/lib/common/os";
 import { ElectronMenuContribution } from "@theia/core/lib/electron-browser/menu/electron-menu-contribution";
 import { SpexrTitleBarWidget } from "../browser/titlebar/spexr-titlebar-widget.js";
+import { OPEN_APPLICATION_MENU_COMMAND, OPEN_APPLICATION_MENU_KEYS } from "./application-menu-command.js";
+import { keyboardButton, WINDOW_CONTROL_LABELS } from "./window-controls.js";
+
+/** Theia's own compact-mode menu in the left sidebar (common-frontend-contribution.ts). */
+const THEIA_SIDEBAR_MENU_ID = "main-menu";
 
 /**
  * Theia's Electron menu contribution with spexr's title bar in the top panel
@@ -12,8 +19,10 @@ import { SpexrTitleBarWidget } from "../browser/titlebar/spexr-titlebar-widget.j
  * Linux, and fills it with a drag strip, its logo, a menu bar, a centred
  * window title and the window controls. Here the panel always shows and holds
  * {@link SpexrTitleBarWidget}; a custom window adds Theia's window controls
- * (its own createControlButton and handleWindowControls) at the bar's end and
- * the bar's compact menu button stands in for the menu bar. A native window
+ * (its own createControlButton, given a role, a name and the keyboard, and
+ * handleWindowControls) at the bar's end, and the bar's compact menu button
+ * stands in for the menu bar, with a command and Alt+Shift+M to open it from
+ * the keyboard. A native window
  * keeps the system's menus: macOS's menu bar, Linux's escape hatch
  * (`window.titleBarStyle: native`). Everything else is Theia's, unchanged:
  * the startup sync of `window.titleBarStyle` with the style the window
@@ -37,18 +46,56 @@ export class SpexrElectronMenuContribution extends ElectronMenuContribution {
 
   protected override setMenu(app: FrontendApplication): void {
     this.addTitleBar(app);
-    const custom = !isOSX && this.titleBarStyle === "custom";
+    const custom = this.isCustom();
     this.titleBar.setMenuButton(custom);
     if (custom) {
       this.addWindowControls(app);
+      this.dropSidebarMenu();
       return;
     }
     this.factory.setMenuBar();
   }
 
-  /** Theia's custom title bar is replaced whole; only its window controls stay. */
-  protected override createCustomTitleBar(app: FrontendApplication): void {
-    this.addWindowControls(app);
+  /** Off macOS, in a custom window: the bar has the menu button and the window controls. */
+  protected isCustom(): boolean {
+    return !isOSX && this.titleBarStyle === "custom";
+  }
+
+  /**
+   * `window.menuBarVisibility: compact` makes Theia add its own Application
+   * Menu button to the left sidebar, beside the one the bar already has. In
+   * a custom window it is taken out again, after Theia's own listener runs.
+   */
+  protected override attachMenuBarVisibilityListener(): void {
+    super.attachMenuBarVisibilityListener();
+    this.preferenceService.onPreferenceChanged((e) => {
+      if (e.preferenceName === "window.menuBarVisibility") setTimeout(() => this.dropSidebarMenu());
+    });
+  }
+
+  protected dropSidebarMenu(): void {
+    if (this.isCustom()) this.shell.leftPanelHandler.removeTopMenu(THEIA_SIDEBAR_MENU_ID);
+  }
+
+  /** Theia's control, made a keyboard button (see keyboardButton). */
+  protected override createControlButton(id: string, handler: () => void): HTMLElement {
+    const button = super.createControlButton(id, handler);
+    keyboardButton(button, WINDOW_CONTROL_LABELS[id] ?? id, handler);
+    return button;
+  }
+
+  override registerCommands(registry: CommandRegistry): void {
+    super.registerCommands(registry);
+    registry.registerCommand(OPEN_APPLICATION_MENU_COMMAND, {
+      isEnabled: () => this.titleBar.hasMenuButton(),
+      isVisible: () => this.titleBar.hasMenuButton(),
+      execute: () => this.titleBar.openApplicationMenu(),
+    });
+  }
+
+  override registerKeybindings(registry: KeybindingRegistry): void {
+    super.registerKeybindings(registry);
+    if (!isOSX) registry.registerKeybinding({ command: OPEN_APPLICATION_MENU_COMMAND.id, keybinding: OPEN_APPLICATION_MENU_KEYS });
   }
 
   /**

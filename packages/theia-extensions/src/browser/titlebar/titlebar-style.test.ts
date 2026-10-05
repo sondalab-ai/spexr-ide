@@ -91,6 +91,24 @@ describe("the title bar's frame", () => {
     expect(section).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
   });
 
+  it("keeps the menu button's room, drawing nothing, until the window's style is known", () => {
+    expect(rule(".spexr-titlebar-host .spexr-titlebar__menu--pending")).toMatch(/visibility:\s*hidden/);
+    expect(widget).toContain("private menuButton = initialMenuButton(isOSX);");
+    expect(widget).toContain('this.menuButton === undefined ? " spexr-titlebar__menu--pending" : ""');
+  });
+
+  // .sl-avatar comes after .sl-icon-btn in the kit and would draw the dimmer --slc-border.
+  it("draws the avatar's edge at rest in the icon buttons' edge, leaving hover and focus theirs", () => {
+    expect(rule(".spexr-titlebar-host .spexr-titlebar__avatar:not(:hover, :focus-visible)")).toMatch(/border-color:\s*var\(--slc-edge-control\)/);
+    expect(rule(".spexr-titlebar-host .spexr-titlebar__avatar")).not.toMatch(/border/);
+  });
+
+  it("rings a focused window control in the kit's focus colour, inside its edge", () => {
+    const ring = rule("#window-controls .control-button:focus-visible");
+    expect(ring).toMatch(/outline:\s*var\(--sl-focus-ring-width\) solid var\(--slc-focus\)/);
+    expect(ring).toMatch(/outline-offset:\s*calc\(-1 \* var\(--sl-focus-ring-width\)\)/);
+  });
+
   it("hides Theia's status-bar notification item: the bell replaces it", () => {
     expect(rule("#theia-statusBar #status-bar-theia-notification-center")).toMatch(/display:\s*none/);
   });
@@ -137,6 +155,27 @@ describe("the title bar's markup", () => {
       expect(widget, part).toContain(part);
     }
     expect(widget).toContain('"sl-badge sl-badge--info sl-badge--live"');
+  });
+
+  // A panel disclosure, as the bell is: it rests like the demo's, with no pressed tint.
+  it("discloses the right panel with aria-expanded and aria-controls, never aria-pressed", () => {
+    const split = widget.slice(widget.indexOf('aria-label="Right panel"'), widget.indexOf('data-parity="title.split"'));
+    expect(split).toContain("aria-expanded={this.rightOpen}");
+    expect(split).toContain("aria-controls={RIGHT_PANEL_ID}");
+    expect(widget).toContain('const RIGHT_PANEL_ID = "theia-right-content-panel";');
+    expect(widget).not.toContain("aria-pressed");
+  });
+
+  // The crumb drags the window, so a title tooltip on it never shows.
+  it("gives the crumb its full path as text for a screen reader, not as a tooltip", () => {
+    const crumb = widget.slice(widget.indexOf('<span className="sl-titlebar__crumb"'), widget.indexOf("</div>", widget.indexOf('<span className="sl-titlebar__crumb"')));
+    expect(crumb).not.toMatch(/\btitle=/);
+    expect(crumb).toContain('<span aria-hidden="true">');
+    expect(crumb).toContain('<span className="spexr-sr-only">{this.crumbName}</span>');
+  });
+
+  it("names the avatar after the initials it shows", () => {
+    expect(widget).toContain("aria-label={avatarLabel(monogram)}");
   });
 
   it("names each part after its region in the demo's measurements", () => {

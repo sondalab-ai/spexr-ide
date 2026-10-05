@@ -1136,7 +1136,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      Monaco context view or hover, a dialog) is no-drag, or the bar's region,
      hit-tested as a rectangle, would eat its clicks.
    - The close button hovers in the kit's danger fill and its label, not
-     Theia's red literal; the others in the raised rung.
+     Theia's red literal; the others in the raised rung. All of them take
+     the keyboard, with the kit's ring drawn inside.
    - The bell replaces Theia's notification item in the status bar. */
 :root {
   --theia-private-menubar-height: 44px;
@@ -1171,13 +1172,26 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   flex: none;
 }
 
+/* The menu button keeps its room while the window's style is not known
+   yet, and shows nothing: it must not flash in a native window. */
+.spexr-titlebar-host .spexr-titlebar__menu--pending {
+  visibility: hidden;
+}
+
 /* The avatar is an icon button in the avatar's box: the kit's ring, halo
-   and hover, its initials in the mono. */
+   and hover, its initials in the mono. .sl-avatar comes later in the kit
+   and draws its box in --slc-border, a step dimmer than the icon buttons
+   beside it, so its edge at rest is pinned to theirs; hover and focus keep
+   the icon button's own edge, so the flush ring still joins the border. */
 .spexr-titlebar-host .spexr-titlebar__avatar {
   font-family: var(--sl-font-mono);
   font-size: 0.625rem;
   font-weight: 600;
   line-height: 1;
+}
+
+.spexr-titlebar-host .spexr-titlebar__avatar:not(:hover, :focus-visible) {
+  border-color: var(--slc-edge-control);
 }
 
 :is(.lm-Menu, .quick-input-widget, .context-view, .monaco-hover, .theia-hover, .dialogOverlay) {
@@ -1203,6 +1217,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 #window-controls #close-button:hover::before {
   color: var(--slc-on-danger);
+}
+
+/* The controls take the keyboard (SpexrElectronMenuContribution gives them
+   a role, a name and a tab stop). Their ring is the kit's, drawn inside:
+   they sit flush against the window's edge, which would clip it outside. */
+#window-controls .control-button:focus-visible {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
 }
 
 #theia-statusBar #status-bar-theia-notification-center {
@@ -1636,8 +1658,8 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
 }
 
 /* Visually hidden, still read: the toast announcer's two live regions
-   (messages/toast-announcer.ts). Never display: none, which would take a
-   region out of the accessibility tree. */
+   (messages/toast-announcer.ts) and the title bar crumb's full path. Never
+   display: none, which would take a region out of the accessibility tree. */
 .spexr-sr-only {
   position: absolute;
   width: 1px;

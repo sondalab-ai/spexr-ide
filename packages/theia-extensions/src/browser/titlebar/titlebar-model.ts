@@ -46,12 +46,13 @@ function isUnder(path: string, root: string): boolean {
 
 /**
  * The crumb: the workspace root holding the active file, the file's folders
- * below that root (the last {@link CRUMB_FOLDERS}, deeper ones folded into
- * {@link CRUMB_ELLIPSIS}), then the file. With no active file, the first
- * root's name alone. A file outside every root shows its own folder and name,
- * never a root it does not belong to. Paths are URI paths (forward slashes).
+ * below that root (the last `fold`, {@link CRUMB_FOLDERS} by default, deeper
+ * ones folded into {@link CRUMB_ELLIPSIS}), then the file. With no active
+ * file, the first root's name alone. A file outside every root shows its own
+ * folder and name, never a root it does not belong to. Paths are URI paths
+ * (forward slashes).
  */
-export function titleCrumb(roots: readonly string[], file?: string): string[] {
+export function titleCrumb(roots: readonly string[], file?: string, fold: number = CRUMB_FOLDERS): string[] {
   if (!file) return roots[0] ? [baseName(roots[0])] : [];
   const root = roots.filter((r) => isUnder(file, r)).sort((a, b) => b.length - a.length)[0];
   const segments = file.split("/").filter(Boolean);
@@ -59,8 +60,17 @@ export function titleCrumb(roots: readonly string[], file?: string): string[] {
   if (!root) return segments.length ? [segments[segments.length - 1]!, name] : [name];
   const rootDepth = root.split("/").filter(Boolean).length;
   const folders = segments.slice(rootDepth);
-  const shown = folders.length > CRUMB_FOLDERS ? [CRUMB_ELLIPSIS, ...folders.slice(-CRUMB_FOLDERS)] : folders;
+  const shown = folders.length > fold ? [CRUMB_ELLIPSIS, ...folders.slice(-fold)] : folders;
   return [baseName(root), ...shown, name];
+}
+
+/**
+ * The crumb's accessible name: every folder, none folded, so a screen reader
+ * hears what the ellipsis hides. The crumb sits in the drag region, where a
+ * `title` tooltip never shows, so this is its only long form.
+ */
+export function crumbLabel(roots: readonly string[], file?: string): string {
+  return titleCrumb(roots, file, Number.POSITIVE_INFINITY).join(" / ");
 }
 
 /** The part of a Dark Factory tile the badge reads. */
@@ -82,11 +92,30 @@ export function agentsLabel(count: number): string | undefined {
 /**
  * The bell's accessible name. The state is in the words, because forced
  * colours drop the dot (the kit's `__btn--dot` contract). The count is
- * Theia's: the notifications in the centre, as its status-bar item counted.
+ * Theia's: every notification in the centre, read or not, as its status-bar
+ * item counted, so the name gives the number and claims nothing about it.
  */
 export function bellLabel(count: number): string {
   if (count <= 0) return "Notifications";
-  return `Notifications, ${count} unread`;
+  return `Notifications, ${count}`;
+}
+
+/**
+ * The avatar's accessible name, starting with what it shows (WCAG 2.5.3,
+ * label in name): "MB, Manage"; plain "Manage" behind the account glyph.
+ */
+export function avatarLabel(monogram: string | undefined): string {
+  return monogram ? `${monogram}, Manage` : "Manage";
+}
+
+/**
+ * The compact menu button before the window's style is known: never on
+ * macOS, whose menus are the system's; elsewhere undefined, which keeps the
+ * button's room but draws nothing, so it neither flashes in a native window
+ * (Linux's escape hatch) nor shifts the mark in a custom one.
+ */
+export function initialMenuButton(osx: boolean): boolean | undefined {
+  return osx ? false : undefined;
 }
 
 /**
