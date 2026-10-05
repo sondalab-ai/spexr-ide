@@ -1047,9 +1047,12 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
    a hairline separates groups of facts; a live state (a job running, a
    download) carries a dot of the accent, and the words say the state; a
    fact that does not fit ends in an ellipsis.
-   - Height. Theia's own 22px row, not the kit's 28px: the shell's box layout
-     and the toasts' offset above the bar read it. Each item is a pill inside
-     it, so a hover is the kit's flat wash with the small radius.
+   - Height. Theia's own 22px row (--theia-statusBar-height, which only the
+     bar reads), not the kit's 28px: a deliberate deviation, for the owner to
+     approve. Theia places its toasts at a literal 36px above the window's
+     bottom, sized for that row. Each item is a pill inside it (19px under
+     the bar's transparent 1px top border), so a hover is the kit's flat
+     wash with the small radius.
    - Width. Theia's spacing: 12px between two facts, as Theia had them (each
      pill's 6px padding replaces Theia's gap and its text's margins); a
      hairline adds 9px.
