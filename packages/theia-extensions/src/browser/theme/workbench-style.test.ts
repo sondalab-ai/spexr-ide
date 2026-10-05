@@ -94,6 +94,23 @@ describe("the shell's geometry in spexr.css", () => {
     expect(readFileSync(resolve("@theia/core/lib/browser/tree/tree-widget.js"), "utf8")).toMatch(/leftPadding: 8,\s*expansionTogglePadding: 22/);
   });
 
+  it("insets a file tree's tiles 8px from the island's edges, Lumen's rows, the hover's too", () => {
+    expect(rule(`${NOT_HC} .theia-FileTree .theia-TreeNode.theia-mod-selected::before {`)).toMatch(/inset:\s*1px 7px;/);
+    const hover = rule(`${NOT_HC} .theia-FileTree .theia-TreeNode:hover:not(.theia-mod-selected)::before {`);
+    expect(hover).toMatch(/inset:\s*1px 7px;/);
+    expect(hover).toMatch(/z-index:\s*-1;/);
+    expect(hover).toMatch(/background-color:\s*color-mix\(in srgb, var\(--slc-text\) 5%, transparent\);/);
+    expect(rule(`${NOT_HC} .theia-FileTree .theia-TreeNode:hover {`)).toMatch(/background:\s*transparent;/);
+    // The tile is a layer under the row: the row is its positioned, isolated host.
+    const row = rule(`${NOT_HC} .theia-FileTree .theia-TreeNode {`);
+    expect(row).toMatch(/position:\s*relative;/);
+    expect(row).toMatch(/isolation:\s*isolate;/);
+    // It follows the shared tile rule, which it outweighs only by order.
+    expect(css.indexOf(`\n${NOT_HC} .theia-FileTree .theia-TreeNode.theia-mod-selected::before {`)).toBeGreaterThan(
+      css.indexOf(`\n${NOT_HC} .theia-Tree .theia-TreeNode.theia-mod-selected::before {`),
+    );
+  });
+
   it("is the table's pane head and toast offset", () => {
     expect(px(rule("#theia-app-shell .theia-sidepanel-toolbar {"), "min-height")).toBe(WORKBENCH.paneHead);
     const title = rule("#theia-app-shell .theia-sidepanel-toolbar .theia-sidepanel-title {");

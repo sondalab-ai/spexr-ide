@@ -90,8 +90,9 @@ export const TOAST_REGIONS: readonly ShellRegion[] = [
 
 /**
  * Each region's rects, in CSS px, in DOM order: only elements that render
- * inside the window (Theia keeps hidden editors and tabs scrolled out of a
- * strip in the DOM).
+ * inside the window and are on top at their centre. Theia keeps hidden
+ * editors, the side bars' invisible measuring copies of their tabs and tabs
+ * scrolled out of a strip in the DOM.
  */
 export async function probeRegions(page: Page, regions: readonly ShellRegion[]): Promise<Record<string, Rects>> {
   return page.evaluate((regions) => {
@@ -100,8 +101,10 @@ export async function probeRegions(page: Page, regions: readonly ShellRegion[]):
     for (const { key, selector, content } of regions) {
       for (const el of document.querySelectorAll<HTMLElement>(selector)) {
         const r = el.getBoundingClientRect();
-        if (r.width <= 0 || r.height <= 0 || !el.checkVisibility()) continue;
+        if (r.width <= 0 || r.height <= 0 || !el.checkVisibility({ visibilityProperty: true })) continue;
         if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) continue;
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!hit || !el.contains(hit)) continue;
         let { x, y, width: w, height: h } = r;
         if (content) {
           const cs = getComputedStyle(el);

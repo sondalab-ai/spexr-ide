@@ -1214,6 +1214,34 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   margin-inline-end: 2px;
 }
 
+/* A file tree's tiles sit 8px in from the island's edges, as Lumen's rows
+   do (7px inside the island's 1px ring): the selected row's tile, and the
+   hover's flat wash, which moves off the full-width row onto an inset tile
+   of its own. A selected row keeps its own tile under the pointer. The
+   seam stays 1px inside the tile, clear of a first-level twisty, which
+   starts at the tile's edge. */
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode {
+  position: relative;
+  isolation: isolate;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode:hover {
+  background: transparent;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode:hover:not(.theia-mod-selected)::before {
+  content: "";
+  position: absolute;
+  inset: 1px 7px;
+  z-index: -1;
+  border-radius: var(--sl-radius-sm);
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode.theia-mod-selected::before {
+  inset: 1px 7px;
+}
+
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle {
   color: var(--slc-text-muted);
 }
