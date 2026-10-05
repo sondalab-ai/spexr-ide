@@ -39,7 +39,8 @@ body {
     : `oklch(from var(--slc-accent-text) calc(l - ${step}) calc(c * max(0, 1 - ${step} / max(l, 0.001))) h)`;
   const onAccent      = "#ffffff";
   // A fill that carries the white label: the registered fill and its hover,
-  // on both themes (the kit's --slc-accent-fill, spexr-overrides.css).
+  // on both themes (the kit's --slc-accent-fill, which its products.css sets
+  // from the same registry).
   const fill          = ACCENT_FILL[theme];
   // Hovered by the kit's own step rule, so Theia's buttons and the kit's
   // primaries hover in the same indigo.

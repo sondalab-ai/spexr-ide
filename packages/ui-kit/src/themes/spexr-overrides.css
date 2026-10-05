@@ -71,15 +71,16 @@
   --sl-focus-ring-width: 3px;
 }
 
-/* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28, the
-   kit's --slc-accent-fill role since 0.32). White on the #5b6cff accent read
+/* FILLED INDIGO (owner, 2026-10-01). White on the #5b6cff accent read
    4.17:1, so every accent fill that carries a label -- the primary, a checked
-   check, radio or switch, a count badge -- is the deeper registered fill on
-   both themes: white on it reads 5.41:1, 6.67 hovered, 8.21 pressed (the
-   kit's step rule since 0.32.1). One literal, set once as a role; the kit
-   derives the label, hover, press and edge from it. The accent (#5b6cff / #8b96ff) still drives links, tags, the
-   agent rail, selection and the focus ring. High contrast keeps its own
-   yellow: the kit resets the fill there too. */
-:root:not([data-sl-theme="high-contrast"]) {
-  --slc-accent-fill: #4c58e9;
-}
+   check, radio or switch, a count badge -- is the deeper registered fill:
+   white on it reads 5.41:1, 6.67 hovered, 8.21 pressed. It is not set here.
+   Since kit 0.35 the kit's products.css sets --slc-accent-fill per theme
+   from the accent registry's fill, under data-sl-product="spexr" on the
+   theme element, so a fill changed in the registry reaches spexr at its next
+   kit upgrade; the kit derives the label, hover, press and edge from it. A
+   rule here at (0,2,0) would load after products.css and win over it, and
+   one any lighter would lose to it silently, so spexr sets the fill nowhere
+   (theia-chrome-css.test.ts). The accent (#5b6cff / #8b96ff) still drives
+   links, tags, the agent rail, selection and the focus ring. High contrast
+   keeps its own yellow: the kit resets the fill there. */
