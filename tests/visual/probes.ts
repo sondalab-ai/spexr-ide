@@ -1,5 +1,6 @@
 import type { ElectronApplication, Page } from "@playwright/test";
 import fs from "fs";
+import path from "path";
 
 /** What the environment gave this capture: read by the step summary, never asserted on. */
 export interface PageProbes {
@@ -31,8 +32,13 @@ export interface MainProbes {
 export interface LogProbes {
   /** From the plugin deployer: "Deploy batch of N accepted plugins". */
   readonly deployedPlugins: number | null;
-  /** Every "The local plugin referenced by … does not exist." line. */
+  /**
+   * "The local plugin referenced by … does not exist." lines, except Theia's
+   * own per-user plugin folders under the config dir, which a fresh profile
+   * never has; those are counted in `userPluginDirsMissing`.
+   */
   readonly missingPluginPaths: string[];
+  readonly userPluginDirsMissing: number;
 }
 
 export async function probePage(page: Page): Promise<PageProbes> {
@@ -106,12 +112,14 @@ export async function probeMain(app: ElectronApplication): Promise<MainProbes> {
   });
 }
 
-export function probeLog(logFile: string): LogProbes {
+export function probeLog(logFile: string, configDir: string): LogProbes {
   const text = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "";
   const batches = [...text.matchAll(/Deploy batch of (\d+) accepted plugins/g)].map((m) => Number(m[1]));
-  const missing = [...text.matchAll(/The local plugin referenced by (\S+) does not exist/g)].map((m) => m[1] ?? "");
+  const missing = [...new Set([...text.matchAll(/The local plugin referenced by (\S+) does not exist/g)].map((m) => m[1] ?? ""))];
+  const userDirs = new Set(["plugins", "deployedPlugins"].map((d) => `local-dir:${path.join(configDir, d)}`));
   return {
     deployedPlugins: batches.length ? batches.reduce((a, b) => a + b, 0) : null,
-    missingPluginPaths: [...new Set(missing)],
+    missingPluginPaths: missing.filter((m) => !userDirs.has(m)),
+    userPluginDirsMissing: missing.filter((m) => userDirs.has(m)).length,
   };
 }

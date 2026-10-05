@@ -84,7 +84,9 @@ function renderSummary(outRoot) {
   md += row("theme (sl / theia)", (m) => `${m.theme?.slTheme} / ${m.theme?.theiaBodyClass} ${m.theme?.confirmed ? "✓" : "✗"}`);
   md += row("theme route", (m) => m.themeRoute);
   md += row("deployed plugins (backend log)", (m) => m.log?.deployedPlugins);
-  md += row("missing plugin paths", (m) => (m.log?.missingPluginPaths ?? []).join(", ") || "none");
+  md += row("missing plugin paths", (m) =>
+    `${(m.log?.missingPluginPaths ?? []).join(", ") || "none"} (plus ${m.log?.userPluginDirsMissing ?? 0} of Theia's per-user plugin folders, expected on a fresh profile)`,
+  );
   md += row("extensions (API)", (m) => m.extensions?.extensions?.length);
   md += row("WebGL2", (m) => (m.webglAttempts ?? []).map((a) => `${a.swiftshader ? "swiftshader" : "default"}: ${a.webgl2}`).join("; "));
   md += row("xterm renderer", (m) => `${m.page?.xtermRenderer} (${m.page?.xtermDetail})`);

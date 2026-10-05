@@ -44,7 +44,7 @@ for (const theme of THEMES) {
         attempts.push({ swiftshader, webgl2 });
         meta.webglAttempts = attempts;
         meta.backendLog = path.basename(logFile);
-        meta.run = { workspace: run.workspace, ackDir: run.ackDir };
+        meta.run = { workspace: run.workspace, ackDir: run.ackDir, configDir: run.configDir };
         if (webgl2 || swiftshader) break;
         await closeApp(launched.app);
         launched = undefined;
@@ -138,7 +138,7 @@ for (const theme of THEMES) {
     } finally {
       if (launched) meta.close = await closeApp(launched.app);
       const logFile = path.join(out, (meta.backendLog as string | undefined) ?? "backend.log");
-      meta.log = probeLog(logFile);
+      meta.log = probeLog(logFile, (meta.run as { configDir?: string } | undefined)?.configDir ?? "");
       writeMeta();
     }
   });

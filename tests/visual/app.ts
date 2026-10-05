@@ -51,6 +51,8 @@ export async function launch({ run, swiftshader, logFile }: LaunchOptions): Prom
     ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
     TZ: "UTC",
     LANG: "en_US.UTF-8",
+    // macOS's /bin/bash otherwise opens every terminal with a notice about zsh.
+    BASH_SILENCE_DEPRECATION_WARNING: "1",
   });
 
   // The workspace comes right after the entry point and every flag after it:
