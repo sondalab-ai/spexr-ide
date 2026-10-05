@@ -4,43 +4,115 @@
  * Kept free of Electron and Theia so the main process, the frontend and the
  * tests share one set of numbers.
  *
- * The geometry is the system's, measured on a macos-14 runner: each light is
- * a 14×16 button frame on a 20px pitch, holding a 12px circle 1px in from the
- * frame's left and 2px down from its top. Electron places the frames at
- * `trafficLightPosition` and grows the system's title bar container to
- * `frame height + 2 × y` (WindowButtonsProxy), so the position below centres
- * the circles on the bar and makes the container exactly the bar: the whole
- * bar is the system's title bar for double-click (zoom or minimize, as the
- * user set it in System Settings).
+ * Electron places the lights' button frames at `trafficLightPosition` (or
+ * `setWindowButtonPosition`) and sizes the system's title bar container from
+ * the live frame: `frame height + 2 × y` (WindowButtonsProxy::redraw). A
+ * position that centres the circles on the bar therefore also makes the
+ * container the bar, and the whole bar is the system's title bar for
+ * double-click (zoom or minimize, as the user set it in System Settings).
+ * The frame changed with macOS 26 (see {@link lightsGeometry}), and the bar's
+ * height in points changes with Theia's zoom, so the position is computed,
+ * not fixed.
  */
 
-/** spexr's title bar height (the kit's `.sl-titlebar`). */
+/** spexr's title bar height in CSS px (the kit's `.sl-titlebar`). */
 export const TITLE_BAR_HEIGHT = 44;
 
-/** The bar's left padding (the kit's `--sl-space-4`): where the first light starts. */
+/** The bar's left padding in CSS px (the kit's `--sl-space-4`): where the first light starts. */
 export const TITLE_BAR_PADDING = 16;
 
-/** One traffic light's button frame, as AppKit lays it out. */
-export const LIGHT_FRAME = { width: 14, height: 16 } as const;
-
-/** The visible circle inside a frame, and where it sits in it. */
-export const LIGHT_CIRCLE = { size: 12, insetX: 1, insetY: 2 } as const;
-
-/** From one light's left edge to the next one's. */
-export const LIGHT_PITCH = 20;
-
-/** The three circles' width, first circle's left edge to last circle's right edge: 52px. */
-export const TRAFFIC_LIGHTS_WIDTH = 2 * LIGHT_PITCH + LIGHT_CIRCLE.size;
+/** The traffic lights as AppKit lays them out, in points. */
+export interface LightsGeometry {
+  /** One light's button frame. */
+  readonly frame: { readonly width: number; readonly height: number };
+  /** The visible circle inside a frame, and its offset from the frame's top-left corner. */
+  readonly circle: { readonly size: number; readonly insetX: number; readonly insetY: number };
+  /** From one light's left edge to the next one's. */
+  readonly pitch: number;
+}
 
 /**
- * Electron's `trafficLightPosition`, the first frame's top-left corner: the
- * first circle starts on the bar's padding, and the circles' centre is the
- * bar's centre.
+ * macOS 15 and earlier, measured on the macos-14 runner (S5b-1's native
+ * capture of a standard window): 14×16 frames on a 20pt pitch, a 12pt circle
+ * 1pt in and 2pt down.
  */
-export const TRAFFIC_LIGHT_POSITION = {
-  x: TITLE_BAR_PADDING - LIGHT_CIRCLE.insetX,
-  y: (TITLE_BAR_HEIGHT - LIGHT_FRAME.height) / 2,
-} as const;
+export const LIGHTS_BEFORE_TAHOE: LightsGeometry = {
+  frame: { width: 14, height: 16 },
+  circle: { size: 12, insetX: 1, insetY: 2 },
+  pitch: 20,
+};
+
+/**
+ * macOS 26 (Darwin 25) and later: 14pt-tall frames, as VS Code's
+ * getMacOSWindowControlsPosition has it; the circle's place in the frame is
+ * the macos-26 runner's capture (tests/visual, `meta.lights`).
+ */
+export const LIGHTS_TAHOE: LightsGeometry = {
+  frame: { width: 14, height: 14 },
+  circle: { size: 12, insetX: 1, insetY: 1 },
+  pitch: 20,
+};
+
+/** The Darwin major version from `os.release()` ("25.6.0" → 25); 0 when unreadable. */
+export function darwinMajor(release: string): number {
+  const major = Number.parseInt(release, 10);
+  return Number.isFinite(major) ? major : 0;
+}
+
+/** The lights' geometry for a Darwin major version: macOS 26 is Darwin 25. */
+export function lightsGeometry(darwin: number): LightsGeometry {
+  return darwin >= 25 ? LIGHTS_TAHOE : LIGHTS_BEFORE_TAHOE;
+}
+
+/** The three circles' width, first circle's left edge to last circle's right edge. */
+export function lightsWidth(geometry: LightsGeometry): number {
+  return 2 * geometry.pitch + geometry.circle.size;
+}
+
+/** The last circle's right edge, in points from the window's left edge. */
+export function lightsRight(geometry: LightsGeometry): number {
+  return TITLE_BAR_PADDING + lightsWidth(geometry);
+}
+
+/** Chromium's zoom factor for a zoom level: 1.2 to the level (Theia steps it by 0.5). */
+export function zoomFactor(level: number): number {
+  return Math.pow(1.2, level);
+}
+
+/**
+ * The first frame's top-left corner, in whole points (Electron takes a
+ * point): the first circle starts on the bar's padding at 100%, and the
+ * circles' centre is the bar's centre at the bar's height in points (44 ×
+ * the zoom factor). The horizontal place stays put: the lights do not scale.
+ */
+export function trafficLightPosition(geometry: LightsGeometry, factor = 1): { x: number; y: number } {
+  const barPt = TITLE_BAR_HEIGHT * factor;
+  return {
+    x: TITLE_BAR_PADDING - geometry.circle.insetX,
+    y: Math.round(barPt / 2 - geometry.circle.insetY - geometry.circle.size / 2),
+  };
+}
+
+/**
+ * The room the bar keeps for the lights, in CSS px at a zoom factor: from the
+ * bar's padding to the lights' right edge, which stays put in points while
+ * the page scales. The bar's own gap follows it, so the mark is always a gap
+ * clear of the lights. Never negative.
+ */
+export function lightsRoom(geometry: LightsGeometry, factor = 1): number {
+  return Math.max(0, lightsRight(geometry) / factor - TITLE_BAR_PADDING);
+}
+
+/**
+ * The custom property the main process sets on a macOS window's page for the
+ * room (spexr.css falls back to the 100% width before it arrives).
+ */
+export const LIGHTS_ROOM_PROPERTY = "--spexr-traffic-lights";
+
+/** The stylesheet the main process injects for the room, rounded to 1/100 px. */
+export function lightsRoomCss(room: number): string {
+  return `:root { ${LIGHTS_ROOM_PROPERTY}: ${Math.round(room * 100) / 100}px; }`;
+}
 
 /** The BrowserWindow options spexr adds to a main window. */
 export interface WindowChrome {
@@ -50,14 +122,14 @@ export interface WindowChrome {
 
 /**
  * A main window's title bar options: on macOS, the system's traffic lights
- * inside spexr's bar (`hiddenInset` at {@link TRAFFIC_LIGHT_POSITION});
+ * inside spexr's bar (`hiddenInset`, placed for this macOS at 100%);
  * elsewhere nothing, leaving S5b-1's frame decision alone. macOS gets them in
  * either frame Theia picks there: its forcing variable makes the window
  * frameless, which with a title bar style still shows the lights.
  */
-export function macWindowChrome(platform: string): WindowChrome {
+export function macWindowChrome(platform: string, release: string): WindowChrome {
   if (platform !== "darwin") return {};
-  return { titleBarStyle: "hiddenInset", trafficLightPosition: { ...TRAFFIC_LIGHT_POSITION } };
+  return { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(lightsGeometry(darwinMajor(release))) };
 }
 
 /**
@@ -80,3 +152,22 @@ export const FULL_SCREEN_EVENTS = {
   enter: "spexr-enter-full-screen",
   leave: "spexr-leave-full-screen",
 } as const;
+
+/** The part of `window.electronTheiaCore` that {@link followFullScreen} uses. */
+export interface FullScreenSource {
+  onWindowEvent(event: string, handler: () => void): unknown;
+  isFullScreen(): boolean;
+}
+
+/**
+ * The frontend's side of full screen, on macOS only: subscribe to both
+ * transitions, then read the state once. The read is defensive: Theia never
+ * reopens a window in full screen, but a reload, or a transition that ends
+ * while the page starts, would otherwise go unseen.
+ */
+export function followFullScreen(mac: boolean, source: FullScreenSource, show: (lights: boolean) => void): void {
+  if (!mac) return;
+  source.onWindowEvent(FULL_SCREEN_EVENTS.enter, () => show(trafficLightInset(mac, true)));
+  source.onWindowEvent(FULL_SCREEN_EVENTS.leave, () => show(trafficLightInset(mac, false)));
+  show(trafficLightInset(mac, source.isFullScreen()));
+}

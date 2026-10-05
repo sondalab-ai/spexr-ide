@@ -1,11 +1,13 @@
+import { release } from "node:os";
 import { injectable } from "@theia/core/shared/inversify";
-import type { BrowserWindow, Event as ElectronEvent, WebContents } from "@theia/core/electron-shared/electron";
+import { ipcMain, type BrowserWindow, type Event as ElectronEvent, type WebContents } from "@theia/core/electron-shared/electron";
 import type { MaybePromise } from "@theia/core/lib/common/types";
-import type { WindowEvent } from "@theia/core/lib/electron-common/electron-api";
+import { CHANNEL_SET_ZOOM_LEVEL, type WindowEvent } from "@theia/core/lib/electron-common/electron-api";
 import { TheiaRendererAPI } from "@theia/core/lib/electron-main/electron-api-main";
 import { ElectronMainApplication } from "@theia/core/lib/electron-main/electron-main-application";
 import type { TheiaBrowserWindowOptions } from "@theia/core/lib/electron-main/theia-electron-window";
-import { FULL_SCREEN_EVENTS, macWindowChrome } from "../common/mac-title-bar.js";
+import { darwinMajor, lightsGeometry, macWindowChrome } from "../common/mac-title-bar.js";
+import { MacLights } from "./mac-lights.js";
 import { hardenWebviewAttach, isWebUrl } from "./webview-policy.js";
 import { applyTitleBarStyle, type TitleBarStore, type TitleBarStyle } from "./title-bar-style.js";
 
@@ -26,14 +28,17 @@ import { applyTitleBarStyle, type TitleBarStore, type TitleBarStyle } from "./ti
  * - The frame follows {@link decideTitleBarStyle}; the frontend's
  *   SpexrElectronMenuContribution draws spexr's title bar in either style.
  * - On macOS a main window hides the system's title bar and keeps its traffic
- *   lights inside spexr's ({@link macWindowChrome}), and tells its page when
- *   it enters or leaves full screen, where macOS hides the lights.
+ *   lights inside spexr's ({@link macWindowChrome}, for the running macOS),
+ *   on the bar's centre at any zoom ({@link MacLights}), and tells its page
+ *   when it enters or leaves full screen, where macOS hides the lights.
  *   Secondary windows (a view moved out of the main window) keep the
  *   system's title bar: Theia builds their options without the defaults
  *   below and forces their frame, because they have no title bar of their own.
  */
 @injectable()
 export class SpexrElectronMainApplication extends ElectronMainApplication {
+  private readonly macLights = new MacLights(lightsGeometry(darwinMajor(release())));
+
   /**
    * Theia's defaults, which every main window starts from (a new window and
    * the restored one: the stored state holds bounds and the frame, never a
@@ -41,27 +46,33 @@ export class SpexrElectronMainApplication extends ElectronMainApplication {
    */
   protected override getDefaultOptions(): TheiaBrowserWindowOptions {
     const options = super.getDefaultOptions();
-    return { ...options, ...macWindowChrome(process.platform), webPreferences: { ...options.webPreferences, webviewTag: true } };
+    return { ...options, ...macWindowChrome(process.platform, release()), webPreferences: { ...options.webPreferences, webviewTag: true } };
   }
 
-  /** Theia's window, which on macOS also reports its full-screen transitions to its page. */
+  /**
+   * Theia's window; on macOS its lights are kept on the bar and its
+   * full-screen transitions reach its page, through Theia's window-event
+   * channel: Theia's preload passes any name through to the page's
+   * onWindowEvent, though its type lists only its own three.
+   */
   override async createWindow(asyncOptions?: MaybePromise<TheiaBrowserWindowOptions>): Promise<BrowserWindow> {
     const window = await super.createWindow(asyncOptions);
-    if (process.platform === "darwin") this.reportFullScreen(window);
+    if (process.platform === "darwin") {
+      this.macLights.add(window, (event) => TheiaRendererAPI.sendWindowEvent(window.webContents, event as WindowEvent));
+    }
     return window;
   }
 
   /**
-   * Electron's full-screen events, through Theia's window-event channel (see
-   * FULL_SCREEN_EVENTS): Theia's preload passes any name through to the
-   * page's onWindowEvent, though its type lists only its own three.
+   * Theia's application events, plus, on macOS, the lights following the
+   * zoom. Every zoom change goes through Theia's SetZoomLevel channel
+   * (window.zoomLevel → setZoomLevel → webContents.setZoomLevel in the main
+   * process). This listener is added before Theia's, so it waits a turn for
+   * Theia's to have applied the level.
    */
-  private reportFullScreen(window: BrowserWindow): void {
-    const report = (event: string) => (): void => {
-      if (!window.isDestroyed()) TheiaRendererAPI.sendWindowEvent(window.webContents, event as WindowEvent);
-    };
-    window.on("enter-full-screen", report(FULL_SCREEN_EVENTS.enter));
-    window.on("leave-full-screen", report(FULL_SCREEN_EVENTS.leave));
+  protected override hookApplicationEvents(): void {
+    super.hookApplicationEvents();
+    if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, () => setTimeout(() => this.macLights.syncAll()));
   }
 
   /**

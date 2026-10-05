@@ -179,7 +179,9 @@ const theiaApiMain = readFileSync(createRequire(import.meta.url).resolve("@theia
 function between(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
   expect(start, startMarker).toBeGreaterThanOrEqual(0);
-  return source.slice(start, source.indexOf(endMarker, start));
+  const end = source.indexOf(endMarker, start);
+  expect(end, `${endMarker} after ${startMarker}`).toBeGreaterThan(start);
+  return source.slice(start, end);
 }
 
 // macOS's inset title bar is a default window option (macWindowChrome in
@@ -219,16 +221,48 @@ describe("Theia's window options, which carry macOS's title bar", () => {
 
 describe("spexr's main application on macOS", () => {
   it("adds macWindowChrome to Theia's defaults, before the webview tag's web preferences", () => {
-    expect(ours).toContain("return { ...options, ...macWindowChrome(process.platform), webPreferences: { ...options.webPreferences, webviewTag: true } };");
+    expect(ours).toContain("return { ...options, ...macWindowChrome(process.platform, release()), webPreferences: { ...options.webPreferences, webviewTag: true } };");
+    expect(ours).toContain('import { release } from "node:os";');
   });
 
-  it("reports a main window's full-screen transitions on macOS only, once each has finished", () => {
+  it("keeps every macOS main window's lights, for the running macOS, and reports its full screen", () => {
+    expect(ours).toContain("private readonly macLights = new MacLights(lightsGeometry(darwinMajor(release())));");
     const create = between(ours, "override async createWindow(", "\n  }\n");
     expect(create).toContain("const window = await super.createWindow(asyncOptions);");
-    expect(create).toContain('if (process.platform === "darwin") this.reportFullScreen(window);');
-    const report = between(ours, "private reportFullScreen(", "\n  }\n");
-    expect(report).toContain('window.on("enter-full-screen", report(FULL_SCREEN_EVENTS.enter));');
-    expect(report).toContain('window.on("leave-full-screen", report(FULL_SCREEN_EVENTS.leave));');
-    expect(report).toContain("TheiaRendererAPI.sendWindowEvent(window.webContents, event as WindowEvent)");
+    expect(create).toMatch(/if \(process\.platform === "darwin"\) \{\s*this\.macLights\.add\(window, \(event\) => TheiaRendererAPI\.sendWindowEvent\(window\.webContents, event as WindowEvent\)\);/);
+  });
+
+  it("moves the lights after every zoom change Theia makes, a turn after Theia's own listener", () => {
+    const hook = between(ours, "protected override hookApplicationEvents(): void {", "\n  }\n");
+    expect(hook).toContain("super.hookApplicationEvents();");
+    expect(hook).toContain('if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, () => setTimeout(() => this.macLights.syncAll()));');
+  });
+});
+
+// The lights follow the zoom through Theia's own route for it; these fail if
+// a zoom change could reach the page another way, or if the order that makes
+// the setTimeout necessary changes.
+describe("Theia's zoom, which the lights follow", () => {
+  const theiaPreload = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-browser/preload.js"), "utf8");
+  const theiaWindowService = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-browser/window/electron-window-service.js"), "utf8");
+
+  it("is applied in the main process, on the SetZoomLevel channel", () => {
+    expect(theiaPreload).toMatch(/setZoomLevel: function \(desired, windowName\) \{\s*ipcRenderer\.send\(electron_api_1\.CHANNEL_SET_ZOOM_LEVEL, desired, windowName\);/);
+    const handler = between(theiaApiMain, "ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL,", "});");
+    expect(handler).toContain("electronWindow.webContents.setZoomLevel(zoomLevel);");
+  });
+
+  it("comes from window.zoomLevel, which Theia's zoom commands set", () => {
+    const update = between(theiaWindowService, "async updateWindowZoomLevel() {", "\n    }\n");
+    expect(update).toContain("window.electronTheiaCore.setZoomLevel(preferredZoomLevel);");
+  });
+
+  // spexr's listener is added in hookApplicationEvents, Theia's when its
+  // main API contribution starts, later: spexr's runs first.
+  it("is heard by spexr before Theia applies it", () => {
+    const start = between(theiaMain, "async start(config) {", "\n    getTitleBarStyle(");
+    expect(start.indexOf("this.hookApplicationEvents();")).toBeGreaterThanOrEqual(0);
+    expect(start.indexOf("this.hookApplicationEvents();")).toBeLessThan(start.indexOf("this.startContributions()"));
+    expect(theiaApiMain).toMatch(/class TheiaMainApi \{[\s\S]*onStart\(application\) \{[\s\S]*CHANNEL_SET_ZOOM_LEVEL/);
   });
 });
