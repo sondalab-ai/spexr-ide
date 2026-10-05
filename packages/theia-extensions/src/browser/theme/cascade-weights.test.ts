@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type Weight = [number, number, number];
@@ -328,5 +329,97 @@ describe("a menu shortcut's chord gap", () => {
     expect(selectors(spexr, (s) => s === key)).toHaveLength(1);
     expect(selectors(spexr, (s) => s === chord)).toHaveLength(1);
     expect(cmp(specificity(chord), specificity(key))).toBeGreaterThan(0);
+  });
+});
+
+// Every focus rule of Theia's or Monaco's that outranks the global ring and
+// sets its width or its offset but not both must take both from one of
+// spexr's rule sets, at a weight above its own (!important where it is):
+// otherwise the ring's width and offset come from two rule sets, and it
+// floats off the edge with a gap. The installed stylesheets are scanned, so a
+// Theia or Monaco update that adds one fails here.
+describe("the ring's width and offset", () => {
+  const theiaDir = join(dirname(resolve("@theia/core/package.json")), "..");
+  const cssFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : cssFiles(path);
+      return entry.name.endsWith(".css") ? [path] : [];
+    });
+  const sheets = [
+    ...readdirSync(theiaDir)
+      .filter((pkg) => pkg !== "monaco-editor-core")
+      .flatMap((pkg) => {
+        try {
+          return cssFiles(join(theiaDir, pkg, "src", "browser"));
+        } catch {
+          return [];
+        }
+      }),
+    ...cssFiles(join(theiaDir, "monaco-editor-core", "esm")),
+  ];
+  const norm = (s: string): string => s.replace(/\s+/g, " ").replace(/\s*>\s*/g, " > ").trim();
+  type Block = { selectors: string[]; body: string };
+  const blocks = (css: string): Block[] =>
+    [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selectors: splitList(norm(m[1]!)), body: m[2]! }));
+  const ring = specificity("html :focus-visible:not(iframe)");
+
+  const partials = sheets.flatMap((file) =>
+    blocks(readFileSync(file, "utf8")).flatMap(({ selectors: list, body }) => {
+      const outline = /(?:^|;)\s*outline\s*:\s*([^;]+)/.exec(body)?.[1]?.trim();
+      // A rule that draws no ring at all is wholly its own.
+      const none = (outline !== undefined && /^(none|0)\b/.test(outline)) || /outline-width\s*:\s*0\b/.test(body) || /outline-style\s*:\s*none\b/.test(body);
+      const width = /outline-width\s*:/.test(body) || (outline !== undefined && !none);
+      const offset = /outline-offset\s*:/.test(body);
+      if (none || width === offset) return [];
+      const important = /outline(-width|-offset)?\s*:[^;]*!important/.test(body);
+      return list
+        .filter((s) => /:focus(?![-\w])|:focus-visible/.test(s.split(/\s|>|\+|~/).pop()!))
+        .filter((s) => important || cmp(specificity(s), ring) > 0)
+        .map((s) => ({ selector: s, important }));
+    }),
+  );
+
+  const fixes = blocks(spexr)
+    .filter(({ body }) => /outline-width\s*:\s*var\(--sl-focus-ring-width\)/.test(body) && /outline-offset\s*:\s*calc\(-1 \* var\(--sl-focus-ring-width\)\)/.test(body))
+    .flatMap(({ selectors: list, body }) =>
+      list.map((s) => ({
+        selector: s,
+        members: /^:root :is\((.*)\)$/.exec(s) ? splitList(/^:root :is\((.*)\)$/.exec(s)![1]!).map(norm) : [],
+        // Both halves, or a Monaco !important on one of them still wins it.
+        important: /outline-width\s*:[^;]*!important/.test(body) && /outline-offset\s*:[^;]*!important/.test(body),
+      })),
+    );
+
+  it("finds the partial rules it guards against", () => {
+    expect(partials.map((p) => p.selector)).toEqual(
+      expect.arrayContaining([
+        '.theia-settings-container .theia-input[type="checkbox"]:focus',
+        '.theia-settings-container .theia-input[type="number"]:focus',
+        ".monaco-text-button:focus",
+        ".monaco-button-dropdown > .monaco-button:focus",
+        ".theia-scm-input-message-container textarea:focus",
+      ]),
+    );
+  });
+
+  it("takes both the width and the offset of every one of them from one spexr rule set, above its weight", () => {
+    for (const partial of partials) {
+      const fix = fixes.find((f) => f.members.includes(partial.selector));
+      expect(fix, partial.selector).toBeDefined();
+      expect(cmp(specificity(fix!.selector), specificity(partial.selector)), partial.selector).toBeGreaterThan(0);
+      expect(fix!.important, partial.selector).toBe(partial.important);
+    }
+  });
+
+  // Theia's custom select draws its resting border as an outline; a mouse
+  // focus must not take it away.
+  it("keeps the custom select's resting outline on a mouse focus", () => {
+    const theirs = blocks(readFileSync(resolve("@theia/core/src/browser/style/select-component.css"), "utf8")).find((b) => b.selectors.includes(".theia-select-component"))!;
+    const mine = blocks(spexr).find((b) => b.selectors.includes("html .theia-select-component:focus:where(:not(:focus-visible))"));
+    expect(mine).toBeDefined();
+    expect(/outline:\s*([^;]+);/.exec(mine!.body)![1]!.trim()).toBe(/outline:\s*([^;]+);/.exec(theirs.body)![1]!.trim());
+    expect(/outline-offset:\s*([^;]+);/.exec(mine!.body)![1]!.trim()).toBe(/outline-offset:\s*([^;]+);/.exec(theirs.body)![1]!.trim());
+    expect(cmp(specificity("html .theia-select-component:focus:where(:not(:focus-visible))"), specificity("html :focus:where(:not(:focus-visible)):not(iframe)"))).toBeGreaterThan(0);
   });
 });
