@@ -78,9 +78,12 @@ test.describe("Workflow edge cases", () => {
     const items = page.locator(sel.specItem);
     await expect(items).toHaveCount(1, { timeout: 5_000 });
 
-    // No Theia error notification about JSON parse
+    // No Theia error toast about JSON parse. Theia marks an error only on its
+    // glyph (.theia-notification-icon.error); the "--error" modifier this
+    // looked for does not exist, so the check could never fail. The center
+    // keeps a hidden copy of every notification, so only the toasts are read.
     const errNotification = page.locator(
-      '.theia-notification-list-item--error:has-text("JSON")',
+      '.theia-notification-toasts .theia-notification-list-item:has(.theia-notification-icon.error):has-text("JSON")',
     );
     await expect(errNotification).not.toBeVisible({ timeout: 3_000 });
   });
