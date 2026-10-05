@@ -29,13 +29,26 @@ body {
 }
 
 /* The ring for anything the kit's focus rule does not cover (Theia's own
-   elements, spexr's): flush, in the ring's colour. No radius: an outline
-   follows the element's own corners, and a radius here snapped an 8px
-   button to 6px under focus. The kit's controls take its own rule, which
-   adds the halo (0.32). */
-*:focus-visible {
-  outline: var(--sl-focus-ring-width) solid var(--sl-focus-ring);
-  outline-offset: var(--sl-focus-ring-offset);
+   elements, spexr's): the kit's width in the kit's focus colour, drawn
+   inside the element (offset minus its width), so a scroll container that
+   clips its children never cuts it, and it sits flush on the element's edge
+   or over its border, with no gap. A keyboard focus only: a mouse focus
+   draws nothing.
+   Theia's own `:focus:not(iframe)` (core index.css) weighs (0,1,1) and drew
+   a 1px ring inset on every focus, a mouse click included, over a bare
+   *:focus-visible (0,1,0). These two weigh (0,1,2): ahead of Theia's, and
+   behind any rule with a class of its own, so the kit's controls keep their
+   flush ring and halo ((0,2,0) and up), and so does any Theia or spexr rule
+   that draws or drops its own (cascade-weights.test.ts). No radius: an
+   outline follows the element's own corners, and a radius here snapped an
+   8px button to 6px under focus. */
+html :focus-visible:not(iframe) {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+html :focus:where(:not(:focus-visible)):not(iframe) {
+  outline: none;
 }
 
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
@@ -1317,8 +1330,10 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
   pointer-events: none;
 }
 
-/* Theia turns the border the accent on any focus, a mouse click included:
-   the ring is the flush focus-visible outline, and the border joins it. */
+/* Theia turns the border the accent on any focus, a mouse click included.
+   A mouse focus keeps the border, and draws no ring (the global focus rule,
+   at the top of this file); a keyboard focus draws the kit's ring inside the
+   toast, over the border, which joins it. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item:focus:not(:focus-visible) {
   border-color: var(--slc-edge-raised);
 }

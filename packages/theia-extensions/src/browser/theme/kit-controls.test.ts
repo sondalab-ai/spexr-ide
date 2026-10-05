@@ -95,11 +95,18 @@ describe("the compact switch", () => {
 });
 
 // A radius on the global focus rule snapped an 8px button's corners to 6px
-// under focus; since 0.32 the kit's halo made the jump visible.
+// under focus; since 0.32 the kit's halo made the jump visible. The ring is
+// the kit's width and colour, drawn inside the element so a scroll container
+// cannot clip it, flush on its edge; a mouse focus draws none.
 describe("the global focus ring", () => {
-  it("is flush and sets no radius", () => {
-    const ring = rule("*:focus-visible");
-    expect(ring).toMatch(/outline-offset:\s*var\(--sl-focus-ring-offset\)/);
+  it("is the kit's ring, drawn inside and flush, with no radius", () => {
+    const ring = rule("html :focus-visible:not(iframe)");
+    expect(ring).toMatch(/outline:\s*var\(--sl-focus-ring-width\) solid var\(--slc-focus\)/);
+    expect(ring).toMatch(/outline-offset:\s*calc\(-1 \* var\(--sl-focus-ring-width\)\)/);
     expect(ring).not.toMatch(/border-radius/);
+  });
+
+  it("draws nothing on a mouse focus", () => {
+    expect(rule("html :focus:where(:not(:focus-visible)):not(iframe)")).toMatch(/outline:\s*none/);
   });
 });

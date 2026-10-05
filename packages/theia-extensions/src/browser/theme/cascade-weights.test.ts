@@ -290,3 +290,28 @@ describe("the bottom island's tile tabs", () => {
     }
   });
 });
+
+// Theia's own focus rule (core index.css) draws a 1px ring inset on every
+// focus, a mouse click included, at (0,1,1): it outranked spexr's bare
+// *:focus-visible. spexr's pair must outrank it, and stay behind the kit's
+// controls, which draw their own flush ring and halo.
+describe("the global focus ring", () => {
+  const core = readFileSync(resolve("@theia/core/src/browser/style/index.css"), "utf8");
+  const ring = "html :focus-visible:not(iframe)";
+  const mouse = "html :focus:where(:not(:focus-visible)):not(iframe)";
+
+  it("outranks Theia's focus rule, on a keyboard and on a mouse focus", () => {
+    const theirs = selectors(core, (s) => s === ":focus:not(iframe)");
+    expect(theirs).toHaveLength(1);
+    for (const ours of [ring, mouse]) {
+      expect(selectors(spexr, (s) => s === ours), ours).toHaveLength(1);
+      expect(cmp(specificity(ours), specificity(theirs[0]!)), ours).toBeGreaterThan(0);
+    }
+  });
+
+  it("stays behind every kit control's own focus rule", () => {
+    const kitRings = selectors(kit, (s) => /^\.sl-[\w-]+:focus-visible$/.test(s));
+    expect(kitRings.length).toBeGreaterThanOrEqual(10);
+    for (const s of kitRings) expect(cmp(specificity(s), specificity(ring)), s).toBeGreaterThan(0);
+  });
+});
