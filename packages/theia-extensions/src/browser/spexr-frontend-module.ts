@@ -57,6 +57,7 @@ import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
+import { SpexrFirstLaunchLayoutContribution } from "./shell/first-launch-layout-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
 import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-contribution.js";
@@ -234,6 +235,10 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(SpexrRevealOnRestore).toService(SpexrTodoViewContribution);
   bind(SpexrRevealOnRestore).toService(ScmContribution);
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
+  // After the bootstrap, whose agent terminal reveal sets its own floor: a
+  // first launch's island sizes must be the last ones set (Theia runs
+  // onDidInitializeLayout in binding order, one at a time).
+  bind(FrontendApplicationContribution).to(SpexrFirstLaunchLayoutContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();

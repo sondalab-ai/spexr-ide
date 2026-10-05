@@ -14,7 +14,7 @@ import { SpexrExpertsViewContribution } from "../views/experts-view-contribution
 import { SpexrWelcomeViewContribution, WELCOME_VIEW_ID } from "../views/welcome-view-contribution.js";
 import { SPEC_VIEW_ID } from "../views/spec-view-contribution.js";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
-import { expandLeftPanelWithMinWidth } from "./side-panel.js";
+import { expandSidePanel } from "./side-panel.js";
 import { SpexrDarkfactorySidebarVisibilityContribution } from "../darkfactory/darkfactory-sidebar-visibility-contribution.js";
 import { consumeProjectLanding } from "../project/project-landing-intent.js";
 import { SpexrRevealOnRestore, type RevealOnRestoreView } from "./reveal-on-restore.js";
@@ -259,8 +259,14 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     return this.terminalService.all.some((t) => bottom.has(t.id));
   }
 
+  /**
+   * Open the left panel at the size it has. No floor here: a restored layout
+   * keeps the user's width, and a first launch takes Lumen's
+   * (SpexrFirstLaunchLayoutContribution). The agent terminal keeps its own
+   * floor when it is revealed (ClaudeTerminalManager).
+   */
   private expandLeftPanel(): void {
-    expandLeftPanelWithMinWidth(this.shell);
+    void expandSidePanel(this.shell, "left");
   }
 
   /**
