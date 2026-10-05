@@ -211,6 +211,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   // factory; BrowserMainMenuFactory resolves to it.
   if (isBound(ElectronMainMenuFactory)) {
     rebind(ElectronMainMenuFactory).to(SpexrElectronMainMenuFactory).inSingletonScope();
+  } else {
+    console.warn("spexr: Theia's Electron menu factory is not bound; browser menus keep their shortcuts as text.");
   }
 
   bind(SpexrShellLayoutContribution).toSelf().inSingletonScope();

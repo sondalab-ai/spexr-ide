@@ -58,9 +58,12 @@ describe("Theia's built-in theme data", () => {
     expect(raw.dark["statusBarItem.remoteBackground"]).toBe("#16825D");
   });
 
+  // spexr's light and dark are Theia's built-in "light" and "dark" (spexr-theme-
+  // contribution.ts); their Monaco themes are named in core theming.ts.
   it("is the data behind spexr's light and dark (core theming.ts editorTheme)", () => {
     const theming = readFileSync(resolve("@theia/core/src/browser/theming.ts"), "utf8");
-    for (const name of SPEXR_EDITOR_THEMES) expect(theming, name).toContain(`editorTheme: '${name}'`);
+    const editorTheme = (id: string): string => new RegExp(`id: '${id}',[\\s\\S]*?editorTheme: '([\\w-]+)'`).exec(theming)![1]!;
+    expect([...SPEXR_EDITOR_THEMES]).toEqual([editorTheme("light"), editorTheme("dark")]);
   });
 });
 

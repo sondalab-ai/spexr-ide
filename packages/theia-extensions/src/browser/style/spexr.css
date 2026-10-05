@@ -1430,9 +1430,10 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
 }
 
 /* Theia's indeterminate sweep is an animation of its own, which the kit's
-   motion tokens do not reach: under reduced motion the bar stands still. */
+   motion tokens do not reach: under reduced motion the bar stands still.
+   Theia's rule weighs (0,2,0); this one (0,3,0), whatever the sheet order. */
 @media (prefers-reduced-motion: reduce) {
-  .theia-notification-item-progressbar.indeterminate {
+  :root .theia-notification-item-progressbar.indeterminate {
     animation: none;
   }
 }

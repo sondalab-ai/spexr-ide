@@ -96,7 +96,9 @@ describe("a toast", () => {
   // the kit's tokens do not reach.
   it("stills Theia's indeterminate progress sweep under reduced motion", () => {
     expect(theia("@theia/messages/src/browser/style/notifications.css")).toMatch(/\.theia-notification-item-progressbar\.indeterminate\s*\{[^}]*animation:/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.theia-notification-item-progressbar\.indeterminate\s*\{\s*animation:\s*none;/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*:root \.theia-notification-item-progressbar\.indeterminate\s*\{\s*animation:\s*none;/);
+    // Above Theia's (0,2,0) on weight, not on sheet order: one class more.
+    expect(theia("@theia/messages/src/browser/style/notifications.css")).toMatch(/\n\.theia-notification-item-progressbar\.indeterminate\s*\{/);
   });
 
   it("keeps its border on a mouse focus, and joins it to the ring on a keyboard one", () => {

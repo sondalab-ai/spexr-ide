@@ -68,7 +68,7 @@ describe("the menu factory", () => {
 
   it("is bound over Theia's Electron factory, and nothing patches Lumino's default renderer", () => {
     const module = read("../spexr-frontend-module.ts");
-    expect(module).toMatch(/if \(isBound\(ElectronMainMenuFactory\)\) \{\s*rebind\(ElectronMainMenuFactory\)\.to\(SpexrElectronMainMenuFactory\)\.inSingletonScope\(\);/);
+    expect(module).toMatch(/if \(isBound\(ElectronMainMenuFactory\)\) \{\s*rebind\(ElectronMainMenuFactory\)\.to\(SpexrElectronMainMenuFactory\)\.inSingletonScope\(\);\s*\} else \{\s*console\.warn\(/);
     const theia = readFileSync(createRequire(import.meta.url).resolve("@theia/core/src/electron-browser/menu/electron-menu-module.ts"), "utf8");
     expect(theia).toContain("bind(BrowserMainMenuFactory).toService(ElectronMainMenuFactory);");
     expect(`${module}${factory}${read("./menu-keycaps.ts")}`).not.toMatch(/defaultRenderer/);
