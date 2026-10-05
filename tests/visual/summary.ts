@@ -82,6 +82,15 @@ function renderSummary(runs: Run[]): string {
   md += row("Geist Mono faces", (m) => (m.readiness?.geistMonoFaces ?? []).join("; ") || "none declared");
   md += row("editor font", (m) => m.page?.editorFont);
   md += row("Monaco char width", (m) => m.page?.monacoCharWidth);
+  md += row("code font wait (terminals re-measured)", (m) => (m.page ? `${m.page.codeFont ?? "no marker"} (${m.page.codeFontTerminals ?? "—"})` : ""));
+  md += row("terminal font", (m) => (m.page?.terminalFont ? `${m.page.terminalFont.size} ${m.page.terminalFont.family}` : ""));
+  md += row("terminal box now / cell / screen ÷ cell", (m) => {
+    const t = m.page?.terminalFont;
+    if (!t) return "";
+    const box = t.box ? `${t.box.width}×${t.box.height}` : "—";
+    const c = t.cell ? `${t.cell.width}×${t.cell.height}` : "—";
+    return `${box} / ${c} / ${t.screenHeight ?? "—"} ÷ ${t.cell?.height ?? "—"} = ${t.rows ?? "—"}`;
+  });
   md += row("devicePixelRatio", (m) => m.page?.devicePixelRatio);
   md += row("viewport / content size", (m) => `${m.page?.innerSize} / ${m.main?.contentSize}`);
   md += row("titleBarStyle", (m) =>
