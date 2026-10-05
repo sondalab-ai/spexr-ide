@@ -1,0 +1,65 @@
+import path from "path";
+import type { Readiness, ThemeState } from "./app";
+import type { NativeShot } from "./native";
+import type { Os, Theme } from "./prepare";
+import type { LogProbes, MainProbes, PageProbes } from "./probes";
+import type { SceneResult } from "./scenes";
+
+/** Artifacts: one folder per OS and theme, uploaded as `screenshots-<os>-<theme>-<attempt>`. */
+export const OUT_ROOT = process.env.VISUAL_OUT ?? path.join(__dirname, "out");
+
+/** Which commit and run a capture belongs to; on a pull request, the PR's head, not the merge commit. */
+export interface Provenance {
+  readonly sha: string;
+  readonly ref: string;
+  readonly event: string;
+  readonly runId: string;
+  readonly attempt: string;
+}
+
+/** What the fixture extension's `parity.probe` acknowledges. */
+export interface ProbeAck {
+  readonly vscodeApi?: string;
+  readonly extensions?: readonly string[];
+}
+
+/**
+ * `meta.json`, one per OS and theme: written by capture.visual.ts as the
+ * capture goes, read by summary.ts. Optional fields are absent when the
+ * capture failed before reaching them.
+ */
+export interface CaptureMeta {
+  os: Os;
+  theme: Theme;
+  content: { readonly width: number; readonly height: number };
+  provenance: Provenance;
+  scenes: SceneResult[];
+  webglAttempts?: Array<{ swiftshader: boolean; webgl2: boolean }>;
+  backendLog?: string;
+  run?: { workspace: string; ackDir: string; configDir: string };
+  readiness?: Readiness;
+  themeCheck?: ThemeState;
+  extensions?: ProbeAck;
+  /** True when the bottom panel started collapsed and the scene opened it. */
+  bottomPanelOpened?: boolean;
+  /** The sash drag that puts the bottom panel at the demo's y; null when no sash was found. */
+  bottomPanel?: { before: number; after: number } | null;
+  baseFirstVisibleLine?: number | null;
+  page?: PageProbes;
+  main?: MainProbes;
+  native?: NativeShot[];
+  treeFocused?: boolean;
+  error?: string;
+  close?: "closed" | "killed";
+  log?: LogProbes;
+}
+
+export function provenance(): Provenance {
+  return {
+    sha: process.env.VISUAL_HEAD_SHA || process.env.GITHUB_SHA || "unknown",
+    ref: process.env.VISUAL_REF || process.env.GITHUB_REF_NAME || "unknown",
+    event: process.env.GITHUB_EVENT_NAME ?? "unknown",
+    runId: process.env.GITHUB_RUN_ID ?? "unknown",
+    attempt: process.env.GITHUB_RUN_ATTEMPT ?? "unknown",
+  };
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://example.invalid/tokens.schema.json",
+  "product": "probe-engine",
+  "tokens": {
+    "radius-sm": 6,
+    "radius-md": 8,
+    "radius-pane": 10,
+    "space-gap": 6,
+    "motion-fast": "140ms",
+    "probe-ttl-days": 14
+  }
+}

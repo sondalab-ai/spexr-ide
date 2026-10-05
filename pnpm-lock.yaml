@@ -450,6 +450,15 @@ importers:
         specifier: ^22.0.0
         version: 22.19.18
 
+  tests/visual:
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.62.1
+        version: 1.62.1
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.18
+
 packages:
 
   7zip-bin@5.2.0:
