@@ -5,8 +5,10 @@
  *
  * Each command sets up one screenshot scene, then writes an acknowledgement to
  * $SPEXR_VISUAL_ACK that the Playwright side waits for. It is loaded only by
- * tests/visual/app.ts through THEIA_PLUGINS, so no test hook goes into the
- * product. Plain CommonJS on purpose: there is no build step.
+ * tests/visual/app.ts through THEIA_PLUGINS, so scene set-up adds no test
+ * hook to the product. (The one product-side switch is spexr's code-font
+ * hold, set by the capture through localStorage; see late-font.ts.) Plain
+ * CommonJS on purpose: there is no build step.
  */
 
 const fs = require("fs");
@@ -213,6 +215,30 @@ function activate(context) {
     const cleared = await tryCommand("notifications.commands.clearAll");
     const focused = await tryCommand("workbench.files.action.focusFilesExplorer");
     ack("focusTree", { ok: true, cleared, focused });
+  });
+
+  // late-font: two panel terminals, each shown in turn, so the first is an
+  // opened terminal hidden behind the second when the held faces are released.
+  const openTerminal = async (name) => {
+    const terminal = vscode.window.createTerminal({ name });
+    terminal.show(true);
+    const pid = await terminal.processId;
+    return { name, pid: pid ?? null };
+  };
+  register("parity.lateOpenA", async () => {
+    ack("lateOpenA", { ok: true, terminal: await openTerminal("late-a") });
+  });
+  register("parity.lateOpenB", async () => {
+    ack("lateOpenB", { ok: true, terminal: await openTerminal("late-b"), names: vscode.window.terminals.map((t) => t.name) });
+  });
+  // Shows late-a again and runs `true` in it: the new prompt moves the cursor,
+  // which is when xterm sizes its helper textarea to the current cell.
+  register("parity.lateShowA", async () => {
+    const terminal = vscode.window.terminals.find((t) => t.name === "late-a");
+    if (!terminal) throw new Error("no late-a terminal");
+    terminal.show(true);
+    terminal.sendText("true");
+    ack("lateShowA", { ok: true });
   });
 
   ack("activated", { ok: true });

@@ -84,6 +84,21 @@ function renderSummary(runs: Run[]): string {
   md += row("Monaco char width", (m) => m.page?.monacoCharWidth);
   md += row("code font wait (terminals re-measured)", (m) => (m.page ? `${m.page.codeFont ?? "no marker"} (${m.page.codeFontTerminals ?? "—"})` : ""));
   md += row("terminal font", (m) => (m.page?.terminalFont ? `${m.page.terminalFont.size} ${m.page.terminalFont.family}` : ""));
+  md += row("late font: marker held → released", (m) => (m.lateFont ? `${m.lateFont.heldMark} → ${m.lateFont.lateMark}` : ""));
+  md += row("late font: re-measured at release → after showing hidden late-a", (m) =>
+    m.lateFont ? `${m.lateFont.remeasuredAtRelease} → ${m.lateFont.remeasuredAfterShow}` : "",
+  );
+  md += row("late font: opened terminals hidden at release; face already loaded", (m) =>
+    m.lateFont
+      ? `${m.lateFont.beforeRelease.filter((x) => !x.visible).map((x) => x.where).join(", ") || "none"}; ${m.lateFont.faceLoadedBeforeRelease}`
+      : "",
+  );
+  md += row("late font: late-a box / cell / screen ÷ cell", (m) => {
+    const t = m.lateFont?.shown;
+    if (!t) return "";
+    return `${t.box ? `${t.box.width}×${t.box.height}` : "—"} / ${t.cell ? `${t.cell.width}×${t.cell.height}` : "—"} / ${t.screenHeight ?? "—"} ÷ ${t.cell?.height ?? "—"} = ${t.rows ?? "—"}`;
+  });
+  md += row("late font: problems", (m) => (m.lateFont ? m.lateFont.problems.join("; ") || "none" : ""));
   md += row("terminal box now / cell / screen ÷ cell", (m) => {
     const t = m.page?.terminalFont;
     if (!t) return "";

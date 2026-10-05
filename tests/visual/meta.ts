@@ -1,5 +1,6 @@
 import path from "path";
 import type { Readiness, ThemeState } from "./app";
+import type { LateFontResult } from "./late-font";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
 import type { LogProbes, MainProbes, PageProbes } from "./probes";
@@ -49,6 +50,8 @@ export interface CaptureMeta {
   main?: MainProbes;
   native?: NativeShot[];
   treeFocused?: boolean;
+  /** The code-font wait's capped path, forced by a held reload (late-font.ts). */
+  lateFont?: LateFontResult;
   error?: string;
   close?: "closed" | "killed";
   log?: LogProbes;
