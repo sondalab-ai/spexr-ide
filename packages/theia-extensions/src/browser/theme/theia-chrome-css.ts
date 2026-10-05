@@ -182,6 +182,11 @@ body {
   --theia-activityBar-foreground: ${fg} !important;
   --theia-activityBar-inactiveForeground: ${fgMuted} !important;
 
+  /* Trees toward the kit's .sl-tree: hairline indent guides, the selection's
+     own path one border step stronger. */
+  --theia-tree-inactiveIndentGuidesStroke: var(--slc-border-subtle) !important;
+  --theia-tree-indentGuidesStroke: var(--slc-border) !important;
+
   /* Borders */
   --theia-sideBar-border: ${line} !important;
   --theia-panel-border: ${line} !important;

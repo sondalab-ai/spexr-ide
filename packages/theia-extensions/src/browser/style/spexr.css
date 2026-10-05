@@ -886,6 +886,18 @@ body {
   bottom: 1px;
 }
 
+/* The tree, toward the kit's .sl-tree (workbench.css): the twisty in the
+   muted ink, turning on the kit's motion tokens (no turn under reduced
+   motion; never while it spins as busy). The guides are the theme layer's
+   (theia-chrome-css.ts); the selected row is S2's tile. */
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle {
+  color: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle:not(.theia-mod-busy) {
+  transition: transform var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
 /* Forced colours drop the tile, the seam and the glyph's accent: the current
    activity item gets the Highlight outline the S2 tiles have. The pane's own
    outline and seam are the kit's (workbench.css). */

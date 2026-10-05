@@ -178,3 +178,13 @@ describe("the activity bars", () => {
     expect(badge).toMatch(/bottom:\s*1px/);
   });
 });
+
+// Theia's tree toward the kit's .sl-tree; its selected row is S2's tile.
+describe("the tree's twisty", () => {
+  it("is the muted ink and turns on the kit's motion tokens, never while busy", () => {
+    expect(rule(`${NOT_HC} .theia-Tree .theia-ExpansionToggle {`)).toMatch(/color:\s*var\(--slc-text-muted\)/);
+    expect(rule(`${NOT_HC} .theia-Tree .theia-ExpansionToggle:not(.theia-mod-busy)`)).toMatch(
+      /transition:\s*transform var\(--sl-motion-fast\) var\(--sl-motion-ease\)/,
+    );
+  });
+});

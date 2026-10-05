@@ -88,6 +88,14 @@ describe("Theia's activity bars", () => {
   });
 });
 
+// Trees take the kit's hairline guides, the selection's path one border step stronger.
+describe("Theia's tree guides", () => {
+  it.each(["light", "dark"])("are the kit's hairlines on %s", (theme) => {
+    expect(value(theme, "tree-inactiveIndentGuidesStroke")).toBe("var(--slc-border-subtle)");
+    expect(value(theme, "tree-indentGuidesStroke")).toBe("var(--slc-border)");
+  });
+});
+
 // The main area's tabs are tile tabs drawn in spexr.css; the colours Theia's
 // own tab rules read there are no longer set.
 describe("the editor tabs' Theia colours", () => {
