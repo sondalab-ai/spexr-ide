@@ -114,7 +114,10 @@ body {
 
   const neutralsCss = `
 :root {
-  /* Base surfaces */
+  /* Base surfaces. The editor's is the canvas here, the frame behind the
+     islands (Theia paints the shell and a maximised area with it); each
+     island re-binds the editor, tab strip, breadcrumb, panel and side bar
+     surfaces to its own fill (spexr.css, THE WORKBENCH). */
   --theia-editor-background: ${canvas} !important;
   --theia-editorGutter-background: ${canvas} !important;
   --theia-breadcrumb-background: ${canvas} !important;
@@ -125,10 +128,12 @@ body {
   --theia-statusBarItem-activeBackground: ${raised} !important;
   --theia-titleBar-activeBackground: ${canvas} !important;
   --theia-titleBar-inactiveBackground: ${canvas} !important;
-  --theia-terminal-background: ${canvas} !important;
   --theia-editorGroupHeader-tabsBackground: ${canvas} !important;
 
-  /* Raised-once surfaces */
+  /* Raised-once surfaces: an island at rest. The terminal is one too, as
+     spexr-color-contribution.ts registers it for xterm's canvas; it does not
+     follow a lit island's raised rung (xterm paints from the registry). */
+  --theia-terminal-background: ${surface} !important;
   --theia-sideBar-background: ${surface} !important;
   --theia-sideBarSectionHeader-background: ${surface} !important;
   --theia-panel-background: ${surface} !important;
@@ -171,6 +176,18 @@ body {
   --theia-descriptionForeground: ${fgMuted} !important;
   --theia-statusBar-foreground: ${fgMuted} !important;
   --theia-titleBar-activeForeground: ${fgMuted} !important;
+
+  /* The activity bars are the kit's (0.33, .sl-activitybar; spexr.css draws
+     the tiles): glyphs in the muted ink on the canvas, the hovered and the
+     current one in the primary ink (the current glyph is the accent there).
+     Theia's menus at the bars' ends and a plugin's mask icons read these. */
+  --theia-activityBar-foreground: ${fg} !important;
+  --theia-activityBar-inactiveForeground: ${fgMuted} !important;
+
+  /* Trees toward the kit's .sl-tree: hairline indent guides, the selection's
+     own path one border step stronger. */
+  --theia-tree-inactiveIndentGuidesStroke: var(--slc-border-subtle) !important;
+  --theia-tree-indentGuidesStroke: var(--slc-border) !important;
 
   /* Borders */
   --theia-sideBar-border: ${line} !important;

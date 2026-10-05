@@ -10,6 +10,8 @@ function installedKitVersion(): string {
 }
 
 describe("@sondalab/ui-kit", () => {
+  // 0.33.0 ships workbench.css, whose lit pane (.sl-pane[data-lit]) the
+  // shell's islands wear, and the seam on every selected or current tile.
   // 0.32.1 ships the one label threshold and the hover/press step rule the
   // registry's fill hover is derived with (spexr-accent.ts) and the glass
   // primary's shade under a white label. 0.32.0 ships the --slc-accent-fill role spexr's registered fill is set
@@ -22,8 +24,8 @@ describe("@sondalab/ui-kit", () => {
   // data-sl-product attribute select. 0.25.0 gives every control its press,
   // 0.24.0 carries accent text in --slc-accent-text, 0.23 shipped the list,
   // disclosure and resizer, and 0.22 the segmented aria-pressed paint.
-  it("is at least 0.32.1", () => {
+  it("is at least 0.33.0", () => {
     const [major, minor, patch] = installedKitVersion().split(".").map(Number) as [number, number, number];
-    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(32_001);
+    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(33_000);
   });
 });

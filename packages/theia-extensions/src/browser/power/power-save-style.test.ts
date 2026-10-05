@@ -95,19 +95,28 @@ describe("power saving the ink hover", () => {
   });
 });
 
-// Saving killed every effect host's box-shadow, and with it a glass control's
-// own depth (a secondary's lit line and cast, a selected tile) and its focus
-// halo. The kit restores both after its own kill switches (0.32); saving
-// mirrors that restore, list for list, under spexr's flag.
-describe("power saving keeps a control's depth and focus halo", () => {
+// Saving killed every effect host's box-shadow, and with it a selected tile's
+// only marker, a glass control's own depth (a secondary's lit line and cast)
+// and its focus halo. The kit restores them after its own kill switches (the
+// selection 0.31, a control's depth and halo 0.32), and a surface's own
+// recipe, an island's ring or an overlay's cast (0.33); saving mirrors every
+// restore, list for list, under spexr's flag.
+describe("power saving keeps the selection, a control's depth and focus halo, and a surface's recipe", () => {
   const kit = readFileSync(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.css"), "utf8");
   const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
   const restores = [
-    ...kit.matchAll(/:is\(\[data-sl-fx="off"\], \[data-sl-fx="off"\] \*\)(:is\([^{]*?)\s*\{\s*box-shadow:\s*(var\(--_sl-depth[^;]*);/g),
+    ...kit.matchAll(/:is\(\[data-sl-fx="off"\], \[data-sl-fx="off"\] \*\)(:is\([^{]*?)\s*\{\s*box-shadow:\s*(var\(--(?:_sl-depth|slc-depth-)[^;]*);/g),
   ];
 
-  it("finds the kit's depth and halo restores", () => {
-    expect(restores).toHaveLength(2);
+  it("finds the kit's selection, depth, halo, island and float restores", () => {
+    expect(restores.map(([, , shadow]) => shadow!.split(/[,)]/)[0])).toEqual([
+      "var(--slc-depth-tile",
+      "var(--slc-depth-flat",
+      "var(--_sl-depth",
+      "var(--_sl-depth",
+      "var(--slc-depth-island",
+      "var(--slc-depth-float",
+    ]);
   });
 
   it.each(restores.map(([, rest, shadow]) => [rest!, shadow!]))("mirrors %s", (rest, shadow) => {

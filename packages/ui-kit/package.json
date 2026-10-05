@@ -42,6 +42,7 @@
     "./tokens.css": "./src/tokens/tokens.css",
     "./fonts.css": "./src/fonts.css",
     "./components.css": "./src/components.css",
+    "./workbench.css": "./src/workbench.css",
     "./glass.css": "./src/glass.css",
     "./effects.css": "./src/effects.css",
     "./themes/light.css": "./src/themes/light.css",
@@ -64,7 +65,7 @@
     "@radix-ui/react-tabs": "^1.1.21",
     "@radix-ui/react-toast": "^1.2.23",
     "@radix-ui/react-tooltip": "^1.2.16",
-    "@sondalab/ui-kit": "^0.32.1",
+    "@sondalab/ui-kit": "^0.33.0",
     "clsx": "^2.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

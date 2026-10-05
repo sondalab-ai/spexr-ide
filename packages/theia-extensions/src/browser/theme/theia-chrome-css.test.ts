@@ -72,10 +72,34 @@ describe("Theia's accent", () => {
   });
 });
 
+// The terminal sits on an island's surface, as the registry has it for xterm.
+describe("Theia's terminal", () => {
+  it.each(["light", "dark"] as const)("is the island surface on %s", (theme) => {
+    expect(value(theme, "terminal-background")).toBe(SPEXR_NEUTRALS[theme].surface);
+  });
+});
+
 describe("Theia's status bar", () => {
   it.each(["light", "dark"] as const)("is the canvas with the muted ink on %s", (theme) => {
     expect(value(theme, "statusBar-background")).toBe(SPEXR_NEUTRALS[theme].canvas);
     expect(value(theme, "statusBar-foreground")).toBe(SPEXR_NEUTRALS[theme].fgMuted);
+  });
+});
+
+// The activity bars are the kit's (0.33): muted glyphs on the canvas, the
+// hovered and current one in the primary ink.
+describe("Theia's activity bars", () => {
+  it.each(["light", "dark"] as const)("read the kit's inks on %s", (theme) => {
+    expect(value(theme, "activityBar-inactiveForeground")).toBe(SPEXR_NEUTRALS[theme].fgMuted);
+    expect(value(theme, "activityBar-foreground")).toBe(SPEXR_NEUTRALS[theme].fg);
+  });
+});
+
+// Trees take the kit's hairline guides, the selection's path one border step stronger.
+describe("Theia's tree guides", () => {
+  it.each(["light", "dark"])("are the kit's hairlines on %s", (theme) => {
+    expect(value(theme, "tree-inactiveIndentGuidesStroke")).toBe("var(--slc-border-subtle)");
+    expect(value(theme, "tree-indentGuidesStroke")).toBe("var(--slc-border)");
   });
 });
 

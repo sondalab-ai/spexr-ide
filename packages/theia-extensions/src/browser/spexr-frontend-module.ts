@@ -50,6 +50,9 @@ import { SpexrWelcomeWidget } from "./views/welcome-widget.js";
 import { SpexrShellLayoutContribution } from "./shell/spexr-shell-layout-contribution.js";
 import { SpexrPanelTitleContribution } from "./shell/panel-title-contribution.js";
 import { SpexrRevealOnRestore } from "./shell/reveal-on-restore.js";
+import { SpexrApplicationShell } from "./shell/island-shell.js";
+import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
+import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
@@ -192,6 +195,12 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       createWidget: () => ctx.container.get(SpexrWelcomeWidget),
     }))
     .inSingletonScope();
+
+  // Lumen islands: the shell areas float as the kit's panes on the canvas, and
+  // the one that holds the focus is lit (see shell/islands.ts).
+  rebind(ApplicationShell).to(SpexrApplicationShell).inSingletonScope();
+  bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
 
   bind(SpexrShellLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrShellLayoutContribution);

@@ -1,6 +1,7 @@
 import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
+import type { Message } from "@theia/core/shared/@lumino/messaging";
 import URI from "@theia/core/lib/common/uri";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
@@ -286,6 +287,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     this.title.closable = true;
     this.title.iconClass = "codicon codicon-server-process";
     this.addClass("spexr-darkfactory");
+    // Focusable from script, not a tab stop: activating the tab moves the
+    // focus into the wall (onActivateRequest), so the shell's focus tracker
+    // sees it, its island is lit, and the keyboard lands on the wall.
+    this.node.tabIndex = -1;
     // Capture phase: an embedded terminal's own wheel listener would otherwise
     // consume the event before the wall ever sees it.
     this.node.addEventListener("wheel", this.onWheel, { capture: true, passive: false });
@@ -326,6 +331,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
       this.loaded = true;
       this.update();
     });
+  }
+
+  /**
+   * Takes the focus when the shell activates the wall (its tab is selected,
+   * or a command reveals it with activation). Without it the shell warned that
+   * the widget did not accept focus, the focus tracker never fired, and the
+   * lit island stayed on the pane that had the focus before.
+   */
+  protected override onActivateRequest(msg: Message): void {
+    super.onActivateRequest(msg);
+    // The wall keeps its own scroll position: focusing must not scroll it.
+    this.node.focus({ preventScroll: true });
   }
 
   /**
