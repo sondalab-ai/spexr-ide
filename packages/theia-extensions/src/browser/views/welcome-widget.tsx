@@ -3,7 +3,6 @@ import { injectable, inject, postConstruct } from "@theia/core/shared/inversify"
 import { ReactWidget, type Message } from "@theia/core/lib/browser";
 import { CommandService } from "@theia/core/lib/common/command";
 import { KeybindingRegistry } from "@theia/core/lib/browser/keybinding";
-import { KeySequence } from "@theia/core/lib/browser/keyboard/keys";
 import { isOSX, isWindows } from "@theia/core/lib/common/os";
 import { ApplicationServer } from "@theia/core/lib/common/application-protocol";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
@@ -16,7 +15,7 @@ import { WelcomeBackground } from "./welcome-background.js";
 import { specDirPrefixes, specDirsForRoots, SPEC_FILE_RE } from "../spec/spec-roots.js";
 import { fetchReleaseNotes } from "../release-notes-source.js";
 import type { ReleaseNote } from "../../common/changelog.js";
-import { keyCaps, type KeyCaps } from "./key-caps.js";
+import { boundKeyCaps, keyPlatform } from "./key-caps.js";
 
 /** The command the "Talk to the agent" card runs, whose keys the card shows. */
 const AGENT_FOCUS_COMMAND = "spexr.claude.focus";
@@ -69,25 +68,6 @@ export class SpexrWelcomeWidget extends ReactWidget {
     void this.refresh();
     void this.loadReleaseNote();
     this.update();
-  }
-
-  /**
-   * The keys bound to a command, as keycaps, from the keybinding registry: the
-   * first binding, as a menu shows it. Undefined when nothing is bound, so a
-   * card never shows a shortcut that does nothing.
-   */
-  private shortcutFor(commandId: string): KeyCaps | undefined {
-    const binding = this.keybindings.getKeybindingsForCommand(commandId)[0];
-    if (!binding) return undefined;
-    const chords = KeySequence.parse(binding.keybinding).map((code) => ({
-      ctrl: code.ctrl,
-      shift: code.shift,
-      alt: code.alt,
-      meta: code.meta,
-      label: code.key ? this.keybindings.acceleratorForKey(code.key) : "",
-      code: code.key?.code ?? "",
-    }));
-    return keyCaps(chords, isOSX ? "mac" : isWindows ? "windows" : "linux");
   }
 
   protected override onAfterAttach(msg: Message): void {
@@ -164,7 +144,7 @@ export class SpexrWelcomeWidget extends ReactWidget {
           onNewProject={() => this.commands.executeCommand("spexr.project.new")}
           onOpenFolder={() => this.commands.executeCommand("workspace:openFolder")}
           onFocusAgent={() => this.commands.executeCommand(AGENT_FOCUS_COMMAND)}
-          agentShortcut={this.shortcutFor(AGENT_FOCUS_COMMAND)}
+          agentShortcut={boundKeyCaps(this.keybindings, AGENT_FOCUS_COMMAND, keyPlatform(isOSX, isWindows))}
           onStartFirstSpec={() => this.commands.executeCommand("spexr.spec.create")}
         />
       </>

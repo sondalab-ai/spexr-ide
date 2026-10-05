@@ -1,3 +1,6 @@
+import type { Keybinding } from "@theia/core/lib/common/keybinding";
+import type { Key, KeyCode } from "@theia/core/lib/browser/keyboard/keys";
+
 /** One chord of a key binding: the modifiers it holds and its key. */
 export interface KeyChord {
   readonly ctrl: boolean;
@@ -34,17 +37,16 @@ function modifiers(chord: KeyChord): Array<"ctrl" | "shift" | "alt" | "meta"> {
 const ARIA_MODIFIERS = { ctrl: "Control", shift: "Shift", alt: "Alt", meta: "Meta" } as const;
 
 /**
- * A key's name in aria-keyshortcuts: a letter or a digit as itself, a named
- * key (Enter, ArrowUp, F1) by its code, which is its KeyboardEvent key, and
- * any other key (punctuation) by the character it prints.
+ * A key's name in aria-keyshortcuts: a named key (Enter, ArrowUp, F1, Space)
+ * by its code, which is its KeyboardEvent key, and any other key by the
+ * character it prints on the user's layout (its label), a letter in capitals.
+ * Never the code of a printing key: on AZERTY the "A" key is KeyQ.
  */
 export function ariaKey(code: string, label: string): string {
-  const letterOrDigit = /^(?:Key([A-Z])|Digit(\d))$/.exec(code);
-  if (letterOrDigit) return letterOrDigit[1] ?? letterOrDigit[2]!;
   if (/^(?:F\d{1,2}|Enter|Escape|Tab|Space|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Arrow(?:Up|Down|Left|Right))$/.test(code)) {
     return code;
   }
-  return label;
+  return label.length === 1 ? label.toUpperCase() : label;
 }
 
 /**
@@ -60,4 +62,36 @@ export function keyCaps(chords: readonly KeyChord[], platform: KeyPlatform): Key
   const only = chords.length === 1 ? chords[0]! : undefined;
   if (!only) return { chords: caps };
   return { chords: caps, aria: [...modifiers(only).map((m) => ARIA_MODIFIERS[m]), ariaKey(only.code, only.label)].join("+") };
+}
+
+/** The platform's modifier labels: macOS, Windows, or anything else (Linux). */
+export function keyPlatform(osx: boolean, windows: boolean): KeyPlatform {
+  return osx ? "mac" : windows ? "windows" : "linux";
+}
+
+/** What boundKeyCaps reads off Theia's KeybindingRegistry. */
+export interface KeyBindings {
+  getKeybindingsForCommand(commandId: string): readonly Keybinding[];
+  resolveKeybinding(binding: Keybinding): readonly KeyCode[];
+  acceleratorForKey(key: Key): string;
+}
+
+/**
+ * The keys bound to a command, as keycaps: its first binding, as a menu shows
+ * it, resolved for the user's keyboard layout (Theia's resolveKeybinding, as
+ * its menus do), so a non-US layout shows the letter it prints and the ARIA
+ * name agrees with the caps. Undefined when nothing is bound.
+ */
+export function boundKeyCaps(keybindings: KeyBindings, commandId: string, platform: KeyPlatform): KeyCaps | undefined {
+  const binding = keybindings.getKeybindingsForCommand(commandId)[0];
+  if (!binding) return undefined;
+  const chords = keybindings.resolveKeybinding(binding).map((code) => ({
+    ctrl: code.ctrl,
+    shift: code.shift,
+    alt: code.alt,
+    meta: code.meta,
+    label: code.key ? keybindings.acceleratorForKey(code.key) : "",
+    code: code.key?.code ?? "",
+  }));
+  return keyCaps(chords, platform);
 }
