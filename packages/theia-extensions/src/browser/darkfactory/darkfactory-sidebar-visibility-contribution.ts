@@ -21,10 +21,11 @@ export class SpexrDarkfactorySidebarVisibilityContribution implements FrontendAp
 
   /**
    * Listens on the main dock panel rather than `shell.onDidChangeCurrentWidget`:
-   * the latter is driven by a Lumino `FocusTracker`, and the Darkfactory widget
-   * sets no `tabIndex`, so selecting its tab moves no DOM focus and the tracker
-   * never fires. `TheiaDockPanel.onDidChangeCurrent` fires on tab selection
-   * itself, and reports the same `mainPanel.currentTitle` the policy reads back
+   * the latter is driven by a Lumino `FocusTracker`, which fires only once a
+   * widget takes the DOM focus. The Darkfactory wall does so on activation now
+   * (it lights its island), but a tab revealed without activation moves no
+   * focus. `TheiaDockPanel.onDidChangeCurrent` fires on tab selection itself,
+   * and reports the same `mainPanel.currentTitle` the policy reads back
    * through `getCurrentWidget("main")`.
    */
   onStart(): void {
