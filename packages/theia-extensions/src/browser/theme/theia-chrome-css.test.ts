@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { theiaChromeCss } from "./theia-chrome-css.js";
-import { ACCENT, ACCENT_FILL, fillStep } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, fillStep, labelOn } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** The value theiaChromeCss gives a `--theia-*` variable, or undefined. */
@@ -47,19 +49,60 @@ describe("Theia's accent as text", () => {
   });
 });
 
+/** A file of the installed @sondalab/ui-kit. */
+const kitFile = (name: string): string => readFileSync(createRequire(import.meta.url).resolve(`@sondalab/ui-kit/${name}`), "utf8");
+
+/** Every stylesheet spexr ships: its ui-kit package's and the Theia extension's. */
+function spexrStylesheets(dir = fileURLToPath(new URL("../../../../", import.meta.url))): string[] {
+  return ["ui-kit/src", "theia-extensions/src"].flatMap(function walk(rel: string): string[] {
+    return readdirSync(join(dir, rel), { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(rel, e.name)) : e.name.endsWith(".css") ? [join(dir, rel, e.name)] : [],
+    );
+  });
+}
+
 // A white label on the #5b6cff accent read 4.17:1; the registered fill reads 5.41.
 describe("Theia's labelled fills", () => {
-  it("are spexr's registered fill, the one spexr-overrides.css sets", () => {
-    const overrides = readFileSync(fileURLToPath(new URL("../../../../ui-kit/src/themes/spexr-overrides.css", import.meta.url)), "utf8");
-    expect(ACCENT_FILL.dark).toBe(ACCENT_FILL.light);
-    expect(overrides).toContain(`--slc-accent-fill: ${ACCENT_FILL.light};`);
+  // Since kit 0.35 the fill is the kit's to set, per theme, from the
+  // registry (themes/products.css under data-sl-product="spexr"), so a fill
+  // changed in the registry reaches the kit's controls and Theia's chrome
+  // alike. A rule of spexr's would win over it (after products.css, at its
+  // weight) or lose to it silently (any lighter), so there is none.
+  it("are spexr's registered fill, which the kit's products.css sets on each theme", () => {
+    const neutrals = JSON.parse(kitFile("neutrals.json"));
+    expect(neutrals.products.spexr.fill).toEqual(ACCENT_FILL);
+    const products = kitFile("themes/products.css");
+    for (const theme of ["light", "dark"] as const) {
+      const at = products.indexOf(`[data-sl-product="spexr"][data-sl-theme="${theme}"]`);
+      expect(at, `spexr's ${theme} block in products.css`).toBeGreaterThanOrEqual(0);
+      expect(products.slice(at, products.indexOf("}", at))).toContain(`--slc-accent-fill: ${ACCENT_FILL[theme]};`);
+    }
   });
 
-  it.each(["light", "dark"] as const)("carry the white label on the fill on %s", (theme) => {
+  it("reach spexr, which loads products.css and marks its theme element as spexr's", () => {
+    const src = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+    expect(src("../style/spexr.css")).toContain(`@import "@spexr/ui-kit/themes/products.css";`);
+    expect(src("../../../../ui-kit/src/themes/products.css")).toContain(`@import "@sondalab/ui-kit/themes/products.css";`);
+    const contribution = src("./spexr-theme-contribution.ts");
+    expect(contribution).toContain(`document.documentElement.setAttribute("data-sl-theme", spexrTheme);`);
+    expect(contribution).toContain(`document.documentElement.setAttribute("data-sl-product", "spexr");`);
+  });
+
+  it("are set by no stylesheet of spexr's", () => {
+    const sheets = spexrStylesheets();
+    expect(sheets.some((f) => f.endsWith("spexr-overrides.css")), "spexr-overrides.css found").toBe(true);
+    for (const file of sheets) expect(readFileSync(file, "utf8"), file).not.toMatch(/--slc-accent-fill\s*:/);
+    for (const theme of ["light", "dark", "high-contrast"]) expect(theiaChromeCss(theme)).not.toMatch(/--slc-accent-fill\s*:/);
+  });
+
+  it.each(["light", "dark"] as const)("carry the kit's label on the fill on %s", (theme) => {
     for (const name of ["button-background", "badge-background", "activityBarBadge-background", "menu-selectionBackground"]) {
       expect(value(theme, name), name).toBe(ACCENT_FILL[theme]);
     }
     expect(value(theme, "button-hoverBackground")).toBe(fillStep(ACCENT_FILL[theme], "hover"));
+    for (const name of ["button-foreground", "badge-foreground", "activityBarBadge-foreground", "menu-selectionForeground"]) {
+      expect(value(theme, name), name).toBe(labelOn(ACCENT_FILL[theme]));
+    }
   });
 });
 

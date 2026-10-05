@@ -4,8 +4,18 @@ import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 import { ACCENT, ACCENT_FILL, KIT_STATUS_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 
-/** The label on a labelled accent fill. */
-const ON_ACCENT = "#ffffff";
+type PerTheme = { dark: string; light: string };
+
+/**
+ * The registry colours of a fill that carries a label, per theme: the fill,
+ * its hover by the kit's step rule, and the kit's label on it (labelOn: white
+ * on spexr's fill today, the dark pole on a light fill). Pure and defaulted
+ * to the registered fill, so a test can hand it another fill.
+ */
+export function labelledFillColors(fill: PerTheme = ACCENT_FILL): { background: PerTheme; hoverBackground: PerTheme; foreground: PerTheme } {
+  const each = (f: (hex: string) => string): PerTheme => ({ dark: f(fill.dark), light: f(fill.light) });
+  return { background: each((hex) => hex), hoverBackground: each((hex) => fillStep(hex, "hover")), foreground: each(labelOn) };
+}
 
 /**
  * One accent-color override. `defaults` map dark/light to the accent (high
@@ -24,17 +34,18 @@ function accent(
   id: string,
   variant: "fill" | "text" | "textActive" | "onAccent" | "labelled" | "labelledHover",
 ): void {
+  const labelled = labelledFillColors();
   const value =
     variant === "onAccent"
-      ? { dark: ON_ACCENT, light: ON_ACCENT }
+      ? labelled.foreground
       : variant === "text"
         ? { dark: accentText("dark"), light: accentText("light") }
         : variant === "textActive"
           ? { dark: accentTextActive("dark"), light: accentTextActive("light") }
           : variant === "labelled"
-            ? { dark: ACCENT_FILL.dark, light: ACCENT_FILL.light }
+            ? labelled.background
             : variant === "labelledHover"
-              ? { dark: fillStep(ACCENT_FILL.dark, "hover"), light: fillStep(ACCENT_FILL.light, "hover") }
+              ? labelled.hoverBackground
               : { dark: ACCENT.dark, light: ACCENT.light };
   colors.register({
     id,
@@ -60,7 +71,8 @@ export class SpexrColorContribution implements ColorContribution {
     // Focus ring
     accent(colors, "focusBorder", "fill");
 
-    // Native buttons and badges carry a white label: the registered fill
+    // Native buttons and badges: the registered fill, with the kit's label on
+    // it (white on spexr's fill today; the dark pole on a light fill)
     accent(colors, "button.background", "labelled");
     accent(colors, "button.hoverBackground", "labelledHover");
     accent(colors, "button.foreground", "onAccent");

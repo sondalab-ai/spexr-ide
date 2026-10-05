@@ -204,10 +204,10 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* Power saving (power-save-dom.ts): decorative loops stand still. Status
    animations (working LEDs, loading pulses, alerts) keep running because
-   they carry information. The kit's effects are stilled with its own
-   kill-switch list (effects.css) keyed on our flag instead of its
-   data-sl-fx="off", which would stop it dressing content that mounts
-   while saving. */
+   they carry information; the kit's status bar dot is the exception, below.
+   The kit's effects are stilled with its own kill-switch list (effects.css)
+   keyed on our flag instead of its data-sl-fx="off", which would stop it
+   dressing content that mounts while saving. */
 :root[data-spexr-power-save] :is(.sl-fx-glass, .sl-fx-glass__lit, .sl-fx-press, .sl-fx-aurora, .sl-fx-aurora__glow, .sl-fx-liquid, .sl-fx-liquid__skin, .sl-fx-goo, .sl-fx-goo__field, .sl-fx-glitch, .sl-fx-glitch__text, .sl-fx-glitch__shards, .sl-fx-glitch__shard) {
   animation: none !important;
   box-shadow: none !important;
@@ -234,24 +234,27 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* ...nor a control's own depth and focus halo, as the kit's kill switches
    give them back (effects.css, 0.32; 0.33 adds the activity item and the
-   tree row): a control writes its resting shadow
-   into --_sl-depth (a secondary's lit line and cast, a selected tile, a
-   checked box's foot) and its focus rule adds --_sl-halo. They are the
-   control's, not the effect's. The kill above weighs (0,3,0), so these
-   outrank it at (0,4,0) and (0,5,0), with the kit's own lists. The halo
-   stays off in high contrast, where --slc-glow is 0. */
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+   tree row, 0.34 the status item and the title bar's command field): a
+   control writes its resting shadow into --_sl-depth (a secondary's lit
+   line and cast, a selected tile, a checked box's foot) and its focus rule
+   adds --_sl-halo. They are the control's, not the effect's. The kill above
+   weighs (0,3,0), so these outrank it at (0,4,0) and (0,5,0), with the
+   kit's own lists. The halo stays off in high contrast, where --slc-glow
+   is 0. */
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
   box-shadow: var(--_sl-depth, 0 0 transparent) !important;
 }
 
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
   box-shadow: var(--_sl-depth, 0 0 transparent), var(--_sl-halo, 0 0 transparent) !important;
 }
 
 /* ...nor a surface's own recipe (effects.css, 0.33): an island (a workbench
    pane, a terminal block) and an overlay that floats (a toast, a palette)
    wearing an effect keep their ring and cast, as the kit's kill switches
-   give them back, at (0,4,0) and with the kit's own lists. No spexr surface
+   give them back, at (0,4,0) and with the kit's own lists. Since 0.34 a
+   toast and a palette have no border and sit on --slc-depth-cast, whose
+   ring is theirs, so that is what comes back for them. No spexr surface
    wears an effect today (the shell's islands draw their recipe on ::after,
    THE WORKBENCH); the mirror keeps power saving in step with the kit. */
 :root[data-spexr-power-save] :is(.sl-pane, .sl-term-block):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
@@ -259,7 +262,19 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 :root[data-spexr-power-save] :is(.sl-toast, .sl-palette):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
-  box-shadow: var(--slc-depth-float) !important;
+  box-shadow: var(--slc-depth-cast) !important;
+}
+
+/* The status bar's live dot (workbench.css, 0.34) breathes on its own, not
+   as an effect. The kit stops it in a data-sl-fx="off" region and pauses it
+   under data-sl-fx-still (which spexr sets only while motion is paused);
+   power saving sets neither on the root, so it is stopped here, as the kit
+   stops it in an opt-out region. It is the one status mark that stands still while saving, because
+   the breath is decoration: the dot stays, and the words beside it say the
+   state. No spexr status item wears the kit's dot today (the dock draws its
+   own, still, THE STATUS DOCK); this keeps power saving in step with the kit. */
+:root[data-spexr-power-save] .sl-statusbar__dot {
+  animation: none !important;
 }
 
 :root[data-spexr-power-save] .sl-fx-goo__member {
@@ -443,13 +458,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    theia-chrome-css.ts. Light and dark only: high contrast stays Theia's own
    HC theme, as its neutrals do.
 
-   THE SEAM. A tile alone is found by its ring, about 1.4:1 against its pane,
-   which is no state indicator (owner, 2026-10-04). Every selected or current
-   tile here carries the kit's seam: a 2px line, half the tile's height, at
-   its leading edge (a layer of its background, as on the kit's current nav
-   item). It is the accent (--slc-seam) where its container has focus, the
-   muted ink where it has not; both read at least 5.7:1 against the tile on
-   either theme. Containers set the ink; the tiles paint it. */
+   THE SEAM. A tile alone is found by its ring, 1.25-1.34:1 against spexr's
+   canvas, surface and raised rung since the kit's 0.35 hairlines (1.32-1.41
+   before), which is no state indicator (owner, 2026-10-04). Every selected
+   or current tile here carries the kit's seam: a 2px line, half the tile's
+   height, at its leading edge (a layer of its background, as on the kit's
+   current nav item). It is the accent (--slc-seam) where its container has
+   focus, the muted ink where it has not; both read at least 5.7:1 against
+   the tile on either theme. Containers set the ink; the tiles paint it. */
 :root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container) {
   --spexr-seam-ink: var(--slc-text-muted);
 }
@@ -523,7 +539,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    outside (the quick pick has no room above its first row or below its last,
    the history list is full-width), so the ring is drawn inside, and there is
    no cast to clip. The lit line goes: on light it is white on the white tile.
-   The seam sits 1-2px inside, clear of the text. */
+   The seam sits 1-2px inside, clear of the text.
+   Kit 0.34's palette (580px, no border, the cast, translucent, a 52px head,
+   36px rows, its own seam) is S5f's. */
 :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
   border-radius: var(--sl-radius-sm);
   background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
@@ -705,7 +723,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    the editor's current tab at (1,3,0), and at (1,4,0) for an unfocused group,
    and sidepanel.css the bottom's at up to (1,5,0), so these outrank both.
    The tile's own shadow replaces Theia's 1px line on the bottom's current
-   tab (panelTitle.activeBorder). */
+   tab (panelTitle.activeBorder).
+   Kit 0.34's tile tab (r7, 13px at 500, hover to the secondary ink) is S5c's. */
 :root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-content {
   gap: 2px;
   padding-inline: 4px;
@@ -861,7 +880,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   border-top-color: transparent;
 }
 
-/* The host keeps no shadow of its own: the recipe is the overlay below. */
+/* The host keeps no shadow of its own: the recipe is the overlay below.
+   That also drops the kit's drop below a lit pane (0.34, --slc-lit-drop),
+   which S5f wears inward on the bottom split panel's handle. */
 .spexr-island.sl-pane,
 .spexr-island.sl-pane[data-lit] {
   box-shadow: none;
@@ -936,8 +957,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   box-shadow: inset 0 0 0 1px var(--slc-border);
 }
 
-/* The lit pane's glow (the kit's 0 0 24px -6px, at --slc-glow's strength)
-   falls inward, along every edge. --slc-glow is 0 in high contrast. */
+/* The lit pane's glow (the kit's 0.33 glow, 0 0 24px -6px, at --slc-glow's
+   strength) falls inward, along every edge. --slc-glow is 0 in high
+   contrast. Kit 0.34 replaced that glow with a drop below the pane and a
+   wash and tint for the chrome inside it (--slc-lit-drop, --slc-lit-wash,
+   --slc-lit-tint); S5f takes them, and this glow goes then. */
 .spexr-island[data-lit]::after {
   box-shadow:
     inset 0 0 0 1px var(--slc-border-subtle),
@@ -999,7 +1023,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    focus, as on the kit's bar. A 36px tile centred in Theia's 48px column with
    a 20px glyph; Theia sizes each tab to its icon box, inline, so the box is
    the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
-   codicon does. The count badge moves inside the tile: the tab clips. */
+   codicon does. The count badge moves inside the tile: the tab clips.
+   Kit 0.34's bar (a 52px column, items r9 and 8px apart, the count badge
+   child) is S5c's. */
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides {
   --spexr-seam-ink: var(--slc-text-muted);
 }
@@ -1066,7 +1092,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* The tree, toward the kit's .sl-tree (workbench.css): the twisty in the
    muted ink, turning on the kit's motion tokens (no turn under reduced
    motion; never while it spins as busy). The guides are the theme layer's
-   (theia-chrome-css.ts); the selected row is S2's tile. */
+   (theia-chrome-css.ts); the selected row is S2's tile.
+   Kit 0.34's rows (13px, a 12px chevron, guides opt-in) are S5c's. */
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle {
   color: var(--slc-text-muted);
 }
@@ -1094,6 +1121,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    a hairline separates groups of facts; a live state (a job running, a
    download) carries a dot of the accent, and the words say the state; a
    fact that does not fit ends in an ellipsis.
+   - Kit 0.34's bar (28px, 20px pill items at r6, separators opt-in) is
+     S5c's; until then the dock keeps 0.33's look, as below.
    - Height. Theia's own 22px row (--theia-statusBar-height, which only the
      bar reads), not the kit's 28px: a deliberate deviation, for the owner to
      approve. Theia places its toasts at a literal 36px above the window's
@@ -1252,12 +1281,12 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
    - A toast floats: the raised rung, its own border in shade as the ring,
      the float recipe and the kit's large radius, newest last (nearest the
      corner), as in the kit's stack.
-   - Its severity is a tone tick on its top edge (the kit's 2.75rem measure,
-     with the tone's glow at --slc-glow's strength) and its glyph's 12% wash;
-     the words stay neutral. Theia knows info, warning, error and progress,
-     and marks them only with its glyph, so the tone is read off the glyph:
-     error is the kit's danger, and progress, which wears the info glyph,
-     the info tone. Theia has no success.
+   - Its severity is a tone tick on its top edge (the kit's 0.33 measure,
+     2.75rem, with the tone's glow at --slc-glow's strength) and its glyph's
+     12% wash; the words stay neutral. Theia knows info, warning, error and
+     progress, and marks them only with its glyph, so the tone is read off
+     the glyph: error is the kit's danger, and progress, which wears the
+     info glyph, the info tone. Theia has no success.
    - It arrives as the kit's toast does: a 6px rise and a fade on the arrival
      curve, transitions only, so reduced motion (which zeroes the tokens)
      shows it at once. Only a toast: the center's rows never animate.
@@ -1270,7 +1299,9 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
    The center is the same surface, its rows tiles in a list: a flat wash on
    hover, and the row that holds the focus a flat tile with the seam in the
    accent (only a focused row is a tile, so the center holds the focus).
-   Light and dark only: high contrast keeps Theia's own. */
+   Light and dark only: high contrast keeps Theia's own.
+   This is the kit's 0.33 toast. Kit 0.34 redrew it (no border, the cast,
+   a 1px tick to the middle, a 16% mark, a 32px dismiss); S5f takes that. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item {
   --spexr-tone: var(--slc-text-muted);
 }

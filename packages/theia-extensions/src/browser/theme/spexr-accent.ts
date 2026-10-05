@@ -10,10 +10,11 @@ export const ACCENT: PerTheme = { light: spexr.light, dark: spexr.dark };
 
 /**
  * SPEXR's registered accent fill, per theme, from the kit's accent registry
- * (`products.spexr.fill`), the value spexr-overrides.css sets as the kit's
- * --slc-accent-fill: what an accent fill that carries a white label is
- * painted with. White on it reads 5.41:1, where white on the #5b6cff accent
- * read 4.17 (the kit gives that accent its dark label since 0.32.1).
+ * (`products.spexr.fill`), the value the kit's themes/products.css sets as
+ * --slc-accent-fill under data-sl-product="spexr" (kit 0.35): what an accent
+ * fill that carries a white label is painted with. White on it reads
+ * 5.41:1, where white on the #5b6cff accent read 4.17 (the kit gives that
+ * accent its dark label since 0.32.1).
  */
 export const ACCENT_FILL: PerTheme = { light: spexr.fill.light, dark: spexr.fill.dark };
 
@@ -114,7 +115,10 @@ export const KIT_STATUS_FILL: Record<ThemeKind, { danger: string; warning: strin
  * The label on a fill, as a hex: the kit's one label rule (--_sl-on,
  * tokens.css), white below oklch L --_sl-pole-l and the dark pole, a grey at
  * L --_sl-pole-dark, above it. The kit's --slc-on-danger and the rest are
- * this rule on their tone.
+ * this rule on their tone. It approximates the kit's rule, which is a steep
+ * ramp (clamp(pole-dark, (pole-l - l) * 1000, 1)), not a step: in the 0.001
+ * of lightness just under --_sl-pole-l the kit paints a mid grey where this
+ * returns white.
  */
 export function labelOn(hex: string): string {
   return toOklch(hex)[0] < KIT_LABEL.poleL ? "#ffffff" : fromOklch([KIT_LABEL.poleDark, 0, 0]);

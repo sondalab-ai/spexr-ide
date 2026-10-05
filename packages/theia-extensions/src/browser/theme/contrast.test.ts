@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import kitAccents from "@sondalab/ui-kit/agent/accent-registry.json";
 import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_FILL_STEP, KIT_LABEL, KIT_SHADE_STEP, KIT_STATUS_FILL, accentText as registryAccentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
+import { theiaChromeCss } from "./theia-chrome-css.js";
+import { labelledFillColors } from "./spexr-color-contribution.js";
 
 type Rgb = [number, number, number];
 
@@ -78,6 +80,8 @@ function kitStep(fill: Rgb, step: number): Rgb {
 
 const toBytes = (c: Rgb): number[] => c.map((v) => Math.round(v * 255));
 const WHITE: Rgb = [1, 1, 1];
+/** The kit's --_sl-on, written again from tokens.css: white below the pole's lightness, the dark pole above. */
+const kitLabel = (fill: Rgb): Rgb => (oklch(fill)[0] < POLE_L ? WHITE : srgb([POLE_DARK, 0, 0]));
 const neutrals = kitNeutrals.products.spexr;
 const accent = kitAccents.products.spexr;
 /** --slc-accent-text: the accent with its lightness capped (light), the accent itself (dark). */
@@ -89,17 +93,70 @@ const accentText = {
   dark: hex(accent.dark),
 };
 
+/** A fill's label (the kit's, as spexr-accent.ts labelOn derives it) reads at 4.5:1 on it at rest, hovered and pressed. */
+function expectLabelled(fill: string): void {
+  const label = kitLabel(hex(fill));
+  expect(toBytes(hex(labelOn(fill))), `labelOn(${fill})`).toEqual(toBytes(label));
+  expect(contrast(label, hex(fill)), fill).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(label, hex(fillStep(fill, "hover"))), `${fill} hovered`).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(label, hex(fillStep(fill, "press"))), `${fill} pressed`).toBeGreaterThanOrEqual(4.5);
+}
+
 // The owner's rules: text at least 4.5:1, a state indicator at least 3:1.
 describe.each(["light", "dark"] as const)("spexr's registered fill on %s", (theme) => {
-  it("carries the white label at rest, hovered and pressed", () => {
-    expect(contrast(WHITE, hex(ACCENT_FILL[theme]))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(WHITE, hex(fillStep(ACCENT_FILL[theme], "hover")))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(WHITE, hex(fillStep(ACCENT_FILL[theme], "press")))).toBeGreaterThanOrEqual(4.5);
+  it("carries the kit's label at rest, hovered and pressed", () => {
+    expectLabelled(ACCENT_FILL[theme]);
+  });
+
+  // Since kit 0.35 the fill is one registry line per theme, and the owner may
+  // move the dark one to the accent itself; Theia's chrome then takes the
+  // dark pole for its label, as the kit's controls do.
+  it("would carry the kit's label on the accent itself, a fill the registry may name", () => {
+    expectLabelled(accent[theme]);
   });
 
   it("hovers and presses by the kit's step rule, as the kit's primaries do", () => {
     for (const state of ["hover", "press"] as const) {
       expect(toBytes(hex(fillStep(ACCENT_FILL[theme], state))), state).toEqual(toBytes(kitStep(hex(ACCENT_FILL[theme]), STEP[state])));
+    }
+  });
+});
+
+// A fill the registry may name instead: the owner's pending dark fill is the
+// accent itself, #8b96ff, where white reads 2.66:1. Theia's chrome and the
+// colour registry are handed it, and their labels are read back and measured
+// with this file's own contrast(), so a label hard-coded to white fails here.
+describe("a light fill handed to Theia's chrome and the colour registry", () => {
+  const fills = { light: ACCENT_FILL.light, dark: "#8b96ff" };
+  const css = theiaChromeCss("dark", fills);
+  const chrome = (name: string): string => new RegExp(`--theia-${name}:\\s*([^;]+?)\\s*!important;`).exec(css)![1]!;
+  const rest = hex(fills.dark);
+  const pressed = kitStep(rest, STEP.press);
+
+  it("labels the button, the badges and the menu selection in the dark pole, at 4.5:1 at rest, hovered and pressed", () => {
+    expect(chrome("button-background")).toBe(fills.dark);
+    const hovered = hex(chrome("button-hoverBackground"));
+    for (const name of ["button-foreground", "badge-foreground", "activityBarBadge-foreground", "menu-selectionForeground"]) {
+      const label = chrome(name);
+      expect(label, name).toBe("#0d0d0d");
+      for (const [state, ground] of [["rest", rest], ["hovered", hovered], ["pressed", pressed]] as const) {
+        expect(contrast(hex(label), ground), `${name} ${state}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it("registers the same label for the button and badge, at 4.5:1 at rest, hovered and pressed", () => {
+    const colors = labelledFillColors(fills);
+    expect(colors.background.dark).toBe(fills.dark);
+    expect(colors.foreground.dark).toBe("#0d0d0d");
+    for (const [state, ground] of [["rest", rest], ["hovered", hex(colors.hoverBackground.dark)], ["pressed", pressed]] as const) {
+      expect(contrast(hex(colors.foreground.dark), ground), state).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("is hard-coded white in neither source", () => {
+    for (const file of ["./theia-chrome-css.ts", "./spexr-color-contribution.ts"]) {
+      expect(readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8"), file).not.toMatch(/#fff(fff)?\b/i);
     }
   });
 });
@@ -220,8 +277,6 @@ describe.each(["light", "dark"] as const)("the status dock on %s", (theme) => {
   const canvas = hex(neutrals[theme]["bg-canvas"]);
   const surface = hex(neutrals[theme]["bg-surface"]);
   const muted = hex(neutrals[theme]["text-muted"]);
-  /** The kit's --_sl-on, written again from tokens.css: white below the pole's lightness, the dark pole above. */
-  const kitLabel = (fill: Rgb): Rgb => (oklch(fill)[0] < POLE_L ? WHITE : srgb([POLE_DARK, 0, 0]));
   const tone = (name: string): string => new RegExp(`--sl-status-${name}:\\s*(#[0-9a-f]{6})`).exec(kitFile(`themes/${theme}.css`))![1]!;
 
   it("registers the installed kit's danger and warning tones, with the kit's label", () => {
