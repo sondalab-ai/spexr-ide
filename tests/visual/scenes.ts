@@ -12,6 +12,8 @@ export interface SceneResult {
   readonly attempts: number;
   /** False when the picture never settled; the last capture is kept anyway. */
   readonly stable: boolean;
+  /** The last comparison: changed pixels outside the volatile regions, and where. */
+  readonly lastDiff: PixelDiff | null;
   /** What the fixture extension reported, when the scene goes through it. */
   readonly ack?: unknown;
 }
@@ -107,25 +109,89 @@ async function waitForFiniteAnimations(page: Page, timeoutMs = 5_000): Promise<v
 }
 
 /**
- * Screenshot the window once two consecutive captures are byte-identical.
- * Async work (semantic colours, decorations, a toast sliding in) lands in its
- * own time, and this waits for the pixels rather than guessing a delay. Gives
- * up after `maxAttempts`, keeping the last capture and saying so.
+ * Regions that repaint on their own clock and are ignored when deciding that
+ * the picture has settled (they still appear in the capture): the resource
+ * meter polls every few seconds.
  */
-export async function captureStable(page: Page, file: string, maxAttempts = 12): Promise<{ attempts: number; stable: boolean }> {
+const VOLATILE = ["#status-bar-spexr-resources"];
+
+export interface PixelDiff {
+  readonly changed: number;
+  /** Bounding box of the changed pixels outside VOLATILE, as x,y,w,h; null when none. */
+  readonly box: string | null;
+}
+
+/**
+ * Compare two screenshots in the page itself (no image library in the
+ * repository): decode both with createImageBitmap, count differing pixels
+ * outside the volatile regions and report where they are.
+ */
+async function diffShots(page: Page, a: Buffer, b: Buffer): Promise<PixelDiff> {
+  return page.evaluate(
+    async ({ a64, b64, volatile }) => {
+      const decode = async (b64s: string): Promise<ImageData> => {
+        const bytes = Uint8Array.from(atob(b64s), (c) => c.charCodeAt(0));
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) throw new Error("no 2d context");
+        ctx.drawImage(bitmap, 0, 0);
+        return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      };
+      const [da, db] = await Promise.all([decode(a64), decode(b64)]);
+      if (da.width !== db.width || da.height !== db.height) return { changed: -1, box: "size changed" };
+      const masks = volatile.flatMap((sel) => [...document.querySelectorAll(sel)].map((el) => el.getBoundingClientRect()));
+      const masked = (x: number, y: number): boolean => masks.some((r) => x >= r.left && x < r.right && y >= r.top && y < r.bottom);
+      let changed = 0;
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -1;
+      let y1 = -1;
+      const w = da.width;
+      for (let i = 0; i < da.data.length; i += 4) {
+        if (da.data[i] === db.data[i] && da.data[i + 1] === db.data[i + 1] && da.data[i + 2] === db.data[i + 2]) continue;
+        const x = (i / 4) % w;
+        const y = Math.floor(i / 4 / w);
+        if (masked(x, y)) continue;
+        changed++;
+        x0 = Math.min(x0, x);
+        y0 = Math.min(y0, y);
+        x1 = Math.max(x1, x);
+        y1 = Math.max(y1, y);
+      }
+      return { changed, box: changed ? `${x0},${y0},${x1 - x0 + 1},${y1 - y0 + 1}` : null };
+    },
+    { a64: a.toString("base64"), b64: b.toString("base64"), volatile: VOLATILE },
+  );
+}
+
+/**
+ * Screenshot the window once two consecutive captures match outside the
+ * volatile regions. Async work (semantic colours, decorations, a toast
+ * sliding in) lands in its own time, and this waits for the pixels rather
+ * than guessing a delay. Gives up after `maxAttempts`, keeping the last
+ * capture and reporting where it kept changing.
+ */
+export async function captureStable(
+  page: Page,
+  file: string,
+  maxAttempts = 12,
+): Promise<{ attempts: number; stable: boolean; lastDiff: PixelDiff | null }> {
   await waitForFiniteAnimations(page);
   let previous = await page.screenshot({ animations: "allow" });
+  let lastDiff: PixelDiff | null = null;
   for (let attempt = 2; attempt <= maxAttempts; attempt++) {
     await page.waitForTimeout(400);
     const next = await page.screenshot({ animations: "allow" });
-    if (next.equals(previous)) {
+    lastDiff = next.equals(previous) ? { changed: 0, box: null } : await diffShots(page, previous, next);
+    if (lastDiff.changed === 0) {
       fs.writeFileSync(file, next);
-      return { attempts: attempt, stable: true };
+      return { attempts: attempt, stable: true, lastDiff };
     }
     previous = next;
   }
   fs.writeFileSync(file, previous);
-  return { attempts: maxAttempts, stable: false };
+  return { attempts: maxAttempts, stable: false, lastDiff };
 }
 
 /** `Meta+P` on macOS, `Control+P` elsewhere: Theia's Quick Open. */

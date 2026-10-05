@@ -36,13 +36,18 @@ function ack(name, data) {
   fs.renameSync(`${file}.tmp`, file);
 }
 
-/** Run a command this host may not have; returns true, or the error text. */
+/**
+ * Run a command this host may not have; returns true, or the error text. A
+ * command that returns a widget ran, but its result cannot travel back to the
+ * plugin host, and that encoding error is not a failure.
+ */
 async function tryCommand(id, ...args) {
   try {
     await vscode.commands.executeCommand(id, ...args);
     return true;
   } catch (err) {
-    return String((err && err.message) || err);
+    const message = String((err && err.message) || err);
+    return /Error during encoding/.test(message) ? true : message;
   }
 }
 
@@ -84,14 +89,29 @@ async function show(relative) {
   return { doc, editor };
 }
 
-/** Cursor at 41:18, line 45 selected, line 36 at the top: the demo's editor state. */
-function placeCursor(editor) {
+/**
+ * Cursor at 41:18, line 45 selected, line 36 at the top: the demo's editor
+ * state. Focusing an editor re-centres its cursor a moment later, so the
+ * scroll is re-applied until line 36 stays first. Returns the first visible line.
+ */
+async function placeCursor(editor) {
   const selected = editor.document.lineAt(SELECTED_LINE - 1);
   editor.selections = [
     new vscode.Selection(CURSOR.line - 1, CURSOR.column - 1, CURSOR.line - 1, CURSOR.column - 1),
     new vscode.Selection(SELECTED_LINE - 1, 0, SELECTED_LINE - 1, selected.text.length),
   ];
-  editor.revealRange(new vscode.Range(TOP_LINE - 1, 0, TOP_LINE - 1, 0), vscode.TextEditorRevealType.AtTop);
+  const top = () => (editor.visibleRanges[0] ? editor.visibleRanges[0].start.line + 1 : 0);
+  let steady = 0;
+  for (let i = 0; i < 20 && steady < 3; i++) {
+    if (top() !== TOP_LINE) {
+      steady = 0;
+      editor.revealRange(new vscode.Range(TOP_LINE - 1, 0, TOP_LINE - 1, 0), vscode.TextEditorRevealType.AtTop);
+    } else {
+      steady++;
+    }
+    await delay(250);
+  }
+  return top();
 }
 
 /** @param {vscode.ExtensionContext} context */
@@ -142,13 +162,14 @@ function activate(context) {
     const explorer = await tryCommand("workbench.view.explorer");
     // Focus back to the editor, then the cursor again: showing the Explorer can move it.
     const { editor } = await show("src/probe/resolve.ts");
-    placeCursor(editor);
+    const topLine = await placeCursor(editor);
 
     ack("base", {
       ok: true,
       cleared,
       explorer,
       language,
+      topLine,
       file: path.basename(editor.document.fileName),
       selections: editor.selections.map((s) => [s.start.line + 1, s.start.character + 1, s.end.line + 1, s.end.character + 1]),
       visible: editor.visibleRanges.map((r) => [r.start.line + 1, r.end.line + 1]),

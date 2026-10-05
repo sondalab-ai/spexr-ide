@@ -61,8 +61,9 @@ export async function probePage(page: Page): Promise<PageProbes> {
       xtermDetail = `${canvases.length} canvas [${classes.join(", ")}], dom rows ${rows ? rows.childElementCount : 0}`;
     }
 
+    // A visible line with enough text to average over; hidden editors stay in the DOM.
     const line = [...document.querySelectorAll<HTMLElement>(".monaco-editor .view-lines .view-line")].find(
-      (el) => (el.textContent ?? "").trim().length > 20,
+      (el) => (el.textContent ?? "").trim().length > 20 && el.getBoundingClientRect().width > 0,
     );
     let monacoCharWidth: number | null = null;
     let editorFont = "no editor";

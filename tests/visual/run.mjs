@@ -40,9 +40,10 @@ const result = spawnSync(process.execPath, [cli, "test", "--config", path.join(H
   env: { ...process.env, VISUAL_OUT: OUT },
 });
 
+// Also printed, so the job log carries it for anyone reading the run from the CLI.
 const summary = renderSummary(OUT);
 if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
-else console.info(summary);
+console.info(summary);
 
 process.exit(result.status ?? 1);
 
@@ -73,7 +74,8 @@ function renderSummary(outRoot) {
   for (const s of scenes) {
     md += row(s, (m) => {
       const r = (m.scenes ?? []).find((x) => x.scene === s);
-      return r ? `${r.file} (${r.stable ? `stable after ${r.attempts}` : `unstable after ${r.attempts}`})` : "missing";
+      if (!r) return "missing";
+      return r.stable ? `${r.file} (stable after ${r.attempts})` : `${r.file} (unstable: ${r.lastDiff?.changed} px changing at ${r.lastDiff?.box})`;
     });
   }
   md += row("error", (m) => (m.error ? m.error.split("\n")[0] : ""));
@@ -95,6 +97,8 @@ function renderSummary(outRoot) {
   md += row("titleBarStyle", (m) => `top panel ${m.page?.topPanelVisible ? "shown" : "hidden"}, window controls ${m.page?.windowControls ? "in page" : "native"}`);
   md += row("document.hasFocus", (m) => m.page?.hasFocus);
   md += row("tree focused (focus-tree)", (m) => m.treeFocused);
+  md += row("bottom panel opened by the scene", (m) => m.bottomPanelOpened);
+  md += row("editor top line (base)", (m) => m.scenes?.find((x) => x.scene === "base")?.ack?.topLine);
   md += row("TypeScript symbols (base)", (m) => {
     const lang = m.scenes?.find((x) => x.scene === "base")?.ack?.language;
     return lang ? `${lang.symbols} after ${lang.waitedMs} ms` : "";

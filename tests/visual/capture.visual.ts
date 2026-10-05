@@ -85,6 +85,13 @@ for (const theme of THEMES) {
         writeMeta();
       };
 
+      // The demo shows the bottom panel; spexr can start with it collapsed.
+      meta.bottomPanelOpened = await page.evaluate(() => {
+        const panel = document.getElementById("theia-bottom-content-panel");
+        return !panel || panel.classList.contains("lm-mod-hidden") || panel.getBoundingClientRect().height < 10;
+      });
+      if (meta.bottomPanelOpened) await runCommand(page, "View: Toggle Bottom Panel");
+
       // base: resolve.ts in front, cursor 41:18, line 45 selected, line 36 at the top.
       await runCommand(page, "Parity: Base scene");
       const baseAck = await waitForAck(ackDir, "base");
