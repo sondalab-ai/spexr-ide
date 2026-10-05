@@ -10,6 +10,7 @@ const theiaContextMenu = readFileSync(resolve("@theia/core/lib/electron-browser/
 const theiaMenuModule = readFileSync(resolve("@theia/core/lib/electron-browser/menu/electron-menu-module.js"), "utf8");
 const theiaCommon = readFileSync(resolve("@theia/core/lib/browser/common-frontend-contribution.js"), "utf8");
 const appPackage = readFileSync(resolve("@theia/application-package/lib/application-package.js"), "utf8");
+const theiaPreload = readFileSync(resolve("@theia/core/lib/electron-browser/preload.js"), "utf8");
 
 /** The body of a method of Theia's ElectronMenuContribution, from its compiled source. */
 function method(signature: string): string {
@@ -126,5 +127,54 @@ describe("spexr's Electron menu contribution", () => {
   it("adds the bar and the controls once each: Theia sets the menu again on every macOS focus", () => {
     expect(ours).toMatch(/if \(this\.titleBarAdded\) return;\s*this\.titleBarAdded = true;/);
     expect(ours).toMatch(/if \(this\.windowControlsAdded\) return;\s*this\.windowControlsAdded = true;/);
+  });
+});
+
+// The main process forwards Electron's full-screen events under spexr's own
+// names (common/mac-title-bar.ts); these fail if Theia's preload starts
+// filtering the names it passes on, or stops exposing the state.
+describe("Theia's window-event channel, which carries macOS's full-screen events", () => {
+  it("passes every event name through to onWindowEvent, compared as it is", () => {
+    const start = theiaPreload.indexOf("onWindowEvent: function (event, handler) {");
+    expect(start, "electronTheiaCore.onWindowEvent").toBeGreaterThanOrEqual(0);
+    const body = theiaPreload.slice(start, theiaPreload.indexOf("\n    },", start));
+    expect(body).toMatch(/const h = \(_event, evt\) => \{\s*if \(event === evt\) \{\s*handler\(\);/);
+    expect(body).toContain("ipcRenderer.on(electron_api_1.CHANNEL_ON_WINDOW_EVENT, h);");
+  });
+
+  it("reads the window's full-screen state", () => {
+    expect(theiaPreload).toMatch(/isFullScreen: function \(\) \{\s*return ipcRenderer\.sendSync\(electron_api_1\.CHANNEL_IS_FULL_SCREEN\);/);
+  });
+
+  it("is started from Theia's onStart, which spexr extends", () => {
+    expect(theiaMenu).toMatch(/\n    onStart\(app\) \{\s*this\.handleTitleBarStyling\(app\);/);
+  });
+});
+
+describe("spexr's room for macOS's traffic lights", () => {
+  const ours = own("./spexr-electron-menu-contribution.ts");
+  const watch = ours.slice(ours.indexOf("protected watchFullScreen(): void {"), ours.indexOf("\n  }\n", ours.indexOf("protected watchFullScreen(): void {")));
+
+  it("is watched once, at start, after Theia's own start", () => {
+    expect(ours).toMatch(/override onStart\(app: FrontendApplication\): void \{\s*super\.onStart\(app\);\s*this\.watchFullScreen\(\);\s*\}/);
+    expect(ours.match(/this\.watchFullScreen\(\)/g)).toHaveLength(1);
+  });
+
+  it("is a macOS matter only", () => {
+    expect(watch).toMatch(/^protected watchFullScreen\(\): void \{\s*if \(!isOSX\) return;/);
+  });
+
+  // A window restored in full screen, or one entering it while the page
+  // starts, is caught by the read or by the event that follows it.
+  it("subscribes to both transitions before reading the state once", () => {
+    const enter = watch.indexOf("onWindowEvent(FULL_SCREEN_EVENTS.enter as WindowEvent, () => show(true))");
+    const leave = watch.indexOf("onWindowEvent(FULL_SCREEN_EVENTS.leave as WindowEvent, () => show(false))");
+    const read = watch.indexOf("show(window.electronTheiaCore.isFullScreen());");
+    for (const at of [enter, leave, read]) expect(at).toBeGreaterThanOrEqual(0);
+    expect(read).toBeGreaterThan(Math.max(enter, leave));
+  });
+
+  it("hands the bar trafficLightInset's answer", () => {
+    expect(watch).toContain("this.titleBar.setTrafficLights(trafficLightInset(isOSX, fullScreen))");
   });
 });

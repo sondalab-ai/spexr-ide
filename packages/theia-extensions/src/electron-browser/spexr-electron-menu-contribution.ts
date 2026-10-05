@@ -4,8 +4,10 @@ import type { KeybindingRegistry } from "@theia/core/lib/browser/keybinding";
 import { CommandRegistry } from "@theia/core/lib/common/command";
 import { CommonCommands } from "@theia/core/lib/browser/common-commands";
 import { isOSX } from "@theia/core/lib/common/os";
+import type { WindowEvent } from "@theia/core/lib/electron-common/electron-api";
 import { ElectronMenuContribution } from "@theia/core/lib/electron-browser/menu/electron-menu-contribution";
 import { SpexrTitleBarWidget } from "../browser/titlebar/spexr-titlebar-widget.js";
+import { FULL_SCREEN_EVENTS, trafficLightInset } from "../common/mac-title-bar.js";
 import { OPEN_APPLICATION_MENU_COMMAND, OPEN_APPLICATION_MENU_KEYS } from "./application-menu-command.js";
 import { keyboardButton, WINDOW_CONTROL_LABELS } from "./window-controls.js";
 
@@ -23,11 +25,13 @@ const THEIA_SIDEBAR_MENU_ID = "main-menu";
  * (its own createControlButton, given a role, a name and the keyboard, and
  * handleWindowControls) at the bar's end, and the bar's compact menu button
  * stands in for the menu bar, with a command and Alt+Shift+M to open it from
- * the keyboard. A native window
- * keeps the system's menus: macOS's menu bar, Linux's escape hatch
- * (`window.titleBarStyle: native`). Everything else is Theia's, unchanged:
- * the startup sync of `window.titleBarStyle` with the style the window
- * started in, and the restart prompt when the setting changes.
+ * the keyboard. A native window keeps the system's menus: macOS's menu bar,
+ * Linux's escape hatch (`window.titleBarStyle: native`). On macOS the bar is the window's only
+ * title bar, the system's traffic lights inside it (the main process's
+ * window options), and it keeps their room except in full screen.
+ * Everything else is Theia's, unchanged: the startup sync of
+ * `window.titleBarStyle` with the style the window started in, and the
+ * restart prompt when the setting changes.
  *
  * Theia calls setMenu again on every window focus on macOS, so the bar and
  * the controls are added once each, behind flags of their own: Theia's own
@@ -40,6 +44,27 @@ export class SpexrElectronMenuContribution extends ElectronMenuContribution {
 
   protected titleBarAdded = false;
   protected windowControlsAdded = false;
+
+  override onStart(app: FrontendApplication): void {
+    super.onStart(app);
+    this.watchFullScreen();
+  }
+
+  /**
+   * macOS: the bar's room for the traffic lights follows full screen. Theia
+   * has no full-screen event, and its handleFullScreen reads the state right
+   * after asking for a change, before macOS has made it, and never hears of
+   * the green button or the system menu. The main process sends Electron's
+   * own events instead, once each transition has finished. The state is read
+   * once after subscribing, for a window restored in full screen.
+   */
+  protected watchFullScreen(): void {
+    if (!isOSX) return;
+    const show = (fullScreen: boolean): void => this.titleBar.setTrafficLights(trafficLightInset(isOSX, fullScreen));
+    window.electronTheiaCore.onWindowEvent(FULL_SCREEN_EVENTS.enter as WindowEvent, () => show(true));
+    window.electronTheiaCore.onWindowEvent(FULL_SCREEN_EVENTS.leave as WindowEvent, () => show(false));
+    show(window.electronTheiaCore.isFullScreen());
+  }
 
   /** Never hides the top panel: it is spexr's title bar in either style. Theia calls this first, at start. */
   protected override hideTopPanel(app: FrontendApplication): void {

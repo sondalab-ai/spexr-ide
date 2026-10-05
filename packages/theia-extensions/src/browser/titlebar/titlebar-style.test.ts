@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { LIGHT_CIRCLE, TITLE_BAR_HEIGHT, TITLE_BAR_PADDING, TRAFFIC_LIGHTS_WIDTH } from "../../common/mac-title-bar.js";
 
 const resolve = createRequire(import.meta.url).resolve;
 const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
@@ -193,7 +194,44 @@ describe("the title bar's markup", () => {
     };
     const titleRegions = Object.keys(regions.themes.dark.regions).filter((k) => k === "title" || k.startsWith("title."));
     const parity = new Set([...widget.matchAll(/data-parity="([^"]+)"/g)].map((m) => m[1]!));
-    // The demo's traffic-light dots are macOS chrome, which S5b-2 draws natively.
-    for (const region of titleRegions.filter((r) => !r.startsWith("title.dot"))) expect(parity.has(region), region).toBe(true);
+    // The demo's dots are macOS's traffic lights, which the system draws: the
+    // bar has their room as one part (title.dots), not a part per light.
+    for (const region of titleRegions.filter((r) => r !== "title.dot")) expect(parity.has(region), region).toBe(true);
+  });
+});
+
+describe("the room for macOS's traffic lights", () => {
+  const kitBar = workbench.slice(workbench.indexOf("\n.sl-titlebar {"), workbench.indexOf("}", workbench.indexOf("\n.sl-titlebar {")));
+  const kitTracks = workbench.slice(workbench.indexOf("\n.sl-titlebar__l,"), workbench.indexOf("}", workbench.indexOf("\n.sl-titlebar__l,")));
+
+  // The main process places the lights from common/mac-title-bar.ts; the
+  // span has to cover the same pixels, or the mark lands on the lights.
+  it("is a span as wide as the three lights and as tall as one", () => {
+    expect(rule("#theia-top-panel")).toContain(`--spexr-traffic-lights: ${TRAFFIC_LIGHTS_WIDTH}px;`);
+    const lights = rule(".spexr-titlebar-host .spexr-titlebar__lights");
+    expect(lights).toMatch(/width:\s*var\(--spexr-traffic-lights\)/);
+    expect(lights).toContain(`height: ${LIGHT_CIRCLE.size}px;`);
+    expect(lights).toMatch(/flex:\s*none/);
+  });
+
+  it("starts where the lights start: the kit's bar padding, on a bar of the lights' height", () => {
+    expect(TITLE_BAR_PADDING).toBe(16);
+    expect(kitBar).toMatch(/padding-inline:\s*var\(--sl-space-4, 1rem\)/);
+    expect(kitBar).toContain(`height: ${TITLE_BAR_HEIGHT}px;`);
+    expect(kitBar).toMatch(/align-items:\s*center/);
+    expect(kitTracks).toMatch(/align-items:\s*center/);
+  });
+
+  // Room on the bar's own padding, as the kit's note suggests, would move
+  // the centre track; inside the left track it leaves the field centred.
+  it("sits inside the left track, never on the bar's padding", () => {
+    expect(section).not.toMatch(/\.sl-titlebar\s*\{[^}]*padding/);
+    const left = widget.slice(widget.indexOf('<div className="sl-titlebar__l"'), widget.indexOf("{this.menuButton &&"));
+    expect(left).toContain('<span className="spexr-titlebar__lights" aria-hidden="true" data-parity="title.dots" />');
+  });
+
+  it("is on from the first paint on macOS, and the bar answers the full-screen watch", () => {
+    expect(widget).toContain("private trafficLights = trafficLightInset(isOSX, false);");
+    expect(widget).toMatch(/setTrafficLights\(shown: boolean\): void \{\s*if \(this\.trafficLights === shown\) return;\s*this\.trafficLights = shown;\s*this\.update\(\);/);
   });
 });
