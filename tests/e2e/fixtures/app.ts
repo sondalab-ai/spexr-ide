@@ -48,6 +48,7 @@ export const test = base.extend<AppFixtures>({
         DISPLAY: process.env.DISPLAY ?? ":99",
       },
     });
+    echoPluginDeployer(app);
     await use(app);
     await app.close();
   },
@@ -74,6 +75,26 @@ export const test = base.extend<AppFixtures>({
 });
 
 export { expect } from "@playwright/test";
+
+/** The plugin deployer's verdicts: how many plugins deployed, and any path it could not find. */
+const PLUGIN_DEPLOYER_LINE = /Deploy batch of \d+ accepted plugins|The local plugin referenced by .* does not exist/;
+
+/**
+ * Echo the plugin deployer's lines from the backend into the test output.
+ *
+ * The backend's stdout never reaches the CI log otherwise, and the suite
+ * cannot tell an app with its VS Code extensions from one without: both
+ * start, only one colours code. These lines say which one ran.
+ */
+function echoPluginDeployer(app: ElectronApplication): void {
+  const echo = (chunk: Buffer): void => {
+    for (const line of chunk.toString().split("\n")) {
+      if (PLUGIN_DEPLOYER_LINE.test(line)) console.info(`[backend] ${line.trim()}`);
+    }
+  };
+  app.process().stdout?.on("data", echo);
+  app.process().stderr?.on("data", echo);
+}
 
 // ── Selectors ──────────────────────────────────────────────────────────────
 
