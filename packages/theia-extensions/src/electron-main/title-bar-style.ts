@@ -43,7 +43,10 @@ export interface TitleBarDecision {
  * one Theia wrote through setTitleBarStyle, i.e. the user's
  * `window.titleBarStyle`, and it wins again, so `native` stays an escape hatch.
  * Windows already defaulted to custom, so a stored `true` there was chosen and
- * is kept. macOS keeps its native frame (S5b-2 brings its inset title bar).
+ * is kept. macOS stays "native" for Theia: the system menu bar, native
+ * context menus, no window controls in the page. Its window hides the
+ * system's title bar all the same (macWindowChrome, common/mac-title-bar.ts),
+ * which is a window option, not a frame style.
  */
 export function decideTitleBarStyle(inputs: TitleBarInputs): TitleBarDecision {
   const markMigrated = !inputs.migrated;

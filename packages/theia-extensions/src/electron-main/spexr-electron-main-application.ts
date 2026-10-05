@@ -1,14 +1,19 @@
 import { injectable } from "@theia/core/shared/inversify";
-import type { Event as ElectronEvent, WebContents } from "@theia/core/electron-shared/electron";
+import type { BrowserWindow, Event as ElectronEvent, WebContents } from "@theia/core/electron-shared/electron";
+import type { MaybePromise } from "@theia/core/lib/common/types";
+import type { WindowEvent } from "@theia/core/lib/electron-common/electron-api";
+import { TheiaRendererAPI } from "@theia/core/lib/electron-main/electron-api-main";
 import { ElectronMainApplication } from "@theia/core/lib/electron-main/electron-main-application";
 import type { TheiaBrowserWindowOptions } from "@theia/core/lib/electron-main/theia-electron-window";
+import { FULL_SCREEN_EVENTS, macWindowChrome } from "../common/mac-title-bar.js";
 import { hardenWebviewAttach, isWebUrl } from "./webview-policy.js";
 import { applyTitleBarStyle, type TitleBarStore, type TitleBarStyle } from "./title-bar-style.js";
 
 /**
  * Theia's main application with `<webview>` enabled for the Darkfactory card
- * browser (spec 0016), and spexr's custom title bar as the default frame on
- * Windows and Linux.
+ * browser (spec 0016), spexr's custom title bar as the default frame on
+ * Windows and Linux, and the system's traffic lights inside spexr's bar on
+ * macOS.
  *
  * - The tag is switched on by adding `webviewTag` to Theia's own default
  *   `webPreferences`; setting it through the application config would replace
@@ -20,12 +25,43 @@ import { applyTitleBarStyle, type TitleBarStore, type TitleBarStyle } from "./ti
  *   policy.
  * - The frame follows {@link decideTitleBarStyle}; the frontend's
  *   SpexrElectronMenuContribution draws spexr's title bar in either style.
+ * - On macOS a main window hides the system's title bar and keeps its traffic
+ *   lights inside spexr's ({@link macWindowChrome}), and tells its page when
+ *   it enters or leaves full screen, where macOS hides the lights.
+ *   Secondary windows (a view moved out of the main window) keep the
+ *   system's title bar: Theia builds their options without the defaults
+ *   below and forces their frame, because they have no title bar of their own.
  */
 @injectable()
 export class SpexrElectronMainApplication extends ElectronMainApplication {
+  /**
+   * Theia's defaults, which every main window starts from (a new window and
+   * the restored one: the stored state holds bounds and the frame, never a
+   * title bar style), plus the webview tag and macOS's inset traffic lights.
+   */
   protected override getDefaultOptions(): TheiaBrowserWindowOptions {
     const options = super.getDefaultOptions();
-    return { ...options, webPreferences: { ...options.webPreferences, webviewTag: true } };
+    return { ...options, ...macWindowChrome(process.platform), webPreferences: { ...options.webPreferences, webviewTag: true } };
+  }
+
+  /** Theia's window, which on macOS also reports its full-screen transitions to its page. */
+  override async createWindow(asyncOptions?: MaybePromise<TheiaBrowserWindowOptions>): Promise<BrowserWindow> {
+    const window = await super.createWindow(asyncOptions);
+    if (process.platform === "darwin") this.reportFullScreen(window);
+    return window;
+  }
+
+  /**
+   * Electron's full-screen events, through Theia's window-event channel (see
+   * FULL_SCREEN_EVENTS): Theia's preload passes any name through to the
+   * page's onWindowEvent, though its type lists only its own three.
+   */
+  private reportFullScreen(window: BrowserWindow): void {
+    const report = (event: string) => (): void => {
+      if (!window.isDestroyed()) TheiaRendererAPI.sendWindowEvent(window.webContents, event as WindowEvent);
+    };
+    window.on("enter-full-screen", report(FULL_SCREEN_EVENTS.enter));
+    window.on("leave-full-screen", report(FULL_SCREEN_EVENTS.leave));
   }
 
   /**
