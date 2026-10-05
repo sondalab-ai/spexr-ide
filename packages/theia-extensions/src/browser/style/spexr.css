@@ -815,6 +815,87 @@ body {
   height: calc(100% - 2 * var(--spexr-island-gap)) !important;
 }
 
+/* The activity bars are the kit's .sl-activitybar (workbench.css): borderless
+   glyphs on the frame in the muted ink, hover a flat wash, the current view a
+   flat tile (lit and ringed, no cast) with the seam on its leading edge and
+   its glyph in the accent. The seam is the muted ink unless the bar holds the
+   focus, as on the kit's bar. A 36px tile centred in Theia's 48px column with
+   a 20px glyph; Theia sizes each tab to its icon box, inline, so the box is
+   the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
+   codicon does. The count badge moves inside the tile: the tab clips. */
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides:focus-within {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container {
+  --theia-private-sidebar-icon-size: 20px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab {
+  box-sizing: border-box;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  margin-inline: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sl-radius-md);
+  color: var(--slc-text-muted);
+  background-color: transparent;
+  box-shadow: none;
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon:not(.codicon) {
+  background-color: currentColor;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab:hover {
+  color: var(--slc-text);
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {
+  color: var(--slc-text);
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 3px 50%;
+  box-shadow: var(--slc-depth-flat);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current .lm-TabBar-tabIcon {
+  color: var(--slc-accent-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar {
+  top: auto;
+  right: 1px;
+  bottom: 1px;
+}
+
+/* Forced colours drop the tile, the seam and the glyph's accent: the current
+   activity item gets the Highlight outline the S2 tiles have. The pane's own
+   outline and seam are the kit's (workbench.css). */
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {

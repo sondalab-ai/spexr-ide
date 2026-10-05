@@ -146,3 +146,35 @@ describe("a maximised island", () => {
     expect(max).toMatch(/width:\s*calc\(100% - 2 \* var\(--spexr-island-gap\)\) !important/);
   });
 });
+
+// The kit's .sl-activitybar on Theia's side tab bars.
+describe("the activity bars", () => {
+  it("draw borderless glyphs in the muted ink, a 36px tile with no edge at rest", () => {
+    const tab = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab {`);
+    expect(tab).toMatch(/width:\s*2\.25rem/);
+    expect(tab).toMatch(/border:\s*0/);
+    expect(tab).toMatch(/color:\s*var\(--slc-text-muted\)/);
+    expect(tab).toMatch(/background-color:\s*transparent/);
+    expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon {`)).toMatch(/height:\s*2\.25rem/);
+  });
+
+  it("raise the current view as a flat tile with the seam and its glyph in the accent", () => {
+    const current = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {`);
+    expect(current).toMatch(/background-color:\s*var\(--slc-tile\)/);
+    expect(current).toMatch(/background-image:\s*linear-gradient\(var\(--spexr-seam-ink\), var\(--spexr-seam-ink\)\)/);
+    expect(current).toMatch(/background-size:\s*2px 50%/);
+    expect(current).toMatch(/box-shadow:\s*var\(--slc-depth-flat\)/);
+    expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current .lm-TabBar-tabIcon`)).toMatch(/color:\s*var\(--slc-accent-text\)/);
+  });
+
+  it("mute the seam unless the bar holds the focus", () => {
+    expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides {`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
+    expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides:focus-within`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
+  });
+
+  it("keep the count badge inside the tile, which clips", () => {
+    const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar`);
+    expect(badge).toMatch(/top:\s*auto/);
+    expect(badge).toMatch(/bottom:\s*1px/);
+  });
+});

@@ -79,6 +79,15 @@ describe("Theia's status bar", () => {
   });
 });
 
+// The activity bars are the kit's (0.33): muted glyphs on the canvas, the
+// hovered and current one in the primary ink.
+describe("Theia's activity bars", () => {
+  it.each(["light", "dark"] as const)("read the kit's inks on %s", (theme) => {
+    expect(value(theme, "activityBar-inactiveForeground")).toBe(SPEXR_NEUTRALS[theme].fgMuted);
+    expect(value(theme, "activityBar-foreground")).toBe(SPEXR_NEUTRALS[theme].fg);
+  });
+});
+
 // The main area's tabs are tile tabs drawn in spexr.css; the colours Theia's
 // own tab rules read there are no longer set.
 describe("the editor tabs' Theia colours", () => {

@@ -182,4 +182,15 @@ describe("the islands", () => {
     expect(exactly(spexr, ours), ours).toHaveLength(1);
     expect(cmp(specificity(ours), specificity(theirs))).toBeGreaterThan(0);
   });
+
+  it("draw the activity bars over Theia's side tab rules", () => {
+    const side = selectors(theia("sidepanel.css"), (s) => s.startsWith(".lm-TabBar.theia-app-") && s.includes(".lm-TabBar-tab"));
+    expect(side.length).toBeGreaterThanOrEqual(4);
+    const tab = specificity(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab`);
+    const icon = specificity(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon:not(.codicon)`);
+    for (const s of side) {
+      const mine = s.includes("tabIcon") ? icon : tab;
+      expect(cmp(mine, specificity(s)), s).toBeGreaterThan(0);
+    }
+  });
 });

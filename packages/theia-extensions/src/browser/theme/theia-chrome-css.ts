@@ -175,6 +175,13 @@ body {
   --theia-statusBar-foreground: ${fgMuted} !important;
   --theia-titleBar-activeForeground: ${fgMuted} !important;
 
+  /* The activity bars are the kit's (0.33, .sl-activitybar; spexr.css draws
+     the tiles): glyphs in the muted ink on the canvas, the hovered and the
+     current one in the primary ink (the current glyph is the accent there).
+     Theia's menus at the bars' ends and a plugin's mask icons read these. */
+  --theia-activityBar-foreground: ${fg} !important;
+  --theia-activityBar-inactiveForeground: ${fgMuted} !important;
+
   /* Borders */
   --theia-sideBar-border: ${line} !important;
   --theia-panel-border: ${line} !important;
