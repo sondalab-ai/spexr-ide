@@ -341,7 +341,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    */
   protected override onActivateRequest(msg: Message): void {
     super.onActivateRequest(msg);
-    this.node.focus();
+    // The wall keeps its own scroll position: focusing must not scroll it.
+    this.node.focus({ preventScroll: true });
   }
 
   /**

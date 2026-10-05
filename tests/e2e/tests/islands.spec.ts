@@ -40,11 +40,14 @@ async function expectLit(page: Page, area: "main" | "left" | "bottom" | "right")
  * Put the focus in the Explorer's file tree. When the tree is not showing,
  * Theia's Explorer toggle (ctrlcmd+shift+e) opens and activates it; it would
  * collapse the panel only if the Explorer were already the visible view, which
- * the check rules out. The click lands below the tree's rows, so it opens
- * nothing.
+ * the check rules out. The tree is given time to render first, so an Explorer
+ * that is in front but not yet in the DOM is not collapsed by mistake. The
+ * click lands below the tree's rows, so it opens nothing.
  */
 async function focusExplorer(page: Page): Promise<void> {
   const tree = page.locator("#theia-left-content-panel #files .theia-TreeContainer");
+  // An Explorer that was never opened stays absent: the toggle then opens it.
+  await tree.waitFor({ state: "attached", timeout: 15_000 }).catch(() => undefined);
   if (!(await tree.isVisible().catch(() => false))) {
     await page.keyboard.press("ControlOrMeta+Shift+KeyE");
     await tree.waitFor({ state: "visible", timeout: 10_000 });
@@ -76,9 +79,22 @@ test.describe("Lumen islands", () => {
     await focusExplorer(page);
     await expectLit(page, "left");
 
-    // A new terminal (Theia's ctrl+shift+`), which opens in the bottom panel
-    // and takes the focus.
+    // A new terminal (Theia's ctrl+shift+`). It docks beside the last-used
+    // terminal, which may be the Claude terminal in the left or main island,
+    // so its island is not fixed: the one lit island must be the island that
+    // holds the focus, and the focus must be in the terminal.
     await page.keyboard.press("Control+Shift+Backquote");
-    await expectLit(page, "bottom");
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const active = document.activeElement;
+            const lit = [...document.querySelectorAll<HTMLElement>(".spexr-island[data-lit]")].map((el) => el.dataset.island);
+            const focused = active?.closest<HTMLElement>(".spexr-island")?.dataset.island;
+            return { oneLit: lit.length === 1, litIsFocused: lit[0] !== undefined && lit[0] === focused, inTerminal: !!active?.closest(".xterm") };
+          }),
+        { timeout: 15_000 },
+      )
+      .toEqual({ oneLit: true, litIsFocused: true, inTerminal: true });
   });
 });

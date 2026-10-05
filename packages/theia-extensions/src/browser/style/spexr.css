@@ -3001,6 +3001,11 @@ code {
 }
 
 /* --- Darkfactory: agent monitoring wall --- */
+/* The wall takes the focus when its tab is activated; the lit island already shows that, so a mouse click draws no second indigo frame (keyboard activation keeps it). */
+.spexr-darkfactory:focus:not(:focus-visible) {
+  outline: none;
+}
+
 .spexr-darkfactory {
   /* Categorical wall — adopt the shared DS data-viz ramp (--sl-viz-0..7). */
   --sl-df-accent-0: var(--sl-viz-0);
