@@ -28,3 +28,25 @@ index 7f99e31752e4b7b48d25f68aa3f9cb260190f719..854922afd6786eaef77f85db72a5ea13
                  }, atBottomStateChange: (atBottom) => {
                      onAtBottomStateChangeEmitter?.fire(atBottom);
                  }, atBottomThreshold: exports.SCROLL_BOTTOM_THRESHOLD, totalCount: rows.length, itemContent: index => renderNodeRow(rows[index]), width: width, height: height, 
+diff --git a/lib/browser/view-container.js b/lib/browser/view-container.js
+index 43a0adca204b4c898109a85dc91b88ca61ed0e04..41790423fc6cf1eef939d7d9cd3c92d5a29f6927 100644
+--- a/lib/browser/view-container.js
++++ b/lib/browser/view-container.js
+@@ -1224,6 +1224,17 @@ class ViewContainerLayout extends widgets_1.SplitLayout {
+             this.parent.fit();
+         }
+     }
++    /**
++     * SPEXR patch: lay each part out on whole pixels. Weighted part sizes are
++     * fractional, so a part could start half a pixel down and blur every 1px
++     * line inside it (a tree row's ring, a header's rule). Both edges are
++     * rounded, so neighbouring parts and their handles still meet exactly.
++     */
++    updateItemPosition(i, isHorizontal, left, top, height, width, size) {
++        const start = Math.round(isHorizontal ? left : top);
++        const end = Math.round((isHorizontal ? left : top) + size);
++        super.updateItemPosition(i, isHorizontal, isHorizontal ? start : left, isHorizontal ? top : start, height, width, end - start);
++    }
+     getPartSize(part) {
+         if (part.collapsed || part.isHidden) {
+             return part.uncollapsedSize;

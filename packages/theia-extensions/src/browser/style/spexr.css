@@ -917,9 +917,15 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* The ring's pixel is the island's own: Lumino lays an island's children out
    inside its padding, so a child that outlines its own edge (a focused tree,
    Theia's 1px focus outline on a row) sits flush against the ring, never
-   under it. Theia zeroes a split child's padding at (0,2,0). */
+   under it. Theia zeroes a split child's padding at (0,2,0). Lengths
+   measured from the island's outer edge (a pane head's label, a tree's
+   tiles) take the ring off through --spexr-island-ring. */
+:root {
+  --spexr-island-ring: 1px;
+}
+
 .spexr-island.sl-pane.lm-Widget {
-  padding: 1px;
+  padding: var(--spexr-island-ring);
 }
 
 /* The fill, one variable through Theia's chrome. The tab strip and the
@@ -1135,12 +1141,18 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
 }
 
+/* Theia gives every vertical tab a transparent top and bottom border, the
+   drag-over indicator (tabs.css, --theia-dragover-tab-border-width, 2px,
+   !important), and it stays. The tile paints under it, but a background
+   layer and an absolute child are placed in the padding box, 2px down: the
+   seam takes the border back to stay half the tile's height, and the badge
+   (below) to sit 4px from the tile's top. */
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {
   color: var(--slc-text);
   background-color: var(--slc-tile);
   background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
   background-repeat: no-repeat;
-  background-size: 2px 50%;
+  background-size: 2px calc(50% + var(--theia-dragover-tab-border-width));
   background-position: 3px 50%;
   box-shadow: var(--slc-depth-flat);
 }
@@ -1150,7 +1162,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar {
-  top: 4px;
+  top: calc(4px - var(--theia-dragover-tab-border-width));
   right: 4px;
   bottom: auto;
   box-sizing: border-box;
@@ -1215,11 +1227,13 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 /* A file tree's tiles sit 8px in from the island's edges, as Lumen's rows
-   do (7px inside the island's 1px ring): the selected row's tile, and the
-   hover's flat wash, which moves off the full-width row onto an inset tile
-   of its own. A selected row keeps its own tile under the pointer. The
+   do (inside the island's ring): the selected row's tile, the hover's flat
+   wash and the focus ring, which all move off the full-width row onto an
+   inset tile. A selected row keeps its own tile under the pointer. The
    seam stays 1px inside the tile, clear of a first-level twisty, which
-   starts at the tile's edge. */
+   starts at the tile's edge. A focused row that is not selected (Theia
+   moves the focus apart from the selection on Ctrl+arrow) draws the kit's
+   flush ring on that tile, not Theia's 1px outline on the whole row. */
 :root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode {
   position: relative;
   isolation: isolate;
@@ -1232,14 +1246,28 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 :root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode:hover:not(.theia-mod-selected)::before {
   content: "";
   position: absolute;
-  inset: 1px 7px;
+  inset: 1px calc(8px - var(--spexr-island-ring));
   z-index: -1;
   border-radius: var(--sl-radius-sm);
   background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode.theia-mod-selected::before {
-  inset: 1px 7px;
+  inset: 1px calc(8px - var(--spexr-island-ring));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree:focus-within .theia-TreeNode.theia-mod-focus:not(.theia-mod-selected) {
+  outline: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree:focus-within .theia-TreeNode.theia-mod-focus:not(.theia-mod-selected)::before {
+  content: "";
+  position: absolute;
+  inset: 1px calc(8px - var(--spexr-island-ring));
+  z-index: -1;
+  border-radius: var(--sl-radius-sm);
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle {
@@ -1252,14 +1280,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* A side island's head (S5c), Lumen's pane head: 40px, its label the view's
    name as written ("Explorer", not Theia's EXPLORER), 13px at 600 in the
-   primary ink, 16px in from the island's edge (15 inside its 1px ring).
+   primary ink, 16px in from the island's outer edge.
    Layout in every theme; the ink is light and dark only. */
 #theia-app-shell .theia-sidepanel-toolbar {
   min-height: 40px;
 }
 
 #theia-app-shell .theia-sidepanel-toolbar .theia-sidepanel-title {
-  margin-left: 15px;
+  margin-left: calc(16px - var(--spexr-island-ring));
   font-size: 0.8125rem;
   font-weight: 600;
   text-transform: none;

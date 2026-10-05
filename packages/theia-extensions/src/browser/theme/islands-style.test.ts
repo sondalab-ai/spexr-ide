@@ -107,7 +107,8 @@ describe("an island's ring", () => {
   });
 
   it("owns its outermost pixel: the content starts inside it, flush", () => {
-    expect(rule(".spexr-island.sl-pane.lm-Widget")).toMatch(/padding:\s*1px;/);
+    expect(rule(".spexr-island.sl-pane.lm-Widget")).toMatch(/padding:\s*var\(--spexr-island-ring\);/);
+    expect(rule(":root {\n  --spexr-island-ring")).toMatch(/--spexr-island-ring:\s*1px;/);
   });
 
   it("leaves nothing of a collapsed side beside its activity bar", () => {
@@ -228,7 +229,8 @@ describe("the activity bars", () => {
     const current = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {`);
     expect(current).toMatch(/background-color:\s*var\(--slc-tile\)/);
     expect(current).toMatch(/background-image:\s*linear-gradient\(var\(--spexr-seam-ink\), var\(--spexr-seam-ink\)\)/);
-    expect(current).toMatch(/background-size:\s*2px 50%/);
+    // Half the tile's height: the padding box is 2px short of it each way (Theia's drag-over border).
+    expect(current).toMatch(/background-size:\s*2px calc\(50% \+ var\(--theia-dragover-tab-border-width\)\)/);
     expect(current).toMatch(/box-shadow:\s*var\(--slc-depth-flat\)/);
     expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current .lm-TabBar-tabIcon`)).toMatch(/color:\s*var\(--slc-accent-text\)/);
   });
@@ -240,7 +242,8 @@ describe("the activity bars", () => {
 
   it("draw the kit's count badge 4px into the tile's corner, which clips: mono 9px, a 16px pill ringed in the canvas", () => {
     const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar`);
-    expect(badge).toMatch(/top:\s*4px/);
+    // 4px from the tile's top, past Theia's 2px drag-over border (workbench-style.test.ts).
+    expect(badge).toMatch(/top:\s*calc\(4px - var\(--theia-dragover-tab-border-width\)\)/);
     expect(badge).toMatch(/right:\s*4px/);
     expect(badge).toMatch(/bottom:\s*auto/);
     expect(badge).toMatch(/min-width:\s*20px/);

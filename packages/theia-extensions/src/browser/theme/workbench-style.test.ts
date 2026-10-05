@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 import { WORKBENCH } from "../shell/workbench-geometry.js";
 
 const resolve = createRequire(import.meta.url).resolve;
@@ -52,7 +53,7 @@ describe("the shell's geometry in spexr.css", () => {
     expect(px(rule(`${NOT_HC} .theia-app-sidebar-container .theia-sidebar-menu-item {`), "height")).toBe(WORKBENCH.activityItem);
     const foot = rule("#theia-app-shell .theia-app-sidebar-container > .theia-sidebar-menu:last-child {");
     expect(px(foot, "gap")).toBe(WORKBENCH.activityGap);
-    expect(px(foot, "padding-bottom")).toBe(8);
+    expect(px(foot, "padding-bottom")).toBe(WORKBENCH.activityBottom);
   });
 
   it("is the table's strips: 36px tab rows with 28px tiles, 32px breadcrumbs", () => {
@@ -61,7 +62,8 @@ describe("the shell's geometry in spexr.css", () => {
     expect(px(strips, "--theia-breadcrumbs-height")).toBe(WORKBENCH.breadcrumbs);
     const tab = rule(`${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab {`);
     expect(px(tab, "height")).toBe(WORKBENCH.tab);
-    expect(tab).toMatch(/margin-top:\s*round\(down, calc\(\(var\(--theia-horizontal-toolbar-height\) - 28px\) \/ 2\), 1px\)/);
+    expect(tab).toContain(`margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - ${WORKBENCH.tab}px) / 2), 1px);`);
+    expect(tab).toContain(`margin-bottom: round(up, calc((var(--theia-horizontal-toolbar-height) - ${WORKBENCH.tab}px) / 2), 1px);`);
     // Theia's toolbar height is its tab height (tabs.css): the strip variable reaches every horizontal strip.
     const tabs = readFileSync(resolve("@theia/core/src/browser/style/tabs.css"), "utf8");
     expect(tabs).toMatch(/--theia-horizontal-toolbar-height:\s*var\(--theia-private-horizontal-tab-height\)/);
@@ -94,10 +96,14 @@ describe("the shell's geometry in spexr.css", () => {
     expect(readFileSync(resolve("@theia/core/lib/browser/tree/tree-widget.js"), "utf8")).toMatch(/leftPadding: 8,\s*expansionTogglePadding: 22/);
   });
 
-  it("insets a file tree's tiles 8px from the island's edges, Lumen's rows, the hover's too", () => {
-    expect(rule(`${NOT_HC} .theia-FileTree .theia-TreeNode.theia-mod-selected::before {`)).toMatch(/inset:\s*1px 7px;/);
+  it("insets a file tree's tiles 8px from the island's outer edge, Lumen's rows, the hover's and the focus ring's too", () => {
+    // The island's ring is its padding; offsets from its outer edge take it off.
+    expect(rule(":root {\n  --spexr-island-ring")).toMatch(/--spexr-island-ring:\s*1px;/);
+    expect(rule(".spexr-island.sl-pane.lm-Widget {")).toMatch(/padding:\s*var\(--spexr-island-ring\);/);
+    const INSET = /inset:\s*1px calc\(8px - var\(--spexr-island-ring\)\);/;
+    expect(rule(`${NOT_HC} .theia-FileTree .theia-TreeNode.theia-mod-selected::before {`)).toMatch(INSET);
     const hover = rule(`${NOT_HC} .theia-FileTree .theia-TreeNode:hover:not(.theia-mod-selected)::before {`);
-    expect(hover).toMatch(/inset:\s*1px 7px;/);
+    expect(hover).toMatch(INSET);
     expect(hover).toMatch(/z-index:\s*-1;/);
     expect(hover).toMatch(/background-color:\s*color-mix\(in srgb, var\(--slc-text\) 5%, transparent\);/);
     expect(rule(`${NOT_HC} .theia-FileTree .theia-TreeNode:hover {`)).toMatch(/background:\s*transparent;/);
@@ -109,6 +115,16 @@ describe("the shell's geometry in spexr.css", () => {
     expect(css.indexOf(`\n${NOT_HC} .theia-FileTree .theia-TreeNode.theia-mod-selected::before {`)).toBeGreaterThan(
       css.indexOf(`\n${NOT_HC} .theia-Tree .theia-TreeNode.theia-mod-selected::before {`),
     );
+    // A focused row that is not selected: the kit's flush ring on the inset tile, not Theia's outline on the row.
+    const FOCUS = `${NOT_HC} .theia-FileTree:focus-within .theia-TreeNode.theia-mod-focus:not(.theia-mod-selected)`;
+    expect(rule(`${FOCUS} {`)).toMatch(/outline:\s*0;/);
+    const ring = rule(`${FOCUS}::before {`);
+    expect(ring).toMatch(INSET);
+    expect(ring).toMatch(/outline:\s*var\(--sl-focus-ring-width\) solid var\(--slc-focus\);/);
+    expect(ring).toMatch(/outline-offset:\s*calc\(-1 \* var\(--sl-focus-ring-width\)\);/);
+    // Theia's own outline on the row, which the rule above outweighs: (0,7,0) against (0,4,0) and (0,5,0).
+    const tree = readFileSync(resolve("@theia/core/src/browser/style/tree.css"), "utf8");
+    expect(tree).toMatch(/\.theia-Tree:focus-within \.theia-TreeNode\.theia-mod-focus,\s*\.theia-Tree\s*\.ReactVirtualized__List:focus-within\s*\.theia-TreeNode\.theia-mod-focus \{\s*outline-width: 1px;/);
   });
 
   it("is the table's pane head and toast offset", () => {
@@ -117,7 +133,44 @@ describe("the shell's geometry in spexr.css", () => {
     expect(title).toMatch(/text-transform:\s*none/);
     expect(title).toMatch(/font-weight:\s*600/);
     expect(title).toMatch(/font-size:\s*0\.8125rem/);
+    // 16px from the island's outer edge, inside its ring.
+    expect(title).toMatch(/margin-left:\s*calc\(16px - var\(--spexr-island-ring\)\);/);
     expect(px(rule("body .theia-notifications-container {"), "bottom")).toBe(WORKBENCH.toastOffset);
+  });
+});
+
+// Theia's vertical tabs carry a 2px transparent top and bottom border, the
+// drag-over indicator, at !important. It stays; the tile's seam and badge are
+// placed in the padding box, 2px down, so both take it back.
+describe("the activity tile against Theia's drag-over border", () => {
+  it("is still Theia's border, which spexr keeps", () => {
+    const tabs = readFileSync(resolve("@theia/core/src/browser/style/tabs.css"), "utf8");
+    expect(tabs).toMatch(/--theia-dragover-tab-border-width:\s*2px;/);
+    expect(tabs).toMatch(
+      /\.lm-TabBar\[data-orientation="vertical"\] \.lm-TabBar-tab \{\s*border-top: var\(--theia-dragover-tab-border-width\) solid transparent !important;\s*border-bottom: var\(--theia-dragover-tab-border-width\) solid transparent !important;/,
+    );
+  });
+
+  it("puts the count badge 4px from the tile's top, past the border", () => {
+    const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar {`);
+    expect(badge).toMatch(/top:\s*calc\(4px - var\(--theia-dragover-tab-border-width\)\);/);
+    expect(badge).toMatch(/right:\s*4px;/);
+  });
+
+  it("keeps the current tile's seam half the tile's height", () => {
+    const current = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {`);
+    expect(current).toMatch(/background-size:\s*2px calc\(50% \+ var\(--theia-dragover-tab-border-width\)\);/);
+    expect(current).toMatch(/background-position:\s*3px 50%;/);
+  });
+
+  // High contrast keeps Theia's tab: the 36px tile and its seam are light and
+  // dark only, so an HC tab is Theia's icon box (the bar's 52px) and its
+  // 2px borders, on the same 8px gap and 4px top as every theme.
+  it("leaves high contrast Theia's own tab, on the shared gap", () => {
+    expect(css).not.toMatch(/\n:root\[data-sl-theme="high-contrast"\][^{]*theia-app-sides \.lm-TabBar-tab[^{]*\{/);
+    const side = readFileSync(resolve("@theia/core/src/browser/style/sidepanel.css"), "utf8");
+    expect(side).toMatch(/\.lm-TabBar\.theia-app-sides \.lm-TabBar-tabIcon \{[^}]*width: var\(--theia-private-sidebar-tab-width\);\s*height: var\(--theia-private-sidebar-tab-width\);/);
+    expect(rule("#theia-app-shell .lm-TabBar.theia-app-sides .lm-TabBar-content {")).not.toContain("high-contrast");
   });
 });
 
@@ -166,9 +219,9 @@ describe("the S5c rules", () => {
 
   it("are found, so the checks below are not vacuous", () => {
     expect(chrome).toContain(".theia-FileTree {");
-    expect(chrome).toContain("--theia-private-sidebar-tab-width: 52px;");
-    expect(chrome).toContain("--theia-private-horizontal-tab-height: 36px;");
-    expect(dock).toContain("--theia-statusBar-height: 28px;");
+    expect(chrome).toContain(`--theia-private-sidebar-tab-width: ${WORKBENCH.activityBar}px;`);
+    expect(chrome).toContain(`--theia-private-horizontal-tab-height: ${WORKBENCH.tabStrip}px;`);
+    expect(dock).toContain(`--theia-statusBar-height: ${WORKBENCH.statusBar}px;`);
   });
 
   it("write no colour literal", () => {
@@ -195,12 +248,52 @@ describe("the tree indent patch", () => {
   });
 
   it("steps every level by the indent, and changes nothing at Theia's defaults", () => {
-    // The installed method, run with Theia's leftPadding (8) and a given indent.
+    // The installed method, run with a given leftPadding (Theia's is 8) and indent.
     const body = /getDepthPadding\(depth\) \{([\s\S]*?)\n    \}/.exec(installed)![1]!;
-    const at = (indent: number, depth: number): number =>
-      (new Function("depth", body.replace(/this\.props\.leftPadding/g, "8").replace(/this\.treeIndent/g, String(indent))) as (d: number) => number)(depth);
+    const run = (leftPadding: number, indent: number, depth: number): number =>
+      (new Function("depth", body.replace(/this\.props\.leftPadding/g, String(leftPadding)).replace(/this\.treeIndent/g, String(indent))) as (d: number) => number)(depth);
+    const at = (indent: number, depth: number): number => run(8, indent, depth);
+    // A tree with its own leftPadding: depth 1 still sits at it, and every level below steps one indent.
+    expect([0, 1, 2, 3].map((d) => run(12, 16, d))).toEqual([0, 12, 28, 44]);
     expect([0, 1, 2, 3, 4].map((d) => at(16, d))).toEqual([0, 8, 24, 40, 56]);
     // Theia's defaults (indent 8, leftPadding 8): depth * 8, as before the patch.
     expect([0, 1, 2, 3, 4].map((d) => at(8, d))).toEqual([0, 8, 16, 24, 32]);
+  });
+});
+
+// spexr's patch to Theia's view container (patches/@theia__core@1.75.0.patch)
+// lays each section of a side view (the Explorer's Search, Open Editors,
+// folder…) out on whole pixels: weighted sizes put a section half a pixel
+// down, which blurred the 1px ring of every tree row's tile inside it.
+describe("the view container's whole-pixel patch", () => {
+  const patch = repo("patches/@theia__core@1.75.0.patch");
+  const installed = readFileSync(resolve("@theia/core/lib/browser/view-container.js"), "utf8");
+  const lumino = readFileSync(resolve("@lumino/widgets/dist/index.js", { paths: [dirname(resolve("@theia/core/package.json"))] }), "utf8");
+
+  it("overrides Lumino's per-item placement, which SplitLayout calls for every section", () => {
+    expect(patch).toContain("diff --git a/lib/browser/view-container.js b/lib/browser/view-container.js");
+    expect(installed).toMatch(/class ViewContainerLayout extends widgets_1\.SplitLayout \{[\s\S]*?\n    updateItemPosition\(i, isHorizontal, left, top, height, width, size\) \{/);
+    expect(lumino).toMatch(/this\.updateItemPosition\(i, horz, horz \? left \+ offset : left, horz \? top : top \+ offset, height, width, size\);/);
+  });
+
+  it("rounds both edges, so neighbouring sections and their handles still meet", () => {
+    const body = /\n    updateItemPosition\(i, isHorizontal, left, top, height, width, size\) \{([\s\S]*?)\n    \}/.exec(installed)![1]!;
+    const place = new Function("record", "i", "isHorizontal", "left", "top", "height", "width", "size", body.replace("super.updateItemPosition(", "record(")) as (
+      record: (...args: number[]) => void,
+      ...args: [number, boolean, number, number, number, number, number]
+    ) => void;
+    const placed: number[][] = [];
+    const record = (...args: number[]): void => void placed.push(args);
+    // Three vertical sections from fractional weights, 2px handles between them.
+    let top = 0;
+    for (const [i, size] of [140.5, 281.25, 96.25].entries()) {
+      place(record, i, false, 0, top, 0, 262, size);
+      top += size + 2;
+    }
+    const tops = placed.map((p) => p[3]!);
+    const sizes = placed.map((p) => p[6]!);
+    expect(tops.every(Number.isInteger) && sizes.every(Number.isInteger)).toBe(true);
+    // Each section ends where the next one's handle starts.
+    for (let k = 0; k + 1 < placed.length; k++) expect(tops[k]! + sizes[k]! + 2).toBe(tops[k + 1]!);
   });
 });
