@@ -37,15 +37,16 @@ async function expectLit(page: Page, area: "main" | "left" | "bottom" | "right")
 }
 
 /**
- * Put the focus in the Explorer's file tree. Its activity-bar tab brings it to
- * the front only when it is not already there: a click on the current side tab
- * collapses the panel instead. The click lands below the tree's rows, so it
- * opens nothing.
+ * Put the focus in the Explorer's file tree. When the tree is not showing,
+ * Theia's Explorer toggle (ctrlcmd+shift+e) opens and activates it; it would
+ * collapse the panel only if the Explorer were already the visible view, which
+ * the check rules out. The click lands below the tree's rows, so it opens
+ * nothing.
  */
 async function focusExplorer(page: Page): Promise<void> {
   const tree = page.locator("#theia-left-content-panel #files .theia-TreeContainer");
   if (!(await tree.isVisible().catch(() => false))) {
-    await page.locator("#theia-left-content-panel #shell-tab-explorer-view-container").click();
+    await page.keyboard.press("ControlOrMeta+Shift+KeyE");
     await tree.waitFor({ state: "visible", timeout: 10_000 });
   }
   const box = await tree.boundingBox();
