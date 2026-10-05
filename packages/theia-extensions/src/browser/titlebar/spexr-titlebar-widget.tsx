@@ -1,6 +1,7 @@
 import * as React from "react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
+import type { Message } from "@theia/core/lib/browser/widgets/widget";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ContextMenuRenderer } from "@theia/core/lib/browser/context-menu-renderer";
 import { ContextKeyService } from "@theia/core/lib/browser/context-key-service";
@@ -111,6 +112,17 @@ export class SpexrTitleBarWidget extends ReactWidget {
 
     this.watchRightPanel();
     this.update();
+  }
+
+  /**
+   * Theia registers its default key bindings in KeybindingRegistry.onStart,
+   * after this widget exists, and fires no change event for them; the shell
+   * attaches only once every contribution has started, so the keys are read
+   * again here.
+   */
+  protected override onAfterAttach(msg: Message): void {
+    super.onAfterAttach(msg);
+    this.readKeys();
   }
 
   /** Whether the bar holds the compact menu button: a custom window on Windows or Linux. */
