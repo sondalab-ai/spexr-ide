@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { LIGHTS_BEFORE_TAHOE, LIGHTS_ROOM_PROPERTY, LIGHTS_TAHOE, lightsRoom, TITLE_BAR_HEIGHT, TITLE_BAR_PADDING } from "../../common/mac-title-bar.js";
+import { LIGHT_SIZE_PROPERTY, LIGHTS_BEFORE_TAHOE, LIGHTS_ROOM_PROPERTY, lightsRoom, TITLE_BAR_HEIGHT, TITLE_BAR_PADDING } from "../../common/mac-title-bar.js";
 
 const resolve = createRequire(import.meta.url).resolve;
 const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
@@ -207,21 +207,19 @@ describe("the room for macOS's traffic lights", () => {
   // The main process places the lights from common/mac-title-bar.ts and
   // sets the room for the zoom; the span has to cover the same pixels, or
   // the mark lands on the lights.
-  it("is a span as wide as the main process says, the three lights' width at 100% until it does", () => {
+  it("is a span as wide and tall as the main process says, macOS 15's lights at 100% until it does", () => {
     const lights = rule(".spexr-titlebar-host .spexr-titlebar__lights");
     expect(LIGHTS_ROOM_PROPERTY).toBe("--spexr-traffic-lights");
-    for (const geometry of [LIGHTS_BEFORE_TAHOE, LIGHTS_TAHOE]) {
-      expect(lights).toContain(`width: var(${LIGHTS_ROOM_PROPERTY}, ${lightsRoom(geometry, 1)}px);`);
-    }
-    expect(lights).toContain(`height: ${LIGHTS_BEFORE_TAHOE.circle.size}px;`);
-    expect(LIGHTS_TAHOE.circle.size).toBe(LIGHTS_BEFORE_TAHOE.circle.size);
+    expect(LIGHT_SIZE_PROPERTY).toBe("--spexr-traffic-light-size");
+    expect(lights).toContain(`width: var(${LIGHTS_ROOM_PROPERTY}, ${lightsRoom(LIGHTS_BEFORE_TAHOE, 1)}px);`);
+    expect(lights).toContain(`height: var(${LIGHT_SIZE_PROPERTY}, ${LIGHTS_BEFORE_TAHOE.circle.size}px);`);
     expect(lights).toMatch(/flex:\s*none/);
   });
 
   // A declaration on any element between :root and the span would win over
-  // the value the main process sets on :root.
-  it("never declares the room's property itself", () => {
-    expect(css).not.toMatch(new RegExp(`${LIGHTS_ROOM_PROPERTY}\\s*:`));
+  // the values the main process sets on :root.
+  it("never declares the main process's properties itself", () => {
+    for (const property of [LIGHTS_ROOM_PROPERTY, LIGHT_SIZE_PROPERTY]) expect(css, property).not.toMatch(new RegExp(`${property}\\s*:`));
   });
 
   // The span is the lights' place in the drag region: no-drag there would

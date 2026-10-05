@@ -43,14 +43,15 @@ export const LIGHTS_BEFORE_TAHOE: LightsGeometry = {
 };
 
 /**
- * macOS 26 (Darwin 25) and later: 14pt-tall frames, as VS Code's
- * getMacOSWindowControlsPosition has it; the circle's place in the frame is
- * the macos-26 runner's capture (tests/visual, `meta.lights`).
+ * macOS 26 (Darwin 25) and later, measured on the macos-26 runner (26.6.2,
+ * S5b-2's native capture at a known position): 14pt circles that fill their
+ * 14×14 frames, on a 23pt pitch, so the three take 60pt, not 52. The 14pt
+ * frame height is VS Code's getMacOSWindowControlsPosition's too.
  */
 export const LIGHTS_TAHOE: LightsGeometry = {
   frame: { width: 14, height: 14 },
-  circle: { size: 12, insetX: 1, insetY: 1 },
-  pitch: 20,
+  circle: { size: 14, insetX: 0, insetY: 0 },
+  pitch: 23,
 };
 
 /** The Darwin major version from `os.release()` ("25.6.0" → 25); 0 when unreadable. */
@@ -104,14 +105,18 @@ export function lightsRoom(geometry: LightsGeometry, factor = 1): number {
 }
 
 /**
- * The custom property the main process sets on a macOS window's page for the
- * room (spexr.css falls back to the 100% width before it arrives).
+ * The custom properties the main process sets on a macOS window's page: the
+ * room ({@link lightsRoom}) and one light's height, both in CSS px at the
+ * page's zoom. spexr.css falls back to the macOS 15 values at 100% before
+ * they arrive.
  */
 export const LIGHTS_ROOM_PROPERTY = "--spexr-traffic-lights";
+export const LIGHT_SIZE_PROPERTY = "--spexr-traffic-light-size";
 
-/** The stylesheet the main process injects for the room, rounded to 1/100 px. */
-export function lightsRoomCss(room: number): string {
-  return `:root { ${LIGHTS_ROOM_PROPERTY}: ${Math.round(room * 100) / 100}px; }`;
+/** The stylesheet the main process injects for a geometry at a zoom factor, rounded to 1/100 px. */
+export function lightsCss(geometry: LightsGeometry, factor = 1): string {
+  const px = (n: number): string => `${Math.round(n * 100) / 100}px`;
+  return `:root { ${LIGHTS_ROOM_PROPERTY}: ${px(lightsRoom(geometry, factor))}; ${LIGHT_SIZE_PROPERTY}: ${px(geometry.circle.size / factor)}; }`;
 }
 
 /** The BrowserWindow options spexr adds to a main window. */

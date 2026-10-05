@@ -6,12 +6,13 @@ import {
   followFullScreen,
   FULL_SCREEN_EVENTS,
   LIGHTS_BEFORE_TAHOE,
+  LIGHT_SIZE_PROPERTY,
   LIGHTS_ROOM_PROPERTY,
   LIGHTS_TAHOE,
+  lightsCss,
   lightsGeometry,
   lightsRight,
   lightsRoom,
-  lightsRoomCss,
   lightsWidth,
   macWindowChrome,
   TITLE_BAR_HEIGHT,
@@ -46,8 +47,15 @@ describe("the lights' geometry", () => {
     expect(g.circle.size).toBe(12);
   });
 
-  it("from macOS 26 has VS Code's 14pt frame", () => {
-    expect(LIGHTS_TAHOE.frame.height).toBe(14);
+  // S5b-2's macos-26 capture (26.6.2), lights placed at { x: 15, y: 15 }:
+  // 14pt circles at x 15, 38 and 61, rows 15 to 28. They fill their frames,
+  // whose 14pt height is VS Code's figure too.
+  it("from macOS 26 is the macos-26 runner's", () => {
+    const g = LIGHTS_TAHOE;
+    expect([0, 1, 2].map((i) => 15 + g.circle.insetX + i * g.pitch)).toEqual([15, 38, 61]);
+    expect(15 + g.circle.insetY).toBe(15);
+    expect(g.circle.size).toBe(14);
+    expect(g.frame.height).toBe(14);
   });
 
   it.each([
@@ -62,18 +70,21 @@ describe("the lights' geometry", () => {
     expect(lightsGeometry(darwinMajor(release))).toBe(geometry);
   });
 
-  it("is 52pt across the three circles, ending at x 68", () => {
-    for (const g of [LIGHTS_BEFORE_TAHOE, LIGHTS_TAHOE]) {
-      expect(lightsWidth(g)).toBe(52);
-      expect(lightsRight(g)).toBe(68);
-    }
+  it("is 52pt across the three circles before macOS 26, ending at x 68", () => {
+    expect(lightsWidth(LIGHTS_BEFORE_TAHOE)).toBe(52);
+    expect(lightsRight(LIGHTS_BEFORE_TAHOE)).toBe(68);
+  });
+
+  it("is 60pt across them from macOS 26, ending at x 76", () => {
+    expect(lightsWidth(LIGHTS_TAHOE)).toBe(60);
+    expect(lightsRight(LIGHTS_TAHOE)).toBe(76);
   });
 });
 
 describe("trafficLightPosition", () => {
   it.each([
     ["before macOS 26", LIGHTS_BEFORE_TAHOE, { x: 15, y: 14 }],
-    ["from macOS 26", LIGHTS_TAHOE, { x: 15, y: 15 }],
+    ["from macOS 26", LIGHTS_TAHOE, { x: 16, y: 15 }],
   ])("%s at 100% starts the first circle on the bar's padding and centres it on the bar", (_name, geometry, position) => {
     const at = trafficLightPosition(geometry);
     expect(at).toEqual(position);
@@ -138,16 +149,17 @@ describe("lightsRoom", () => {
     expect(lightsRoom(LIGHTS_BEFORE_TAHOE, zoomFactor(9))).toBe(0);
   });
 
-  it("reaches the page as a :root custom property, to the hundredth of a pixel", () => {
-    expect(lightsRoomCss(lightsRoom(LIGHTS_BEFORE_TAHOE, zoomFactor(-1)))).toBe(`:root { ${LIGHTS_ROOM_PROPERTY}: 65.6px; }`);
-    expect(lightsRoomCss(52)).toBe(`:root { ${LIGHTS_ROOM_PROPERTY}: 52px; }`);
+  it("reaches the page as :root custom properties, the room and one light's height, to the hundredth of a pixel", () => {
+    expect(lightsCss(LIGHTS_BEFORE_TAHOE)).toBe(`:root { ${LIGHTS_ROOM_PROPERTY}: 52px; ${LIGHT_SIZE_PROPERTY}: 12px; }`);
+    expect(lightsCss(LIGHTS_BEFORE_TAHOE, zoomFactor(-1))).toBe(`:root { ${LIGHTS_ROOM_PROPERTY}: 65.6px; ${LIGHT_SIZE_PROPERTY}: 14.4px; }`);
+    expect(lightsCss(LIGHTS_TAHOE)).toBe(`:root { ${LIGHTS_ROOM_PROPERTY}: 60px; ${LIGHT_SIZE_PROPERTY}: 14px; }`);
   });
 });
 
 describe("macWindowChrome", () => {
   it("hides macOS's title bar and places the lights for the running macOS", () => {
     expect(macWindowChrome("darwin", "23.6.0")).toEqual({ titleBarStyle: "hiddenInset", trafficLightPosition: { x: 15, y: 14 } });
-    expect(macWindowChrome("darwin", "25.6.0")).toEqual({ titleBarStyle: "hiddenInset", trafficLightPosition: { x: 15, y: 15 } });
+    expect(macWindowChrome("darwin", "25.6.0")).toEqual({ titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 15 } });
   });
 
   it("adds nothing elsewhere, leaving S5b-1's frame alone", () => {

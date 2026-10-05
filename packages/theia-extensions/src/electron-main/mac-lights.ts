@@ -1,11 +1,4 @@
-import {
-  FULL_SCREEN_EVENTS,
-  lightsRoom,
-  lightsRoomCss,
-  trafficLightPosition,
-  zoomFactor,
-  type LightsGeometry,
-} from "../common/mac-title-bar.js";
+import { FULL_SCREEN_EVENTS, lightsCss, trafficLightPosition, zoomFactor, type LightsGeometry } from "../common/mac-title-bar.js";
 
 /** The part of a BrowserWindow's webContents that {@link MacLights} uses. */
 export interface LightsWebContents {
@@ -40,8 +33,8 @@ export function reportFullScreen(window: LightsWindow, send: (event: string) => 
  * The traffic lights of every macOS main window, kept on spexr's bar at any
  * zoom. The lights are in points and do not scale, while Theia's zoom scales
  * the page, bar included, so on every zoom change each window's lights move
- * to the bar's new centre and the page gets the room they take in its own
- * pixels (LIGHTS_ROOM_PROPERTY, injected as a stylesheet). Chromium zooms
+ * to the bar's new centre and the page gets the room they take, and their
+ * size, in its own pixels (lightsCss, injected as a stylesheet). Chromium zooms
  * every window of an origin together, so a change syncs them all. A page
  * that loads again gets its stylesheet again.
  */
@@ -73,7 +66,7 @@ export class MacLights {
     if (!state || window.isDestroyed()) return;
     const factor = zoomFactor(window.webContents.getZoomLevel());
     window.setWindowButtonPosition(trafficLightPosition(this.geometry, factor));
-    const css = lightsRoomCss(lightsRoom(this.geometry, factor));
+    const css = lightsCss(this.geometry, factor);
     state.queue = state.queue.then(() => this.restyle(window, state, css)).catch(() => undefined);
   }
 

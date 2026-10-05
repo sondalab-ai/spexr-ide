@@ -83,7 +83,8 @@ describe("MacLights", () => {
     const { window } = setup(LIGHTS_TAHOE);
     window.contents.emit("dom-ready");
     await settle();
-    expect(window.positions).toEqual([{ x: 15, y: 15 }]);
+    expect(window.positions).toEqual([{ x: 16, y: 15 }]);
+    expect(window.room()).toBe("60px");
   });
 
   it("moves the lights and widens the room when the zoom changes, one stylesheet at a time", async () => {

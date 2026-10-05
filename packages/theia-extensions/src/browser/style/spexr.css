@@ -1144,12 +1144,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      (the main process places them: common/mac-title-bar.ts). An empty span
      takes their room at the start of the left track, so the kit's gap puts
      the mark after them and the command field stays centred on the window.
-     Its width, --spexr-traffic-lights, is the main process's: the lights
+     Its width and height, --spexr-traffic-lights and
+     --spexr-traffic-light-size, are the main process's: the lights differ
+     from macOS 26 on (14pt on a 23pt pitch, 12pt on 20pt before), and they
      stay put in points while Theia's zoom scales the page, so the room is
-     their right edge over the zoom factor (52px at 100%, the fallback until
-     the main process sets it). Nothing here declares the property, which
-     would shadow the main process's. The widget drops the span in full
-     screen, where macOS hides the lights.
+     their right edge over the zoom factor. The fallbacks are macOS 15's at
+     100%, until the main process sets them. Nothing here declares either
+     property, which would shadow the main process's. The widget drops the
+     span in full screen, where macOS hides the lights.
    - The bell replaces Theia's notification item in the status bar. */
 :root {
   --theia-private-menubar-height: 44px;
@@ -1183,7 +1185,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 .spexr-titlebar-host .spexr-titlebar__lights {
   flex: none;
   width: var(--spexr-traffic-lights, 52px);
-  height: 12px;
+  height: var(--spexr-traffic-light-size, 12px);
 }
 
 .spexr-titlebar-host .sl-titlebar__cmd > .codicon {
