@@ -12,6 +12,7 @@ export interface LightsWebContents {
 export interface LightsWindow {
   readonly webContents: LightsWebContents;
   isDestroyed(): boolean;
+  isFullScreen(): boolean;
   on(event: "enter-full-screen" | "leave-full-screen" | "closed", listener: () => void): unknown;
   setWindowButtonPosition(position: { x: number; y: number } | null): void;
 }
@@ -36,7 +37,9 @@ export function reportFullScreen(window: LightsWindow, send: (event: string) => 
  * to the bar's new centre and the page gets the room they take, and their
  * size, in its own pixels (lightsCss, injected as a stylesheet). Chromium zooms
  * every window of an origin together, so a change syncs them all. A page
- * that loads again gets its stylesheet again.
+ * that loads again gets its stylesheet again. In full screen the lights are
+ * the system's (Electron itself skips redrawing them there, or they jump):
+ * they move when the window leaves it.
  */
 export class MacLights {
   private readonly windows = new Map<LightsWindow, { key: string | undefined; queue: Promise<void> }>();
@@ -47,6 +50,7 @@ export class MacLights {
   add(window: LightsWindow, send: (event: string) => void): void {
     this.windows.set(window, { key: undefined, queue: Promise.resolve() });
     window.on("closed", () => this.windows.delete(window));
+    window.on("leave-full-screen", () => this.sync(window));
     window.webContents.on("dom-ready", () => {
       const state = this.windows.get(window);
       if (state) state.key = undefined;
@@ -65,7 +69,7 @@ export class MacLights {
     const state = this.windows.get(window);
     if (!state || window.isDestroyed()) return;
     const factor = zoomFactor(window.webContents.getZoomLevel());
-    window.setWindowButtonPosition(trafficLightPosition(this.geometry, factor));
+    if (!window.isFullScreen()) window.setWindowButtonPosition(trafficLightPosition(this.geometry, factor));
     const css = lightsCss(this.geometry, factor);
     state.queue = state.queue.then(() => this.restyle(window, state, css)).catch(() => undefined);
   }

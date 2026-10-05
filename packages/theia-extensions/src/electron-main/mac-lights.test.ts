@@ -6,6 +6,7 @@ import { MacLights, reportFullScreen, type LightsWebContents, type LightsWindow 
 /** A BrowserWindow stand-in: events through EventEmitter, every call recorded. */
 class FakeWindow extends EventEmitter implements LightsWindow {
   destroyed = false;
+  fullScreen = false;
   zoom = 0;
   positions: Array<{ x: number; y: number } | null> = [];
   sheets = new Map<string, string>();
@@ -27,6 +28,9 @@ class FakeWindow extends EventEmitter implements LightsWindow {
   };
   isDestroyed(): boolean {
     return this.destroyed;
+  }
+  isFullScreen(): boolean {
+    return this.fullScreen;
   }
   setWindowButtonPosition(position: { x: number; y: number } | null): void {
     this.positions.push(position);
@@ -138,6 +142,23 @@ describe("MacLights", () => {
     await settle();
     expect(window.room()).toBe("52px");
     expect(window.removed).toEqual([]);
+  });
+
+  // Electron skips redrawing the lights in full screen, where they belong to
+  // the system's revealed title bar; a zoom or a reload there waits.
+  it("leaves the lights alone in full screen, and places them on leaving it", async () => {
+    const { lights, window } = setup();
+    window.fullScreen = true;
+    window.zoom = -1;
+    lights.syncAll();
+    window.contents.emit("dom-ready");
+    await settle();
+    expect(window.positions).toEqual([]);
+    expect(window.room()).toBe("65.6px");
+    window.fullScreen = false;
+    window.emit("leave-full-screen");
+    await settle();
+    expect(window.positions).toEqual([{ x: 15, y: 10 }]);
   });
 
   it("reports full screen for the windows it keeps", () => {
