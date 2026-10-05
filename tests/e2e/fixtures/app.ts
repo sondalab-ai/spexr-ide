@@ -41,6 +41,9 @@ export const test = base.extend<AppFixtures>({
   },
 
   app: async ({ workspace }, use) => {
+    // Second layer behind playwright.config.ts, which a run from another
+    // directory or with `-c` never loads: nothing starts spexr off a runner.
+    if (process.env.GITHUB_ACTIONS !== "true") throw new Error("tests/e2e launches spexr and runs only on a GitHub Actions runner.");
     // The deployer only logs a missing plugin directory and starts anyway,
     // and an empty one deploys nothing; fail here instead, before a whole run
     // goes by without the extensions. tests/plugins.spec.ts checks they are live.

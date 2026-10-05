@@ -294,7 +294,7 @@ The E2E job is a hard gate: if any Playwright test fails the build and release j
 
 #### Running E2E
 
-E2E runs only on GitHub Actions: every test launches the Electron app, and a local run has opened enough windows to crash a workstation. `tests/e2e/playwright.config.ts` refuses to load unless `GITHUB_ACTIONS=true`. Push a branch and open a pull request; `.github/workflows/e2e.yml` runs the suite and uploads the Playwright report when it fails.
+E2E runs only on GitHub Actions: every test launches the Electron app, and a local run has opened enough windows to crash a workstation. Unless `GITHUB_ACTIONS=true`, `tests/e2e/playwright.config.ts` refuses to load, and the `app` fixture in `tests/e2e/fixtures/app.ts` refuses to launch, for runs that never load that config (another working directory, or `-c`). Push a branch and open a pull request; `.github/workflows/e2e.yml` runs the suite and uploads the Playwright report when it fails.
 
 The same holds for the screenshot capture in `tests/visual` (`.github/workflows/screenshots.yml`): label a pull request `screenshots` (Linux) or `screenshots-mac` (macOS) to run it.
 
