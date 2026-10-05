@@ -46,7 +46,9 @@ export class SpexrElectronMainApplication extends ElectronMainApplication {
    */
   protected override getDefaultOptions(): TheiaBrowserWindowOptions {
     const options = super.getDefaultOptions();
-    return { ...options, ...macWindowChrome(process.platform, release()), webPreferences: { ...options.webPreferences, webviewTag: true } };
+    // THROWAWAY PROBE: titleBarOverlay exposes the system title bar container's height to the page.
+    const probe = process.platform === "darwin" ? { titleBarOverlay: true } : {};
+    return { ...options, ...macWindowChrome(process.platform, release()), ...probe, webPreferences: { ...options.webPreferences, webviewTag: true } };
   }
 
   /**

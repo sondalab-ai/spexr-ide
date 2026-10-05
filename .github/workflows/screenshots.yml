@@ -139,7 +139,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-14, macos-15, macos-26]
+        runner: [macos-14, macos-26]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     concurrency:
@@ -148,7 +148,7 @@ jobs:
     permissions:
       contents: read
     env:
-      VISUAL_THEMES: ${{ (github.event_name == 'workflow_dispatch' && inputs.theme != 'both') && inputs.theme || 'dark,light' }}
+      VISUAL_THEMES: dark
 
     steps:
       - uses: actions/checkout@v4

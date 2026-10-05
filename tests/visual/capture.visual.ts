@@ -108,6 +108,16 @@ for (const theme of THEMES) {
         const shot = meta.native.find((s) => s.ok && s.mode === "window -l") ?? meta.native.find((s) => s.ok);
         const width = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
         if (shot) meta.lights = await probeLights(path.join(out, shot.file), page, width);
+        // THROWAWAY PROBE: the container height, through Window Controls Overlay.
+        (meta as unknown as Record<string, unknown>).wco = await page.evaluate(() => {
+          const o = (navigator as unknown as { windowControlsOverlay?: { visible: boolean; getTitlebarAreaRect(): DOMRect } }).windowControlsOverlay;
+          if (!o) return null;
+          const r = o.getTitlebarAreaRect();
+          return { visible: o.visible, x: r.x, y: r.y, width: r.width, height: r.height, env: getComputedStyle(document.documentElement).getPropertyValue('--x') };
+        });
+        (meta as unknown as Record<string, unknown>).buttonPosition = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getWindowButtonPosition() ?? null);
+        writeMeta();
+        return;
       }
       writeMeta();
 
