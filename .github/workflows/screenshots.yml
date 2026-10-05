@@ -12,6 +12,8 @@ name: Screenshots
 #   `screenshots-mac` (macOS). Every push to a labelled PR captures again.
 # - By hand: Actions → Screenshots → Run workflow, with theme and OS. This
 #   trigger exists only once this file is on the default branch.
+# - Each attempt uploads screenshots-<os>-<theme>-<attempt>, so a re-run keeps
+#   the first attempt's images next to its own.
 on:
   workflow_dispatch:
     inputs:
@@ -55,6 +57,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Read Node version
         id: nvmrc
@@ -96,28 +100,27 @@ jobs:
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1200x24" \
             pnpm --filter @spexr/visual capture
+        env:
+          VISUAL_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          VISUAL_REF: ${{ github.head_ref || github.ref_name }}
 
       - name: Upload dark
-        if: always() && contains(env.VISUAL_THEMES, 'dark')
+        if: ${{ !cancelled() && contains(env.VISUAL_THEMES, 'dark') }}
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-linux-dark
+          name: screenshots-linux-dark-${{ github.run_attempt }}
           path: tests/visual/out/linux-dark/
           if-no-files-found: warn
           retention-days: 14
-          # "Re-run jobs" on the same run uploads under the same name.
-          overwrite: true
 
       - name: Upload light
-        if: always() && contains(env.VISUAL_THEMES, 'light')
+        if: ${{ !cancelled() && contains(env.VISUAL_THEMES, 'light') }}
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-linux-light
+          name: screenshots-linux-light-${{ github.run_attempt }}
           path: tests/visual/out/linux-light/
           if-no-files-found: warn
           retention-days: 14
-          # "Re-run jobs" on the same run uploads under the same name.
-          overwrite: true
 
   mac:
     name: Screenshots (macOS)
@@ -139,6 +142,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Read Node version
         id: nvmrc
@@ -165,29 +170,28 @@ jobs:
         run: pnpm build:dev
 
       # The page capture works as on Linux. The native capture (traffic lights,
-      # title bar) uses `screencapture`, which needs Screen Recording
-      # permission; the summary reports what it produced.
+      # title bar) uses `screencapture`, which the macos-14 runner allows with
+      # no permission prompt; the summary reports what it produced.
       - name: Capture
         run: pnpm --filter @spexr/visual capture
+        env:
+          VISUAL_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          VISUAL_REF: ${{ github.head_ref || github.ref_name }}
 
       - name: Upload dark
-        if: always() && contains(env.VISUAL_THEMES, 'dark')
+        if: ${{ !cancelled() && contains(env.VISUAL_THEMES, 'dark') }}
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-mac-dark
+          name: screenshots-mac-dark-${{ github.run_attempt }}
           path: tests/visual/out/mac-dark/
           if-no-files-found: warn
           retention-days: 14
-          # "Re-run jobs" on the same run uploads under the same name.
-          overwrite: true
 
       - name: Upload light
-        if: always() && contains(env.VISUAL_THEMES, 'light')
+        if: ${{ !cancelled() && contains(env.VISUAL_THEMES, 'light') }}
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-mac-light
+          name: screenshots-mac-light-${{ github.run_attempt }}
           path: tests/visual/out/mac-light/
           if-no-files-found: warn
           retention-days: 14
-          # "Re-run jobs" on the same run uploads under the same name.
-          overwrite: true
