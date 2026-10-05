@@ -812,7 +812,17 @@ body {
 /* The island recipe, drawn inward (the kit's --slc-depth-island turned
    in): the quieter ring on the outermost pixel and the lit line on the next,
    flush under it. In high contrast the ring is the theme's line and there is
-   no lit line, as the kit's HC island is. */
+   no lit line, as the kit's HC island is.
+   The islands give up the kit's aurora layer here. The kit keeps a pane's
+   ::after free for .sl-fx-aurora (workbench.css, "Paint layers") because its
+   pane draws the ring and glow as its own box-shadow, outward. Lumino's
+   contain: strict on every layout item clips that outward ring and glow at
+   the island's parents' edges, and the island's own shadow would sit under
+   its opaque children, so the recipe can only be drawn inward, over the
+   content, and only a pseudo-element can do that: the seam holds ::before,
+   the ring ::after. So no island may wear .sl-fx-aurora (nothing in spexr
+   does). The kit has no recipe for a pane whose parents clip it: asked of the
+   kit. */
 .spexr-island::after {
   content: "";
   position: absolute;
