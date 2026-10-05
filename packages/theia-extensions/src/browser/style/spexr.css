@@ -751,11 +751,13 @@ body {
 
 /* Monaco declares its own colours on .monaco-editor at (0,1,0), from the
    colour registry, where the theme's editor background is Theia's. An editor
-   (an EditorWidget, .theia-editor: not the SCM message box or another input
-   built on Monaco) paints its body in the island's fill instead, lit too. The
-   minimap paints into a canvas from the registry and keeps the theme's
-   colour; so does xterm (the terminal well, spexr-color-contribution.ts). */
-:root:not([data-sl-theme="high-contrast"]) .spexr-island .theia-editor .monaco-editor {
+   (an EditorWidget, .theia-editor) and the Output view (.theia-output) paint
+   their body in the island's fill instead, lit too; the SCM message box and
+   other inputs built on Monaco keep their own. The minimap and xterm paint
+   into a canvas from the registry, which holds the island's surface for both
+   (spexr-color-contribution.ts): they match an island at rest, and stay the
+   surface in a lit one. */
+:root:not([data-sl-theme="high-contrast"]) .spexr-island :is(.theia-editor, .theia-output) .monaco-editor {
   --vscode-editor-background: var(--spexr-island-fill);
   --vscode-editorGutter-background: var(--spexr-island-fill);
   --vscode-editorStickyScroll-background: var(--spexr-island-fill);

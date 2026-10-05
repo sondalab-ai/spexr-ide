@@ -75,8 +75,8 @@ describe("an island's fill", () => {
     expect(rule(`${NOT_HC} .spexr-island[data-lit]`)).toMatch(/--spexr-island-fill:\s*var\(--slc-raised\)/);
   });
 
-  it("reaches an editor's Monaco body, not every Monaco input", () => {
-    const monaco = rule(`${NOT_HC} .spexr-island .theia-editor .monaco-editor`);
+  it("reaches the Monaco body of an editor and of the Output view, not every Monaco input", () => {
+    const monaco = rule(`${NOT_HC} .spexr-island :is(.theia-editor, .theia-output) .monaco-editor`);
     expect(monaco).toMatch(/--vscode-editor-background:\s*var\(--spexr-island-fill\)/);
     expect(monaco).toMatch(/--vscode-editorGutter-background:\s*var\(--spexr-island-fill\)/);
   });

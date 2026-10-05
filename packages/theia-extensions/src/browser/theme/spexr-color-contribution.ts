@@ -44,8 +44,8 @@ function accent(
 }
 
 /**
- * Overrides Theia's blue accent with the SPEXR violet, and darkens the embedded
- * Claude terminal so it reads apart from the editor.
+ * Overrides Theia's blue accent with the SPEXR violet, and puts the surfaces
+ * that paint into a canvas (xterm, Monaco's minimap) on the island surface.
  *
  * The accent ids re-registered here are monaco *registry defaults* (button,
  * focus ring, badge, links, tabs, input options): replacing them at the
@@ -121,22 +121,27 @@ export class SpexrColorContribution implements ColorContribution {
     // on Theia's own rows, and Monaco's lists (suggest, code actions) would get
     // the tile without it, white on a white widget on light.
 
-    // xterm paints onto a canvas from the *registry* value, so the CSS
-    // `--theia-terminal-background` override in SpexrThemeContribution never
-    // reaches it. Deriving this from `editor.background` would darken Theia's
-    // default gray — the registry never sees our canvas — which is how the
-    // terminal ended up a black unrelated to the palette. Register the SPEXR
-    // canvas directly: it still reads apart from the panel around it, which is
-    // one step lighter.
-    colors.register({
-      id: "terminal.background",
-      defaults: {
-        dark: SPEXR_NEUTRALS.dark.canvas,
-        light: SPEXR_NEUTRALS.light.canvas,
-        hcDark: "editor.background",
-        hcLight: "editor.background",
-      },
-      description: "SPEXR: terminal background on the SPEXR canvas neutral.",
-    });
+    // xterm and Monaco's minimap paint onto a canvas from the *registry*
+    // value, so neither the CSS `--theia-terminal-background` override in
+    // SpexrThemeContribution nor an island's re-bound surfaces (spexr.css)
+    // reach them. Deriving them from `editor.background` would take Theia's
+    // theme grey (#1e1e1e on dark), which the registry still holds: a slab
+    // unrelated to the palette. Register the SPEXR surface directly, the fill
+    // of an island at rest (Lumen, S3): a terminal or a minimap reads as part
+    // of its island. It was the canvas, a well; with islands the canvas is the
+    // frame, so a terminal body read as a hole through its island (1.00:1
+    // against the frame). Neither follows a lit island's raised rung.
+    for (const id of ["terminal.background", "minimap.background"]) {
+      colors.register({
+        id,
+        defaults: {
+          dark: SPEXR_NEUTRALS.dark.surface,
+          light: SPEXR_NEUTRALS.light.surface,
+          hcDark: "editor.background",
+          hcLight: "editor.background",
+        },
+        description: `SPEXR: ${id} on the SPEXR surface neutral, the fill of an island at rest.`,
+      });
+    }
   }
 }

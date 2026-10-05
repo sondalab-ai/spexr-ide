@@ -128,10 +128,12 @@ body {
   --theia-statusBarItem-activeBackground: ${raised} !important;
   --theia-titleBar-activeBackground: ${canvas} !important;
   --theia-titleBar-inactiveBackground: ${canvas} !important;
-  --theia-terminal-background: ${canvas} !important;
   --theia-editorGroupHeader-tabsBackground: ${canvas} !important;
 
-  /* Raised-once surfaces */
+  /* Raised-once surfaces: an island at rest. The terminal is one too, as
+     spexr-color-contribution.ts registers it for xterm's canvas; it does not
+     follow a lit island's raised rung (xterm paints from the registry). */
+  --theia-terminal-background: ${surface} !important;
   --theia-sideBar-background: ${surface} !important;
   --theia-sideBarSectionHeader-background: ${surface} !important;
   --theia-panel-background: ${surface} !important;

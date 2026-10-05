@@ -46,6 +46,20 @@ describe("SpexrColorContribution", () => {
     expect(colors.get("statusBar.foreground")).toEqual({ dark: SPEXR_NEUTRALS.dark.fgMuted, light: SPEXR_NEUTRALS.light.fgMuted });
   });
 
+  // xterm and the minimap paint from the registry, never from the CSS layer:
+  // on the canvas the terminal read as a hole through its island (1.00:1
+  // against the frame), and the minimap kept Theia's #1e1e1e on dark.
+  it("registers the terminal and the minimap on the island surface", () => {
+    for (const id of ["terminal.background", "minimap.background"]) {
+      expect(colors.get(id), id).toEqual({
+        dark: SPEXR_NEUTRALS.dark.surface,
+        light: SPEXR_NEUTRALS.light.surface,
+        hcDark: "editor.background",
+        hcLight: "editor.background",
+      });
+    }
+  });
+
   it("leaves the list selection and the main area's tab border to the CSS layer", () => {
     expect([...colors.keys()].filter((id) => id.startsWith("list.") || id.startsWith("quickInputList."))).toEqual([]);
     expect(colors.has("tab.activeBorderTop")).toBe(false);

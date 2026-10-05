@@ -72,6 +72,13 @@ describe("Theia's accent", () => {
   });
 });
 
+// The terminal sits on an island's surface, as the registry has it for xterm.
+describe("Theia's terminal", () => {
+  it.each(["light", "dark"] as const)("is the island surface on %s", (theme) => {
+    expect(value(theme, "terminal-background")).toBe(SPEXR_NEUTRALS[theme].surface);
+  });
+});
+
 describe("Theia's status bar", () => {
   it.each(["light", "dark"] as const)("is the canvas with the muted ink on %s", (theme) => {
     expect(value(theme, "statusBar-background")).toBe(SPEXR_NEUTRALS[theme].canvas);
