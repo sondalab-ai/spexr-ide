@@ -850,11 +850,77 @@ body {
   box-shadow: inset 0 0 0 1px var(--slc-border);
 }
 
-/* The bottom island's current tab keeps Theia's 1px line at its top
-   (panelTitle.activeBorder, the accent): the accent only while the island is
-   lit, the muted ink otherwise, as a tile's seam is (one lit pane). */
-:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel.spexr-island:not([data-lit]) {
-  --theia-panelTitle-activeBorder: var(--slc-text-muted);
+/* The bottom island's tabs are tile tabs, as the editor's are (THEIA'S
+   CHROME IN LUMEN): no rules, the others in the muted ink, hover a flat
+   wash, the current tab a flat tile in the primary ink with the seam 3px in
+   from its leading edge. The seam is the accent only on the active tab bar
+   of the lit bottom island, the muted ink otherwise (one lit seam). The
+   tile's own shadow replaces Theia's 1px line on the current tab
+   (panelTitle.activeBorder). A 28px tile centred in Theia's 35px strip, 2px
+   apart. Theia's sidepanel.css writes these tabs at up to (1,5,0); its
+   participant writes them in high contrast only. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-content {
+  gap: 2px;
+  padding-inline: 4px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab {
+  height: 28px;
+  line-height: 28px;
+  margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  margin-bottom: round(up, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  border: 0;
+  border-radius: var(--sl-radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--slc-text-muted);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab:hover {
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 3px 50%;
+  box-shadow: var(--slc-depth-flat);
+  color: var(--slc-text);
+}
+
+/* In a tab bar without the focus the current tab's label steps down to the
+   secondary ink, as the editor's does. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  color: var(--slc-text-secondary);
+}
+
+/* Theia colours the label itself in a tab bar without the focus, at up to
+   (1,5,0); it takes the tab's ink. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-tab-icon-label.theia-tab-icon-label {
+  color: inherit;
+}
+
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }
 
 /* The kit's seam (workbench.css, .sl-pane[data-lit]::before), over the tab

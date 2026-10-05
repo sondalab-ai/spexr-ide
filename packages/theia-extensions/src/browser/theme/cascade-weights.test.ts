@@ -269,3 +269,24 @@ describe("the toasts", () => {
     for (const mine of [toast, row]) expect(cmp(mine, specificity(".theia-notification-list-item:hover:not(:focus)"))).toBeGreaterThan(0);
   });
 });
+
+// The bottom island's tile tabs (spexr.css) set what sidepanel.css sets on
+// the same tabs and labels: spexr wins on weight.
+describe("the bottom island's tile tabs", () => {
+  const side = readFileSync(resolve("@theia/core/src/browser/style/sidepanel.css"), "utf8");
+  const NOT_HC = ':root:not([data-sl-theme="high-contrast"])';
+  const TAB = `${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab`;
+
+  it("outrank every one of Theia's bottom tab and label rules", () => {
+    const theirs = selectors(side, (s) => s.startsWith("#theia-bottom-content-panel") && s.includes(".lm-TabBar-tab"));
+    expect(theirs.length).toBeGreaterThanOrEqual(5);
+    for (const s of theirs) {
+      const mine = s.includes(".theia-tab-icon-label")
+        ? `${TAB} .theia-tab-icon-label.theia-tab-icon-label`
+        : s.includes(".lm-mod-current")
+          ? `${TAB}.lm-mod-current`
+          : TAB;
+      expect(cmp(specificity(mine), specificity(s)), `${mine} vs ${s}`).toBeGreaterThan(0);
+    }
+  });
+});

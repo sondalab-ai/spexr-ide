@@ -126,13 +126,37 @@ describe("an island's ring", () => {
   });
 });
 
-// One lit pane: Theia's accent line on the bottom panel's current tab is the
-// accent only while that island is lit.
-describe("the bottom island's current tab", () => {
-  it("draws its line in the muted ink unless the island is lit", () => {
-    expect(rule(`${NOT_HC} #theia-bottom-content-panel.spexr-island:not([data-lit])`)).toMatch(
-      /--theia-panelTitle-activeBorder:\s*var\(--slc-text-muted\)/,
+// The bottom island's tabs are tile tabs (S4), as the editor's are. One lit
+// seam: the current tab's seam is the accent only on the active tab bar of
+// the lit bottom island, the muted ink otherwise.
+describe("the bottom island's tabs", () => {
+  const TAB = `${NOT_HC} #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab`;
+
+  it("key the accent seam to the lit bottom island's active tab bar", () => {
+    expect(rule(`${NOT_HC} #theia-bottom-content-panel .lm-TabBar {`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
+    expect(rule(`${NOT_HC} #theia-bottom-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active`)).toMatch(
+      /--spexr-seam-ink:\s*var\(--slc-seam\)/,
     );
+    const accent = [...css.matchAll(/\n([^{}\n]*)\{\s*--spexr-seam-ink:\s*var\(--slc-seam\);/g)].map((m) => m[1]!.trim());
+    for (const s of accent.filter((selector) => selector.includes("#theia-bottom-content-panel"))) {
+      expect(s).toContain("#theia-bottom-content-panel.spexr-island[data-lit]");
+    }
+  });
+
+  it("are 28px tiles, the current one a flat tile with the seam that replaces Theia's accent line", () => {
+    const tab = rule(`${TAB} {`);
+    expect(tab).toMatch(/height:\s*28px/);
+    expect(tab).toMatch(/border-radius:\s*var\(--sl-radius-sm\)/);
+    expect(tab).toMatch(/color:\s*var\(--slc-text-muted\)/);
+    const current = rule(`${TAB}.lm-mod-current,`);
+    expect(current).toMatch(/background-color:\s*var\(--slc-tile\)/);
+    expect(current).toMatch(/linear-gradient\(var\(--spexr-seam-ink\), var\(--spexr-seam-ink\)\)/);
+    expect(current).toMatch(/box-shadow:\s*var\(--slc-depth-flat\)/);
+    expect(css).not.toMatch(/--theia-panelTitle-activeBorder/);
+  });
+
+  it("hand the label the tab's ink, over Theia's own label colours", () => {
+    expect(rule(`${TAB} .theia-tab-icon-label.theia-tab-icon-label`)).toMatch(/color:\s*inherit/);
   });
 });
 
