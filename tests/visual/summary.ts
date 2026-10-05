@@ -93,6 +93,18 @@ function renderSummary(runs: Run[]): string {
     const p = m.main?.windowButtonPosition;
     return p ? `at ${p.x},${p.y}; window ${m.main?.bounds}` : "";
   });
+  md += row("traffic lights found (mac)", (m) => {
+    const l = m.lights;
+    if (!l) return "";
+    const circles = l.circles.map((c) => `${c.colour} ${c.left}–${c.right} × ${c.top}–${c.bottom}`).join(", ");
+    return `${l.ok ? "✓" : `✗ ${l.problems.join("; ")}`} (${m.main?.systemVersion}, scale ${l.scale}): ${circles}; bar centre ${l.barCentre}`;
+  });
+  md += row("zoom −1 (mac)", (m) => {
+    const z = m.zoom;
+    if (!z) return "";
+    const p = z.windowButtonPosition;
+    return `${z.ok ? "✓" : `✗ ${z.problems.join("; ")}`}: room ${z.roomBefore} → ${z.roomAfter}, lights at ${p ? `${p.x},${p.y}` : "?"}, mark ${z.markLeftPt}pt, gap ${z.markGapPt}pt`;
+  });
   md += row("full screen (mac)", (m) => {
     const f = m.fullScreen;
     if (!f) return "";

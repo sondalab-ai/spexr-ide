@@ -1,6 +1,8 @@
 import type { ElectronApplication, Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
+import { checkLights, findLights, type LightsCheck, type Rect } from "./lights";
+import { nativeCapture } from "./native";
 
 /** What the environment gave this capture: read by the step summary, never asserted on. */
 export interface PageProbes {
@@ -40,6 +42,25 @@ export interface MainProbes {
   readonly bounds: string;
   /** macOS: the traffic lights' position the window was created with (`trafficLightPosition`); null elsewhere. */
   readonly windowButtonPosition: { x: number; y: number } | null;
+  /** `process.getSystemVersion()`: the macOS version on macOS ("26.6.2"). */
+  readonly systemVersion: string;
+}
+
+/** The bar one zoom level out (83%), through Theia's own zoom route. */
+export interface ZoomProbe {
+  readonly level: number;
+  readonly factor: number;
+  /** The room the main process set for the page, before and after (LIGHTS_ROOM_PROPERTY). */
+  readonly roomBefore: string;
+  readonly roomAfter: string | null;
+  /** The lights' position the main process moved them to. */
+  readonly windowButtonPosition: { x: number; y: number } | null;
+  /** The mark's left edge in points, and its distance from the last light's right edge. */
+  readonly markLeftPt: number | null;
+  readonly markGapPt: number | null;
+  readonly lights?: LightsCheck;
+  readonly ok: boolean;
+  readonly problems: string[];
 }
 
 /** One full-screen transition, driven from the main process as the green button would. */
@@ -156,8 +177,91 @@ export async function probeMain(app: ElectronApplication): Promise<MainProbes> {
       mediaSourceId: win ? win.getMediaSourceId() : "",
       bounds: b ? `${b.x},${b.y} ${b.width}x${b.height}` : "",
       windowButtonPosition: win && process.platform === "darwin" ? (win.getWindowButtonPosition() ?? null) : null,
+      systemVersion: process.getSystemVersion(),
     };
   });
+}
+
+/** The first `data-parity` rect of `key` on the page, in CSS px. */
+async function parityRect(page: Page, key: string): Promise<Rect | undefined> {
+  return page.evaluate((key) => {
+    const r = document.querySelector(`[data-parity="${key}"]`)?.getBoundingClientRect();
+    return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : undefined;
+  }, key);
+}
+
+/** The room the main process has set on the page, as the computed custom property. */
+async function roomProperty(page: Page): Promise<string> {
+  return page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--spexr-traffic-lights").trim());
+}
+
+/**
+ * macOS's traffic lights in the native capture at 100%, checked against the
+ * bar: inside its room (`title.dots`) and centred on it (lights.ts).
+ */
+export async function probeLights(file: string, page: Page, windowWidth: number): Promise<LightsCheck> {
+  const found = await findLights(file, windowWidth);
+  return checkLights(file, found, 1, await parityRect(page, "title"), await parityRect(page, "title.dots"));
+}
+
+/**
+ * macOS only: one zoom level out through Theia's zoom route (the page's
+ * setZoomLevel, which the main process applies), a native capture, and the
+ * lights checked against the bar there: centred on it, and the mark a gap
+ * clear of them. Zoom goes back to 100% after.
+ */
+export async function probeZoom(app: ElectronApplication, page: Page, base: string, level = -1): Promise<ZoomProbe> {
+  const factor = Math.pow(1.2, level);
+  const problems: string[] = [];
+  const roomBefore = await roomProperty(page);
+  const setZoom = (to: number): Promise<void> =>
+    page.evaluate((to) => (window as unknown as { electronTheiaCore: { setZoomLevel(level: number): void } }).electronTheiaCore.setZoomLevel(to), to);
+  let roomAfter: string | null = null;
+  let lights: LightsCheck | undefined;
+  let windowButtonPosition: { x: number; y: number } | null = null;
+  let markLeftPt: number | null = null;
+  let markGapPt: number | null = null;
+  try {
+    await setZoom(level);
+    roomAfter = await page
+      .waitForFunction(
+        (before) => {
+          const now = getComputedStyle(document.documentElement).getPropertyValue("--spexr-traffic-lights").trim();
+          return now && now !== before ? now : false;
+        },
+        roomBefore,
+        { timeout: 10_000 },
+      )
+      .then((handle) => handle.jsonValue() as Promise<string>)
+      .catch(() => null);
+    if (roomAfter === null) problems.push(`the room stayed ${roomBefore || "unset"}`);
+    windowButtonPosition = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getWindowButtonPosition() ?? null);
+    const width = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
+    const shots = await nativeCapture(app, base);
+    const shot = shots.find((s) => s.ok);
+    if (!shot) problems.push("no native capture");
+    else {
+      const file = path.join(path.dirname(base), shot.file);
+      const found = await findLights(file, width);
+      lights = checkLights(file, found, factor, await parityRect(page, "title"));
+      problems.push(...lights.problems);
+      const mark = await parityRect(page, "title.mark");
+      const lastRight = Math.max(...found.circles.map((c) => c.right));
+      if (mark && found.circles.length) {
+        markLeftPt = mark.x * factor;
+        markGapPt = markLeftPt - lastRight;
+        if (markGapPt < 12 * factor - 1) problems.push(`the mark is ${markGapPt}pt from the lights, under the gap of ${12 * factor}pt`);
+      }
+    }
+  } finally {
+    await setZoom(0);
+    await page
+      .waitForFunction((before) => getComputedStyle(document.documentElement).getPropertyValue("--spexr-traffic-lights").trim() === before, roomBefore, {
+        timeout: 10_000,
+      })
+      .catch(() => problems.push("the room did not come back at 100%"));
+  }
+  return { level, factor, roomBefore, roomAfter, windowButtonPosition, markLeftPt, markGapPt, lights, ok: problems.length === 0, problems };
 }
 
 /**
