@@ -109,6 +109,11 @@ describe("the title bar's frame", () => {
     expect(ring).toMatch(/outline-offset:\s*calc\(-1 \* var\(--sl-focus-ring-width\)\)/);
   });
 
+  // On the danger fill the focus colour reads 1.09:1 (ink) and 1.68:1 (paper).
+  it("rings the hovered close button in the danger fill's label", () => {
+    expect(rule("#window-controls #close-button:hover:focus-visible")).toMatch(/outline-color:\s*var\(--slc-on-danger\)/);
+  });
+
   it("hides Theia's status-bar notification item: the bell replaces it", () => {
     expect(rule("#theia-statusBar #status-bar-theia-notification-center")).toMatch(/display:\s*none/);
   });
@@ -161,8 +166,12 @@ describe("the title bar's markup", () => {
   it("discloses the right panel with aria-expanded and aria-controls, never aria-pressed", () => {
     const split = widget.slice(widget.indexOf('aria-label="Right panel"'), widget.indexOf('data-parity="title.split"'));
     expect(split).toContain("aria-expanded={this.rightOpen}");
-    expect(split).toContain("aria-controls={RIGHT_PANEL_ID}");
-    expect(widget).toContain('const RIGHT_PANEL_ID = "theia-right-content-panel";');
+    expect(split).toContain("aria-controls={this.rightPanelId}");
+    // The dock panel aria-expanded follows, by its own id (theia-right-side-panel).
+    expect(widget).toMatch(/const dock = this\.shell\.rightPanelHandler\.dockPanel;\s*this\.rightPanelId = dock\.id;/);
+    const sidePanel = readFileSync(resolve("@theia/core/lib/browser/shell/side-panel-handler.js"), "utf8");
+    expect(sidePanel).toContain("sidePanel.id = 'theia-' + this.side + '-side-panel';");
+    expect(sidePanel).toContain("this.dockPanel = this.createSidePanel();");
     expect(widget).not.toContain("aria-pressed");
   });
 

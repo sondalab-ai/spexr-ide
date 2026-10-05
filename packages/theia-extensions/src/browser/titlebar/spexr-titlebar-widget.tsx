@@ -35,9 +35,6 @@ import {
 } from "./titlebar-model.js";
 import { AgentsCount, type AgentsView } from "./agents-count.js";
 
-/** Theia's right side panel, which the split button discloses. */
-const RIGHT_PANEL_ID = "theia-right-content-panel";
-
 /**
  * spexr's title bar: the kit's `.sl-titlebar` (workbench.css, 0.34) in
  * Theia's top panel, on every OS. SpexrElectronMenuContribution adds it and,
@@ -85,6 +82,8 @@ export class SpexrTitleBarWidget extends ReactWidget {
   private notificationCount = 0;
   private centerOpen = false;
   private rightOpen = false;
+  /** The right dock panel's element id, which the split button's aria-controls names. */
+  private rightPanelId: string | undefined;
   private userName: string | undefined;
 
   constructor() {
@@ -221,6 +220,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
    */
   private watchRightPanel(): void {
     const dock = this.shell.rightPanelHandler.dockPanel;
+    this.rightPanelId = dock.id;
     const read = (): void => {
       const open = !dock.isHidden;
       if (open === this.rightOpen) return;
@@ -324,7 +324,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
             className="sl-icon-btn sl-titlebar__btn"
             aria-label="Right panel"
             aria-expanded={this.rightOpen}
-            aria-controls={RIGHT_PANEL_ID}
+            aria-controls={this.rightPanelId}
             title="Toggle the right panel"
             onClick={this.onRightPanel}
             data-parity="title.split"

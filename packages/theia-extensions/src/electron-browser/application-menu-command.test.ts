@@ -24,7 +24,12 @@ function sources(dir: string): string[] {
   });
 }
 
-/** The first chord of every string keybinding in a source text. */
+/**
+ * The first chord of every string keybinding in a source text. It sees a
+ * literal `keybinding: "..."`, or the non-macOS side of one `isOSX ? a : b`;
+ * a binding built any other way (a nested ternary, a variable, a computed
+ * string) is not seen.
+ */
 function bindings(text: string): string[] {
   return [...text.matchAll(/keybinding['"]?\s*:\s*(?:isOSX\s*\?\s*['"][^'"]*['"]\s*:\s*)?['"]([^'"]+)['"]/g)].map((m) => normal(m[1]!.split(" ")[0]!));
 }

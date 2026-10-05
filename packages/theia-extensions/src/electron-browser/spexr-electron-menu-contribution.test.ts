@@ -90,7 +90,7 @@ describe("spexr's Electron menu contribution", () => {
     expect(ours).toMatch(/protected isCustom\(\): boolean \{\s*return !isOSX && this\.titleBarStyle === "custom";/);
     expect(setMenu).toContain("const custom = this.isCustom();");
     expect(setMenu).toContain("this.titleBar.setMenuButton(custom);");
-    expect(setMenu).toMatch(/if \(custom\) \{\s*this\.addWindowControls\(app\);\s*this\.dropSidebarMenu\(\);\s*return;\s*\}\s*this\.factory\.setMenuBar\(\);/);
+    expect(setMenu).toMatch(/if \(custom\) \{\s*this\.addWindowControls\(app\);\s*this\.dropSidebarMenu\(\);\s*this\.dropMenuBarToggle\(\);\s*return;\s*\}\s*this\.factory\.setMenuBar\(\);/);
   });
 
   // Theia's base setMenu was its only caller; spexr's setMenu adds the controls itself.
@@ -101,6 +101,14 @@ describe("spexr's Electron menu contribution", () => {
   it("makes each of Theia's window controls a keyboard button", () => {
     expect(ours).toMatch(/protected override createControlButton\(id: string, handler: \(\) => void\): HTMLElement \{\s*const button = super\.createControlButton\(id, handler\);\s*keyboardButton\(button, WINDOW_CONTROL_LABELS\[id\] \?\? id, handler\);/);
     expect(method("createControlButton(id, handler)")).toContain("document.createElement('div')");
+  });
+
+  // It toggles window.menuBarVisibility, which a custom window ignores now.
+  it("takes Toggle Menu Bar out in a custom window, through the registration Theia made", () => {
+    expect(ours).toMatch(/protected dropMenuBarToggle\(\): void \{\s*this\.commandRegistry\.unregisterCommand\(CommonCommands\.SHOW_MENU_BAR\.id\);/);
+    expect(theiaCommon).toContain("commandRegistry.registerCommand(common_commands_1.CommonCommands.SHOW_MENU_BAR, {");
+    const commands = readFileSync(resolve("@theia/core/lib/browser/common-commands.js"), "utf8");
+    expect(commands).toMatch(/SHOW_MENU_BAR = [^;]*id: 'window\.menuBarVisibility'/);
   });
 
   it("takes Theia's compact-mode sidebar menu out in a custom window, where the bar has the button", () => {

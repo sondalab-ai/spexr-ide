@@ -80,8 +80,10 @@ export type TitleBarEnvironment = Pick<TitleBarInputs, "platform" | "forceCustom
  *   getLastWindowOptions will open the window with it: the style returned is
  *   then the one that frame implies, so the page and the window agree, and
  *   the flag stays unset so the next launch tries again.
- * - If only the flag cannot be written, this run is right and the next one
- *   migrates again, which finds no frame left to drop.
+ * - If only the flag cannot be written, this run is right, and the next one
+ *   migrates again. That finds no frame to drop, unless the user chose
+ *   `native` in between: their stored frame is then dropped too, and they
+ *   are back on the custom bar once more.
  */
 export function applyTitleBarStyle(
   store: TitleBarStore,

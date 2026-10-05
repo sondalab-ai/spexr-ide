@@ -1,7 +1,8 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
 import type { FrontendApplication } from "@theia/core/lib/browser/frontend-application";
 import type { KeybindingRegistry } from "@theia/core/lib/browser/keybinding";
-import type { CommandRegistry } from "@theia/core/lib/common/command";
+import { CommandRegistry } from "@theia/core/lib/common/command";
+import { CommonCommands } from "@theia/core/lib/browser/common-commands";
 import { isOSX } from "@theia/core/lib/common/os";
 import { ElectronMenuContribution } from "@theia/core/lib/electron-browser/menu/electron-menu-contribution";
 import { SpexrTitleBarWidget } from "../browser/titlebar/spexr-titlebar-widget.js";
@@ -35,6 +36,7 @@ const THEIA_SIDEBAR_MENU_ID = "main-menu";
 @injectable()
 export class SpexrElectronMenuContribution extends ElectronMenuContribution {
   @inject(SpexrTitleBarWidget) protected readonly titleBar!: SpexrTitleBarWidget;
+  @inject(CommandRegistry) protected readonly commandRegistry!: CommandRegistry;
 
   protected titleBarAdded = false;
   protected windowControlsAdded = false;
@@ -51,6 +53,7 @@ export class SpexrElectronMenuContribution extends ElectronMenuContribution {
     if (custom) {
       this.addWindowControls(app);
       this.dropSidebarMenu();
+      this.dropMenuBarToggle();
       return;
     }
     this.factory.setMenuBar();
@@ -75,6 +78,17 @@ export class SpexrElectronMenuContribution extends ElectronMenuContribution {
 
   protected dropSidebarMenu(): void {
     if (this.isCustom()) this.shell.leftPanelHandler.removeTopMenu(THEIA_SIDEBAR_MENU_ID);
+  }
+
+  /**
+   * View > Appearance > Toggle Menu Bar switches window.menuBarVisibility
+   * between compact and classic, and a custom window shows neither: the bar
+   * always has its menu button. The command goes, with its menu item and its
+   * palette entry; a native window keeps it, where it shows or hides the
+   * system's menu bar.
+   */
+  protected dropMenuBarToggle(): void {
+    this.commandRegistry.unregisterCommand(CommonCommands.SHOW_MENU_BAR.id);
   }
 
   /** Theia's control, made a keyboard button (see keyboardButton). */

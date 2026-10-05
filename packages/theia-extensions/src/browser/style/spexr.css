@@ -1227,6 +1227,13 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   outline-offset: calc(-1 * var(--sl-focus-ring-width));
 }
 
+/* Hovered, the close button is the danger fill, which the focus colour
+   barely parts from (1.09:1 on ink, 1.68:1 on paper): the ring takes the
+   fill's label instead, as the glyph does. */
+#window-controls #close-button:hover:focus-visible {
+  outline-color: var(--slc-on-danger);
+}
+
 #theia-statusBar #status-bar-theia-notification-center {
   display: none;
 }
