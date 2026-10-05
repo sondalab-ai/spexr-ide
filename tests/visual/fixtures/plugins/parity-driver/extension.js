@@ -5,10 +5,8 @@
  *
  * Each command sets up one screenshot scene, then writes an acknowledgement to
  * $SPEXR_VISUAL_ACK that the Playwright side waits for. It is loaded only by
- * tests/visual/app.ts through THEIA_PLUGINS, so scene set-up adds no test
- * hook to the product. (The one product-side switch is spexr's code-font
- * hold, set by the capture through localStorage; see late-font.ts.) Plain
- * CommonJS on purpose: there is no build step.
+ * tests/visual/app.ts through THEIA_PLUGINS, so no test hook goes into the
+ * product. Plain CommonJS on purpose: there is no build step.
  */
 
 const fs = require("fs");

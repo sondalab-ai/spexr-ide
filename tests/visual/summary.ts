@@ -84,7 +84,9 @@ function renderSummary(runs: Run[]): string {
   md += row("Monaco char width", (m) => m.page?.monacoCharWidth);
   md += row("code font wait (terminals re-measured)", (m) => (m.page ? `${m.page.codeFont ?? "no marker"} (${m.page.codeFontTerminals ?? "—"})` : ""));
   md += row("terminal font", (m) => (m.page?.terminalFont ? `${m.page.terminalFont.size} ${m.page.terminalFont.family}` : ""));
-  md += row("late font: marker held → released", (m) => (m.lateFont ? `${m.lateFont.heldMark} → ${m.lateFont.lateMark}` : ""));
+  md += row("late font: Geist Mono loads held; marker held → released", (m) =>
+    m.lateFont ? `${m.lateFont.heldLoads}; ${m.lateFont.heldMark} → ${m.lateFont.lateMark}` : "",
+  );
   md += row("late font: re-measured at release → after showing hidden late-a", (m) =>
     m.lateFont ? `${m.lateFont.remeasuredAtRelease} → ${m.lateFont.remeasuredAfterShow}` : "",
   );
