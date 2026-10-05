@@ -96,6 +96,41 @@ describe("the title bar's frame", () => {
   });
 });
 
+// Regression (S5b-1's first Linux capture): the field showed no keycaps.
+// The widget is built before Theia registers its default bindings, and that
+// registration fires no change event, so the keys are read again once the
+// shell attaches. These fail if that ordering, or the missing event, changes.
+describe("the command field's keys", () => {
+  const app = readFileSync(resolve("@theia/core/lib/browser/frontend-application.js"), "utf8");
+  const keybinding = readFileSync(resolve("@theia/core/lib/browser/keybinding.js"), "utf8");
+  const body = (source: string, signature: string): string => {
+    const start = source.indexOf(`\n    ${signature} {`);
+    expect(start, signature).toBeGreaterThanOrEqual(0);
+    return source.slice(start, source.indexOf("\n    }\n", start));
+  };
+
+  it("are read again when the widget attaches", () => {
+    const at = widget.indexOf("protected override onAfterAttach(msg: Message): void {");
+    expect(at, "SpexrTitleBarWidget.onAfterAttach").toBeGreaterThanOrEqual(0);
+    expect(widget.slice(at, widget.indexOf("\n  }\n", at))).toMatch(/super\.onAfterAttach\(msg\);\s*this\.readKeys\(\);/);
+  });
+
+  it("which comes after every contribution has started, Theia's key bindings included", () => {
+    const start = body(app, "async start()");
+    expect(start.indexOf("this.startContributions()")).toBeGreaterThanOrEqual(0);
+    expect(start.indexOf("this.startContributions()")).toBeLessThan(start.indexOf("this.attachShell(host);"));
+    expect(body(app, "async startContributions()")).toMatch(/await this\.measure\('keybindings\.onStart'/);
+  });
+
+  // If Theia starts announcing the registration, the onAfterAttach read can go.
+  it("because Theia registers its default bindings without firing onKeybindingsChanged", () => {
+    const onStart = body(keybinding, "async onStart()");
+    expect(onStart).toContain("contribution.registerKeybindings(this);");
+    const afterLayoutListener = onStart.slice(onStart.indexOf("});") + 3);
+    expect(afterLayoutListener).not.toContain("keybindingsChanged.fire");
+  });
+});
+
 describe("the title bar's markup", () => {
   it("uses the kit's parts, the agents badge as a live info badge", () => {
     for (const part of ["sl-titlebar__l", "sl-titlebar__menu", "sl-titlebar__mark", "sl-titlebar__dot", "sl-titlebar__crumb", "sl-titlebar__sep", "sl-titlebar__cmd", "sl-titlebar__cmd-text", "sl-titlebar__keys", "sl-titlebar__r", "sl-titlebar__btn", "sl-titlebar__btn--dot"]) {
