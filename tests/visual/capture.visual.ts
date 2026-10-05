@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { probeLog, probeMain, probePage } from "./probes";
+import { probeFullScreen, probeLights, probeLog, probeMain, probePage, probeZoom } from "./probes";
 import {
   QUICK_OPEN,
   captureStable,
@@ -103,7 +103,12 @@ for (const theme of THEMES) {
       meta.baseFirstVisibleLine = await firstVisibleLine(page);
       meta.page = await probePage(page);
       meta.main = await probeMain(app);
-      if (OS === "mac") meta.native = await nativeCapture(app, path.join(out, "native-base"));
+      if (OS === "mac") {
+        meta.native = await nativeCapture(app, path.join(out, "native-base"));
+        const shot = meta.native.find((s) => s.ok && s.mode === "window -l") ?? meta.native.find((s) => s.ok);
+        const width = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
+        if (shot) meta.lights = await probeLights(path.join(out, shot.file), page, width);
+      }
       writeMeta();
 
       // palette: Quick Open with "probe" typed.
@@ -132,6 +137,27 @@ for (const theme of THEMES) {
       await page.waitForFunction(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"), undefined, { timeout: 15_000 }).catch(() => undefined);
       meta.treeFocused = await page.evaluate(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"));
       await shoot("focus-tree", treeAck);
+
+      // macOS: the lights one zoom level out, then the bar's room through full
+      // screen. Full screen last, because it moves the window to a Space of
+      // its own and back.
+      if (OS === "mac") {
+        meta.zoom = await probeZoom(app, page, path.join(out, "native-zoom-out"), meta.lights);
+        writeMeta();
+        meta.fullScreen = await probeFullScreen(app, page, path.join(out, "fullscreen.png"));
+        writeMeta();
+      }
+
+      // The one assertion of the capture (S5b-2's review): on macOS the
+      // system's traffic lights sit in the bar's room and on its centre, at
+      // 100% and one zoom level out. Everything else is for looking at.
+      if (OS === "mac") {
+        const problems = [
+          ...(meta.lights ? meta.lights.problems : ["no native capture to find the lights in"]),
+          ...(meta.zoom?.problems ?? []).map((p) => `zoom ${meta.zoom?.level}: ${p}`),
+        ];
+        if (problems.length) throw new Error(`macOS traffic lights: ${problems.join("; ")}`);
+      }
     } catch (err) {
       meta.error = String(err instanceof Error ? err.stack : err);
       if (launched) {

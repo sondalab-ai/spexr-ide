@@ -10,7 +10,9 @@
  *
  * Runs the Playwright capture (capture.visual.ts), whose global teardown
  * (summary.ts) writes the step summary, and exits with its status. Nothing
- * here compares images or gates anything: the screenshots are for looking at.
+ * here compares images: the screenshots are for looking at. One check gates,
+ * on macOS only: the system's traffic lights sit in the bar's room and on its
+ * centre (capture.visual.ts, lights.ts).
  *
  * Env: VISUAL_THEMES (default "dark,light"), VISUAL_OUT (default ./out),
  * VISUAL_HEAD_SHA and VISUAL_REF (the PR head, set by the workflow).

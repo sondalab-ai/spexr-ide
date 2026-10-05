@@ -1,14 +1,21 @@
+import { release } from "node:os";
 import { injectable } from "@theia/core/shared/inversify";
-import type { Event as ElectronEvent, WebContents } from "@theia/core/electron-shared/electron";
+import { ipcMain, type BrowserWindow, type Event as ElectronEvent, type WebContents } from "@theia/core/electron-shared/electron";
+import type { MaybePromise } from "@theia/core/lib/common/types";
+import { CHANNEL_SET_ZOOM_LEVEL, type WindowEvent } from "@theia/core/lib/electron-common/electron-api";
+import { TheiaRendererAPI } from "@theia/core/lib/electron-main/electron-api-main";
 import { ElectronMainApplication } from "@theia/core/lib/electron-main/electron-main-application";
 import type { TheiaBrowserWindowOptions } from "@theia/core/lib/electron-main/theia-electron-window";
+import { darwinMajor, lightsGeometry, macWindowChrome } from "../common/mac-title-bar.js";
+import { followZoom, MacLights } from "./mac-lights.js";
 import { hardenWebviewAttach, isWebUrl } from "./webview-policy.js";
 import { applyTitleBarStyle, type TitleBarStore, type TitleBarStyle } from "./title-bar-style.js";
 
 /**
  * Theia's main application with `<webview>` enabled for the Darkfactory card
- * browser (spec 0016), and spexr's custom title bar as the default frame on
- * Windows and Linux.
+ * browser (spec 0016), spexr's custom title bar as the default frame on
+ * Windows and Linux, and the system's traffic lights inside spexr's bar on
+ * macOS.
  *
  * - The tag is switched on by adding `webviewTag` to Theia's own default
  *   `webPreferences`; setting it through the application config would replace
@@ -20,12 +27,55 @@ import { applyTitleBarStyle, type TitleBarStore, type TitleBarStyle } from "./ti
  *   policy.
  * - The frame follows {@link decideTitleBarStyle}; the frontend's
  *   SpexrElectronMenuContribution draws spexr's title bar in either style.
+ * - On macOS a main window hides the system's title bar and keeps its traffic
+ *   lights inside spexr's ({@link macWindowChrome}, for the running macOS),
+ *   on the bar's centre at any zoom ({@link MacLights}), and tells its page
+ *   when it enters or leaves full screen, where macOS hides the lights.
+ *   Secondary windows (a view moved out of the main window) keep the
+ *   system's title bar: Theia builds their options without the defaults
+ *   below and forces their frame, because they have no title bar of their own.
  */
 @injectable()
 export class SpexrElectronMainApplication extends ElectronMainApplication {
+  private readonly macLights = new MacLights(lightsGeometry(darwinMajor(release())));
+
+  /**
+   * Theia's defaults, which every main window starts from (a new window and
+   * the restored one: the stored state holds bounds and the frame, never a
+   * title bar style), plus the webview tag and macOS's inset traffic lights.
+   */
   protected override getDefaultOptions(): TheiaBrowserWindowOptions {
     const options = super.getDefaultOptions();
-    return { ...options, webPreferences: { ...options.webPreferences, webviewTag: true } };
+    return { ...options, ...macWindowChrome(process.platform, release()), webPreferences: { ...options.webPreferences, webviewTag: true } };
+  }
+
+  /**
+   * Theia's window; on macOS its lights are kept on the bar and its
+   * full-screen transitions reach its page, through Theia's window-event
+   * channel: Theia's preload passes any name through to the page's
+   * onWindowEvent, though its type lists only its own three.
+   */
+  override async createWindow(asyncOptions?: MaybePromise<TheiaBrowserWindowOptions>): Promise<BrowserWindow> {
+    const window = await super.createWindow(asyncOptions);
+    if (process.platform === "darwin") {
+      this.macLights.add(window, (event) => TheiaRendererAPI.sendWindowEvent(window.webContents, event as WindowEvent));
+    }
+    return window;
+  }
+
+  /**
+   * Theia's application events, plus, on macOS, the lights following the
+   * zoom. Every zoom change goes through Theia's SetZoomLevel channel
+   * (window.zoomLevel → setZoomLevel → webContents.setZoomLevel in the main
+   * process). This listener is added before Theia's, so it hears the level
+   * before Theia applies it: a room that grows goes to the pages at once
+   * (MacLights.prepareZoom), and the lights move, with the exact room, a
+   * turn later, once Theia's synchronous handler has applied the level
+   * (followZoom, which never lets the early room stop Theia's handler).
+   */
+  protected override hookApplicationEvents(): void {
+    super.hookApplicationEvents();
+    if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, followZoom(this.macLights));
   }
 
   /**

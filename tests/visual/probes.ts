@@ -1,6 +1,8 @@
 import type { ElectronApplication, Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
+import { checkLights, findLights, inkAfter, type LightsCheck, type Rect } from "./lights";
+import { nativeCapture } from "./native";
 
 /** What the environment gave this capture: read by the step summary, never asserted on. */
 export interface PageProbes {
@@ -19,6 +21,8 @@ export interface PageProbes {
   readonly topPanelVisible: boolean;
   /** Theia's in-page window controls: present only with a custom (frameless) window. */
   readonly windowControls: boolean;
+  /** The bar's room for macOS's traffic lights (S5b-2): on macOS outside full screen only. */
+  readonly trafficLights: boolean;
   /**
    * Where each part tagged `data-parity` is, in CSS px, keyed like the regions
    * of reference/demo-regions.json (`title.cmd`, …), plus Theia's window
@@ -34,6 +38,52 @@ export interface MainProbes {
   readonly platform: string;
   readonly contentSize: string;
   readonly mediaSourceId: string;
+  /** The window's outer bounds, `x,y wxh`: on macOS with the title bar hidden, the same size as the content. */
+  readonly bounds: string;
+  /** macOS: the traffic lights' position the window was created with (`trafficLightPosition`); null elsewhere. */
+  readonly windowButtonPosition: { x: number; y: number } | null;
+  /** `process.getSystemVersion()`: the macOS version on macOS ("26.6.2"). */
+  readonly systemVersion: string;
+}
+
+/** The bar one zoom level out (83%), through Theia's own zoom route. */
+export interface ZoomProbe {
+  readonly level: number;
+  readonly factor: number;
+  /** The room the main process set for the page, before and after (LIGHTS_ROOM_PROPERTY). */
+  readonly roomBefore: string;
+  readonly roomAfter: string | null;
+  /** The lights' position the main process moved them to. */
+  readonly windowButtonPosition: { x: number; y: number } | null;
+  /** The mark's left edge in points, and its distance from the last light's right edge. */
+  readonly markLeftPt: number | null;
+  readonly markGapPt: number | null;
+  readonly lights?: LightsCheck;
+  /**
+   * Whether the native capture shows the zoomed page: the mark's first ink
+   * column where the DOM puts it, within 1pt, after `attempts` captures.
+   */
+  readonly settle: { readonly settled: boolean; readonly attempts: number; readonly inkPt: number | null; readonly expectedPt: number | null };
+  readonly ok: boolean;
+  readonly problems: string[];
+}
+
+/** One full-screen transition, driven from the main process as the green button would. */
+export interface FullScreenStep {
+  /** Whether the window emitted the transition's event before the timeout. */
+  readonly event: boolean;
+  /** From that event until the bar's room for the lights had gone (entering) or come back (leaving); null if it never did. */
+  readonly answeredMs: number | null;
+  /** Whether the bar has the lights' room once the step is over. */
+  readonly trafficLights: boolean;
+  /** The mark's x once the step is over. */
+  readonly markX: number | null;
+}
+
+export interface FullScreenProbe {
+  enter?: FullScreenStep;
+  leave?: FullScreenStep;
+  error?: string;
 }
 
 export interface LogProbes {
@@ -112,6 +162,7 @@ export async function probePage(page: Page): Promise<PageProbes> {
       monacoCharWidth,
       topPanelVisible: !!top && !top.classList.contains("lm-mod-hidden") && top.getBoundingClientRect().height > 0,
       windowControls: !!document.getElementById("window-controls"),
+      trafficLights: !!document.querySelector('[data-parity="title.dots"]'),
       parity,
     };
   });
@@ -121,6 +172,7 @@ export async function probeMain(app: ElectronApplication): Promise<MainProbes> {
   return app.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows()[0];
     const [w, h] = win ? win.getContentSize() : [0, 0];
+    const b = win?.getBounds();
     return {
       electron: process.versions.electron ?? "",
       chromium: process.versions.chrome ?? "",
@@ -128,8 +180,185 @@ export async function probeMain(app: ElectronApplication): Promise<MainProbes> {
       platform: `${process.platform}-${process.arch}`,
       contentSize: `${w}x${h}`,
       mediaSourceId: win ? win.getMediaSourceId() : "",
+      bounds: b ? `${b.x},${b.y} ${b.width}x${b.height}` : "",
+      windowButtonPosition: win && process.platform === "darwin" ? (win.getWindowButtonPosition() ?? null) : null,
+      systemVersion: process.getSystemVersion(),
     };
   });
+}
+
+/** The first `data-parity` rect of `key` on the page, in CSS px. */
+async function parityRect(page: Page, key: string): Promise<Rect | undefined> {
+  return page.evaluate((key) => {
+    const r = document.querySelector(`[data-parity="${key}"]`)?.getBoundingClientRect();
+    return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : undefined;
+  }, key);
+}
+
+/** The room the main process has set on the page, as the computed custom property. */
+async function roomProperty(page: Page): Promise<string> {
+  return page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--spexr-traffic-lights").trim());
+}
+
+/**
+ * macOS's traffic lights in the native capture at 100%, checked against the
+ * bar: inside its room (`title.dots`) and centred on it (lights.ts).
+ */
+export async function probeLights(file: string, page: Page, windowWidth: number): Promise<LightsCheck> {
+  const found = await findLights(file, windowWidth);
+  const bar = await parityRect(page, "title");
+  const check = checkLights(file, found, 1, bar, await parityRect(page, "title.dots"));
+  const mark = await parityRect(page, "title.mark");
+  const right = found.circles.length ? Math.max(...found.circles.map((c) => c.right)) : null;
+  const markInkPt = right !== null && bar ? await inkAfter(file, windowWidth, right, bar.y + bar.h / 2) : null;
+  return { ...check, markPt: mark?.x ?? null, markInkPt };
+}
+
+/** Two animation frames, then a short wait: the compositor has presented what the DOM holds. */
+async function presented(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 1_000);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            clearTimeout(timer);
+            resolve();
+          }),
+        );
+      }),
+  );
+  await page.waitForTimeout(150);
+}
+
+/**
+ * macOS only: one zoom level out through Theia's zoom route (the page's
+ * setZoomLevel, which the main process applies), a native capture, and the
+ * lights checked against the bar there: centred on it, and the mark a gap
+ * clear of them. Zoom goes back to 100% after.
+ */
+export async function probeZoom(app: ElectronApplication, page: Page, base: string, atFull?: LightsCheck, level = -1): Promise<ZoomProbe> {
+  const factor = Math.pow(1.2, level);
+  const problems: string[] = [];
+  const roomBefore = await roomProperty(page);
+  const setZoom = (to: number): Promise<void> =>
+    page.evaluate((to) => (window as unknown as { electronTheiaCore: { setZoomLevel(level: number): void } }).electronTheiaCore.setZoomLevel(to), to);
+  let roomAfter: string | null = null;
+  let lights: LightsCheck | undefined;
+  let windowButtonPosition: { x: number; y: number } | null = null;
+  let markLeftPt: number | null = null;
+  let markGapPt: number | null = null;
+  let settle: ZoomProbe["settle"] = { settled: false, attempts: 0, inkPt: null, expectedPt: null };
+  try {
+    await setZoom(level);
+    roomAfter = await page
+      .waitForFunction(
+        (before) => {
+          const now = getComputedStyle(document.documentElement).getPropertyValue("--spexr-traffic-lights").trim();
+          return now && now !== before ? now : false;
+        },
+        roomBefore,
+        { timeout: 10_000 },
+      )
+      .then((handle) => handle.jsonValue() as Promise<string>)
+      .catch(() => null);
+    if (roomAfter === null) problems.push(`the room stayed ${roomBefore || "unset"}`);
+    windowButtonPosition = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getWindowButtonPosition() ?? null);
+    const width = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
+    const bar = await parityRect(page, "title");
+    const mark = await parityRect(page, "title.mark");
+    // The capture is of the screen, not the DOM: it is taken again until the
+    // mark's ink sits where the DOM puts it, scaled, plus the glyph's side
+    // bearing as the 100% capture measured it.
+    const bearing = typeof atFull?.markInkPt === "number" && typeof atFull.markPt === "number" ? atFull.markInkPt - atFull.markPt : 0;
+    const expectedPt = mark ? mark.x * factor + bearing * factor : null;
+    let file: string | undefined;
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      await presented(page);
+      const shot = (await nativeCapture(app, base)).find((s) => s.ok);
+      if (!shot) break;
+      file = path.join(path.dirname(base), shot.file);
+      const found = await findLights(file, width);
+      const right = found.circles.length ? Math.max(...found.circles.map((c) => c.right)) : null;
+      const inkPt = right !== null && bar ? await inkAfter(file, width, right, (bar.y + bar.h / 2) * factor) : null;
+      const settled = inkPt !== null && expectedPt !== null && Math.abs(inkPt - expectedPt) <= 1;
+      settle = { settled, attempts: attempt, inkPt, expectedPt };
+      if (settled) break;
+      await page.waitForTimeout(250);
+    }
+    if (!file) problems.push("no native capture");
+    else {
+      if (!settle.settled) problems.push(`the capture never showed the zoomed page: mark ink at ${settle.inkPt}pt, the DOM's at ${settle.expectedPt}pt`);
+      const found = await findLights(file, width);
+      lights = checkLights(file, found, factor, bar, await parityRect(page, "title.dots"));
+      problems.push(...lights.problems);
+      const lastRight = Math.max(...found.circles.map((c) => c.right));
+      if (mark && found.circles.length) {
+        markLeftPt = mark.x * factor;
+        markGapPt = markLeftPt - lastRight;
+        if (markGapPt < 12 * factor - 1) problems.push(`the mark is ${markGapPt}pt from the lights, under the gap of ${12 * factor}pt`);
+      }
+    }
+  } finally {
+    await setZoom(0);
+    await page
+      .waitForFunction((before) => getComputedStyle(document.documentElement).getPropertyValue("--spexr-traffic-lights").trim() === before, roomBefore, {
+        timeout: 10_000,
+      })
+      .catch(() => problems.push("the room did not come back at 100%"));
+  }
+  return { level, factor, roomBefore, roomAfter, windowButtonPosition, markLeftPt, markGapPt, lights, settle, ok: problems.length === 0, problems };
+}
+
+/**
+ * macOS only, the run's last step: full screen on and off from the main
+ * process, which takes the same route as the green button and the system
+ * menu, so the bar has to follow Electron's events, not Theia's command.
+ * Best-effort: a runner that cannot enter full screen records why and the
+ * capture goes on. `shot` takes the page's bar while in full screen.
+ */
+export async function probeFullScreen(app: ElectronApplication, page: Page, shot?: string): Promise<FullScreenProbe> {
+  const probe: FullScreenProbe = {};
+  try {
+    probe.enter = await fullScreenStep(app, page, true);
+    if (shot) await page.screenshot({ path: shot });
+    probe.leave = await fullScreenStep(app, page, false);
+  } catch (err) {
+    probe.error = String(err instanceof Error ? err.message : err);
+  }
+  return probe;
+}
+
+async function fullScreenStep(app: ElectronApplication, page: Page, on: boolean): Promise<FullScreenStep> {
+  const event = await app.evaluate(
+    ({ BrowserWindow }, on) =>
+      new Promise<boolean>((resolve) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (!win) return resolve(false);
+        const timer = setTimeout(() => resolve(false), 20_000);
+        const done = (): void => {
+          clearTimeout(timer);
+          resolve(true);
+        };
+        if (on) win.once("enter-full-screen", done);
+        else win.once("leave-full-screen", done);
+        win.setFullScreen(on);
+      }),
+    on,
+  );
+  const since = Date.now();
+  const answered = await page
+    .waitForFunction((on) => !document.querySelector('[data-parity="title.dots"]') === on, on, { timeout: 10_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  const answeredMs = answered ? Date.now() - since : null;
+  const after = await page.evaluate(() => ({
+    trafficLights: !!document.querySelector('[data-parity="title.dots"]'),
+    markX: document.querySelector('[data-parity="title.mark"]')?.getBoundingClientRect().x ?? null,
+  }));
+  return { event, answeredMs, ...after };
 }
 
 export function probeLog(logFile: string, configDir: string): LogProbes {

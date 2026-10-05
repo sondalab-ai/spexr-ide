@@ -38,7 +38,10 @@ describe("decideTitleBarStyle", () => {
     expect(decide({ platform: "win32", storedFrame: true })).toEqual({ style: "native", dropStoredFrame: false, markMigrated: true });
   });
 
-  it("keeps macOS native, whatever is stored or configured (S5b-2 brings its inset bar)", () => {
+  // "native" is Theia's frame semantics: the system menu bar, native context
+  // menus, no window controls in the page. macOS's window still hides the
+  // system's title bar, through its window options (macWindowChrome).
+  it("keeps macOS native, whatever is stored or configured", () => {
     expect(decide({ platform: "darwin" }).style).toBe("native");
     expect(decide({ platform: "darwin", storedFrame: false, configured: "custom" }).style).toBe("native");
     expect(decide({ platform: "darwin", storedFrame: true }).dropStoredFrame).toBe(false);
@@ -167,5 +170,107 @@ describe("Theia's title bar style, which the main application overrides", () => 
   it("is overridden through applyTitleBarStyle on Theia's own store", () => {
     expect(ours).toMatch(/protected override getTitleBarStyle\(config: ElectronMainApplication\["config"\]\): TitleBarStyle/);
     expect(ours).toContain("return applyTitleBarStyle(this.electronStore as unknown as TitleBarStore, {");
+  });
+});
+
+const theiaApiMain = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-main/electron-api-main.js"), "utf8");
+
+/** The body of `startMarker`'s block in Theia's main application, up to `endMarker`. */
+function between(source: string, startMarker: string, endMarker: string): string {
+  const start = source.indexOf(startMarker);
+  expect(start, startMarker).toBeGreaterThanOrEqual(0);
+  const end = source.indexOf(endMarker, start);
+  expect(end, `${endMarker} after ${startMarker}`).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
+// macOS's inset title bar is a default window option (macWindowChrome in
+// getDefaultOptions). These fail if an upgrade stops the main window from
+// starting with the defaults, lets the stored state override them, or starts
+// giving secondary windows the defaults too.
+describe("Theia's window options, which carry macOS's title bar", () => {
+  it("start every main window from getDefaultOptions, new or restored", () => {
+    expect(method("getDefaultTheiaWindowOptions()")).toContain("...this.getDefaultOptions(),");
+    expect(method("async getLastWindowOptions()")).toMatch(/\.\.\.this\.getDefaultOptions\(\),\s*\.\.\.windowState/);
+  });
+
+  it("store bounds and the frame, never a title bar style, so the restored state cannot undo it", () => {
+    const saved = method("saveWindowState(electronWindow)");
+    expect(saved).toContain("frame: this.useNativeWindowFrame,");
+    expect(saved).not.toMatch(/titleBarStyle|trafficLightPosition|\.\.\./);
+  });
+
+  // A secondary window holds one view and no title bar of its own: with a
+  // hidden system title bar it could not be dragged.
+  it("build a secondary window without the defaults, in the system's frame", () => {
+    const secondary = between(theiaMain, "webContents.setWindowOpenHandler(details => {", "return {");
+    expect(secondary).toContain("frame: true,");
+    expect(secondary).toContain("minWidth: defaultOptions.minWidth,");
+    expect(secondary).not.toMatch(/\.\.\.(this\.getDefaultOptions\(\)|defaultOptions)\b/);
+  });
+
+  it("open every main window through createWindow, where spexr reports full screen", () => {
+    expect(method("showInitialWindow(urlToOpen)")).toContain("this.initialWindow = await this.createWindow({ ...options });");
+    expect(method("async reuseOrCreateWindow(asyncOptions)")).toContain("return this.createWindow(asyncOptions);");
+  });
+
+  it("send a window event to the page as its bare name, on Theia's window-event channel", () => {
+    expect(theiaApiMain).toMatch(/function sendWindowEvent\(wc, event\) \{\s*wc\.send\(electron_api_1\.CHANNEL_ON_WINDOW_EVENT, event\);\s*\}/);
+  });
+});
+
+describe("spexr's main application on macOS", () => {
+  it("adds macWindowChrome to Theia's defaults, before the webview tag's web preferences", () => {
+    expect(ours).toContain("return { ...options, ...macWindowChrome(process.platform, release()), webPreferences: { ...options.webPreferences, webviewTag: true } };");
+    expect(ours).toContain('import { release } from "node:os";');
+  });
+
+  it("keeps every macOS main window's lights, for the running macOS, and reports its full screen", () => {
+    expect(ours).toContain("private readonly macLights = new MacLights(lightsGeometry(darwinMajor(release())));");
+    const create = between(ours, "override async createWindow(", "\n  }\n");
+    expect(create).toContain("const window = await super.createWindow(asyncOptions);");
+    expect(create).toMatch(/if \(process\.platform === "darwin"\) \{\s*this\.macLights\.add\(window, \(event\) => TheiaRendererAPI\.sendWindowEvent\(window\.webContents, event as WindowEvent\)\);/);
+  });
+
+  it("hears every zoom change Theia makes first: a growing room at once, the lights a turn after Theia applies it", () => {
+    const hook = between(ours, "protected override hookApplicationEvents(): void {", "\n  }\n");
+    expect(hook).toContain("super.hookApplicationEvents();");
+    expect(hook).toContain('if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, followZoom(this.macLights));');
+  });
+});
+
+// The lights follow the zoom through Theia's own route for it; these fail if
+// a zoom change could reach the page another way, or if the order that makes
+// the setTimeout necessary changes.
+describe("Theia's zoom, which the lights follow", () => {
+  const theiaPreload = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-browser/preload.js"), "utf8");
+  const theiaWindowService = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-browser/window/electron-window-service.js"), "utf8");
+
+  it("is applied in the main process, on the SetZoomLevel channel, with the level as its first argument", () => {
+    expect(theiaPreload).toMatch(/setZoomLevel: function \(desired, windowName\) \{\s*ipcRenderer\.send\(electron_api_1\.CHANNEL_SET_ZOOM_LEVEL, desired, windowName\);/);
+    const handler = between(theiaApiMain, "ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL,", "});");
+    expect(handler).toContain("electronWindow.webContents.setZoomLevel(zoomLevel);");
+  });
+
+  // spexr's setTimeout runs after Theia's handler only because that handler
+  // applies the level synchronously, within the same emit.
+  it("is applied synchronously, so a turn later it has landed", () => {
+    expect(theiaApiMain).toContain("ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL, (event, zoomLevel, windowName) => {");
+    const handler = between(theiaApiMain, "ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL,", "});");
+    expect(handler).not.toMatch(/\basync\b|\bawait\b|\.then\(|setTimeout|setImmediate|\bPromise\b|queueMicrotask/);
+  });
+
+  it("comes from window.zoomLevel, which Theia's zoom commands set", () => {
+    const update = between(theiaWindowService, "async updateWindowZoomLevel() {", "\n    }\n");
+    expect(update).toContain("window.electronTheiaCore.setZoomLevel(preferredZoomLevel);");
+  });
+
+  // spexr's listener is added in hookApplicationEvents, Theia's when its
+  // main API contribution starts, later: spexr's runs first.
+  it("is heard by spexr before Theia applies it", () => {
+    const start = between(theiaMain, "async start(config) {", "\n    getTitleBarStyle(");
+    expect(start.indexOf("this.hookApplicationEvents();")).toBeGreaterThanOrEqual(0);
+    expect(start.indexOf("this.hookApplicationEvents();")).toBeLessThan(start.indexOf("this.startContributions()"));
+    expect(theiaApiMain).toMatch(/class TheiaMainApi \{[\s\S]*onStart\(application\) \{[\s\S]*CHANNEL_SET_ZOOM_LEVEL/);
   });
 });

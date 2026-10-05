@@ -21,6 +21,7 @@ import { SpexrGitServiceProxySymbol } from "../scm/git-service-proxy.js";
 import type { SpexrGitService } from "../../common/git-protocol.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
 import { boundKeyCaps, keyPlatform } from "../views/key-caps.js";
+import { trafficLightInset } from "../../common/mac-title-bar.js";
 import {
   agentsLabel,
   avatarLabel,
@@ -40,6 +41,10 @@ import { AgentsCount, type AgentsView } from "./agents-count.js";
  * Theia's top panel, on every OS. SpexrElectronMenuContribution adds it and,
  * in a custom (frameless) window, puts Theia's window controls at its end.
  *
+ * - `spexr-titlebar__lights`: on macOS, the room the system's traffic
+ *   lights take at the bar's start (common/mac-title-bar.ts), dropped in full
+ *   screen, where macOS hides them. An empty, hidden span, so it stays in
+ *   the drag region; the kit's gap puts the mark after it.
  * - `__menu`: the application menus as one compact button (Theia's compact
  *   mode does the same), only where the system draws no menu bar: a custom
  *   window on Windows or Linux.
@@ -73,6 +78,8 @@ export class SpexrTitleBarWidget extends ReactWidget {
 
   /** The compact menu button: undefined (room kept, nothing drawn) until the window's style is known. */
   private menuButton = initialMenuButton(isOSX);
+  /** On from the first paint on macOS, until the window turns out to be in full screen. */
+  private trafficLights = trafficLightInset(isOSX, false);
   private crumb: string[] = [];
   private crumbName = "";
   private keys: FieldKeys | undefined;
@@ -158,6 +165,13 @@ export class SpexrTitleBarWidget extends ReactWidget {
     button.focus();
     this.openMenu(MAIN_MENU_BAR, button);
     return true;
+  }
+
+  /** Whether the bar keeps room for macOS's traffic lights: off in full screen. */
+  setTrafficLights(shown: boolean): void {
+    if (this.trafficLights === shown) return;
+    this.trafficLights = shown;
+    this.update();
   }
 
   private readKeys(): void {
@@ -258,6 +272,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
     return (
       <header className="sl-titlebar" data-parity="title">
         <div className="sl-titlebar__l" data-parity="title.left">
+          {this.trafficLights && <span className="spexr-titlebar__lights" aria-hidden="true" data-parity="title.dots" />}
           {this.menuButton !== false && (
             <button
               type="button"

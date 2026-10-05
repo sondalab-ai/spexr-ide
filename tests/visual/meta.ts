@@ -2,7 +2,8 @@ import path from "path";
 import type { Readiness, ThemeState } from "./app";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
-import type { LogProbes, MainProbes, PageProbes } from "./probes";
+import type { LightsCheck } from "./lights";
+import type { FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
 import type { SceneResult } from "./scenes";
 
 /** Artifacts: one folder per OS and theme, uploaded as `screenshots-<os>-<theme>-<attempt>`. */
@@ -49,6 +50,12 @@ export interface CaptureMeta {
   main?: MainProbes;
   native?: NativeShot[];
   treeFocused?: boolean;
+  /** macOS only: the traffic lights in the base scene's native capture, checked against the bar (S5b-2). */
+  lights?: LightsCheck;
+  /** macOS only: the lights and the mark one zoom level out (S5b-2). */
+  zoom?: ZoomProbe;
+  /** macOS only: the bar through a full-screen round trip (S5b-2). */
+  fullScreen?: FullScreenProbe;
   error?: string;
   close?: "closed" | "killed";
   log?: LogProbes;
