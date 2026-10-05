@@ -117,6 +117,16 @@ describe("an island's ring", () => {
   });
 });
 
+// One lit pane: Theia's accent line on the bottom panel's current tab is the
+// accent only while that island is lit.
+describe("the bottom island's current tab", () => {
+  it("draws its line in the muted ink unless the island is lit", () => {
+    expect(rule(`${NOT_HC} #theia-bottom-content-panel.spexr-island:not([data-lit])`)).toMatch(
+      /--theia-panelTitle-activeBorder:\s*var\(--slc-text-muted\)/,
+    );
+  });
+});
+
 // The kit's seam is z-index 1, first in tree order: a dock panel's tab bar
 // (Lumino, z-index 1) painted over it.
 describe("the stacking inside an island", () => {

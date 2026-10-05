@@ -789,6 +789,13 @@ body {
   box-shadow: inset 0 0 0 1px var(--slc-border);
 }
 
+/* The bottom island's current tab keeps Theia's 1px line at its top
+   (panelTitle.activeBorder, the accent): the accent only while the island is
+   lit, the muted ink otherwise, as a tile's seam is (one lit pane). */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel.spexr-island:not([data-lit]) {
+  --theia-panelTitle-activeBorder: var(--slc-text-muted);
+}
+
 /* The kit's seam (workbench.css, .sl-pane[data-lit]::before), over the tab
    strip and over the ring. */
 .spexr-island.sl-pane[data-lit]::before {
