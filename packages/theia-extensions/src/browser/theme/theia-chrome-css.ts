@@ -130,6 +130,24 @@ body {
   --theia-titleBar-inactiveBackground: ${canvas} !important;
   --theia-editorGroupHeader-tabsBackground: ${canvas} !important;
 
+  /* Status items that paint a ground of their own, through these variables
+     (a plugin's error and warning items take literals from the registry,
+     spexr-color-contribution.ts). The fill is the boundary, at least 3:1
+     against the canvas; the label is the kit's label rule on it, at least
+     4.5:1 (contrast.test.ts). A prominent item (Restricted Mode, Session
+     Preferences) is neutral: the muted ink as a fill; Theia's default was a
+     50% black under the muted ink. Offline turns the whole bar the kit's
+     warning, hovered and pressed by the kit's step; its label was the
+     registry's editor background, which spexr does not set. */
+  --theia-statusBarItem-prominentBackground: var(--slc-text-muted) !important;
+  --theia-statusBarItem-prominentForeground: oklch(from var(--slc-text-muted) var(--_sl-on)) !important;
+  --theia-statusBarItem-prominentHoverBackground: var(--slc-text-muted) !important;
+  --theia-statusBarItem-prominentHoverForeground: oklch(from var(--slc-text-muted) var(--_sl-on)) !important;
+  --theia-statusBar-offlineBackground: var(--slc-warning) !important;
+  --theia-statusBar-offlineForeground: var(--slc-on-warning) !important;
+  --theia-statusBarItem-offlineHoverBackground: oklch(from var(--slc-warning) var(--_sl-step-hover)) !important;
+  --theia-statusBarItem-offlineActiveBackground: oklch(from var(--slc-warning) var(--_sl-step-press)) !important;
+
   /* Raised-once surfaces: an island at rest. The terminal is one too, as
      spexr-color-contribution.ts registers it for xterm's canvas; it does not
      follow a lit island's raised rung (xterm paints from the registry). */

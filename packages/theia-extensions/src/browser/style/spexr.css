@@ -976,6 +976,160 @@ body {
   }
 }
 
+/* ══ THE STATUS DOCK (kit 0.33, .sl-statusbar) ═════════════════════════════
+   Theia's status bar takes the kit's status bar look on its own elements; it
+   is not re-implemented. It sits on the canvas, in the frame's strip below
+   the islands. Facts are the kit's sans at the small step, in the muted ink,
+   as written (no case change); a fact read as data -- a branch, a project,
+   a count, the caret's place, an encoding -- is the mono at the primary ink;
+   a hairline separates groups of facts; a live state (a job running, a
+   download) carries a dot of the accent, and the words say the state; a
+   fact that does not fit ends in an ellipsis.
+   - Height. Theia's own 22px row, not the kit's 28px: the shell's box layout
+     and the toasts' offset above the bar read it. Each item is a pill inside
+     it, so a hover is the kit's flat wash with the small radius.
+   - Width. Theia's spacing: 12px between two facts, as Theia had them (each
+     pill's 6px padding replaces Theia's gap and its text's margins); a
+     hairline adds 9px.
+   - Hooks. Theia's entries are reached by their ids; spexr's own entries
+     carry STATUS_DATA / STATUS_LIVE as their className (shell/status-dock.ts).
+   - Groups. Every item is a group of its own except Theia's editor facts
+     (the caret, the indentation, the encoding, the line ends, the language),
+     which run together, and an entry Theia compacts onto its neighbour.
+     Entries sit by priority, so a group can fall between two editor facts.
+   - Grounds. An item with a ground of its own (an error, a warning, a
+     prominent fact, the offline bar) keeps it: its fill is its boundary and
+     its label is the kit's label on it (theia-chrome-css.ts and
+     spexr-color-contribution.ts). Its text keeps that label, never the data
+     ink. The bar stays Theia's in high contrast, in the kit's faces.
+   Theia's rules weigh up to (1,4,0) here, and (2,4,0) on a left item with a
+   ground: the :is(.left, .right) step, and .lm-Widget on the bar for an item
+   with a ground, put the dock's rules ahead of every one of Theia's that
+   sets the same property to something else (status-dock-style.test.ts). */
+#theia-statusBar {
+  font-family: var(--sl-font-sans);
+  font-size: var(--sl-text-xs);
+}
+
+/* Theia gives each area half the bar (flex: 1, a zero basis), so a busy
+   left half ran out of room while the right half had plenty. Each area
+   starts from its content and shares what is left; when the bar is full,
+   both shrink, and their items end in an ellipsis. */
+#theia-statusBar .area:is(.left, .right) {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0;
+  overflow-x: clip;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element {
+  position: relative;
+  flex: 0 1 auto;
+  margin-block: 1px;
+  padding-inline: 0.375rem;
+  border-radius: var(--sl-radius-sm);
+  font-family: var(--sl-font-sans);
+  font-size: var(--sl-text-xs);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+/* The text is a flex item of its own (Theia's span), so it can end in an
+   ellipsis; the glyphs keep the icon font and their size. An entry made of
+   several runs between glyphs (the problem counts) keeps its width: an
+   ellipsis inside "0 errors 2 warnings" would say nothing. */
+#theia-statusBar .area:is(.left, .right) > .element > span:not(.codicon) {
+  min-width: 0;
+  margin-inline: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element:has(> span:not(.codicon) ~ span:not(.codicon)) {
+  flex-shrink: 0;
+}
+
+/* Data: the caret's place, the encoding, the line ends, the problem and
+   notification counts, and spexr's branch, project and resource meter. Not
+   on the offline bar or on an item with a ground of its own, whose label
+   stays theirs. */
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, #status-bar-theia-notification-center, .spexr-status--data):not(.has-background) > span:not(.codicon) {
+  font-family: var(--sl-font-mono);
+  font-weight: 500;
+  color: var(--slc-text);
+}
+
+/* The hairline between groups: a border, so forced colours keep it, in the
+   middle of the 9px margin between two pills. */
+#theia-statusBar .area:is(.left, .right) > .element + .element {
+  margin-left: 0.5625rem;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element + .element::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -0.3125rem;
+  height: 0.75rem;
+  translate: 0 -50%;
+  border-left: 1px solid var(--slc-border);
+  pointer-events: none;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element[id^="status-bar-editor-status-"] + .element[id^="status-bar-editor-status-"],
+#theia-statusBar .area:is(.left, .right) > .element.compact-left + .element,
+#theia-statusBar .area:is(.left, .right) > .element + .element.compact-right {
+  margin-left: 0;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element[id^="status-bar-editor-status-"] + .element[id^="status-bar-editor-status-"]::before,
+#theia-statusBar .area:is(.left, .right) > .element.compact-left + .element::before,
+#theia-statusBar .area:is(.left, .right) > .element + .element.compact-right::before {
+  content: none;
+}
+
+/* Theia pulls a left item with a ground 6px left, into the gap it had
+   between items; the dock's own spacing replaces that gap. */
+#theia-statusBar.lm-Widget .area:is(.left, .right) > .element.has-background:not(#session-preference-status) {
+  margin-left: 0;
+}
+
+#theia-statusBar.lm-Widget .area:is(.left, .right) > .element + .element.has-background:not(#session-preference-status) {
+  margin-left: 0.5625rem;
+}
+
+/* A live state: the accent dot before its words (it is only the mark; the
+   words say the state). A flex item placed first, as the kit's __dot. */
+#theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
+  content: "";
+  order: -1;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-inline: 0 var(--sl-space-1);
+  border-radius: 50%;
+  background-color: var(--slc-accent-text);
+}
+
+/* The offline bar is the kit's warning (theia-chrome-css.ts): the accent dot
+   read 1.13:1 on it and the hairlines 1.1. Both take the bar's label. */
+.theia-mod-offline #theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
+  background-color: currentColor;
+}
+
+.theia-mod-offline #theia-statusBar .area:is(.left, .right) > .element + .element::before {
+  border-left-color: color-mix(in srgb, currentColor 50%, transparent);
+}
+
+@media (forced-colors: active) {
+  #theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {

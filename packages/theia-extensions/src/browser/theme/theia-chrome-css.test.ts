@@ -84,6 +84,24 @@ describe("Theia's status bar", () => {
     expect(value(theme, "statusBar-background")).toBe(SPEXR_NEUTRALS[theme].canvas);
     expect(value(theme, "statusBar-foreground")).toBe(SPEXR_NEUTRALS[theme].fgMuted);
   });
+
+  // Theia's prominent items (Restricted Mode, Session Preferences) were a 50%
+  // black under the muted ink, and the offline bar's label the registry's
+  // editor background, which spexr does not set. Each is a kit fill with the
+  // kit's label on it now (contrast.test.ts measures them).
+  it.each(["light", "dark"] as const)("gives a prominent item the muted ink as a fill, with the kit's label, on %s", (theme) => {
+    for (const state of ["", "Hover"]) {
+      expect(value(theme, `statusBarItem-prominent${state}Background`), state).toBe("var(--slc-text-muted)");
+      expect(value(theme, `statusBarItem-prominent${state}Foreground`), state).toBe("oklch(from var(--slc-text-muted) var(--_sl-on))");
+    }
+  });
+
+  it.each(["light", "dark"] as const)("turns the offline bar the kit's warning, stepped by the kit's rule, on %s", (theme) => {
+    expect(value(theme, "statusBar-offlineBackground")).toBe("var(--slc-warning)");
+    expect(value(theme, "statusBar-offlineForeground")).toBe("var(--slc-on-warning)");
+    expect(value(theme, "statusBarItem-offlineHoverBackground")).toBe("oklch(from var(--slc-warning) var(--_sl-step-hover))");
+    expect(value(theme, "statusBarItem-offlineActiveBackground")).toBe("oklch(from var(--slc-warning) var(--_sl-step-press))");
+  });
 });
 
 // The activity bars are the kit's (0.33): muted glyphs on the canvas, the

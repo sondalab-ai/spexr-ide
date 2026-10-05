@@ -2,7 +2,7 @@ import { injectable } from "@theia/core/shared/inversify";
 import type { ColorContribution } from "@theia/core/lib/browser/color-application-contribution";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
-import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, KIT_STATUS_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 
 /** The label on a labelled accent fill. */
 const ON_ACCENT = "#ffffff";
@@ -113,6 +113,29 @@ export class SpexrColorContribution implements ColorContribution {
     // statusBarItem.hoverBackground is deliberately NOT accented: the bar's
     // foreground is muted, and muted text on the light violet hover is ~1.9:1.
     // SpexrThemeContribution gives it a neutral raise instead.
+
+    // A status item that paints a ground of its own. A plugin's error or
+    // warning item (the only two grounds VS Code's API lets it ask for) is
+    // painted inline with the literal the registry resolves, which the CSS
+    // layer never reaches, and Theia's defaults derive from colours spexr does
+    // not set. The kit's danger and warning tones with the kit's label: the
+    // fill reads at least 3:1 against the canvas it sits on, the label at
+    // least 4.5:1 on the fill (contrast.test.ts). spexr's high contrast is
+    // Theia's dark one (hc-theia), which has no default for either, as before.
+    for (const [item, tone] of [["error", "danger"], ["warning", "warning"]] as const) {
+      colors.register(
+        {
+          id: `statusBarItem.${item}Background`,
+          defaults: { dark: KIT_STATUS_FILL.dark[tone], light: KIT_STATUS_FILL.light[tone] },
+          description: `SPEXR: statusBarItem.${item}Background in the kit's ${tone} tone.`,
+        },
+        {
+          id: `statusBarItem.${item}Foreground`,
+          defaults: { dark: labelOn(KIT_STATUS_FILL.dark[tone]), light: labelOn(KIT_STATUS_FILL.light[tone]) },
+          description: `SPEXR: statusBarItem.${item}Foreground, the kit's label on its ${tone} tone.`,
+        },
+      );
+    }
 
     // Tree / list selection is contested: Theia core's CommonFrontendContribution
     // re-registers list.* with its blue after this runs, so the override lives in

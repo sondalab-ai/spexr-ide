@@ -211,3 +211,26 @@ describe("the islands", () => {
     }
   });
 });
+
+// Theia's status-bar.css sets the same properties on the same elements as the
+// status dock (spexr.css): the gap, the face, the size and an item's left
+// margin. The dock wins on weight, whatever order the sheets load in.
+describe("the status dock", () => {
+  const bar = readFileSync(resolve("@theia/core/src/browser/style/status-bar.css"), "utf8");
+  const ITEM = "#theia-statusBar .area:is(.left, .right) > .element";
+
+  it.each([
+    ["#theia-statusBar .area", "#theia-statusBar .area:is(.left, .right)"],
+    ["#theia-statusBar .element", ITEM],
+    ["#theia-statusBar .area .element", ITEM],
+    ["#theia-statusBar .area.left .element.compact-right", `${ITEM} + .element.compact-right`],
+    [
+      "#theia-statusBar .area.left .element.has-background:not(#session-preference-status)",
+      "#theia-statusBar.lm-Widget .area:is(.left, .right) > .element.has-background:not(#session-preference-status)",
+    ],
+  ])("outranks %s", (theirs, ours) => {
+    expect(selectors(bar, (s) => s === theirs), theirs).toHaveLength(1);
+    expect(selectors(spexr, (s) => s === ours).length, ours).toBeGreaterThanOrEqual(1);
+    expect(cmp(specificity(ours), specificity(theirs))).toBeGreaterThan(0);
+  });
+});

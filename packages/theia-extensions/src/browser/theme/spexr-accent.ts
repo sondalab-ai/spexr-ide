@@ -99,6 +99,28 @@ function towardPole([L, C, h]: [number, number, number], step: number, lighter: 
 }
 
 /**
+ * The kit's danger and warning tones, per theme (themes/light.css and
+ * themes/dark.css, --sl-status-danger / --sl-status-warning). A plugin's
+ * error or warning status item is painted with a literal the colour registry
+ * hands it, which no stylesheet reaches, so the registry needs them as hex.
+ * contrast.test.ts pins them to the installed kit.
+ */
+export const KIT_STATUS_FILL: Record<ThemeKind, { danger: string; warning: string }> = {
+  light: { danger: "#a72b05", warning: "#795305" },
+  dark: { danger: "#fe8263", warning: "#db9e2e" },
+};
+
+/**
+ * The label on a fill, as a hex: the kit's one label rule (--_sl-on,
+ * tokens.css), white below oklch L --_sl-pole-l and the dark pole, a grey at
+ * L --_sl-pole-dark, above it. The kit's --slc-on-danger and the rest are
+ * this rule on their tone.
+ */
+export function labelOn(hex: string): string {
+  return toOklch(hex)[0] < KIT_LABEL.poleL ? "#ffffff" : fromOklch([KIT_LABEL.poleDark, 0, 0]);
+}
+
+/**
  * The accent as text, as a hex: the kit's --slc-accent-text for the theme,
  * `oklch(from <accent> min(l, <cap>) c h)`. On light it is #393ccd.
  */

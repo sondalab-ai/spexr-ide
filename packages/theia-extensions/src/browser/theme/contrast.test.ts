@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import kitAccents from "@sondalab/ui-kit/agent/accent-registry.json";
-import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_FILL_STEP, KIT_LABEL, KIT_SHADE_STEP, accentText as registryAccentText, accentTextActive, fillStep } from "./spexr-accent.js";
+import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_FILL_STEP, KIT_LABEL, KIT_SHADE_STEP, KIT_STATUS_FILL, accentText as registryAccentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 
 type Rgb = [number, number, number];
 
@@ -208,5 +208,51 @@ describe.each(["light", "dark"] as const)("the lit pane's inward glow on %s", (t
   it("leaves secondary and muted text at 4.5:1 or more where it is strongest", () => {
     expect(contrast(hex(neutrals[theme]["text-secondary"]), ground)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(hex(neutrals[theme]["text-muted"]), ground)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+// The status dock (spexr.css): an item with a ground of its own is found by
+// its fill, at least 3:1 against the canvas it sits on, and reads at 4.5:1 in
+// the kit's label on it. A plugin's error and warning grounds are registry
+// literals (spexr-color-contribution.ts); the prominent and offline ones are
+// the CSS layer's (theia-chrome-css.ts).
+describe.each(["light", "dark"] as const)("the status dock on %s", (theme) => {
+  const canvas = hex(neutrals[theme]["bg-canvas"]);
+  const surface = hex(neutrals[theme]["bg-surface"]);
+  const muted = hex(neutrals[theme]["text-muted"]);
+  /** The kit's --_sl-on, written again from tokens.css: white below the pole's lightness, the dark pole above. */
+  const kitLabel = (fill: Rgb): Rgb => (oklch(fill)[0] < POLE_L ? WHITE : srgb([POLE_DARK, 0, 0]));
+  const tone = (name: string): string => new RegExp(`--sl-status-${name}:\\s*(#[0-9a-f]{6})`).exec(kitFile(`themes/${theme}.css`))![1]!;
+
+  it("registers the installed kit's danger and warning tones, with the kit's label", () => {
+    expect(KIT_STATUS_FILL[theme]).toEqual({ danger: tone("danger"), warning: tone("warning") });
+    for (const fill of Object.values(KIT_STATUS_FILL[theme])) {
+      expect(toBytes(hex(labelOn(fill))), fill).toEqual(toBytes(kitLabel(hex(fill))));
+    }
+  });
+
+  it("bounds an error, a warning and a prominent item at 3:1 on the canvas, and labels each at 4.5:1", () => {
+    for (const fill of [hex(KIT_STATUS_FILL[theme].danger), hex(KIT_STATUS_FILL[theme].warning), muted]) {
+      expect(contrast(fill, canvas)).toBeGreaterThanOrEqual(3);
+      expect(contrast(kitLabel(fill), fill)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("labels the offline bar at 4.5:1 at rest, hovered and pressed", () => {
+    const warning = hex(KIT_STATUS_FILL[theme].warning);
+    for (const fill of [warning, kitStep(warning, STEP.hover), kitStep(warning, STEP.press)]) {
+      expect(contrast(kitLabel(warning), fill)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("reads the data ink and the muted ink at 4.5:1 on the canvas and on a hovered item", () => {
+    for (const ground of [canvas, surface]) {
+      expect(contrast(hex(neutrals[theme]["text-primary"]), ground)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(muted, ground)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("marks a live state with a dot at 3:1 on the canvas and on a hovered item", () => {
+    for (const ground of [canvas, surface]) expect(contrast(accentText[theme], ground)).toBeGreaterThanOrEqual(3);
   });
 });

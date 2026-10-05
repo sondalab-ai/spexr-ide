@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SpexrColorContribution } from "./spexr-color-contribution.js";
-import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, KIT_STATUS_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 type Defaults = Record<string, string | undefined>;
@@ -44,6 +44,18 @@ describe("SpexrColorContribution", () => {
       expect(colors.get(id), id).toEqual({ dark: SPEXR_NEUTRALS.dark.canvas, light: SPEXR_NEUTRALS.light.canvas });
     }
     expect(colors.get("statusBar.foreground")).toEqual({ dark: SPEXR_NEUTRALS.dark.fgMuted, light: SPEXR_NEUTRALS.light.fgMuted });
+  });
+
+  // A plugin's error or warning status item is painted inline with the
+  // registry's literal, which the CSS layer never reaches.
+  it("registers a status item's error and warning grounds in the kit's tones, with the kit's label", () => {
+    for (const [item, tone] of [["error", "danger"], ["warning", "warning"]] as const) {
+      expect(colors.get(`statusBarItem.${item}Background`), item).toEqual({ dark: KIT_STATUS_FILL.dark[tone], light: KIT_STATUS_FILL.light[tone] });
+      expect(colors.get(`statusBarItem.${item}Foreground`), item).toEqual({
+        dark: labelOn(KIT_STATUS_FILL.dark[tone]),
+        light: labelOn(KIT_STATUS_FILL.light[tone]),
+      });
+    }
   });
 
   // xterm and the minimap paint from the registry, never from the CSS layer:
