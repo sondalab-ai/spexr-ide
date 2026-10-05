@@ -58,3 +58,48 @@ describe("controls on the kit", () => {
     },
   );
 });
+
+// The kit's switch track is border-box since 0.32: the compact track sized
+// for a content box left the knob 1px from the edges and 0px on the right
+// when on, and the kit's held rules, which outrank a plain knob rule, grew the
+// held knob past the track.
+describe("the compact switch", () => {
+  const px = (sel: string, prop: RegExp): number => {
+    const m = prop.exec(rule(sel));
+    expect(m, `${prop} in ${sel}`).not.toBeNull();
+    return Number(m![1]);
+  };
+  const HELD = ".spexr-df-switch.sl-switch:active:not(:has(:disabled))";
+  const EDGE = 1;
+  const INSET = 2; // the kit's knob sits 2px in from the left
+
+  it("keeps the knob 2px in from every side of the border-box track, off and on", () => {
+    const width = px(".spexr-df-switch .sl-switch__track", /width:\s*(\d+)px/);
+    const height = px(".spexr-df-switch .sl-switch__track", /height:\s*(\d+)px/);
+    const knob = px(".spexr-df-switch .sl-switch__track::after", /width:\s*(\d+)px/);
+    const travel = px(".spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after", /translateX\((\d+)px\)/);
+    expect((height - 2 * EDGE - knob) / 2).toBe(INSET);
+    expect(width - 2 * EDGE - (INSET + travel + knob)).toBe(INSET);
+  });
+
+  it("stretches the held knob inside the track, at the kit's held-rule weights", () => {
+    const width = px(".spexr-df-switch .sl-switch__track", /width:\s*(\d+)px/);
+    const knob = px(".spexr-df-switch .sl-switch__track::after", /width:\s*(\d+)px/);
+    const travel = px(".spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after", /translateX\((\d+)px\)/);
+    const held = px(`${HELD} .sl-switch__track::after`, /width:\s*(\d+)px/);
+    const heldTravel = px(`${HELD} .sl-switch__input:checked + .sl-switch__track::after`, /translateX\((\d+)px\)/);
+    expect(held).toBeGreaterThan(knob);
+    expect(INSET + held).toBeLessThanOrEqual(width - 2 * EDGE - INSET);
+    expect(INSET + heldTravel + held).toBe(INSET + travel + knob);
+  });
+});
+
+// A radius on the global focus rule snapped an 8px button's corners to 6px
+// under focus; since 0.32 the kit's halo made the jump visible.
+describe("the global focus ring", () => {
+  it("is flush and sets no radius", () => {
+    const ring = rule("*:focus-visible");
+    expect(ring).toMatch(/outline-offset:\s*var\(--sl-focus-ring-offset\)/);
+    expect(ring).not.toMatch(/border-radius/);
+  });
+});

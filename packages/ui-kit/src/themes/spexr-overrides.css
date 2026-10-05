@@ -46,8 +46,11 @@
   --sl-accent-active: #3645d4;
   --sl-accent-subtle: #eef0ff;
   --sl-focus-ring: #5b6cff;
-  /* The accent's depth companion: where the kit's light recedes to. */
-  --sl-accent-depth: #7a3fd0;
+  /* The accent's depth companion: where the kit's light recedes to. The
+     accent turned 24 degrees toward violet and, on paper, one shade step
+     deeper (the kit's --slc-shade-step), as the kit's own depth is darker on
+     light than on dark. Derived, so it follows the accent. */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) calc(l - var(--slc-shade-step, 0.075)) c calc(h + 24));
 }
 
 [data-sl-theme="dark"] {
@@ -56,30 +59,27 @@
   --sl-accent-active: #6b78f0;
   --sl-accent-subtle: #1c1f3a;
   --sl-focus-ring: #8b96ff;
-  --sl-accent-depth: #b58cff;
+  /* The same companion on ink: the accent turned 24 degrees toward violet. */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) l c calc(h + 24));
 }
 
 [data-sl-theme="high-contrast"] {
   /* Accent is NOT overridden: the Sondalab HC accent (#ffff00) already matches
      SPEXR's HC. Only the wider HC focus ring is restored; the agent roles read
-     the kit's HC values (the same black, #0a0a0a, #1a1a00 and yellow as before).
-     hljs is intentionally left undefined in HC, as it was before the migration. */
+     the kit's HC roles (the same black surfaces, user bubble and yellow rail as
+     before). hljs is intentionally left undefined in HC, as it was before the migration. */
   --sl-focus-ring-width: 3px;
 }
 
-/* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28). The
-   primary is a deeper indigo than the accent so its label can be white on
-   both themes: 5.41:1 on the fill, 6.47 on hover, 8.03 pressed. One literal,
-   registered in the kit's accent registry; hover and press are derived from
-   it, so there are no hand-tuned steps to drift. The accent itself
-   (#5b6cff / #8b96ff) still drives links, tags, the agent rail and the focus
-   ring. Scoped to the button: --slc-* resolve at :root, so binding them here
-   re-derives only the primary's fill, edge and label. High contrast keeps the
-   kit's own primary. */
-:is([data-sl-theme="light"], [data-sl-theme="dark"]) .sl-btn--primary {
-  --slc-accent: #4c58e9;
-  --slc-accent-hover: color-mix(in srgb, var(--slc-accent) 89%, black);
-  --slc-accent-active: color-mix(in srgb, var(--slc-accent) 76%, black);
-  --slc-edge-accent: oklch(from var(--slc-accent) calc(l - var(--slc-shade-step, 0.075)) c h);
-  --slc-on-accent: #ffffff;
+/* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28, the
+   kit's --slc-accent-fill role since 0.32). White on the #5b6cff accent read
+   4.17:1, so every accent fill that carries a label -- the primary, a checked
+   check, radio or switch, a count badge -- is the deeper registered fill on
+   both themes: white on it reads 5.41:1, 6.67 hovered, 8.21 pressed (the
+   kit's step rule since 0.32.1). One literal, set once as a role; the kit
+   derives the label, hover, press and edge from it. The accent (#5b6cff / #8b96ff) still drives links, tags, the
+   agent rail, selection and the focus ring. High contrast keeps its own
+   yellow: the kit resets the fill there too. */
+:root:not([data-sl-theme="high-contrast"]) {
+  --slc-accent-fill: #4c58e9;
 }

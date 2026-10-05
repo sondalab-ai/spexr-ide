@@ -27,45 +27,32 @@ body {
   line-height: var(--sl-line-normal);
 }
 
+/* The ring for anything the kit's focus rule does not cover (Theia's own
+   elements, spexr's): flush, in the ring's colour. No radius: an outline
+   follows the element's own corners, and a radius here snapped an 8px
+   button to 6px under focus. The kit's controls take its own rule, which
+   adds the halo (0.32). */
 *:focus-visible {
   outline: var(--sl-focus-ring-width) solid var(--sl-focus-ring);
   outline-offset: var(--sl-focus-ring-offset);
-  border-radius: var(--sl-radius-sm);
 }
 
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
-   something the kit does not ship yet (density, danger, pressed segments,
-   accent eyebrow): https://github.com/sondalab-ai/sondalab-ui/issues/33 */
+   something the kit does not ship yet (density, accent eyebrow):
+   https://github.com/sondalab-ai/sondalab-ui/issues/33
+   Density: a wider button, and a small one in the 14px face. Since kit 0.32
+   the primary's foot is a background layer, so this padding gives every
+   variant the kit's rows -- 1 + 8 + 14 + 8 + 1 = 32px, and 1 + 4 + 14 + 4 + 1
+   = 24px small -- opaque, on a glass pane, under high contrast and with the
+   effects off. The danger tone is the kit's (.sl-btn--danger,
+   .sl-icon-btn--danger), with its band-safe ink and its own focus ring. */
 .sl-btn {
   padding: var(--sl-space-2) var(--sl-space-4);
-  border-radius: var(--sl-radius-md);
 }
 
 .sl-btn--sm {
   padding: var(--sl-space-1) var(--sl-space-3);
   font-size: var(--sl-text-sm);
-}
-
-.sl-btn--danger {
-  color: var(--slc-danger);
-  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
-}
-
-.sl-btn--danger:hover:not(:disabled) {
-  background: var(--slc-danger);
-  color: var(--slc-on-danger);
-  border-color: var(--slc-danger);
-}
-
-/* An icon button in the danger voice of .sl-btn. */
-.sl-icon-btn--danger {
-  color: var(--slc-danger);
-  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
-}
-.sl-icon-btn--danger:hover:not(:disabled) {
-  background: var(--slc-danger);
-  color: var(--slc-on-danger);
-  border-color: var(--slc-danger);
 }
 
 /* A panel is narrower than a page: the kit's empty-state padding would push
@@ -168,6 +155,21 @@ body {
   border-image: none !important;
   backdrop-filter: none !important;
   --slfx-fill-a: 100% !important;
+}
+
+/* ...but not a control's own depth and focus halo, as the kit's kill switches
+   give them back (effects.css, 0.32): a control writes its resting shadow
+   into --_sl-depth (a secondary's lit line and cast, a selected tile, a
+   checked box's foot) and its focus rule adds --_sl-halo. They are the
+   control's, not the effect's. The kill above weighs (0,3,0), so these
+   outrank it at (0,4,0) and (0,5,0), with the kit's own lists. The halo
+   stays off in high contrast, where --slc-glow is 0. */
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--_sl-depth, 0 0 transparent) !important;
+}
+
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
+  box-shadow: var(--_sl-depth, 0 0 transparent), var(--_sl-halo, 0 0 transparent) !important;
 }
 
 :root[data-spexr-power-save] .sl-fx-goo__member {
@@ -342,6 +344,306 @@ body {
  */
 #theia-statusBar .area .element.hasCommand:hover {
   color: var(--sl-text-primary);
+}
+
+/* ══ THEIA'S CHROME IN LUMEN (kit 0.31 / 0.32) ═════════════════════════════
+   Theia's own widgets drawn with the kit's depth roles: selection is a tile,
+   shortcuts are keycaps, the editor's tabs are tile tabs. CSS on Theia's
+   existing elements only; the --theia-* colours they read are set in
+   theia-chrome-css.ts. Light and dark only: high contrast stays Theia's own
+   HC theme, as its neutrals do.
+
+   THE SEAM. A tile alone is found by its ring, about 1.4:1 against its pane,
+   which is no state indicator (owner, 2026-10-04). Every selected or current
+   tile here carries the kit's seam: a 2px line, half the tile's height, at
+   its leading edge (a layer of its background, as on the kit's current nav
+   item). It is the accent (--slc-seam) where its container has focus, the
+   muted ink where it has not; both read at least 5.7:1 against the tile on
+   either theme. Containers set the ink; the tiles paint it. */
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container) {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container):focus-within {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* An open dropdown is where the keyboard is, whichever element holds focus. */
+:root:not([data-sl-theme="high-contrast"]) .theia-select-component-dropdown {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* The tab strips: the focused group is Theia's .theia-tabBar-active. */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar.theia-tabBar-active {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* A selected tree row is a tile, inset from the pane's edges so its ring and
+   cast show: Theia's rows are full-width and the tree clips. The tile is a
+   layer under the row's content, never its box, so indentation and the
+   virtualised list keep their geometry. Unfocused, it is a flat tile (lit,
+   ringed, no cast) with the muted seam; in the focused tree it lifts (the
+   cast) and the seam is the accent. The seam sits 1px inside the tile, clear
+   of the expansion chevron. The row's text is the primary ink on the tile
+   (--theia-list-*SelectionForeground). Theia's 1px focus outline stays on a
+   focused row that is not selected. */
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  outline: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected::before {
+  content: "";
+  position: absolute;
+  inset: 1px 2px;
+  z-index: -1;
+  border-radius: var(--sl-radius-sm);
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: var(--slc-depth-flat);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected::before {
+  box-shadow: var(--slc-depth-tile);
+}
+
+/* The indent guides are positioned siblings drawn before the row; the
+   selected row's tile (an isolated, positioned layer) would cover them, so
+   they are lifted over it. They take no pointer events. */
+:root:not([data-sl-theme="high-contrast"]) .theia-tree-node-indent {
+  z-index: 1;
+}
+
+/* The quick pick's active row, a dropdown's highlighted option and a
+   selected SCM history row are tiles too. Their lists clip a ring drawn
+   outside (the quick pick has no room above its first row or below its last,
+   the history list is full-width), so the ring is drawn inside, and there is
+   no cast to clip. The lit line goes: on light it is white on the white tile.
+   The seam sits 1-2px inside, clear of the text. */
+:root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
+  border-radius: var(--sl-radius-sm);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 2px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-select-component-dropdown .theia-select-component-option.selected {
+  background-position: 1px 50%;
+}
+
+/* Monaco's own lists: the suggest widget and the code-action menu paint their
+   focused row from Monaco's colour variables, which Monaco declares on
+   .monaco-editor / .monaco-component (a root override does not reach them)
+   and which resolve to Theia's list selection (a white label on a light
+   grey on light, 1.23:1). The rows are painted directly instead: the tile in the
+   primary ink with the accent seam (the widget is where the keyboard is) and
+   a ring drawn inside. The suggest row outranks the list's own colours at
+   (0,7,0); the code-action row's fill is !important in Monaco's own CSS, so
+   only that one fill is here too, at (0,8,0). The suggest row's content steps
+   3px in so the seam stands clear of the completion icon. */
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
+  color: var(--slc-text);
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled) {
+  color: var(--slc-text);
+  background-color: var(--slc-tile) !important;
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
+  padding-left: 5px;
+}
+
+/* Other things Theia paints with the selection colour, now the tile: the
+   search view's match count, the file drag image and an SCM history base
+   ref. They are not states, so no seam; the one control edge is their
+   boundary (at least 3.5:1 on the kit's grounds). */
+:root:not([data-sl-theme="high-contrast"]) :is(.highlighted-count-container, .theia-file-tree-drag-image, .scm-history-ref-badge.base) {
+  box-shadow: inset 0 0 0 1px var(--slc-edge-control);
+}
+
+/* Shortcuts are keycaps, the kit's .sl-kbd (components.css, "Kbd — a keycap";
+   these declarations repeat its own and follow it by hand): Geist Mono 500,
+   at least 20px square, raised-to-surface, ringed, lit along the top, on a
+   base in its own fill in shade. Only the command palette and the code-action
+   menu: Monaco's inline-completion and inline-edit hints keep their own small
+   keys. Monaco writes a key's background, border and shadow inline, so those
+   are !important here, and so is the colour, over Theia's own !important
+   palette rule; where a key sits inside a highlighted label Theia's heavier
+   rule gives it the row's ink, which reads on the cap as well. */
+:root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list, .action-widget .monaco-list-row) .monaco-keybinding > .monaco-keybinding-key {
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.3125rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--slc-text-secondary) !important;
+  background-color: var(--slc-raised) !important;
+  background-image: linear-gradient(var(--slc-raised), var(--slc-surface)) !important;
+  border: 0 !important;
+  border-radius: 5px;
+  box-shadow: var(--slc-depth-key) !important;
+}
+
+/* A browser menu (Lumino; menus are native on macOS) lays its rows out as a
+   table, so a shortcut cell is as wide as the longest shortcut in the menu.
+   Its rows are flex rows here, the label taking the free space, so each
+   shortcut is a box of its own width and the shortcuts still line up at the
+   right; a separator row keeps its own 9px. The cap is an 18px layer behind
+   the shortcut's text, inside the 24px row, as wide as the text and its
+   padding. */
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-content {
+  display: flex;
+  flex-direction: column;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-item {
+  display: flex;
+  align-items: stretch;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-item[data-type="separator"] {
+  min-height: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-itemLabel {
+  flex: 1 1 auto;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu :is(.lm-Menu-itemIcon, .lm-Menu-itemShortcut, .lm-Menu-itemSubmenuIcon) {
+  flex: none;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty) {
+  position: relative;
+  isolation: isolate;
+  padding-inline: 0.3125rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--slc-text-secondary);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty)::before {
+  content: "";
+  position: absolute;
+  inset: 3px 0;
+  z-index: -1;
+  border-radius: 5px;
+  background-color: var(--slc-raised);
+  background-image: linear-gradient(var(--slc-raised), var(--slc-surface));
+  box-shadow: var(--slc-depth-key);
+}
+
+/* The editor's tabs are the kit's tile tabs (.sl-tabs--tile): no rules
+   between them, the others on the canvas in the muted ink, hover a flat wash,
+   the current tab a flat tile (lit, ringed, no cast) in the primary ink with
+   the seam 3px in from its leading edge: the accent in the focused group, the
+   muted ink in another, so the active group is told apart. A 28px tile
+   centred in Theia's 35px strip, 2px apart; the strip pads its ends so the
+   first and last ring are not clipped. Theia's tab participant writes the
+   current tab at (1,3,0), and at (1,4,0) for an unfocused group, so these
+   outrank it. */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-content {
+  gap: 2px;
+  padding-inline: 4px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab {
+  height: 28px;
+  line-height: 28px;
+  margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  margin-bottom: round(up, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  border: 0;
+  border-radius: var(--sl-radius-sm);
+  background: transparent;
+  color: var(--slc-text-muted);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab:hover {
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  border: 0;
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 3px 50%;
+  box-shadow: var(--slc-depth-flat);
+  color: var(--slc-text);
+}
+
+/* In a group without focus the current tab's label steps down to the
+   secondary ink, so the focused group is told apart by lightness as well as
+   by its seam's hue (the two seams differ by 1.13:1 on light, 1.04 on dark). */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  color: var(--slc-text-secondary);
+}
+
+/* workbench.editor.highlightModifiedTabs draws a 2px top border on a dirty
+   tab, at up to (1,6,1); inside a tile it is a band above the lit line. The
+   tile tab marks unsaved work with its dot (Theia's ● in the close glyph, the
+   kit's __dot), so the band goes and the tab keeps its tile. */
+:root:not([data-sl-theme="high-contrast"]) body.theia-editor-highlightModifiedTabs #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-dirty.theia-mod-dirty {
+  border-top: 0;
+  padding-bottom: 0;
+}
+
+/* Forced colours (a Windows contrast theme) drop the fills, the gradients
+   and the shadows the tiles and seams are made of; an outline in Highlight
+   keeps the state, at each rule's own weight. */
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
+  :root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected,
+  :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected),
+  :root:not([data-sl-theme="high-contrast"]) :is(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused, .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled)) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+  :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }
 
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
@@ -1569,10 +1871,12 @@ code {
   font-weight: 500;
 }
 
+/* A labelled accent fill: the product's registered fill and its label (the
+   canvas on the #5b6cff accent read 3.37:1 on light). */
 .spexr-stepper__item--done .spexr-stepper__num {
-  background: var(--sl-accent-default);
-  border-color: var(--sl-accent-default);
-  color: var(--sl-bg-canvas);
+  background: var(--slc-accent-fill, var(--slc-accent));
+  border-color: var(--slc-accent-fill, var(--slc-accent));
+  color: var(--slc-on-accent-fill);
 }
 
 /* The current step is the kit's primary button: its badge takes the button's
@@ -2446,7 +2750,6 @@ code {
 .spexr-sched__error { color: var(--sl-status-danger); white-space: pre-line; overflow-wrap: anywhere; }
 .spexr-sched__editor { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
 .spexr-sched__editor-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sl-space-2); }
-.spexr-sched .sl-field[data-invalid="true"] .sl-field__input { border-color: var(--sl-status-danger); }
 .spexr-sched__prompt { min-height: 6rem; resize: vertical; font-family: var(--sl-font-mono); }
 .spexr-sched__problem { color: var(--sl-status-danger); }
 .spexr-sched__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -2821,11 +3124,20 @@ code {
 /* Only the first button takes the free space: several autos would spread them apart. */
 .spexr-df-pinned__actions .sl-btn:first-of-type { margin-left: auto; }
 
-/* The card's browser switch sits in a dense action row: a smaller track than the kit's. */
+/* The card's browser switch sits in a dense action row: a smaller track than
+   the kit's. The kit's track is border-box since 0.32, so the size includes
+   its 1px edge: 28 x 16 leaves 26 x 14 inside, a 10px knob 2px in from every
+   side, travelling 26 - 2 - 10 - 2 = 12px. Held, the knob stretches by a
+   tenth toward where it will go, as the kit's does. The kit's held rules
+   weigh (0,4,1) and (0,6,1), so they are repeated here under the switch's own
+   class, or the held knob would grow to the kit's 0.935rem and run past the
+   track. */
 .spexr-df-switch { gap: var(--sl-space-2); }
-.spexr-df-switch .sl-switch__track { width: 26px; height: 14px; }
+.spexr-df-switch .sl-switch__track { width: 28px; height: 16px; }
 .spexr-df-switch .sl-switch__track::after { width: 10px; height: 10px; }
 .spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(12px); }
+.spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__track::after { width: 11px; }
+.spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(11px); }
 .spexr-df-switch .sl-switch__label { display: inline-flex; align-items: center; gap: var(--sl-space-1); color: var(--sl-text-secondary); }
 
 /*
