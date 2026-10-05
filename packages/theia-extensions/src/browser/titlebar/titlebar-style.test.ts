@@ -207,7 +207,7 @@ describe("the room for macOS's traffic lights", () => {
   // The main process places the lights from common/mac-title-bar.ts and
   // sets the room for the zoom; the span has to cover the same pixels, or
   // the mark lands on the lights.
-  it("is a span as wide and tall as the main process says, macOS 15's lights at 100% until it does", () => {
+  it("is a span as wide and tall as the main process says, the lights before macOS 26 at 100% until it does", () => {
     const lights = rule(".spexr-titlebar-host .spexr-titlebar__lights");
     expect(LIGHTS_ROOM_PROPERTY).toBe("--spexr-traffic-lights");
     expect(LIGHT_SIZE_PROPERTY).toBe("--spexr-traffic-light-size");

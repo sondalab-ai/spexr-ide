@@ -1148,8 +1148,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      --spexr-traffic-light-size, are the main process's: the lights differ
      from macOS 26 on (14pt on a 23pt pitch, 12pt on 20pt before), and they
      stay put in points while Theia's zoom scales the page, so the room is
-     their right edge over the zoom factor. The fallbacks are macOS 15's at
-     100%, until the main process sets them. Nothing here declares either
+     their right edge over the zoom factor. The fallbacks are the lights
+     before macOS 26, at 100%, until the main process sets them. Nothing here declares either
      property, which would shadow the main process's. The widget drops the
      span in full screen, where macOS hides the lights.
    - The bell replaces Theia's notification item in the status bar. */

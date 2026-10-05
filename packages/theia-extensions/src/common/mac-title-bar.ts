@@ -32,9 +32,9 @@ export interface LightsGeometry {
 }
 
 /**
- * macOS 15 and earlier, measured on the macos-14 runner (S5b-1's native
+ * Before macOS 26, measured on the macos-14 runner (14.8.9; S5b-1's native
  * capture of a standard window): 14×16 frames on a 20pt pitch, a 12pt circle
- * 1pt in and 2pt down.
+ * 1pt in and 2pt down. The macos-15 capture lane checks macOS 15 against it.
  */
 export const LIGHTS_BEFORE_TAHOE: LightsGeometry = {
   frame: { width: 14, height: 16 },
@@ -43,10 +43,12 @@ export const LIGHTS_BEFORE_TAHOE: LightsGeometry = {
 };
 
 /**
- * macOS 26 (Darwin 25) and later, measured on the macos-26 runner (26.6.2,
- * S5b-2's native capture at a known position): 14pt circles that fill their
- * 14×14 frames, on a 23pt pitch, so the three take 60pt, not 52. The 14pt
- * frame height is VS Code's getMacOSWindowControlsPosition's too.
+ * macOS 26 (Darwin 25) and later. The circles are measured on the macos-26
+ * runner (26.6.2, S5b-2's native capture at a known position): 14pt, on a
+ * 23pt pitch, starting at the position itself, so the three take 60pt, not
+ * 52. The frame is derived, not seen (a capture shows only circles): a 14pt
+ * circle with no inset fills a 14pt frame, which is the height VS Code's
+ * getMacOSWindowControlsPosition gives from macOS 26 too.
  */
 export const LIGHTS_TAHOE: LightsGeometry = {
   frame: { width: 14, height: 14 },
@@ -107,7 +109,7 @@ export function lightsRoom(geometry: LightsGeometry, factor = 1): number {
 /**
  * The custom properties the main process sets on a macOS window's page: the
  * room ({@link lightsRoom}) and one light's height, both in CSS px at the
- * page's zoom. spexr.css falls back to the macOS 15 values at 100% before
+ * page's zoom. spexr.css falls back to the pre-macOS 26 values at 100% before
  * they arrive.
  */
 export const LIGHTS_ROOM_PROPERTY = "--spexr-traffic-lights";
