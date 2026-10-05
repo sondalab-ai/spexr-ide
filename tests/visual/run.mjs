@@ -4,9 +4,10 @@
 /**
  * Entry point of the screenshot capture: `pnpm --filter @spexr/visual capture`.
  *
- * Refuses to run unless `CI` is set. The capture launches the spexr Electron
- * app, and launching it on a workstation has opened enough windows to crash
- * one; it belongs on a GitHub runner (.github/workflows/screenshots.yml).
+ * Refuses to run off a GitHub Actions runner (`GITHUB_ACTIONS=true`). The
+ * capture launches the spexr Electron app, and launching it on a workstation
+ * has opened enough windows to crash one. This is the friendly message;
+ * playwright.config.ts and app.ts refuse too, for every other way in.
  *
  * Runs the Playwright capture, then writes a summary of every `out/<os>-<theme>/
  * meta.json` to `$GITHUB_STEP_SUMMARY` (or stdout), whether or not the capture
@@ -24,9 +25,9 @@ import { fileURLToPath } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-if (!process.env.CI) {
+if (process.env.GITHUB_ACTIONS !== "true") {
   console.error(
-    "tests/visual: refusing to run outside CI. The capture launches the spexr app;\n" +
+    "tests/visual: refusing to run off a GitHub Actions runner. The capture launches the spexr app;\n" +
       "run it through .github/workflows/screenshots.yml (label a PR `screenshots`, or dispatch the workflow).",
   );
   process.exit(1);

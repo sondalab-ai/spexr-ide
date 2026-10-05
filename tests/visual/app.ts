@@ -34,6 +34,10 @@ export interface Launched {
  * wants.
  */
 export async function launch({ run, swiftshader, logFile }: LaunchOptions): Promise<Launched> {
+  // Second layer behind playwright.config.ts: nothing starts spexr off a runner.
+  if (process.env.GITHUB_ACTIONS !== "true") {
+    throw new Error("tests/visual launches spexr and runs only on a GitHub Actions runner.");
+  }
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
   delete env.CLAUDE_CONFIG_DIR;
