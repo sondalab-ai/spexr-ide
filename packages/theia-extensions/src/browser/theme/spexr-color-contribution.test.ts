@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SpexrColorContribution } from "./spexr-color-contribution.js";
-import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep } from "./spexr-accent.js";
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 type Defaults = Record<string, string | undefined>;
+
+const kitDir = dirname(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.js"));
 
 /** What the contribution registers: id -> defaults, from a registry that only records. */
 function registered(): Map<string, Defaults> {
@@ -44,6 +49,29 @@ describe("SpexrColorContribution", () => {
       expect(colors.get(id), id).toEqual({ dark: SPEXR_NEUTRALS.dark.canvas, light: SPEXR_NEUTRALS.light.canvas });
     }
     expect(colors.get("statusBar.foreground")).toEqual({ dark: SPEXR_NEUTRALS.dark.fgMuted, light: SPEXR_NEUTRALS.light.fgMuted });
+  });
+
+  // A plugin's status item is painted inline with the registry's literal,
+  // which the CSS layer never reaches. The tones are read from the installed
+  // kit's theme files, not from spexr's own constants.
+  it("registers a status item's error and warning grounds in the kit's tones, with the kit's label", () => {
+    const tone = (theme: "light" | "dark", name: string): string =>
+      new RegExp(`--sl-status-${name}:\\s*(#[0-9a-f]{6})`).exec(readFileSync(join(kitDir, `themes/${theme}.css`), "utf8"))![1]!;
+    for (const [item, name] of [["error", "danger"], ["warning", "warning"]] as const) {
+      const fill = { dark: tone("dark", name), light: tone("light", name) };
+      expect(colors.get(`statusBarItem.${item}Background`), item).toEqual(fill);
+      expect(colors.get(`statusBarItem.${item}Foreground`), item).toEqual({ dark: labelOn(fill.dark), light: labelOn(fill.light) });
+    }
+  });
+
+  // Theia's prominent was a 50% black under the muted ink, its remote a
+  // green from the theme data: both are neutral, the muted ink as a fill.
+  it("registers the prominent and remote grounds as the muted ink, with the kit's label", () => {
+    const muted = { dark: SPEXR_NEUTRALS.dark.fgMuted, light: SPEXR_NEUTRALS.light.fgMuted };
+    for (const item of ["prominent", "remote"]) {
+      expect(colors.get(`statusBarItem.${item}Background`), item).toEqual(muted);
+      expect(colors.get(`statusBarItem.${item}Foreground`), item).toEqual({ dark: labelOn(muted.dark), light: labelOn(muted.light) });
+    }
   });
 
   // xterm and the minimap paint from the registry, never from the CSS layer:

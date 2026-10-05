@@ -51,12 +51,16 @@ import { SpexrShellLayoutContribution } from "./shell/spexr-shell-layout-contrib
 import { SpexrPanelTitleContribution } from "./shell/panel-title-contribution.js";
 import { SpexrRevealOnRestore } from "./shell/reveal-on-restore.js";
 import { SpexrApplicationShell } from "./shell/island-shell.js";
+import { ElectronMainMenuFactory } from "@theia/core/lib/electron-browser/menu/electron-main-menu-factory";
+import { SpexrElectronMainMenuFactory } from "./shell/menu-keycaps-factory.js";
 import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
+import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-contribution.js";
+import { SpexrToastAnnouncer } from "./messages/toast-announcer.js";
 import { ClaudeTerminalManager } from "./agent/claude-terminal-manager.js";
 import { SpexrLaunchProfilesService } from "./agent/launch-profiles-service.js";
 import {
@@ -128,7 +132,7 @@ import { SpexrDarkfactorySidebarVisibilityContribution } from "./darkfactory/dar
  * Frontend contributions for SPEXR. Theia handles DI via Inversify and
  * discovers contributions through these bindings.
  */
-export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
+export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bindViewContribution(bind, SpexrSpecViewContribution);
   bind(SpexrSpecWidget).toSelf();
   bind(WidgetFactory)
@@ -202,6 +206,15 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
 
+  // Lumen keycaps: a browser menu's shortcut is one kit keycap per key
+  // (shell/menu-keycaps-factory.ts). Electron only, where Theia binds the
+  // factory; BrowserMainMenuFactory resolves to it.
+  if (isBound(ElectronMainMenuFactory)) {
+    rebind(ElectronMainMenuFactory).to(SpexrElectronMainMenuFactory).inSingletonScope();
+  } else {
+    console.warn("spexr: Theia's Electron menu factory is not bound; browser menus keep their shortcuts as text.");
+  }
+
   bind(SpexrShellLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrShellLayoutContribution);
   bind(SpexrPanelTitleContribution).toSelf().inSingletonScope();
@@ -224,6 +237,11 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
+  // Theia's theme data outranks those registry defaults for the light error
+  // and the remote status grounds; it gives them up (status-theme-data.ts).
+  bind(FrontendApplicationContribution).to(SpexrStatusThemeDataContribution).inSingletonScope();
+  // Theia's toasts have no live region: two of the kit's, said once each.
+  bind(FrontendApplicationContribution).to(SpexrToastAnnouncer).inSingletonScope();
 
   bind(ClaudeTerminalManager).toSelf().inSingletonScope();
   bind(SpexrLaunchProfilesService).toSelf().inSingletonScope();

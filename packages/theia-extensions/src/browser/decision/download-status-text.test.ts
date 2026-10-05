@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { downloadStatusText } from "./download-status-text.js";
+import { downloadStatusLive, downloadStatusText } from "./download-status-text.js";
 
 describe("downloadStatusText", () => {
-  it("shows the model and how far its download is", () => {
+  it("says it is downloading the model, and how far it is", () => {
     expect(downloadStatusText({ model: "kev-4b", state: "downloading", received: 1, total: 3 })).toBe(
-      "$(cloud-download) kev-4b 33%",
+      "Downloading kev-4b 33%",
     );
+  });
+
+  // The status dock's accent dot marks the live state, so the entry carries
+  // no glyph while it downloads, and its words say what is happening.
+  it("is live only while downloading", () => {
+    expect(downloadStatusLive({ model: "kev-4b", state: "downloading" })).toBe(true);
+    for (const state of ["failed", "ready", "off", "missing", "waiting"] as const) {
+      expect(downloadStatusLive({ model: "kev-4b", state }), state).toBe(false);
+    }
   });
 
   it("says when the download failed", () => {

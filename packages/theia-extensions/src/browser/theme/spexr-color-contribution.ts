@@ -2,7 +2,7 @@ import { injectable } from "@theia/core/shared/inversify";
 import type { ColorContribution } from "@theia/core/lib/browser/color-application-contribution";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
-import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, KIT_STATUS_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 
 /** The label on a labelled accent fill. */
 const ON_ACCENT = "#ffffff";
@@ -113,6 +113,43 @@ export class SpexrColorContribution implements ColorContribution {
     // statusBarItem.hoverBackground is deliberately NOT accented: the bar's
     // foreground is muted, and muted text on the light violet hover is ~1.9:1.
     // SpexrThemeContribution gives it a neutral raise instead.
+
+    // A status item that paints a ground of its own. A plugin's item is
+    // painted inline with the literal the registry resolves, which the CSS
+    // layer never reaches; Theia's plugin API lets it ask for the error,
+    // warning, prominent, remote and offline grounds. Each is a kit fill with
+    // the kit's label: the fill reads at least 3:1 against the canvas it sits
+    // on, the label at least 4.5:1 on the fill (contrast.test.ts).
+    // - error and warning: the kit's danger and warning tones;
+    // - prominent and remote: neutral, the muted ink as a fill (Theia's
+    //   prominent was a 50% black under the muted ink; its remote, set in the
+    //   theme data, a green);
+    // - offline: no item colour of that name is registered, so the plugin's
+    //   item gets no ground, as before.
+    // Theia's built-in theme data sets the light error and both remote colours,
+    // and theme data outranks a registry default: status-theme-data.ts takes
+    // them out of it. spexr's high contrast is Theia's dark one (hc-theia),
+    // which keeps its own.
+    const grounds: ReadonlyArray<[string, { dark: string; light: string }]> = [
+      ["error", { dark: KIT_STATUS_FILL.dark.danger, light: KIT_STATUS_FILL.light.danger }],
+      ["warning", { dark: KIT_STATUS_FILL.dark.warning, light: KIT_STATUS_FILL.light.warning }],
+      ["prominent", { dark: SPEXR_NEUTRALS.dark.fgMuted, light: SPEXR_NEUTRALS.light.fgMuted }],
+      ["remote", { dark: SPEXR_NEUTRALS.dark.fgMuted, light: SPEXR_NEUTRALS.light.fgMuted }],
+    ];
+    for (const [item, fill] of grounds) {
+      colors.register(
+        {
+          id: `statusBarItem.${item}Background`,
+          defaults: fill,
+          description: `SPEXR: statusBarItem.${item}Background, a kit fill.`,
+        },
+        {
+          id: `statusBarItem.${item}Foreground`,
+          defaults: { dark: labelOn(fill.dark), light: labelOn(fill.light) },
+          description: `SPEXR: statusBarItem.${item}Foreground, the kit's label on its fill.`,
+        },
+      );
+    }
 
     // Tree / list selection is contested: Theia core's CommonFrontendContribution
     // re-registers list.* with its blue after this runs, so the override lives in

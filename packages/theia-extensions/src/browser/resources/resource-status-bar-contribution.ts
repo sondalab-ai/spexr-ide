@@ -4,6 +4,7 @@ import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-ba
 import type { SpexrResourceService } from "../../common/resource-protocol.js";
 import { formatResourceEntry, formatResourceLabel, renderResourceTooltip } from "./resource-status-format.js";
 import { isPowerSaving } from "../power/power-save-dom.js";
+import { STATUS_DATA } from "../shell/status-dock.js";
 
 /** Symbol for the backend resource service proxy, bound in the frontend module. */
 export const SpexrResourceServiceProxy = Symbol("SpexrResourceServiceProxy");
@@ -39,6 +40,7 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
       if (usage) {
         void this.statusBar.setElement(ENTRY_ID, {
           text: formatResourceEntry(usage),
+          className: STATUS_DATA,
           tooltip: renderResourceTooltip(usage, this.interval()),
           accessibilityInformation: { label: formatResourceLabel(usage) },
           alignment: StatusBarAlignment.RIGHT,
