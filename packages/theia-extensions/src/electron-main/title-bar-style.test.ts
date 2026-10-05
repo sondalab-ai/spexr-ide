@@ -232,10 +232,13 @@ describe("spexr's main application on macOS", () => {
     expect(create).toMatch(/if \(process\.platform === "darwin"\) \{\s*this\.macLights\.add\(window, \(event\) => TheiaRendererAPI\.sendWindowEvent\(window\.webContents, event as WindowEvent\)\);/);
   });
 
-  it("moves the lights after every zoom change Theia makes, a turn after Theia's own listener", () => {
+  it("hears every zoom change Theia makes first: a growing room at once, the lights a turn after Theia applies it", () => {
     const hook = between(ours, "protected override hookApplicationEvents(): void {", "\n  }\n");
     expect(hook).toContain("super.hookApplicationEvents();");
-    expect(hook).toContain('if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, () => setTimeout(() => this.macLights.syncAll()));');
+    expect(hook).toContain('if (process.platform !== "darwin") return;');
+    expect(hook).toMatch(
+      /ipcMain\.on\(CHANNEL_SET_ZOOM_LEVEL, \(_event, level: unknown\) => \{\s*if \(typeof level === "number"\) this\.macLights\.prepareZoom\(level\);\s*setTimeout\(\(\) => this\.macLights\.syncAll\(\)\);\s*\}\);/,
+    );
   });
 });
 
@@ -246,10 +249,18 @@ describe("Theia's zoom, which the lights follow", () => {
   const theiaPreload = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-browser/preload.js"), "utf8");
   const theiaWindowService = readFileSync(createRequire(import.meta.url).resolve("@theia/core/lib/electron-browser/window/electron-window-service.js"), "utf8");
 
-  it("is applied in the main process, on the SetZoomLevel channel", () => {
+  it("is applied in the main process, on the SetZoomLevel channel, with the level as its first argument", () => {
     expect(theiaPreload).toMatch(/setZoomLevel: function \(desired, windowName\) \{\s*ipcRenderer\.send\(electron_api_1\.CHANNEL_SET_ZOOM_LEVEL, desired, windowName\);/);
     const handler = between(theiaApiMain, "ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL,", "});");
     expect(handler).toContain("electronWindow.webContents.setZoomLevel(zoomLevel);");
+  });
+
+  // spexr's setTimeout runs after Theia's handler only because that handler
+  // applies the level synchronously, within the same emit.
+  it("is applied synchronously, so a turn later it has landed", () => {
+    expect(theiaApiMain).toContain("ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL, (event, zoomLevel, windowName) => {");
+    const handler = between(theiaApiMain, "ipcMain.on(electron_api_1.CHANNEL_SET_ZOOM_LEVEL,", "});");
+    expect(handler).not.toMatch(/\basync\b|\bawait\b|\.then\(|setTimeout|setImmediate/);
   });
 
   it("comes from window.zoomLevel, which Theia's zoom commands set", () => {

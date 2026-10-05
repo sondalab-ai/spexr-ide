@@ -3,25 +3,37 @@ import { EventEmitter } from "node:events";
 import { FULL_SCREEN_EVENTS, LIGHTS_BEFORE_TAHOE, LIGHTS_ROOM_PROPERTY, LIGHTS_TAHOE, type LightsGeometry } from "../common/mac-title-bar.js";
 import { MacLights, reportFullScreen, type LightsWebContents, type LightsWindow } from "./mac-lights.js";
 
-/** A BrowserWindow stand-in: events through EventEmitter, every call recorded. */
+/**
+ * A BrowserWindow stand-in: events through EventEmitter, every call recorded.
+ * A sheet is in the page from the moment insertCSS is called (the renderer
+ * applies it on arrival); `hold` keeps the returned key pending until
+ * `release`, as a slow round trip would.
+ */
 class FakeWindow extends EventEmitter implements LightsWindow {
   destroyed = false;
   fullScreen = false;
   zoom = 0;
+  hold = false;
   positions: Array<{ x: number; y: number } | null> = [];
   sheets = new Map<string, string>();
   removed: string[] = [];
+  /** Every insert and removal, in order, with the zoom level at the time. */
+  log: string[] = [];
   private next = 0;
+  private held: Array<() => void> = [];
   readonly contents = new EventEmitter();
   readonly webContents: LightsWebContents = {
     getZoomLevel: () => this.zoom,
-    insertCSS: async (css) => {
+    insertCSS: (css) => {
       const key = `k${this.next++}`;
       this.sheets.set(key, css);
-      return key;
+      this.log.push(`insert ${key} ${roomOf(css)} at zoom ${this.zoom}`);
+      if (!this.hold) return Promise.resolve(key);
+      return new Promise((resolve) => this.held.push(() => resolve(key)));
     },
     removeInsertedCSS: async (key) => {
       this.removed.push(key);
+      this.log.push(`remove ${key}`);
       this.sheets.delete(key);
     },
     on: (event, listener) => this.contents.on(event, listener),
@@ -35,22 +47,47 @@ class FakeWindow extends EventEmitter implements LightsWindow {
   setWindowButtonPosition(position: { x: number; y: number } | null): void {
     this.positions.push(position);
   }
-  /** The room the page's stylesheets give it now, or undefined with none. */
+  /** A new document: the old one's sheets go with it. */
+  reload(): void {
+    this.sheets.clear();
+    this.contents.emit("dom-ready");
+  }
+  /** Lets every held insert return its key, in order. */
+  release(): void {
+    this.hold = false;
+    for (const resolve of this.held.splice(0)) resolve();
+  }
+  /** The room the page's sheets give it now, or how many sheets there are when not one. */
   room(): string | undefined {
     const sheets = [...this.sheets.values()];
-    return sheets.length === 1 ? new RegExp(`${LIGHTS_ROOM_PROPERTY}: ([^;]+);`).exec(sheets[0]!)?.[1] : `${sheets.length} sheets`;
+    return sheets.length === 1 ? roomOf(sheets[0]!) : `${sheets.length} sheets`;
   }
 }
 
-/** Lets the queued stylesheet swaps run. */
+function roomOf(css: string): string | undefined {
+  return new RegExp(`${LIGHTS_ROOM_PROPERTY}: ([^;]+);`).exec(css)?.[1];
+}
+
+/** Lets the queued stylesheet bookkeeping run. */
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-function setup(geometry: LightsGeometry = LIGHTS_BEFORE_TAHOE) {
+async function setup(geometry: LightsGeometry = LIGHTS_BEFORE_TAHOE) {
   const lights = new MacLights(geometry);
   const window = new FakeWindow();
   const sent: string[] = [];
   lights.add(window, (event) => sent.push(event));
+  window.contents.emit("dom-ready");
+  await settle();
   return { lights, window, sent };
+}
+
+/** What Theia's SetZoomLevel handler and spexr's listener do, in their order. */
+async function zoomTo(lights: MacLights, window: FakeWindow, level: number): Promise<void> {
+  lights.prepareZoom(level);
+  window.zoom = level;
+  await settle();
+  lights.syncAll();
+  await settle();
 }
 
 describe("reportFullScreen", () => {
@@ -76,36 +113,86 @@ describe("reportFullScreen", () => {
 
 describe("MacLights", () => {
   it("places the lights and gives the page their room when the page is ready", async () => {
-    const { window } = setup();
-    window.contents.emit("dom-ready");
-    await settle();
+    const { window } = await setup();
     expect(window.positions).toEqual([{ x: 15, y: 14 }]);
     expect(window.room()).toBe("52px");
   });
 
   it("follows the macOS's geometry", async () => {
-    const { window } = setup(LIGHTS_TAHOE);
-    window.contents.emit("dom-ready");
-    await settle();
+    const { window } = await setup(LIGHTS_TAHOE);
     expect(window.positions).toEqual([{ x: 16, y: 15 }]);
     expect(window.room()).toBe("60px");
   });
 
-  it("moves the lights and widens the room when the zoom changes, one stylesheet at a time", async () => {
-    const { lights, window } = setup();
-    window.contents.emit("dom-ready");
-    await settle();
-    window.zoom = -1;
-    lights.syncAll();
-    await settle();
+  it("moves the lights and widens the room when the zoom changes", async () => {
+    const { lights, window } = await setup();
+    await zoomTo(lights, window, -1);
     expect(window.positions.at(-1)).toEqual({ x: 15, y: 10 });
     expect(window.room()).toBe("65.6px");
-    expect(window.removed).toEqual(["k0"]);
+    await zoomTo(lights, window, 1);
+    expect(window.positions.at(-1)).toEqual({ x: 15, y: 18 });
+    expect(window.room()).toBe("40.67px");
+  });
+
+  // The review's transient: the page painted the new zoom with the old room
+  // and the mark sat under the lights, until the sheet landed after the zoom.
+  it("gives a growing room to the page before the zoom applies, from the requested level", () => {
+    const lights = new MacLights(LIGHTS_BEFORE_TAHOE);
+    const window = new FakeWindow();
+    lights.add(window, () => undefined);
+    window.contents.emit("dom-ready");
+    lights.prepareZoom(-1);
+    expect(window.log).toEqual(["insert k0 52px at zoom 0", "insert k1 65.6px at zoom 0"]);
+  });
+
+  // Shrunk before the zoom, the room would put the mark on the lights at the old zoom.
+  it("leaves a shrinking room for after the zoom", async () => {
+    const { lights, window } = await setup();
+    lights.prepareZoom(1);
+    expect(window.log).toEqual(["insert k0 52px at zoom 0"]);
     window.zoom = 1;
     lights.syncAll();
     await settle();
-    expect(window.positions.at(-1)).toEqual({ x: 15, y: 18 });
-    expect(window.room()).toBe("40.67px");
+    expect(window.log.at(-2)).toBe("insert k1 40.67px at zoom 1");
+  });
+
+  it("does not insert the same room twice when the zoom lands", async () => {
+    const { lights, window } = await setup();
+    await zoomTo(lights, window, -1);
+    expect(window.log).toEqual(["insert k0 52px at zoom 0", "insert k1 65.6px at zoom 0", "remove k0"]);
+  });
+
+  it("takes the old sheet out only once the new one is in", async () => {
+    const { lights, window } = await setup();
+    window.hold = true;
+    window.zoom = -1;
+    lights.syncAll();
+    await settle();
+    expect(window.removed).toEqual([]);
+    window.release();
+    await settle();
+    expect(window.removed).toEqual(["k0"]);
+    expect(window.room()).toBe("65.6px");
+  });
+
+  // A sheet still in flight when the page reloads belongs to the old
+  // document: its key must not be stored, nor later removed from the new one.
+  it("drops a sheet that lands after its document was replaced", async () => {
+    const { lights, window } = await setup();
+    window.hold = true;
+    window.zoom = -1;
+    lights.syncAll();
+    window.reload();
+    window.release();
+    await settle();
+    await settle();
+    expect(window.removed).toEqual([]);
+    expect(window.room()).toBe("65.6px");
+    window.zoom = 0;
+    lights.syncAll();
+    await settle();
+    expect(window.removed).toEqual(["k2"]);
+    expect(window.room()).toBe("52px");
   });
 
   // Chromium zooms every window of an origin, so one change moves them all.
@@ -123,8 +210,11 @@ describe("MacLights", () => {
   });
 
   it("leaves a destroyed window alone", async () => {
-    const { lights, window } = setup();
+    const lights = new MacLights(LIGHTS_BEFORE_TAHOE);
+    const window = new FakeWindow();
+    lights.add(window, () => undefined);
     window.destroyed = true;
+    lights.prepareZoom(-1);
     lights.syncAll();
     window.contents.emit("dom-ready");
     await settle();
@@ -132,13 +222,9 @@ describe("MacLights", () => {
     expect(window.sheets.size).toBe(0);
   });
 
-  // A reload drops the injected sheet with the old document; the new one gets its own.
   it("styles a page that loads again, without removing a sheet the old document took with it", async () => {
-    const { window } = setup();
-    window.contents.emit("dom-ready");
-    await settle();
-    window.sheets.clear();
-    window.contents.emit("dom-ready");
+    const { window } = await setup();
+    window.reload();
     await settle();
     expect(window.room()).toBe("52px");
     expect(window.removed).toEqual([]);
@@ -147,22 +233,21 @@ describe("MacLights", () => {
   // Electron skips redrawing the lights in full screen, where they belong to
   // the system's revealed title bar; a zoom or a reload there waits.
   it("leaves the lights alone in full screen, and places them on leaving it", async () => {
-    const { lights, window } = setup();
+    const { lights, window } = await setup();
     window.fullScreen = true;
-    window.zoom = -1;
-    lights.syncAll();
-    window.contents.emit("dom-ready");
+    await zoomTo(lights, window, -1);
+    window.reload();
     await settle();
-    expect(window.positions).toEqual([]);
+    expect(window.positions).toEqual([{ x: 15, y: 14 }]);
     expect(window.room()).toBe("65.6px");
     window.fullScreen = false;
     window.emit("leave-full-screen");
     await settle();
-    expect(window.positions).toEqual([{ x: 15, y: 10 }]);
+    expect(window.positions.at(-1)).toEqual({ x: 15, y: 10 });
   });
 
-  it("reports full screen for the windows it keeps", () => {
-    const { window, sent } = setup();
+  it("reports full screen for the windows it keeps", async () => {
+    const { window, sent } = await setup();
     window.emit("enter-full-screen");
     expect(sent).toEqual([FULL_SCREEN_EVENTS.enter]);
   });

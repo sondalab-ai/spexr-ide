@@ -67,12 +67,18 @@ export class SpexrElectronMainApplication extends ElectronMainApplication {
    * Theia's application events, plus, on macOS, the lights following the
    * zoom. Every zoom change goes through Theia's SetZoomLevel channel
    * (window.zoomLevel → setZoomLevel → webContents.setZoomLevel in the main
-   * process). This listener is added before Theia's, so it waits a turn for
-   * Theia's to have applied the level.
+   * process). This listener is added before Theia's, so it hears the level
+   * before Theia applies it: a room that grows goes to the pages at once
+   * (MacLights.prepareZoom), and the lights move, with the exact room, a
+   * turn later, once Theia's synchronous handler has applied the level.
    */
   protected override hookApplicationEvents(): void {
     super.hookApplicationEvents();
-    if (process.platform === "darwin") ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, () => setTimeout(() => this.macLights.syncAll()));
+    if (process.platform !== "darwin") return;
+    ipcMain.on(CHANNEL_SET_ZOOM_LEVEL, (_event, level: unknown) => {
+      if (typeof level === "number") this.macLights.prepareZoom(level);
+      setTimeout(() => this.macLights.syncAll());
+    });
   }
 
   /**

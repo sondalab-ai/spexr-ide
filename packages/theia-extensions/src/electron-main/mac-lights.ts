@@ -1,4 +1,4 @@
-import { FULL_SCREEN_EVENTS, lightsCss, trafficLightPosition, zoomFactor, type LightsGeometry } from "../common/mac-title-bar.js";
+import { FULL_SCREEN_EVENTS, lightsCss, lightsRoom, trafficLightPosition, zoomFactor, type LightsGeometry } from "../common/mac-title-bar.js";
 
 /** The part of a BrowserWindow's webContents that {@link MacLights} uses. */
 export interface LightsWebContents {
@@ -42,21 +42,41 @@ export function reportFullScreen(window: LightsWindow, send: (event: string) => 
  * they move when the window leaves it.
  */
 export class MacLights {
-  private readonly windows = new Map<LightsWindow, { key: string | undefined; queue: Promise<void> }>();
+  private readonly windows = new Map<LightsWindow, LightsState>();
 
   constructor(private readonly geometry: LightsGeometry) {}
 
   /** Starts keeping `window`'s lights, and reports its full-screen transitions through `send`. */
   add(window: LightsWindow, send: (event: string) => void): void {
-    this.windows.set(window, { key: undefined, queue: Promise.resolve() });
+    const state: LightsState = { generation: 0, key: undefined, css: undefined, queue: Promise.resolve() };
+    this.windows.set(window, state);
     window.on("closed", () => this.windows.delete(window));
     window.on("leave-full-screen", () => this.sync(window));
     window.webContents.on("dom-ready", () => {
-      const state = this.windows.get(window);
-      if (state) state.key = undefined;
+      // A new document: the old one's sheet left with it, and any sheet still
+      // in flight for it is dropped when it lands (restyle).
+      state.generation++;
+      state.key = undefined;
+      state.css = undefined;
       this.sync(window);
     });
     reportFullScreen(window, send);
+  }
+
+  /**
+   * Before Theia applies a zoom level, which spexr hears first: where the
+   * room grows (zooming out), every page gets the new room now, so no frame
+   * paints the new zoom with the old room and the mark under the lights. A
+   * room that shrinks waits for {@link sync}, after the zoom: shrunk early,
+   * it would put the mark on the lights at the old zoom.
+   */
+  prepareZoom(level: number): void {
+    const next = zoomFactor(level);
+    for (const [window, state] of this.windows) {
+      if (window.isDestroyed()) continue;
+      const now = zoomFactor(window.webContents.getZoomLevel());
+      if (lightsRoom(this.geometry, next) > lightsRoom(this.geometry, now)) this.restyle(window, state, lightsCss(this.geometry, next));
+    }
   }
 
   /** After a zoom change: every window follows. */
@@ -70,15 +90,38 @@ export class MacLights {
     if (!state || window.isDestroyed()) return;
     const factor = zoomFactor(window.webContents.getZoomLevel());
     if (!window.isFullScreen()) window.setWindowButtonPosition(trafficLightPosition(this.geometry, factor));
-    const css = lightsCss(this.geometry, factor);
-    state.queue = state.queue.then(() => this.restyle(window, state, css)).catch(() => undefined);
+    this.restyle(window, state, lightsCss(this.geometry, factor));
   }
 
-  /** The new stylesheet first, then the old one out, so the room never drops to the fallback in between. */
-  private async restyle(window: LightsWindow, state: { key: string | undefined }, css: string): Promise<void> {
-    if (window.isDestroyed()) return;
-    const previous = state.key;
-    state.key = await window.webContents.insertCSS(css);
-    if (previous !== undefined && !window.isDestroyed()) await window.webContents.removeInsertedCSS(previous);
+  /**
+   * Gives the page `css`: inserted at once (so a call made before the zoom
+   * lands before it), then, in call order, the old sheet removed once the
+   * new one is in, so the room never drops to the fallback in between. A
+   * sheet that lands after its document was replaced is dropped: it left
+   * with that document, and its key must never reach the new one.
+   */
+  private restyle(window: LightsWindow, state: LightsState, css: string): void {
+    if (window.isDestroyed() || state.css === css) return;
+    state.css = css;
+    const generation = state.generation;
+    const inserted = window.webContents.insertCSS(css);
+    inserted.catch(() => undefined);
+    state.queue = state.queue
+      .then(async () => {
+        const key = await inserted;
+        if (generation !== state.generation || window.isDestroyed()) return;
+        const previous = state.key;
+        state.key = key;
+        if (previous !== undefined) await window.webContents.removeInsertedCSS(previous);
+      })
+      .catch(() => undefined);
   }
+}
+
+/** One window's injected stylesheet: its key, the css asked for last, and the document it belongs to. */
+interface LightsState {
+  generation: number;
+  key: string | undefined;
+  css: string | undefined;
+  queue: Promise<void>;
 }
