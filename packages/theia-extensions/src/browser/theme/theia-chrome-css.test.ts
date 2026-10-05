@@ -41,8 +41,9 @@ describe("Theia's accent as text", () => {
   });
 
   it("steps a hovered link one shade further from its ground", () => {
-    expect(value("light", "textLink-activeForeground")).toBe("oklch(from var(--slc-accent-text) calc(l - var(--slc-shade-step, 0.075)) c h)");
-    expect(value("dark", "textLink-activeForeground")).toBe("oklch(from var(--slc-accent-text) calc(l + var(--slc-shade-step, 0.075)) c h)");
+    const step = "var(--slc-shade-step, 0.075)";
+    expect(value("light", "textLink-activeForeground")).toBe(`oklch(from var(--slc-accent-text) calc(l - ${step}) calc(c * max(0, 1 - ${step} / max(l, 0.001))) h)`);
+    expect(value("dark", "textLink-activeForeground")).toBe(`oklch(from var(--slc-accent-text) calc(l + ${step}) calc(c * pow(max(0, 1 - ${step} / max(1 - l, 0.001)), 1.5)) h)`);
   });
 });
 

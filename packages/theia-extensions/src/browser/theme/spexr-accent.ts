@@ -47,7 +47,7 @@ function toOklch(hex: string): [number, number, number] {
   return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, Math.hypot(A, B), (Math.atan2(B, A) * 180) / Math.PI];
 }
 
-/** OKLCH -> `#rrggbb`, each channel clipped to sRGB as Chrome paints a relative colour. */
+/** OKLCH -> `#rrggbb`, each channel clamped to sRGB (the steps below stay inside it). */
 function fromOklch([L, C, h]: [number, number, number]): string {
   const A = C * Math.cos((h * Math.PI) / 180);
   const B = C * Math.sin((h * Math.PI) / 180);
@@ -80,13 +80,22 @@ function luminance(hex: string): number {
  * the kit's primaries do.
  */
 export function fillStep(hex: string, state: keyof typeof KIT_FILL_STEP): string {
-  const step = KIT_FILL_STEP[state];
   const [L, C, h] = toOklch(hex);
   const pressedDark = (luminance(hex) * ((L - 0.1) / L) ** 3 + 0.05) / (KIT_LABEL.poleDark ** 3 + 0.05);
-  const lighter = L > KIT_LABEL.poleL && pressedDark < KIT_LABEL.hold;
+  return fromOklch(towardPole([L, C, h], KIT_FILL_STEP[state], L > KIT_LABEL.poleL && pressedDark < KIT_LABEL.hold));
+}
+
+/**
+ * One step of oklch lightness toward black or white, along the line to that
+ * pole, as the kit's step macros move it: toward black the chroma shrinks in
+ * proportion to the lightness; toward white it shrinks with the share of
+ * the way to white that is left, to the power 1.5. Either way the colour
+ * stays in sRGB.
+ */
+function towardPole([L, C, h]: [number, number, number], step: number, lighter: boolean): [number, number, number] {
   return lighter
-    ? fromOklch([Math.min(1, L + step), C * Math.max(0, 1 - step / Math.max(1 - L, 0.001)) ** 1.5, h])
-    : fromOklch([Math.max(0, L - step), C * Math.max(0, 1 - step / Math.max(L, 0.001)), h]);
+    ? [Math.min(1, L + step), C * Math.max(0, 1 - step / Math.max(1 - L, 0.001)) ** 1.5, h]
+    : [Math.max(0, L - step), C * Math.max(0, 1 - step / Math.max(L, 0.001)), h];
 }
 
 /**
@@ -100,11 +109,13 @@ export function accentText(theme: ThemeKind): string {
 
 /**
  * A hovered link: the accent as text one kit shade step further from its
- * ground (deeper on light, lighter on dark), so the change is a step of
- * lightness, not hue, and the contrast only rises.
+ * ground (deeper on light, lighter on dark), moved along the line to that
+ * pole as the kit moves a fill, so it stays in sRGB and the change is a step
+ * of lightness, not hue; the contrast only rises. The CSS layer writes the
+ * same step as a relative colour (theia-chrome-css.ts): light #2b2da2, dark
+ * #a9b3f7.
  */
 export function accentTextActive(theme: ThemeKind): string {
   const [L, C, h] = toOklch(ACCENT[theme]);
-  const text = Math.min(L, KIT_ACCENT_TEXT_LMAX[theme]);
-  return fromOklch([text + (theme === "light" ? -KIT_SHADE_STEP : KIT_SHADE_STEP), C, h]);
+  return fromOklch(towardPole([Math.min(L, KIT_ACCENT_TEXT_LMAX[theme]), C, h], KIT_SHADE_STEP, theme === "dark"));
 }

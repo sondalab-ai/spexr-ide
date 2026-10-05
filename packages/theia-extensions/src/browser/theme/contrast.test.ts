@@ -110,6 +110,35 @@ describe("the kit's label and step numbers", () => {
     expect(KIT_LABEL).toEqual({ poleL: POLE_L, poleDark: POLE_DARK, hold: HOLD });
     expect(KIT_FILL_STEP).toEqual(STEP);
   });
+
+  it("leave the accent as text uncapped on the dark theme", () => {
+    expect(KIT_ACCENT_TEXT_LMAX.dark).toBe(1);
+    expect(kitFile("themes/dark.css")).not.toMatch(/--sl-accent-text-lmax/);
+    expect(kitFile("components.css")).toMatch(/min\(l, var\(--sl-accent-text-lmax, 1\)\)/);
+  });
+});
+
+// The outputs the kit's own CSS gives, evaluated in Chrome against ui-kit
+// 0.32.1 (tokens.css's step macros on the fills; the CSS layer's link hover):
+// literals, so a change in the kit's rule or in its exponents, floors or
+// ramps shows up here, not only in a second copy of the formula.
+describe("the derived colours, pinned to the kit's own output", () => {
+  it("steps spexr's white-label fill toward black", () => {
+    expect(fillStep(ACCENT_FILL.light, "hover")).toBe("#424ccd");
+    expect(fillStep(ACCENT_FILL.light, "press")).toBe("#3841b1");
+  });
+
+  it("steps a dark-label fill toward white", () => {
+    expect(fillStep("#8b96ff", "hover")).toBe("#9faafa");
+    expect(fillStep("#8b96ff", "press")).toBe("#b3bdf6");
+  });
+
+  it("gives the accent as text and a hovered link the CSS layer's colours", () => {
+    expect(registryAccentText("light")).toBe("#393ccd");
+    expect(registryAccentText("dark")).toBe("#8b96ff");
+    expect(accentTextActive("light")).toBe("#2b2da2");
+    expect(accentTextActive("dark")).toBe("#a9b3f7");
+  });
 });
 
 // The colour registry cannot hold a var(), so spexr-accent.ts derives the

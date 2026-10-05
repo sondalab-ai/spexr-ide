@@ -30,8 +30,13 @@ body {
   // reads at 4.5:1 (#5b6cff itself is 3.37:1 on the light canvas).
   const accentText    = "var(--slc-accent-text)";
   // A hovered link: one kit shade step further from its ground (deeper on
-  // paper, lighter on ink), so hovering changes lightness and contrast rises.
-  const accentTextActive = `oklch(from var(--slc-accent-text) calc(l ${isDark ? "+" : "-"} var(--slc-shade-step, 0.075)) c h)`;
+  // paper, lighter on ink), along the line to that pole as the kit steps a
+  // fill, so it stays in sRGB, hovering changes lightness and contrast rises.
+  // spexr-accent.ts accentTextActive() gives the registry the same colour.
+  const step = "var(--slc-shade-step, 0.075)";
+  const accentTextActive = isDark
+    ? `oklch(from var(--slc-accent-text) calc(l + ${step}) calc(c * pow(max(0, 1 - ${step} / max(1 - l, 0.001)), 1.5)) h)`
+    : `oklch(from var(--slc-accent-text) calc(l - ${step}) calc(c * max(0, 1 - ${step} / max(l, 0.001))) h)`;
   const onAccent      = "#ffffff";
   // A fill that carries the white label: the registered fill and its hover,
   // on both themes (the kit's --slc-accent-fill, spexr-overrides.css).

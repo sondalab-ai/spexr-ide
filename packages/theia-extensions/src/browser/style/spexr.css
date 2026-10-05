@@ -449,10 +449,21 @@ body {
    and which resolve to Theia's list selection (a white label on a light
    grey on light, 1.23:1). The rows are painted directly instead: the tile in the
    primary ink with the accent seam (the widget is where the keyboard is) and
-   a ring drawn inside. The code-action row's fill is !important in Monaco's
-   own CSS, so it is here too. The suggest row's content steps 3px in so the
-   seam stands clear of the completion icon. */
-:root:not([data-sl-theme="high-contrast"]) :is(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused, .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled)) {
+   a ring drawn inside. The suggest row outranks the list's own colours at
+   (0,7,0); the code-action row's fill is !important in Monaco's own CSS, so
+   only that one fill is here too, at (0,8,0). The suggest row's content steps
+   3px in so the seam stands clear of the completion icon. */
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
+  color: var(--slc-text);
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled) {
   color: var(--slc-text);
   background-color: var(--slc-tile) !important;
   background-image: linear-gradient(var(--slc-seam), var(--slc-seam));

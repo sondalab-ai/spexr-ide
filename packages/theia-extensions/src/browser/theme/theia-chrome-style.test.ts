@@ -57,10 +57,14 @@ describe("the palette's, a dropdown's and the SCM history's selection", () => {
 // variables (declared on .monaco-editor / .monaco-component), which resolved
 // to a white label on #e8e8e8 on light: their focused rows are painted here.
 describe("Monaco's lists", () => {
-  it("paint the focused suggestion and code action as a tile with the accent seam", () => {
-    const row = rule(":is(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused, .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled)) {");
+  it.each([
+    [".monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {", false],
+    [".action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled) {", true],
+  ])("paint %s as a tile with the accent seam", (selector, important) => {
+    const row = rule(selector as string);
     expect(row).toMatch(/color:\s*var\(--slc-text\);/);
-    expect(row).toMatch(/background-color:\s*var\(--slc-tile\) !important/);
+    // !important only where Monaco's own fill is (the code-action row).
+    expect(row).toMatch(important ? /background-color:\s*var\(--slc-tile\) !important;/ : /background-color:\s*var\(--slc-tile\);/);
     expect(row).toMatch(/background-image:\s*linear-gradient\(var\(--slc-seam\), var\(--slc-seam\)\)/);
     expect(row).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--slc-border\);/);
   });
