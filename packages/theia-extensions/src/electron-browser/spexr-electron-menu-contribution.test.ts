@@ -160,21 +160,8 @@ describe("spexr's room for macOS's traffic lights", () => {
     expect(ours.match(/this\.watchFullScreen\(\)/g)).toHaveLength(1);
   });
 
-  it("is a macOS matter only", () => {
-    expect(watch).toMatch(/^protected watchFullScreen\(\): void \{\s*if \(!isOSX\) return;/);
-  });
-
-  // A window restored in full screen, or one entering it while the page
-  // starts, is caught by the read or by the event that follows it.
-  it("subscribes to both transitions before reading the state once", () => {
-    const enter = watch.indexOf("onWindowEvent(FULL_SCREEN_EVENTS.enter as WindowEvent, () => show(true))");
-    const leave = watch.indexOf("onWindowEvent(FULL_SCREEN_EVENTS.leave as WindowEvent, () => show(false))");
-    const read = watch.indexOf("show(window.electronTheiaCore.isFullScreen());");
-    for (const at of [enter, leave, read]) expect(at).toBeGreaterThanOrEqual(0);
-    expect(read).toBeGreaterThan(Math.max(enter, leave));
-  });
-
-  it("hands the bar trafficLightInset's answer", () => {
-    expect(watch).toContain("this.titleBar.setTrafficLights(trafficLightInset(isOSX, fullScreen))");
+  // followFullScreen's own behaviour is tested in common/mac-title-bar.test.ts.
+  it("follows full screen on macOS through followFullScreen, into the bar's setTrafficLights", () => {
+    expect(watch).toContain("followFullScreen(isOSX, window.electronTheiaCore, (lights) => this.titleBar.setTrafficLights(lights));");
   });
 });

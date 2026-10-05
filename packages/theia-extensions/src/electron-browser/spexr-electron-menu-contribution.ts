@@ -4,10 +4,9 @@ import type { KeybindingRegistry } from "@theia/core/lib/browser/keybinding";
 import { CommandRegistry } from "@theia/core/lib/common/command";
 import { CommonCommands } from "@theia/core/lib/browser/common-commands";
 import { isOSX } from "@theia/core/lib/common/os";
-import type { WindowEvent } from "@theia/core/lib/electron-common/electron-api";
 import { ElectronMenuContribution } from "@theia/core/lib/electron-browser/menu/electron-menu-contribution";
 import { SpexrTitleBarWidget } from "../browser/titlebar/spexr-titlebar-widget.js";
-import { FULL_SCREEN_EVENTS, trafficLightInset } from "../common/mac-title-bar.js";
+import { followFullScreen } from "../common/mac-title-bar.js";
 import { OPEN_APPLICATION_MENU_COMMAND, OPEN_APPLICATION_MENU_KEYS } from "./application-menu-command.js";
 import { keyboardButton, WINDOW_CONTROL_LABELS } from "./window-controls.js";
 
@@ -51,19 +50,17 @@ export class SpexrElectronMenuContribution extends ElectronMenuContribution {
   }
 
   /**
-   * macOS: the bar's room for the traffic lights follows full screen. Theia
-   * has no full-screen event, and its handleFullScreen reads the state right
-   * after asking for a change, before macOS has made it, and never hears of
-   * the green button or the system menu. The main process sends Electron's
-   * own events instead, once each transition has finished. The state is read
-   * once after subscribing, for a window restored in full screen.
+   * macOS: the bar's room for the traffic lights follows full screen
+   * (followFullScreen). Theia has no full-screen event, and its
+   * handleFullScreen reads the state right after asking for a change, before
+   * macOS has made it, and never hears of the green button or the system
+   * menu. The main process sends Electron's own events instead, once each
+   * transition has finished. The state is also read once, defensively: Theia
+   * never reopens a window in full screen, but a reload, or a transition that
+   * ends while the page starts, would otherwise go unseen.
    */
   protected watchFullScreen(): void {
-    if (!isOSX) return;
-    const show = (fullScreen: boolean): void => this.titleBar.setTrafficLights(trafficLightInset(isOSX, fullScreen));
-    window.electronTheiaCore.onWindowEvent(FULL_SCREEN_EVENTS.enter as WindowEvent, () => show(true));
-    window.electronTheiaCore.onWindowEvent(FULL_SCREEN_EVENTS.leave as WindowEvent, () => show(false));
-    show(window.electronTheiaCore.isFullScreen());
+    followFullScreen(isOSX, window.electronTheiaCore, (lights) => this.titleBar.setTrafficLights(lights));
   }
 
   /** Never hides the top panel: it is spexr's title bar in either style. Theia calls this first, at start. */

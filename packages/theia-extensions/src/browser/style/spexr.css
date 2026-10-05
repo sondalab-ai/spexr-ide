@@ -1142,11 +1142,14 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      the keyboard, with the kit's ring drawn inside.
    - macOS's traffic lights start on the bar's own padding, centred on it
      (the main process places them: common/mac-title-bar.ts). An empty span
-     as wide as the three lights (--spexr-traffic-lights, 3 × 12px on a 20px
-     pitch) and as tall as one takes their room at the start of the left
-     track, so the kit's gap puts the mark after them and the command field
-     stays centred on the window. The widget drops it in full screen, where
-     macOS hides the lights.
+     takes their room at the start of the left track, so the kit's gap puts
+     the mark after them and the command field stays centred on the window.
+     Its width, --spexr-traffic-lights, is the main process's: the lights
+     stay put in points while Theia's zoom scales the page, so the room is
+     their right edge over the zoom factor (52px at 100%, the fallback until
+     the main process sets it). Nothing here declares the property, which
+     would shadow the main process's. The widget drops the span in full
+     screen, where macOS hides the lights.
    - The bell replaces Theia's notification item in the status bar. */
 :root {
   --theia-private-menubar-height: 44px;
@@ -1154,7 +1157,6 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 #theia-top-panel {
   --spexr-window-control: 48px;
-  --spexr-traffic-lights: 52px;
   color: var(--slc-text);
   background: var(--slc-canvas);
   border-bottom: 0;
@@ -1180,7 +1182,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 .spexr-titlebar-host .spexr-titlebar__lights {
   flex: none;
-  width: var(--spexr-traffic-lights);
+  width: var(--spexr-traffic-lights, 52px);
   height: 12px;
 }
 

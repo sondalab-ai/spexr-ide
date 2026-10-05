@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { LIGHT_CIRCLE, TITLE_BAR_HEIGHT, TITLE_BAR_PADDING, TRAFFIC_LIGHTS_WIDTH } from "../../common/mac-title-bar.js";
+import { LIGHTS_BEFORE_TAHOE, LIGHTS_ROOM_PROPERTY, LIGHTS_TAHOE, lightsRoom, TITLE_BAR_HEIGHT, TITLE_BAR_PADDING } from "../../common/mac-title-bar.js";
 
 const resolve = createRequire(import.meta.url).resolve;
 const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
@@ -204,14 +204,31 @@ describe("the room for macOS's traffic lights", () => {
   const kitBar = workbench.slice(workbench.indexOf("\n.sl-titlebar {"), workbench.indexOf("}", workbench.indexOf("\n.sl-titlebar {")));
   const kitTracks = workbench.slice(workbench.indexOf("\n.sl-titlebar__l,"), workbench.indexOf("}", workbench.indexOf("\n.sl-titlebar__l,")));
 
-  // The main process places the lights from common/mac-title-bar.ts; the
-  // span has to cover the same pixels, or the mark lands on the lights.
-  it("is a span as wide as the three lights and as tall as one", () => {
-    expect(rule("#theia-top-panel")).toContain(`--spexr-traffic-lights: ${TRAFFIC_LIGHTS_WIDTH}px;`);
+  // The main process places the lights from common/mac-title-bar.ts and
+  // sets the room for the zoom; the span has to cover the same pixels, or
+  // the mark lands on the lights.
+  it("is a span as wide as the main process says, the three lights' width at 100% until it does", () => {
     const lights = rule(".spexr-titlebar-host .spexr-titlebar__lights");
-    expect(lights).toMatch(/width:\s*var\(--spexr-traffic-lights\)/);
-    expect(lights).toContain(`height: ${LIGHT_CIRCLE.size}px;`);
+    expect(LIGHTS_ROOM_PROPERTY).toBe("--spexr-traffic-lights");
+    for (const geometry of [LIGHTS_BEFORE_TAHOE, LIGHTS_TAHOE]) {
+      expect(lights).toContain(`width: var(${LIGHTS_ROOM_PROPERTY}, ${lightsRoom(geometry, 1)}px);`);
+    }
+    expect(lights).toContain(`height: ${LIGHTS_BEFORE_TAHOE.circle.size}px;`);
+    expect(LIGHTS_TAHOE.circle.size).toBe(LIGHTS_BEFORE_TAHOE.circle.size);
     expect(lights).toMatch(/flex:\s*none/);
+  });
+
+  // A declaration on any element between :root and the span would win over
+  // the value the main process sets on :root.
+  it("never declares the room's property itself", () => {
+    expect(css).not.toMatch(new RegExp(`${LIGHTS_ROOM_PROPERTY}\\s*:`));
+  });
+
+  // The span is the lights' place in the drag region: no-drag there would
+  // make the strip beside the lights unmovable.
+  it("stays in the drag region", () => {
+    expect(rule(".spexr-titlebar-host .spexr-titlebar__lights")).not.toMatch(/app-region/);
+    expect(section).not.toMatch(/spexr-titlebar__lights[^{]*\{[^}]*app-region:\s*no-drag/);
   });
 
   it("starts where the lights start: the kit's bar padding, on a bar of the lights' height", () => {
@@ -224,10 +241,19 @@ describe("the room for macOS's traffic lights", () => {
 
   // Room on the bar's own padding, as the kit's note suggests, would move
   // the centre track; inside the left track it leaves the field centred.
-  it("sits inside the left track, never on the bar's padding", () => {
+  it("sits first in the left track, before the mark, never on the bar's padding", () => {
     expect(section).not.toMatch(/\.sl-titlebar\s*\{[^}]*padding/);
-    const left = widget.slice(widget.indexOf('<div className="sl-titlebar__l"'), widget.indexOf("{this.menuButton &&"));
+    const start = widget.indexOf('<div className="sl-titlebar__l"');
+    const end = widget.indexOf("{this.menuButton !== false && (", start);
+    expect(start, "the left track").toBeGreaterThanOrEqual(0);
+    expect(end, "the menu button after it").toBeGreaterThan(start);
+    const left = widget.slice(start, end);
     expect(left).toContain('<span className="spexr-titlebar__lights" aria-hidden="true" data-parity="title.dots" />');
+    const span = widget.indexOf('className="spexr-titlebar__lights"');
+    const mark = widget.indexOf('className="sl-titlebar__mark"');
+    const right = widget.indexOf('<div className="sl-titlebar__r"');
+    expect(mark, "the mark").toBeGreaterThan(span);
+    expect(right, "the right track").toBeGreaterThan(mark);
   });
 
   it("is on from the first paint on macOS, and the bar answers the full-screen watch", () => {
