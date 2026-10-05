@@ -26,16 +26,12 @@ export function shortcutCaps(chords: readonly string[]): VirtualElement[] {
 }
 
 /**
- * Draws a browser menu's shortcut as one keycap per key, on the renderer it
- * is given. The frontend module gives it Lumino's shared default renderer,
- * which every Theia browser menu is built on (the menu bar's menus with the
- * custom title bar, and context menus, on Windows and Linux; macOS menus are
- * native), as Theia offers no hook of its own. A menu with a renderer of its
- * own keeps its text.
+ * A Lumino menu item's shortcut cell content as keycaps (Menu.Renderer's
+ * formatShortcut): its key binding's chords, or nothing for an item without
+ * one, as Lumino's own renderer gives. KeycapMenuRenderer
+ * (menu-keycaps-factory.ts) draws every browser menu with it.
  */
-export function installMenuKeycaps(renderer: Pick<Menu.Renderer, "formatShortcut">): void {
-  renderer.formatShortcut = (data) => {
-    const keys = data.item.keyBinding?.keys;
-    return keys && keys.length > 0 ? shortcutCaps(keys) : null;
-  };
+export function formatShortcutCaps(data: Pick<Menu.IRenderData, "item">): VirtualElement[] | null {
+  const keys = data.item.keyBinding?.keys;
+  return keys && keys.length > 0 ? shortcutCaps(keys) : null;
 }

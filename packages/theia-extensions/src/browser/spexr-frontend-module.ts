@@ -51,8 +51,8 @@ import { SpexrShellLayoutContribution } from "./shell/spexr-shell-layout-contrib
 import { SpexrPanelTitleContribution } from "./shell/panel-title-contribution.js";
 import { SpexrRevealOnRestore } from "./shell/reveal-on-restore.js";
 import { SpexrApplicationShell } from "./shell/island-shell.js";
-import { Menu } from "@theia/core/shared/@lumino/widgets";
-import { installMenuKeycaps } from "./shell/menu-keycaps.js";
+import { ElectronMainMenuFactory } from "@theia/core/lib/electron-browser/menu/electron-main-menu-factory";
+import { SpexrElectronMainMenuFactory } from "./shell/menu-keycaps-factory.js";
 import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
@@ -131,7 +131,7 @@ import { SpexrDarkfactorySidebarVisibilityContribution } from "./darkfactory/dar
  * Frontend contributions for SPEXR. Theia handles DI via Inversify and
  * discovers contributions through these bindings.
  */
-export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
+export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bindViewContribution(bind, SpexrSpecViewContribution);
   bind(SpexrSpecWidget).toSelf();
   bind(WidgetFactory)
@@ -205,9 +205,12 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
 
-  // Lumen keycaps: a browser menu's shortcut is one kit keycap per key (see
-  // shell/menu-keycaps.ts), before the shell builds its first menu.
-  installMenuKeycaps(Menu.defaultRenderer);
+  // Lumen keycaps: a browser menu's shortcut is one kit keycap per key
+  // (shell/menu-keycaps-factory.ts). Electron only, where Theia binds the
+  // factory; BrowserMainMenuFactory resolves to it.
+  if (isBound(ElectronMainMenuFactory)) {
+    rebind(ElectronMainMenuFactory).to(SpexrElectronMainMenuFactory).inSingletonScope();
+  }
 
   bind(SpexrShellLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrShellLayoutContribution);

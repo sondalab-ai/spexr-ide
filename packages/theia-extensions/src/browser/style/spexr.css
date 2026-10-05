@@ -567,8 +567,9 @@ html :focus:where(:not(:focus-visible)):not(iframe) {
    Its rows are flex rows here, the label taking the free space, so each
    shortcut is a box of its own width and the shortcuts still line up at the
    right; a separator row keeps its own 9px. A shortcut is one keycap per
-   key (shell/menu-keycaps.ts draws a kit .sl-kbd per key), 18px inside the
-   24px row, 3px apart, a chord 6px from the next. The "+" and ", " between
+   key (shell/menu-keycaps-factory.ts gives every browser menu a renderer
+   that draws a kit .sl-kbd per key), 18px inside the 24px row, 3px apart, a
+   chord 6px from the next. The "+" and ", " between
    them stay in the item's accessible name as text, out of sight, so it still
    reads "Ctrl+Shift+P". A shortcut that arrives as text (a menu with a
    renderer of its own) keeps one 18px cap behind the text. */
