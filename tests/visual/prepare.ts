@@ -222,8 +222,10 @@ function writeClaudeStub(bin: string): void {
  * Theia's user settings for the run. Every key is about determinism or about
  * reaching the scene, not about how spexr looks:
  * - the theme; no `window.titleBarStyle`, so each OS starts in the frame a
- *   new user gets (custom on Linux, native on macOS) and is never asked to
- *   restart: a seeded value that differs from the startup frame is one;
+ *   new user gets (custom on Linux; on macOS Theia's native frame, with the
+ *   system's title bar hidden and its traffic lights in spexr's bar) and is
+ *   never asked to restart: a seeded value that differs from the startup
+ *   frame is one;
  * - no trust prompt, no fetch, no local model, no launch-profile scan;
  * - a solid caret and no occurrence highlights, so two captures of the same
  *   scene are the same picture: the highlights arrive from the language

@@ -2,7 +2,7 @@ import path from "path";
 import type { Readiness, ThemeState } from "./app";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
-import type { LogProbes, MainProbes, PageProbes } from "./probes";
+import type { FullScreenProbe, LogProbes, MainProbes, PageProbes } from "./probes";
 import type { SceneResult } from "./scenes";
 
 /** Artifacts: one folder per OS and theme, uploaded as `screenshots-<os>-<theme>-<attempt>`. */
@@ -49,6 +49,8 @@ export interface CaptureMeta {
   main?: MainProbes;
   native?: NativeShot[];
   treeFocused?: boolean;
+  /** macOS only: the bar through a full-screen round trip (S5b-2). */
+  fullScreen?: FullScreenProbe;
   error?: string;
   close?: "closed" | "killed";
   log?: LogProbes;

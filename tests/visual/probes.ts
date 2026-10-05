@@ -19,6 +19,8 @@ export interface PageProbes {
   readonly topPanelVisible: boolean;
   /** Theia's in-page window controls: present only with a custom (frameless) window. */
   readonly windowControls: boolean;
+  /** The bar's room for macOS's traffic lights (S5b-2): on macOS outside full screen only. */
+  readonly trafficLights: boolean;
   /**
    * Where each part tagged `data-parity` is, in CSS px, keyed like the regions
    * of reference/demo-regions.json (`title.cmd`, …), plus Theia's window
@@ -34,6 +36,28 @@ export interface MainProbes {
   readonly platform: string;
   readonly contentSize: string;
   readonly mediaSourceId: string;
+  /** The window's outer bounds, `x,y wxh`: on macOS with the title bar hidden, the same size as the content. */
+  readonly bounds: string;
+  /** macOS: the traffic lights' position the window was created with (`trafficLightPosition`); null elsewhere. */
+  readonly windowButtonPosition: { x: number; y: number } | null;
+}
+
+/** One full-screen transition, driven from the main process as the green button would. */
+export interface FullScreenStep {
+  /** Whether the window emitted the transition's event before the timeout. */
+  readonly event: boolean;
+  /** From that event until the bar's room for the lights had gone (entering) or come back (leaving); null if it never did. */
+  readonly answeredMs: number | null;
+  /** Whether the bar has the lights' room once the step is over. */
+  readonly trafficLights: boolean;
+  /** The mark's x once the step is over. */
+  readonly markX: number | null;
+}
+
+export interface FullScreenProbe {
+  enter?: FullScreenStep;
+  leave?: FullScreenStep;
+  error?: string;
 }
 
 export interface LogProbes {
@@ -112,6 +136,7 @@ export async function probePage(page: Page): Promise<PageProbes> {
       monacoCharWidth,
       topPanelVisible: !!top && !top.classList.contains("lm-mod-hidden") && top.getBoundingClientRect().height > 0,
       windowControls: !!document.getElementById("window-controls"),
+      trafficLights: !!document.querySelector('[data-parity="title.dots"]'),
       parity,
     };
   });
@@ -121,6 +146,7 @@ export async function probeMain(app: ElectronApplication): Promise<MainProbes> {
   return app.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows()[0];
     const [w, h] = win ? win.getContentSize() : [0, 0];
+    const b = win?.getBounds();
     return {
       electron: process.versions.electron ?? "",
       chromium: process.versions.chrome ?? "",
@@ -128,8 +154,61 @@ export async function probeMain(app: ElectronApplication): Promise<MainProbes> {
       platform: `${process.platform}-${process.arch}`,
       contentSize: `${w}x${h}`,
       mediaSourceId: win ? win.getMediaSourceId() : "",
+      bounds: b ? `${b.x},${b.y} ${b.width}x${b.height}` : "",
+      windowButtonPosition: win && process.platform === "darwin" ? (win.getWindowButtonPosition() ?? null) : null,
     };
   });
+}
+
+/**
+ * macOS only, the run's last step: full screen on and off from the main
+ * process, which takes the same route as the green button and the system
+ * menu, so the bar has to follow Electron's events, not Theia's command.
+ * Best-effort: a runner that cannot enter full screen records why and the
+ * capture goes on. `shot` takes the page's bar while in full screen.
+ */
+export async function probeFullScreen(app: ElectronApplication, page: Page, shot?: string): Promise<FullScreenProbe> {
+  const probe: FullScreenProbe = {};
+  try {
+    probe.enter = await fullScreenStep(app, page, true);
+    if (shot) await page.screenshot({ path: shot });
+    probe.leave = await fullScreenStep(app, page, false);
+  } catch (err) {
+    probe.error = String(err instanceof Error ? err.message : err);
+  }
+  return probe;
+}
+
+async function fullScreenStep(app: ElectronApplication, page: Page, on: boolean): Promise<FullScreenStep> {
+  const event = await app.evaluate(
+    ({ BrowserWindow }, on) =>
+      new Promise<boolean>((resolve) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (!win) return resolve(false);
+        const timer = setTimeout(() => resolve(false), 20_000);
+        const done = (): void => {
+          clearTimeout(timer);
+          resolve(true);
+        };
+        if (on) win.once("enter-full-screen", done);
+        else win.once("leave-full-screen", done);
+        win.setFullScreen(on);
+      }),
+    on,
+  );
+  const since = Date.now();
+  const answered = await page
+    .waitForFunction((on) => !document.querySelector('[data-parity="title.dots"]') === on, on, { timeout: 10_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  const answeredMs = answered ? Date.now() - since : null;
+  const after = await page.evaluate(() => ({
+    trafficLights: !!document.querySelector('[data-parity="title.dots"]'),
+    markX: document.querySelector('[data-parity="title.mark"]')?.getBoundingClientRect().x ?? null,
+  }));
+  return { event, answeredMs, ...after };
 }
 
 export function probeLog(logFile: string, configDir: string): LogProbes {

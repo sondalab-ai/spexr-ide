@@ -85,8 +85,21 @@ function renderSummary(runs: Run[]): string {
   md += row("devicePixelRatio", (m) => m.page?.devicePixelRatio);
   md += row("viewport / content size", (m) => `${m.page?.innerSize} / ${m.main?.contentSize}`);
   md += row("titleBarStyle", (m) =>
-    m.page ? `top panel ${m.page.topPanelVisible ? "shown" : "hidden"}, window controls ${m.page.windowControls ? "in page" : "native"}` : "",
+    m.page
+      ? `top panel ${m.page.topPanelVisible ? "shown" : "hidden"}, window controls ${m.page.windowControls ? "in page" : "native"}, traffic lights' room ${m.page.trafficLights ? "kept" : "none"}`
+      : "",
   );
+  md += row("traffic lights (mac)", (m) => {
+    const p = m.main?.windowButtonPosition;
+    return p ? `at ${p.x},${p.y}; window ${m.main?.bounds}` : "";
+  });
+  md += row("full screen (mac)", (m) => {
+    const f = m.fullScreen;
+    if (!f) return "";
+    const step = (name: string, s?: { event: boolean; answeredMs: number | null; trafficLights: boolean; markX: number | null }): string =>
+      s ? `${name}: event ${s.event ? "✓" : "✗"}, bar ${s.answeredMs === null ? "never answered" : `answered in ${s.answeredMs} ms`}, room ${s.trafficLights ? "kept" : "dropped"}, mark x ${s.markX}` : "";
+    return [step("enter", f.enter), step("leave", f.leave), f.error ? `error ${f.error}` : ""].filter(Boolean).join("; ");
+  });
   md += row("document.hasFocus", (m) => m.page?.hasFocus);
   md += row("tree focused (focus-tree)", (m) => m.treeFocused);
   md += row("TypeScript symbols (base)", (m) => {

@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { probeLog, probeMain, probePage } from "./probes";
+import { probeFullScreen, probeLog, probeMain, probePage } from "./probes";
 import {
   QUICK_OPEN,
   captureStable,
@@ -132,6 +132,13 @@ for (const theme of THEMES) {
       await page.waitForFunction(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"), undefined, { timeout: 15_000 }).catch(() => undefined);
       meta.treeFocused = await page.evaluate(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"));
       await shoot("focus-tree", treeAck);
+
+      // macOS: the bar's room for the traffic lights through full screen. Last,
+      // because it moves the window to a Space of its own and back.
+      if (OS === "mac") {
+        meta.fullScreen = await probeFullScreen(app, page, path.join(out, "fullscreen.png"));
+        writeMeta();
+      }
     } catch (err) {
       meta.error = String(err instanceof Error ? err.stack : err);
       if (launched) {
