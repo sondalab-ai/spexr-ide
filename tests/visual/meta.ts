@@ -43,7 +43,9 @@ export interface CaptureMeta {
   extensions?: ProbeAck;
   /** True when the bottom panel started collapsed and the scene opened it. */
   bottomPanelOpened?: boolean;
-  /** Where the bottom panel's top edge is, as spexr laid it out (S5c: never dragged); null when it is not showing. */
+  /** The bottom panel's top edge right after the capture showed it; the first-launch sizes may not have landed yet. */
+  bottomPanelAtOpen?: { top: number } | null;
+  /** The bottom panel's top edge once the base scene has settled, as spexr laid it out (S5c: never dragged); null when it is not showing. */
   bottomPanel?: { top: number } | null;
   baseFirstVisibleLine?: number | null;
   page?: PageProbes;
