@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import kitAccents from "@sondalab/ui-kit/agent/accent-registry.json";
 import { ACCENT_FILL, KIT_ACCENT_TEXT_LMAX, KIT_FILL_STEP, KIT_LABEL, KIT_SHADE_STEP, accentText as registryAccentText, accentTextActive, fillStep } from "./spexr-accent.js";
@@ -180,5 +181,32 @@ describe.each(["light", "dark"] as const)("the selection tile on %s", (theme) =>
     for (const ground of ["bg-canvas", "bg-surface", "bg-surface-raised"] as const) {
       expect(contrast(accentText[theme], hex(neutrals[theme][ground])), ground).toBeGreaterThanOrEqual(4.5);
     }
+  });
+});
+
+// The lit pane's glow falls inward (spexr.css, THE WORKBENCH): the seam at
+// --slc-glow x 40% over the lit rung, strongest along the island's edge, where
+// a row's text can sit. Text there must still read at 4.5:1. Dark had 0.02 to
+// spare at kit 0.33 (muted 4.52), so a stronger glow would break it unnoticed.
+describe.each(["light", "dark"] as const)("the lit pane's inward glow on %s", (theme) => {
+  const components = kitFile("components.css");
+  // The kit's strength: 0.5 on :root (dark), 0.35 on the light theme.
+  const glow = Number(
+    (theme === "light" ? /:root\[data-sl-theme="light"\]\s*\{[^}]*?--slc-glow:\s*([\d.]+)/ : /--slc-glow:\s*([\d.]+)/).exec(components)![1],
+  );
+  const raised = hex(neutrals[theme]["bg-surface-raised"]);
+  // color-mix(in srgb, seam N%, transparent) over the raised rung.
+  const alpha = glow * 0.4;
+  const ground = raised.map((c, i) => c * (1 - alpha) + accentText[theme][i]! * alpha) as Rgb;
+
+  it("is drawn at 40% of the kit's glow, from the seam", () => {
+    const spexr = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
+    expect(spexr).toContain("inset 0 0 24px -6px color-mix(in srgb, var(--slc-seam) calc(var(--slc-glow) * 40%), transparent)");
+    expect(glow).toBe(theme === "light" ? 0.35 : 0.5);
+  });
+
+  it("leaves secondary and muted text at 4.5:1 or more where it is strongest", () => {
+    expect(contrast(hex(neutrals[theme]["text-secondary"]), ground)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(hex(neutrals[theme]["text-muted"]), ground)).toBeGreaterThanOrEqual(4.5);
   });
 });
