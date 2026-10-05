@@ -142,10 +142,36 @@ describe("the editor tabs' Theia colours", () => {
 });
 
 // High contrast keeps Theia's own HC colours and the kit's yellow: the
-// injection there is the UI face only, no indigo fill, no light accent.
+// injection there is the faces only, no indigo fill, no light accent.
 describe("high contrast", () => {
-  it("gets the UI face and nothing else", () => {
+  it("gets the UI and code faces and nothing else", () => {
     const vars = [...theiaChromeCss("high-contrast").matchAll(/--theia-([\w-]+):/g)].map((m) => m[1]);
-    expect(vars).toEqual(["ui-font-family"]);
+    expect(vars).toEqual(["ui-font-family", "code-font-family"]);
+  });
+});
+
+// Theia's code variable was its Menlo/Consolas stack; it is the code face
+// (Geist Mono, through --sl-font-code), on every theme, set on body too.
+describe("Theia's code font", () => {
+  it.each(["light", "dark", "high-contrast"])("is the code face on %s", (theme) => {
+    expect(value(theme, "code-font-family")).toBe("var(--sl-font-code)");
+  });
+
+  it("is set where the UI face is, on :root and body", () => {
+    const block = /:root,\s*body\s*\{([^}]*)\}/.exec(theiaChromeCss("dark"))?.[1] ?? "";
+    expect(block).toContain("--theia-code-font-family: var(--sl-font-code) !important;");
+  });
+});
+
+// --sl-font-code was JetBrains Mono first (owner, 2026-10-02); it is the
+// kit's mono since the owner reversed that on 2026-10-05.
+describe("the code face role", () => {
+  it("is the kit's mono", () => {
+    const css = readFileSync(
+      fileURLToPath(new URL("../../../../ui-kit/src/themes/spexr-overrides.css", import.meta.url)),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(/--sl-font-code:\s*([^;]+);/.exec(css)?.[1]).toBe("var(--sl-font-mono)");
+    expect(css).not.toContain("JetBrains");
   });
 });

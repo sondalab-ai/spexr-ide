@@ -70,6 +70,7 @@ import {
 import { SpexrPreferenceContribution } from "./preferences/spexr-preferences.js";
 import { SpexrAiSurfaceCurationContribution } from "./shell/ai-surface-curation-contribution.js";
 import { SpexrTerminalStyleContribution } from "./terminal/spexr-terminal-style-contribution.js";
+import { SpexrFontReadinessContribution } from "./fonts/font-readiness-contribution.js";
 import { SpexrProjectTerminalService } from "./terminal/project-terminal-service.js";
 import { PreferenceConfigurations } from "@theia/core/lib/common/preferences/preference-configurations";
 import { SpexrPreferenceConfigurations } from "./preferences/spexr-preference-configurations.js";
@@ -236,6 +237,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
+  // Holds start-up until Geist Mono is in, so editors and terminals measure it.
+  bind(FrontendApplicationContribution).to(SpexrFontReadinessContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
   // Theia's theme data outranks those registry defaults for the light error
   // and the remote status grounds; it gives them up (status-theme-data.ts).
