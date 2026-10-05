@@ -189,6 +189,29 @@ async function pauseInfiniteAnimations(page: Page): Promise<number> {
 }
 
 /**
+ * Scroll each main-area tab strip so its current tab is the first one in
+ * view, as resolve.ts is in the demo. Theia only scrolls a strip as far as
+ * needed to reveal the current tab, so where it ends up depends on the order
+ * tabs opened and when their labels grew decorations; two runs of the same
+ * commit captured the strip at different offsets. Returns the strips moved.
+ */
+async function alignMainTabs(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    let moved = 0;
+    for (const container of document.querySelectorAll<HTMLElement>("#theia-main-content-panel .lm-TabBar-content-container")) {
+      const current = container.querySelector<HTMLElement>(".lm-TabBar-tab.lm-mod-current");
+      if (!current) continue;
+      const target = Math.min(current.offsetLeft, container.scrollWidth - container.clientWidth);
+      if (Math.abs(container.scrollLeft - target) >= 1) {
+        container.scrollLeft = target;
+        moved++;
+      }
+    }
+    return moved;
+  });
+}
+
+/**
  * Screenshot the window once two consecutive captures match outside the
  * volatile regions. Async work (semantic colours, decorations, a toast
  * sliding in) lands in its own time, and this waits for the pixels rather
@@ -202,11 +225,13 @@ export async function captureStable(
 ): Promise<{ attempts: number; stable: boolean; lastDiff: PixelDiff | null; pausedLoops: number }> {
   await waitForFiniteAnimations(page);
   let pausedLoops = await pauseInfiniteAnimations(page);
+  await alignMainTabs(page);
   let previous = await page.screenshot({ animations: "allow" });
   let lastDiff: PixelDiff | null = null;
   for (let attempt = 2; attempt <= maxAttempts; attempt++) {
     await page.waitForTimeout(400);
     pausedLoops += await pauseInfiniteAnimations(page);
+    await alignMainTabs(page);
     const next = await page.screenshot({ animations: "allow" });
     lastDiff = next.equals(previous) ? { changed: 0, box: null } : await diffShots(page, previous, next);
     if (lastDiff.changed === 0) {
