@@ -15,8 +15,9 @@ export interface PageProbes {
   readonly editorFont: string;
   /** Advance of one character in the editor, measured on a rendered line. */
   readonly monacoCharWidth: number | null;
-  /** Theia's in-page title bar: present only with a custom (frameless) window. */
+  /** The top panel, spexr's title bar: shown in either frame since S5b-1. */
   readonly topPanelVisible: boolean;
+  /** Theia's in-page window controls: present only with a custom (frameless) window. */
   readonly windowControls: boolean;
 }
 

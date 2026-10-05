@@ -86,7 +86,7 @@ const RUNTIME_PATHS = [".spexr/", "docs/"];
  * untracked), writes the fixture HOME with a `claude` stub first on PATH, and
  * seeds Theia's user settings. Anything left from an earlier run is removed.
  */
-export function prepareRun(root: string, theme: Theme, os: Os): PreparedRun {
+export function prepareRun(root: string, theme: Theme): PreparedRun {
   fs.rmSync(root, { recursive: true, force: true });
   const run: PreparedRun = {
     root,
@@ -103,7 +103,7 @@ export function prepareRun(root: string, theme: Theme, os: Os): PreparedRun {
   writeHome(run);
   writeClaudeStub(run.bin);
   buildRepository(run);
-  seedSettings(run.configDir, theme, os);
+  seedSettings(run.configDir, theme);
   return run;
 }
 
@@ -221,8 +221,9 @@ function writeClaudeStub(bin: string): void {
 /**
  * Theia's user settings for the run. Every key is about determinism or about
  * reaching the scene, not about how spexr looks:
- * - the theme, and on Linux the native frame Theia would pick anyway, so it
- *   never asks to restart;
+ * - the theme; no `window.titleBarStyle`, so each OS starts in the frame a
+ *   new user gets (custom on Linux, native on macOS) and is never asked to
+ *   restart: a seeded value that differs from the startup frame is one;
  * - no trust prompt, no fetch, no local model, no launch-profile scan;
  * - a solid caret and no occurrence highlights, so two captures of the same
  *   scene are the same picture: the highlights arrive from the language
@@ -232,7 +233,7 @@ function writeClaudeStub(bin: string): void {
  *   never shows, and a red squiggle there is not the demo's warning;
  * - the folders spexr writes into a workspace at runtime stay out of the tree.
  */
-function seedSettings(configDir: string, theme: Theme, os: Os): void {
+function seedSettings(configDir: string, theme: Theme): void {
   const settings: Record<string, unknown> = {
     "workbench.colorTheme": theme,
     "security.workspace.trust.enabled": false,
@@ -253,7 +254,6 @@ function seedSettings(configDir: string, theme: Theme, os: Os): void {
       docs: true,
     },
   };
-  if (os === "linux") settings["window.titleBarStyle"] = "native";
   fs.writeFileSync(path.join(configDir, "settings.json"), JSON.stringify(settings, null, 2) + "\n");
 }
 

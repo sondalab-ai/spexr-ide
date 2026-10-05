@@ -50,7 +50,7 @@ for (const theme of THEMES) {
       // wait. Without it, relaunch on SwiftShader from a fresh profile.
       const attempts: Array<{ swiftshader: boolean; webgl2: boolean }> = [];
       for (const swiftshader of [false, true]) {
-        const run = prepareRun(path.join(RUN_ROOT, `${theme}-${attempts.length}`), theme, OS);
+        const run = prepareRun(path.join(RUN_ROOT, `${theme}-${attempts.length}`), theme);
         const logFile = path.join(out, `backend${swiftshader ? "-swiftshader" : ""}.log`);
         launched = await launch({ run, swiftshader, logFile });
         const webgl2 = await hasWebgl2(launched.page);
