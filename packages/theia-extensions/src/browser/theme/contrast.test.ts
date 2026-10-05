@@ -78,6 +78,8 @@ function kitStep(fill: Rgb, step: number): Rgb {
 
 const toBytes = (c: Rgb): number[] => c.map((v) => Math.round(v * 255));
 const WHITE: Rgb = [1, 1, 1];
+/** The kit's --_sl-on, written again from tokens.css: white below the pole's lightness, the dark pole above. */
+const kitLabel = (fill: Rgb): Rgb => (oklch(fill)[0] < POLE_L ? WHITE : srgb([POLE_DARK, 0, 0]));
 const neutrals = kitNeutrals.products.spexr;
 const accent = kitAccents.products.spexr;
 /** --slc-accent-text: the accent with its lightness capped (light), the accent itself (dark). */
@@ -89,12 +91,26 @@ const accentText = {
   dark: hex(accent.dark),
 };
 
+/** A fill's label (the kit's, as spexr-accent.ts labelOn derives it) reads at 4.5:1 on it at rest, hovered and pressed. */
+function expectLabelled(fill: string): void {
+  const label = kitLabel(hex(fill));
+  expect(toBytes(hex(labelOn(fill))), `labelOn(${fill})`).toEqual(toBytes(label));
+  expect(contrast(label, hex(fill)), fill).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(label, hex(fillStep(fill, "hover"))), `${fill} hovered`).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(label, hex(fillStep(fill, "press"))), `${fill} pressed`).toBeGreaterThanOrEqual(4.5);
+}
+
 // The owner's rules: text at least 4.5:1, a state indicator at least 3:1.
 describe.each(["light", "dark"] as const)("spexr's registered fill on %s", (theme) => {
-  it("carries the white label at rest, hovered and pressed", () => {
-    expect(contrast(WHITE, hex(ACCENT_FILL[theme]))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(WHITE, hex(fillStep(ACCENT_FILL[theme], "hover")))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(WHITE, hex(fillStep(ACCENT_FILL[theme], "press")))).toBeGreaterThanOrEqual(4.5);
+  it("carries the kit's label at rest, hovered and pressed", () => {
+    expectLabelled(ACCENT_FILL[theme]);
+  });
+
+  // Since kit 0.35 the fill is one registry line per theme, and the owner may
+  // move the dark one to the accent itself; Theia's chrome then takes the
+  // dark pole for its label, as the kit's controls do.
+  it("would carry the kit's label on the accent itself, a fill the registry may name", () => {
+    expectLabelled(accent[theme]);
   });
 
   it("hovers and presses by the kit's step rule, as the kit's primaries do", () => {
@@ -220,8 +236,6 @@ describe.each(["light", "dark"] as const)("the status dock on %s", (theme) => {
   const canvas = hex(neutrals[theme]["bg-canvas"]);
   const surface = hex(neutrals[theme]["bg-surface"]);
   const muted = hex(neutrals[theme]["text-muted"]);
-  /** The kit's --_sl-on, written again from tokens.css: white below the pole's lightness, the dark pole above. */
-  const kitLabel = (fill: Rgb): Rgb => (oklch(fill)[0] < POLE_L ? WHITE : srgb([POLE_DARK, 0, 0]));
   const tone = (name: string): string => new RegExp(`--sl-status-${name}:\\s*(#[0-9a-f]{6})`).exec(kitFile(`themes/${theme}.css`))![1]!;
 
   it("registers the installed kit's danger and warning tones, with the kit's label", () => {

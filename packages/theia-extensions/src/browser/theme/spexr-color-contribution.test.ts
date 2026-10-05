@@ -25,14 +25,14 @@ function registered(): Map<string, Defaults> {
 
 describe("SpexrColorContribution", () => {
   const colors = registered();
-  const both = (value: string): Defaults => ({ dark: value, light: value });
 
-  it("registers the labelled fills on the registered fill and its hover by the kit's step rule", () => {
+  it("registers the labelled fills on the registered fill and its hover by the kit's step rule, with the kit's label", () => {
     expect(colors.get("button.background")).toEqual(ACCENT_FILL);
     expect(colors.get("button.hoverBackground")).toEqual({ dark: fillStep(ACCENT_FILL.dark, "hover"), light: fillStep(ACCENT_FILL.light, "hover") });
     expect(colors.get("badge.background")).toEqual(ACCENT_FILL);
-    expect(colors.get("button.foreground")).toEqual(both("#ffffff"));
-    expect(colors.get("badge.foreground")).toEqual(both("#ffffff"));
+    const label = { dark: labelOn(ACCENT_FILL.dark), light: labelOn(ACCENT_FILL.light) };
+    expect(colors.get("button.foreground")).toEqual(label);
+    expect(colors.get("badge.foreground")).toEqual(label);
   });
 
   it("registers the accent as text from the registry, as the kit derives it", () => {

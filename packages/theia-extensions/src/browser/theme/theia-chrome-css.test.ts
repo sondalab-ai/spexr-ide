@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { theiaChromeCss } from "./theia-chrome-css.js";
-import { ACCENT, ACCENT_FILL, fillStep } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, fillStep, labelOn } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 
 /** The value theiaChromeCss gives a `--theia-*` variable, or undefined. */
@@ -95,11 +95,14 @@ describe("Theia's labelled fills", () => {
     for (const theme of ["light", "dark", "high-contrast"]) expect(theiaChromeCss(theme)).not.toMatch(/--slc-accent-fill\s*:/);
   });
 
-  it.each(["light", "dark"] as const)("carry the white label on the fill on %s", (theme) => {
+  it.each(["light", "dark"] as const)("carry the kit's label on the fill on %s", (theme) => {
     for (const name of ["button-background", "badge-background", "activityBarBadge-background", "menu-selectionBackground"]) {
       expect(value(theme, name), name).toBe(ACCENT_FILL[theme]);
     }
     expect(value(theme, "button-hoverBackground")).toBe(fillStep(ACCENT_FILL[theme], "hover"));
+    for (const name of ["button-foreground", "badge-foreground", "activityBarBadge-foreground", "menu-selectionForeground"]) {
+      expect(value(theme, name), name).toBe(labelOn(ACCENT_FILL[theme]));
+    }
   });
 });
 

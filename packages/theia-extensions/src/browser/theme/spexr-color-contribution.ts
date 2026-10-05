@@ -4,9 +4,6 @@ import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 import { ACCENT, ACCENT_FILL, KIT_STATUS_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 
-/** The label on a labelled accent fill. */
-const ON_ACCENT = "#ffffff";
-
 /**
  * One accent-color override. `defaults` map dark/light to the accent (high
  * contrast keeps Theia's own values). These re-register monaco's built-in
@@ -26,7 +23,7 @@ function accent(
 ): void {
   const value =
     variant === "onAccent"
-      ? { dark: ON_ACCENT, light: ON_ACCENT }
+      ? { dark: labelOn(ACCENT_FILL.dark), light: labelOn(ACCENT_FILL.light) }
       : variant === "text"
         ? { dark: accentText("dark"), light: accentText("light") }
         : variant === "textActive"
@@ -60,7 +57,8 @@ export class SpexrColorContribution implements ColorContribution {
     // Focus ring
     accent(colors, "focusBorder", "fill");
 
-    // Native buttons and badges carry a white label: the registered fill
+    // Native buttons and badges: the registered fill, with the kit's label on
+    // it (white on spexr's fill today; the dark pole on a light fill)
     accent(colors, "button.background", "labelled");
     accent(colors, "button.hoverBackground", "labelledHover");
     accent(colors, "button.foreground", "onAccent");

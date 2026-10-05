@@ -1,5 +1,5 @@
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
-import { ACCENT, ACCENT_FILL, fillStep } from "./spexr-accent.js";
+import { ACCENT, ACCENT_FILL, fillStep, labelOn } from "./spexr-accent.js";
 
 /**
  * The CSS SpexrThemeContribution injects for a SPEXR theme: `--theia-*`
@@ -37,14 +37,16 @@ body {
   const accentTextActive = isDark
     ? `oklch(from var(--slc-accent-text) calc(l + ${step}) calc(c * pow(max(0, 1 - ${step} / max(1 - l, 0.001)), 1.5)) h)`
     : `oklch(from var(--slc-accent-text) calc(l - ${step}) calc(c * max(0, 1 - ${step} / max(l, 0.001))) h)`;
-  const onAccent      = "#ffffff";
-  // A fill that carries the white label: the registered fill and its hover,
-  // on both themes (the kit's --slc-accent-fill, which its products.css sets
-  // from the same registry).
+  // A fill that carries a label: the registered fill and its hover, per
+  // theme (the kit's --slc-accent-fill, which its products.css sets from the
+  // same registry).
   const fill          = ACCENT_FILL[theme];
   // Hovered by the kit's own step rule, so Theia's buttons and the kit's
   // primaries hover in the same indigo.
   const fillHover     = fillStep(fill, "hover");
+  // The kit's label on that fill: white on spexr's fill today, the dark pole
+  // on a light one. The step keeps it, hovered and pressed.
+  const onAccent      = labelOn(fill);
 
   // Sondalab surface neutrals — pushed into Theia's native chrome so the
   // editor/sidebar/tabs/terminal share the same indigo-tinted greys as the
@@ -58,9 +60,9 @@ body {
   /* Focus ring */
   --theia-focusBorder: ${accent} !important;
 
-  /* Native buttons. Buttons, badges and the menu's selection carry a white
-     label, so they take the registered fill (white 5.41:1, hovered 6.67),
-     never the #5b6cff accent (4.17). */
+  /* Native buttons. Buttons, badges and the menu's selection carry a label,
+     so they take the registered fill with the kit's label on it (white
+     5.41:1, hovered 6.67), never the #5b6cff accent (white 4.17). */
   --theia-button-background: ${fill} !important;
   --theia-button-hoverBackground: ${fillHover} !important;
   --theia-button-foreground: ${onAccent} !important;
