@@ -2294,10 +2294,20 @@ code {
   line-height: var(--sl-line-relaxed);
 }
 
-.spexr-welcome-card__kbd {
+/* The card's shortcut: one keycap per key (the kit's .sl-kbd), 3px apart as
+   in the palette, a chord 6px from the next. Rendered only when a key is
+   bound to the card's command (welcome-widget.tsx). */
+.spexr-welcome-card__keys {
   position: absolute;
   top: var(--sl-space-3);
   right: var(--sl-space-3);
+  display: inline-flex;
+  gap: 6px;
+}
+
+.spexr-welcome-card__chord {
+  display: inline-flex;
+  gap: 3px;
 }
 
 .spexr-welcome__section-head {
