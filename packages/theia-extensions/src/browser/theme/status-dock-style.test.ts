@@ -54,18 +54,28 @@ describe("the status dock", () => {
     expect(dock).not.toMatch(/text-transform/);
   });
 
-  it("keeps Theia's 22px row, each item a 20px pill inside it", () => {
-    expect(dock).not.toContain("--theia-statusBar-height");
+  // S5c: the kit's 28px bar (Lumen's 30 on the grid), each item its 20px
+  // pill centred in it, through the variable only Theia's bar reads.
+  it("is the kit's 28px bar, each item a 20px pill centred in it", () => {
+    expect(rule(":root {\n  --theia-statusBar-height")).toMatch(/--theia-statusBar-height:\s*28px;/);
+    const bar = theia("@theia/core/src/browser/style/status-bar.css");
+    expect(bar).toMatch(/#theia-statusBar \{[^}]*min-height:\s*var\(--theia-statusBar-height\)/);
     expect(rule("#theia-statusBar {")).not.toMatch(/height/);
-    expect(rule(`${ITEM} {`)).not.toMatch(/(^|[^-])height/);
-    expect(rule(`${ITEM} {`)).toMatch(/margin-block:\s*1px/);
+    const item = rule(`${ITEM} {`);
+    expect(item).toMatch(/height:\s*1\.25rem/);
+    expect(item).toMatch(/align-self:\s*center/);
+    expect(item).toMatch(/margin-block:\s*0/);
   });
 
-  // Theia's spacing between two facts (its 6px gap and its text's 3px
-  // margins) is the pills' 6px padding now: 12px either way.
-  it("keeps Theia's 12px between two facts, as the pills' padding", () => {
-    expect(rule(`${ITEM} {`)).toMatch(/padding-inline:\s*0\.375rem/);
+  // Lumen's and the kit's spacing: 8px into each pill, the pills side by side
+  // (Theia's gap and its text's margins go), 4px into the bar at its start
+  // and 8 at its end.
+  it("sets the pills side by side, 8px in, 4 and 8px from the bar's ends", () => {
+    expect(rule(`${ITEM} {`)).toMatch(/padding-inline:\s*0\.5rem/);
+    expect(rule("#theia-statusBar .area:is(.left, .right) {")).toMatch(/gap:\s*0/);
     expect(rule(`${ITEM} > span:not(.codicon, .fa) {`)).toMatch(/margin-inline:\s*0/);
+    expect(rule("#theia-statusBar.lm-Widget .area.left {")).toMatch(/padding-left:\s*4px/);
+    expect(rule("#theia-statusBar.lm-Widget .area.right {")).toMatch(/padding-right:\s*8px/);
     const bar = theia("@theia/core/src/browser/style/status-bar.css");
     expect(bar).toMatch(/gap:\s*var\(--theia-ui-padding\)/);
     expect(bar).toMatch(/margin-inline:\s*calc\(var\(--theia-ui-padding\) \/ 2\)/);
@@ -87,11 +97,10 @@ describe("the status dock", () => {
     expect(css).toContain(`${ITEM}:has(> span:not(.codicon, .fa) ~ span:not(.codicon, .fa)),\n${ITEM}.${STATUS_LIVE} {`);
   });
 
-  // The offline bar is the kit's warning: the accent dot read 1.13:1 on it
-  // and the hairlines 1.1, so both take the bar's label.
-  it("draws the live dot and the hairlines in the offline bar's label", () => {
+  // The offline bar is the kit's warning: the accent dot read 1.13:1 on it,
+  // so it takes the bar's label.
+  it("draws the live dot in the offline bar's label", () => {
     expect(rule(`.theia-mod-offline ${ITEM}.${STATUS_LIVE}::after {`)).toMatch(/background-color:\s*currentColor/);
-    expect(rule(`.theia-mod-offline ${ITEM} + .element::before {`)).toMatch(/border-left-color:\s*color-mix\(in srgb, currentColor 60%, transparent\)/);
   });
 
   it("sets data in the mono at the primary ink, never on the offline bar or a ground of its own", () => {
@@ -111,31 +120,16 @@ describe("the status dock", () => {
     expect(data).toMatch(/color:\s*var\(--slc-text\)/);
   });
 
-  it("draws a hairline in the kit's border between groups, a border so forced colours keep it", () => {
-    const sep = rule(`${ITEM} + .element::before {`);
-    expect(sep).toMatch(/border-left:\s*1px solid var\(--slc-border\)/);
-    expect(sep).toMatch(/pointer-events:\s*none/);
-    // In the middle of the 9px margin between two pills, which touch otherwise.
-    expect(rule("#theia-statusBar .area:is(.left, .right) {")).toMatch(/gap:\s*0/);
-    expect(rule(`${ITEM} + .element {`)).toMatch(/margin-left:\s*0\.5625rem/);
-    expect(sep).toMatch(/left:\s*-0\.3125rem/);
-  });
-
-  it("runs Theia's editor facts and its compacted entries together, with no hairline", () => {
-    const together = `${ITEM}[id^="status-bar-editor-status-"] + .element[id^="status-bar-editor-status-"]`;
-    expect(rule(`${together},`)).toMatch(/margin-left:\s*0/);
-    expect(rule(`${together}::before,`)).toMatch(/content:\s*none/);
-    // The editor's facts, as Theia names them in its own sources: every one
-    // falls under the prefix the rule keys on.
-    const editorIds = [
-      ...[...theia("@theia/editor/src/browser/editor-contribution.ts").matchAll(/statusBar\.setElement\('([\w-]+)'/g)].map((m) => m[1]!),
-      ...[...theia("@theia/monaco/src/browser/monaco-status-bar-contribution.ts").matchAll(/export const EDITOR_STATUS_\w+ = '([\w-]+)'/g)].map((m) => m[1]!),
-      /LANGUAGE_MODE_ID = '([\w-]+)'/.exec(theia("@theia/editor/src/browser/language-status/editor-language-status-service.ts"))![1]!,
-    ];
-    expect([...editorIds].sort()).toEqual(["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "editor-status-language", "editor-status-tabbing-config"]);
-    for (const id of editorIds) expect(`status-bar-${id}`.startsWith("status-bar-editor-status-"), id).toBe(true);
-    expect(dock).toContain(`${ITEM}.compact-left + .element::before`);
-    expect(dock).toContain(`${ITEM} + .element.compact-right::before`);
+  // Lumen draws no hairlines, and the kit's are opt-in since 0.34 (S5c).
+  it("draws no hairline between items, and pulls no item into a gap", () => {
+    expect(dock).not.toMatch(/\.element \+ \.element::before/);
+    expect(dock).not.toMatch(/border-left:/);
+    expect(dock).not.toMatch(/margin-left:\s*0\.5625rem/);
+    // Theia pulls a left item with a ground, and a compacted entry, 6px left into its old gap.
+    const reset = rule("#theia-statusBar.lm-Widget .area:is(.left, .right) > .element.has-background:not(#session-preference-status),");
+    expect(reset).toMatch(/margin-left:\s*0/);
+    expect(css).toContain(`#theia-statusBar.lm-Widget .area:is(.left, .right) > .element.has-background:not(#session-preference-status),\n${ITEM} + .element.compact-right {`);
+    expect(theia("@theia/core/src/browser/style/status-bar.css")).toMatch(/\.element\.compact-right \{\s*margin-left: calc\(-1 \* var\(--theia-ui-padding\)\);/);
   });
 
   it("marks a live state with a 6px dot of the accent before its words, in CanvasText under forced colours", () => {

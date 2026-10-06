@@ -1,4 +1,4 @@
-import { ISLAND_GAP } from "./islands.js";
+import { AGENT_ISLAND, RIGHT_ISLAND, areaSize } from "./workbench-geometry.js";
 
 /**
  * The part of Theia's `ApplicationShell` these helpers actually touch.
@@ -11,15 +11,23 @@ export interface SidePanelShell {
   readonly rightPanelHandler: unknown;
 }
 
-/** Minimum width (px) for the left side panel that hosts the agent terminal. */
-export const MIN_LEFT_PANEL_WIDTH = 480;
+/** Narrowest left island (px) while it shows the agent terminal: its own island (workbench-geometry.ts). */
+export const MIN_LEFT_ISLAND_WIDTH = AGENT_ISLAND;
 
-/** Minimum width (px) for the right side panel that hosts spec/memory/experts. */
-export const MIN_RIGHT_PANEL_WIDTH = 400;
+/** Narrowest right island (px), for spec/memory/experts: Lumen's agent pane (workbench-geometry.ts). */
+export const MIN_RIGHT_ISLAND_WIDTH = RIGHT_ISLAND;
+
+/**
+ * The floors as Theia measures a side (workbench-geometry.ts, `areaSize`):
+ * the left one includes the activity column, the right one the split handle
+ * and the column too.
+ */
+export const MIN_LEFT_PANEL_SIZE = areaSize("left", MIN_LEFT_ISLAND_WIDTH);
+export const MIN_RIGHT_PANEL_SIZE = areaSize("right", MIN_RIGHT_ISLAND_WIDTH);
 
 type PanelSide = "left" | "right";
 
-interface SidePanelHandlerLike {
+export interface SidePanelHandlerLike {
   expand?: () => void;
   resize?: (size: number) => void;
   getPanelSize?: () => number | undefined;
@@ -45,33 +53,34 @@ export async function expandSidePanelWithMinWidth(
   side: PanelSide,
   min: number,
 ): Promise<void> {
-  const raw = side === "left" ? shell.leftPanelHandler : shell.rightPanelHandler;
-  const handler = raw as unknown as SidePanelHandlerLike | undefined;
-  if (typeof handler?.expand !== "function") return;
-  handler.expand();
-  await handler.state?.pendingUpdate;
+  const handler = await expandSidePanel(shell, side);
+  if (!handler) return;
   const size = handler.getPanelSize?.();
   if (typeof size !== "number" || size < min) {
     handler.resize?.(min);
   }
 }
 
-/** Expand the left side panel and enforce {@link MIN_LEFT_PANEL_WIDTH}. */
-export function expandLeftPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
-  return expandSidePanelWithMinWidth(shell, "left", MIN_LEFT_PANEL_WIDTH);
+/**
+ * Expand a side panel at whatever size it has, with no floor. Resolves once
+ * the expansion has settled, with the side's handler (undefined when the
+ * shell has none to expand).
+ */
+export async function expandSidePanel(shell: SidePanelShell, side: PanelSide): Promise<SidePanelHandlerLike | undefined> {
+  const raw = side === "left" ? shell.leftPanelHandler : shell.rightPanelHandler;
+  const handler = raw as unknown as SidePanelHandlerLike | undefined;
+  if (typeof handler?.expand !== "function") return undefined;
+  handler.expand();
+  await handler.state?.pendingUpdate;
+  return handler;
 }
 
-/**
- * The right panel's floor as Theia measures it. Theia reads and writes the
- * right panel's size from its split handle's offset (`parentWidth -
- * handle.offsetLeft`), so the size includes the handle, which is the 6px
- * island gap since the islands (SpexrApplicationShell): asking for
- * {@link MIN_RIGHT_PANEL_WIDTH} alone left a 394px panel. The left panel's
- * size is the handle's offset itself and needs no correction.
- */
-export const MIN_RIGHT_PANEL_SIZE = MIN_RIGHT_PANEL_WIDTH + ISLAND_GAP;
+/** Expand the left side panel and enforce {@link MIN_LEFT_ISLAND_WIDTH} (as {@link MIN_LEFT_PANEL_SIZE}). */
+export function expandLeftPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
+  return expandSidePanelWithMinWidth(shell, "left", MIN_LEFT_PANEL_SIZE);
+}
 
-/** Expand the right side panel and enforce {@link MIN_RIGHT_PANEL_WIDTH} (as {@link MIN_RIGHT_PANEL_SIZE}). */
+/** Expand the right side panel and enforce {@link MIN_RIGHT_ISLAND_WIDTH} (as {@link MIN_RIGHT_PANEL_SIZE}). */
 export function expandRightPanelWithMinWidth(shell: SidePanelShell): Promise<void> {
   return expandSidePanelWithMinWidth(shell, "right", MIN_RIGHT_PANEL_SIZE);
 }

@@ -78,8 +78,10 @@ export const test = base.extend<AppFixtures>({
       await trustDialog.waitFor({ state: "hidden", timeout: 5_000 });
     }
     // SpexrShellLayoutContribution reveals widgets into the tab bars over
-    // several stages; activating a view before it is done gets undone by a
-    // later stage. The contribution marks the body when it finishes.
+    // several stages, and the bootstrap then reveals the agent terminal;
+    // activating a view before they are done gets undone by a later stage.
+    // SpexrDefaultLayoutContribution marks the body once all of it, and the
+    // panels' sizes, have settled.
     await page.waitForSelector("body[data-spexr-layout-ready]", { timeout: 30_000 });
     // Let Theia panel-layout animations finish before tests start interacting.
     await page.waitForTimeout(1000);
@@ -138,7 +140,7 @@ export const sel = {
  * in the event. Playwright's own click is not used here: it can miss the hit
  * test or land on a neighbouring widget while the layout is still settling.
  */
-async function activateTab(page: Page, label: string): Promise<void> {
+export async function activateTab(page: Page, label: string): Promise<void> {
   await page.evaluate((wanted) => {
     const labels = [
       ...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel, .p-TabBar-tabLabel"),

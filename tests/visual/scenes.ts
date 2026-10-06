@@ -273,29 +273,31 @@ export async function firstVisibleLine(page: Page): Promise<number | null> {
 }
 
 /**
- * Drag the sash between the editor and the bottom panel so the panel's top
- * edge sits at `top`: the demo's panel starts at y 666. Opening the panel
- * restores a size that differed by about 11 px between two runs of the same
- * commit. Until spexr sets first-launch sizes itself (slice S5c), the sash is
- * dragged like a user would. Returns where the edge was and where it landed.
+ * The bottom panel's top edge, in CSS px, as the shell laid it out; null
+ * when it is not showing. The demo's starts at y 666 (reference/
+ * demo-regions.json, region "panel"); spexr's default sizes (S5c) put it
+ * there, give or take the status bar's grid rounding. Theia moves the panel's
+ * handle asynchronously when it opens, so the edge is read once it has held
+ * still for half a second (five reads 100ms apart), or after `timeoutMs`;
+ * `held` says which.
  */
-export async function placeBottomPanel(page: Page, top: number): Promise<{ before: number; after: number } | null> {
-  const at = await page.evaluate(() => {
-    const split = document.getElementById("theia-bottom-split-panel");
-    const handle = split
-      ? [...split.children].find((c): c is HTMLElement => c.classList.contains("lm-SplitPanel-handle") && c.getBoundingClientRect().width > 0)
-      : undefined;
-    const panel = document.getElementById("theia-bottom-content-panel")?.getBoundingClientRect();
-    const r = handle?.getBoundingClientRect();
-    return r && panel ? { x: r.left + r.width / 2, y: r.top + r.height / 2, panelTop: panel.top } : null;
-  });
-  if (!at) return null;
-  await page.mouse.move(at.x, at.y);
-  await page.mouse.down();
-  await page.mouse.move(at.x, at.y + (top - at.panelTop), { steps: 5 });
-  await page.mouse.up();
-  const after = await page.evaluate(() => document.getElementById("theia-bottom-content-panel")?.getBoundingClientRect().top ?? -1);
-  return { before: Math.round(at.panelTop * 100) / 100, after: Math.round(after * 100) / 100 };
+export async function bottomPanelTop(page: Page, timeoutMs = 5_000): Promise<{ top: number; held: boolean } | null> {
+  return page.evaluate(async (timeoutMs) => {
+    const read = (): number | null => {
+      const r = document.getElementById("theia-bottom-content-panel")?.getBoundingClientRect();
+      return r && r.height > 0 ? Math.round(r.top * 100) / 100 : null;
+    };
+    const deadline = performance.now() + timeoutMs;
+    let last = read();
+    let held = 0;
+    while (held < 5 && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const now = read();
+      held = now === last ? held + 1 : 0;
+      last = now;
+    }
+    return last === null ? null : { top: last, held: held >= 5 };
+  }, timeoutMs);
 }
 
 /** `Meta+P` on macOS, `Control+P` elsewhere: Theia's Quick Open. */

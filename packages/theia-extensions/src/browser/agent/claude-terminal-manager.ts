@@ -38,7 +38,9 @@ import {
   type ResolvedAccount,
 } from "../../common/claude-launch-profiles.js";
 
-export const CLAUDE_TERMINAL_ID = "spexr-claude";
+import { CLAUDE_TERMINAL_ID } from "./claude-terminal-id.js";
+
+export { CLAUDE_TERMINAL_ID };
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {
@@ -549,7 +551,7 @@ export class ClaudeTerminalManager {
     if (!term) return;
     await this.shell.revealWidget(term.id);
     await this.shell.activateWidget(term.id);
-    if (this.placement === "left") this.expandLeftPanel();
+    if (this.placement === "left") await this.expandLeftPanel();
   }
 
   /**
@@ -588,8 +590,12 @@ export class ClaudeTerminalManager {
     }
   }
 
-  private expandLeftPanel(): void {
-    expandLeftPanelWithMinWidth(this.shell);
+  /**
+   * The agent terminal's floor, awaited: the resize is then issued before
+   * `reveal` resolves, so a later sizing (a first launch's) lands after it.
+   */
+  private expandLeftPanel(): Promise<void> {
+    return expandLeftPanelWithMinWidth(this.shell);
   }
 
   private storedAccount(): string {

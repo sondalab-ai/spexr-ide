@@ -45,6 +45,7 @@
           "editor.fontFamily": "'JetBrains Mono', 'Geist Mono', 'SF Mono', monospace",
           "editor.wordWrap": "on",
           "editor.cursorStyle": "block",
+          "workbench.tree.indent": 16,
           "workspace.preserveWindow": true
         }
       }

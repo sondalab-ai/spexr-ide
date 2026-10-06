@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { SpexrDarkfactorySidebarPolicy, type RightPanelShell } from "./darkfactory-sidebar-policy.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
-import { MIN_RIGHT_PANEL_WIDTH } from "../shell/side-panel.js";
-import { ISLAND_GAP } from "../shell/islands.js";
+import { MIN_RIGHT_PANEL_SIZE } from "../shell/side-panel.js";
 
 const OTHER_VIEW_ID = "spexr.view.spec";
-// Theia's right-panel size includes the split handle, the 6px island gap.
-const EXPAND_CALLS = ["expand:right", `resize:${MIN_RIGHT_PANEL_WIDTH + ISLAND_GAP}`];
+// Theia's right-panel size includes the split handle and the activity column
+// (side-panel.test.ts pins the arithmetic).
+const EXPAND_CALLS = ["expand:right", `resize:${MIN_RIGHT_PANEL_SIZE}`];
 
 interface Harness {
   policy: SpexrDarkfactorySidebarPolicy;

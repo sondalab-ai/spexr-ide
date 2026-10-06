@@ -57,6 +57,7 @@ import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
+import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
 import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-contribution.js";
@@ -439,4 +440,11 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
       return connection.createProxy(SCHEDULE_SERVICE_PATH, ctx.container.get(SpexrScheduleClientDispatcher));
     })
     .inSingletonScope();
+
+  // Keep last: its onDidInitializeLayout reads the default sizes back and sets
+  // the layout's settled mark, so it must come after every contribution that
+  // touches the layout (Theia runs onDidInitializeLayout in binding order, one
+  // at a time). The shell layout injects it for Reset Layout.
+  bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
 });
