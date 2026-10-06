@@ -96,14 +96,15 @@ describe("an area's size as Theia measures it", () => {
  * A shell that records each resize and each wait for Theia's pending moves,
  * and reads back the sizes it was given, or `readBack`'s where set.
  */
-function fakeShell(readBack: Partial<Record<ShellArea, number>> = {}, throwOnResize = false): SizingShell & { calls: string[] } {
+function fakeShell(readBack: Partial<Record<ShellArea, number>> = {}, throwOnResize = false, stalled = false): SizingShell & { calls: string[] } {
   const calls: string[] = [];
   const sizes: Partial<Record<ShellArea, number>> = {};
   return {
     calls,
     get pendingUpdates() {
       calls.push("settle");
-      return Promise.resolve();
+      // A stalled shell: a panel move that never ends.
+      return stalled ? new Promise<void>(() => undefined) : Promise.resolve();
     },
     resize: (size: number, area: ShellArea) => {
       if (throwOnResize) throw new Error("no shell");
@@ -125,7 +126,7 @@ function reporter(): LayoutReporter & { log: string[] } {
 }
 
 describe("the default layout", () => {
-  it("is sized before any panel shows, once, the left island the agent terminal's when it will be in front", () => {
+  it("is sized before the shell is ready, once, the left island the agent terminal's when it will be in front", () => {
     const shell = fakeShell();
     new DefaultLayout(reporter()).seed(shell, true);
     // No wait: Theia keeps a hidden or collapsed area's size for when it opens.
@@ -161,6 +162,31 @@ describe("the default layout", () => {
     layout.seed(shell, true); // a throw here fails the test
     await layout.settle(shell);
     expect(log.log).toEqual(["warn: [spexr] the default layout's sizes could not be set", "settled"]);
+  });
+
+  it("marks the layout settled anyway when Theia's panel moves never end, after its wait, with a warning", async () => {
+    const log = reporter();
+    const layout = new DefaultLayout(log, 20);
+    const shell = fakeShell({}, false, true);
+    layout.seed(shell, true);
+    await layout.settle(shell);
+    expect(log.log).toEqual(["warn: [spexr] Theia's panel moves did not end within 20ms; the sizes are not checked", "settled"]);
+  });
+
+  it("gives up on a stalled Reset Layout after its waits, with warnings, and never hangs", async () => {
+    const log = reporter();
+    const shell = fakeShell({}, false, true);
+    await new DefaultLayout(log, 20).reset(shell, false);
+    // It still asks for the sizes: a stalled earlier move does not cancel them.
+    expect(shell.calls).toEqual(["settle", "left:322", "right:416", "bottom:210", "settle"]);
+    expect(log.log).toEqual([
+      "warn: [spexr] Theia's panel moves did not end within 20ms; the sizes are not checked",
+      "warn: [spexr] Theia's panel moves did not end within 20ms; the sizes are not checked",
+    ]);
+  });
+
+  it("waits five seconds by default", () => {
+    expect(own("./workbench-geometry.ts")).toMatch(/private readonly waitMs = 5_000,/);
   });
 
   it("only marks the layout settled after a restored layout: no sizes, no reads", async () => {
@@ -218,14 +244,22 @@ describe("Theia's layout start, which the default layout relies on", () => {
     expect(method(theiaSide, "refresh()")).toMatch(/if \(this\.state\.lastPanelSize\) \{\s*size = this\.state\.lastPanelSize;/);
   });
 
-  it("is a contribution bound after the shell layout and the bootstrap, which marks the layout settled", () => {
+  it("is the last contribution spexr binds, so its mark comes after every layout change, and it marks the layout settled", () => {
     const module = own("../spexr-frontend-module.ts");
-    const layout = module.indexOf("bind(FrontendApplicationContribution).toService(SpexrShellLayoutContribution)");
-    const bootstrap = module.indexOf("bind(FrontendApplicationContribution).to(SpexrBootstrapContribution)");
     const sizes = module.indexOf("bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution)");
-    expect(layout).toBeGreaterThanOrEqual(0);
-    expect(bootstrap).toBeGreaterThan(layout);
-    expect(sizes).toBeGreaterThan(bootstrap);
+    expect(sizes).toBeGreaterThanOrEqual(0);
+    // Every other FrontendApplicationContribution binding comes before it: the
+    // shell layout, the bootstrap, the Explorer's Search section and the rest.
+    const contributions = [...module.matchAll(/bind\(FrontendApplicationContribution\)\.(?:to|toService)\((\w+)\)/g)];
+    expect(contributions.length).toBeGreaterThan(20);
+    expect(contributions.at(-1)![1]).toBe("SpexrDefaultLayoutContribution");
+    for (const name of ["SpexrShellLayoutContribution", "SpexrBootstrapContribution", "SpexrSmartSearchContribution", "SpexrDarkfactorySidebarVisibilityContribution"]) {
+      const at = module.indexOf(`bind(FrontendApplicationContribution).toService(${name})`) >= 0
+        ? module.indexOf(`bind(FrontendApplicationContribution).toService(${name})`)
+        : module.indexOf(`bind(FrontendApplicationContribution).to(${name})`);
+      expect(at, name).toBeGreaterThanOrEqual(0);
+      expect(at, name).toBeLessThan(sizes);
+    }
     const contribution = own("./default-layout-contribution.ts");
     // The adapter only delegates: the logic is DefaultLayout's, tested above.
     expect(contribution).toMatch(/async initializeLayout\(\): Promise<void> \{\s*await this\.workspace\.ready;\s*this\.layout\.seed\(this\.shell, this\.workspace\.opened\);/);
@@ -239,7 +273,10 @@ describe("Theia's layout start, which the default layout relies on", () => {
     const bootstrap = own("../bootstrap/spexr-bootstrap-contribution.ts");
     expect(bootstrap).toMatch(/if \(!this\.workspace\.opened\) return;[\s\S]*?await this\.terminalManager\.ensureStarted\(\);/);
     const manager = own("../agent/claude-terminal-manager.ts");
-    expect(manager).toMatch(/export const CLAUDE_TERMINAL_ID = "spexr-claude";/);
+    // The id lives in a light module of its own, which the adapter imports; the manager re-exports it.
+    expect(own("../agent/claude-terminal-id.ts")).toMatch(/export const CLAUDE_TERMINAL_ID = "spexr-claude";/);
+    expect(own("./default-layout-contribution.ts")).toContain('import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-id.js";');
+    expect(manager).toMatch(/export \{ CLAUDE_TERMINAL_ID \};/);
     expect(manager).toMatch(/if \(this\.placement === "left"\) await this\.expandLeftPanel\(\);/);
   });
 

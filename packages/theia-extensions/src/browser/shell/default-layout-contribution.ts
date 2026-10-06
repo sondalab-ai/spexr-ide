@@ -2,7 +2,7 @@ import { inject, injectable } from "@theia/core/shared/inversify";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
-import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
+import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-id.js";
 import { DefaultLayout } from "./workbench-geometry.js";
 
 /** The body attribute the E2E suite and the capture wait on: the layout has settled. */
@@ -14,13 +14,15 @@ export const LAYOUT_READY_ATTRIBUTE = "data-spexr-layout-ready";
  * Theia).
  *
  * - `initializeLayout` runs only when Theia had no stored layout for the
- *   workspace. The sizes are decided there, once, before any panel shows:
+ *   workspace. The sizes are decided there, once, before the shell is ready
+ *   (any panel already open is resized instantly):
  *   the Explorer 264px, or the agent terminal's 432px when a workspace is
  *   open (the bootstrap then reveals the agent terminal in front); the right
  *   panel 352px; the bottom panel 204px.
- * - `onDidInitializeLayout` is bound last of spexr's layout work, after the
- *   shell layout's views and the bootstrap's agent terminal, so the settled
- *   mark comes after every panel has its size.
+ * - `onDidInitializeLayout` is bound last in spexr's frontend module, after
+ *   every contribution that touches the layout (the shell layout's views, the
+ *   bootstrap's agent terminal, the Explorer's Search section), so the
+ *   settled mark comes after every panel and section has its size.
  * - Reset Layout (SpexrShellLayoutContribution) applies the sizes again
  *   through `resetSizes`, the left island by the view then in front.
  */

@@ -38,7 +38,9 @@ import {
   type ResolvedAccount,
 } from "../../common/claude-launch-profiles.js";
 
-export const CLAUDE_TERMINAL_ID = "spexr-claude";
+import { CLAUDE_TERMINAL_ID } from "./claude-terminal-id.js";
+
+export { CLAUDE_TERMINAL_ID };
 
 /** Wrap an argument in single quotes for safe inclusion in a shell command. */
 function shellQuote(arg: string): string {

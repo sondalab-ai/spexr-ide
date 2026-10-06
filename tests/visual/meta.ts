@@ -43,8 +43,12 @@ export interface CaptureMeta {
   extensions?: ProbeAck;
   /** True when the bottom panel started collapsed and the scene opened it. */
   bottomPanelOpened?: boolean;
-  /** The bottom panel's top edge once shown, as spexr laid it out (S5c: never dragged); null when it is not showing. */
-  bottomPanel?: { top: number } | null;
+  /**
+   * The bottom panel's top edge once shown, as spexr laid it out (S5c: never
+   * dragged); `held` is false when it was still moving at the read's timeout.
+   * Null when it is not showing.
+   */
+  bottomPanel?: { top: number; held: boolean } | null;
   baseFirstVisibleLine?: number | null;
   page?: PageProbes;
   /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */

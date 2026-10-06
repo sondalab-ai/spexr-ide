@@ -284,16 +284,31 @@ describe("the view container's whole-pixel patch", () => {
     ) => void;
     const placed: number[][] = [];
     const record = (...args: number[]): void => void placed.push(args);
-    // Three vertical sections from fractional weights, 2px handles between them.
-    let top = 0;
-    for (const [i, size] of [140.5, 281.25, 96.25].entries()) {
+    // The sections as Lumino's SplitLayout lays them out: fractional weights,
+    // a hidden section (size 0, its handle hidden, so no spacing after it),
+    // a collapsed one (its header only), 2px handles between the others.
+    const sections: Array<{ size: number; gap: number }> = [
+      { size: 140.5, gap: 2 },
+      { size: 0, gap: 0 },
+      { size: 24, gap: 2 },
+      { size: 281.25, gap: 2 },
+      { size: 96.375, gap: 0 },
+    ];
+    let top = 0.5;
+    for (const [i, { size, gap }] of sections.entries()) {
       place(record, i, false, 0, top, 0, 262, size);
-      top += size + 2;
+      top += size + gap;
     }
     const tops = placed.map((p) => p[3]!);
     const sizes = placed.map((p) => p[6]!);
     expect(tops.every(Number.isInteger) && sizes.every(Number.isInteger)).toBe(true);
-    // Each section ends where the next one's handle starts.
-    for (let k = 0; k + 1 < placed.length; k++) expect(tops[k]! + sizes[k]! + 2).toBe(tops[k + 1]!);
+    // Each section ends where the next one's handle starts, or where the next one starts after a hidden one.
+    for (let k = 0; k + 1 < placed.length; k++) expect(tops[k]! + sizes[k]! + sections[k]!.gap).toBe(tops[k + 1]!);
+    // The hidden section stays empty, the collapsed one keeps its header.
+    expect(sizes[1]).toBe(0);
+    expect(sizes[2]).toBe(24);
+    // The last edge is the fractional layout's last edge, rounded: nothing is lost or added at the end.
+    const end = 0.5 + sections.reduce((sum, { size, gap }) => sum + size + gap, 0);
+    expect(tops.at(-1)! + sizes.at(-1)!).toBe(Math.round(end));
   });
 });

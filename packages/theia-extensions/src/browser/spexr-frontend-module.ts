@@ -235,12 +235,6 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(SpexrRevealOnRestore).toService(SpexrTodoViewContribution);
   bind(SpexrRevealOnRestore).toService(ScmContribution);
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
-  // After the shell layout and the bootstrap: its onDidInitializeLayout reads
-  // the default sizes back and sets the layout's settled mark once the agent
-  // terminal is in place (Theia runs onDidInitializeLayout in binding order,
-  // one at a time). The shell layout injects it for Reset Layout.
-  bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
-  bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
@@ -446,4 +440,11 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
       return connection.createProxy(SCHEDULE_SERVICE_PATH, ctx.container.get(SpexrScheduleClientDispatcher));
     })
     .inSingletonScope();
+
+  // Keep last: its onDidInitializeLayout reads the default sizes back and sets
+  // the layout's settled mark, so it must come after every contribution that
+  // touches the layout (Theia runs onDidInitializeLayout in binding order, one
+  // at a time). The shell layout injects it for Reset Layout.
+  bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
 });

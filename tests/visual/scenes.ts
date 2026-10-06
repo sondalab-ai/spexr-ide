@@ -278,9 +278,10 @@ export async function firstVisibleLine(page: Page): Promise<number | null> {
  * demo-regions.json, region "panel"); spexr's default sizes (S5c) put it
  * there, give or take the status bar's grid rounding. Theia moves the panel's
  * handle asynchronously when it opens, so the edge is read once it has held
- * still for half a second (five reads 100ms apart), or after `timeoutMs`.
+ * still for half a second (five reads 100ms apart), or after `timeoutMs`;
+ * `held` says which.
  */
-export async function bottomPanelTop(page: Page, timeoutMs = 5_000): Promise<{ top: number } | null> {
+export async function bottomPanelTop(page: Page, timeoutMs = 5_000): Promise<{ top: number; held: boolean } | null> {
   return page.evaluate(async (timeoutMs) => {
     const read = (): number | null => {
       const r = document.getElementById("theia-bottom-content-panel")?.getBoundingClientRect();
@@ -295,7 +296,7 @@ export async function bottomPanelTop(page: Page, timeoutMs = 5_000): Promise<{ t
       held = now === last ? held + 1 : 0;
       last = now;
     }
-    return last === null ? null : { top: last };
+    return last === null ? null : { top: last, held: held >= 5 };
   }, timeoutMs);
 }
 

@@ -134,22 +134,32 @@ const LAYOUT_DATA_KEY: Record<ShellArea, "leftPanel" | "rightPanel" | "bottomPan
  *
  * - {@link seed} runs from `initializeLayout`, which Theia calls only when it
  *   had no stored layout to restore (the first open of a workspace, or after
- *   the stored layout was dropped), before any panel shows. Theia keeps a
+ *   the stored layout was dropped), before the shell is ready. Theia keeps a
  *   size given to a collapsed side or a hidden bottom panel as the size it
- *   opens at, so the panels open at their final size, with no reflow. The
- *   left island is decided there: the agent terminal's when it will be in
- *   front, so its floor never moves it.
+ *   opens at, so those open at their final size; a panel another
+ *   contribution's `initializeLayout` already opened is resized instantly.
+ *   The left island is decided there: the agent terminal's when it will be
+ *   in front, so its floor never moves it.
  * - {@link settle} runs from the last `onDidInitializeLayout`: it reads the
  *   seeded sizes back, warns where one did not land, and marks the layout
  *   settled, whatever happened, on every launch.
  * - {@link reset} is Reset Layout: the default sizes again, applied now.
  *
- * Nothing here throws: a failure is a warning, and the mark is still set.
+ * Nothing here throws, and nothing waits on Theia for longer than `waitMs`:
+ * a stalled panel move is a warning, and the mark is still set.
  */
 export class DefaultLayout {
   private seeded: Record<ShellArea, number> | undefined;
 
-  constructor(private readonly reporter: LayoutReporter) {}
+  /**
+   * @param reporter Where warnings and the settled mark go.
+   * @param waitMs   The longest wait for Theia's pending panel moves; a move
+   *   that never ends must not hold the settled mark back.
+   */
+  constructor(
+    private readonly reporter: LayoutReporter,
+    private readonly waitMs = 5_000,
+  ) {}
 
   /** Size every area for a layout spexr makes itself. */
   seed(shell: SizingShell, agentInFront: boolean): void {
@@ -165,7 +175,7 @@ export class DefaultLayout {
   /** Check the seeded sizes landed, then mark the layout settled. */
   async settle(shell: SizingShell): Promise<void> {
     try {
-      if (this.seeded) await this.check(shell, this.seeded);
+      if (this.seeded && (await this.waitForMoves(shell))) this.check(shell, this.seeded);
     } catch (err) {
       this.reporter.warn("[spexr] the default layout's sizes could not be read back", err);
     } finally {
@@ -178,17 +188,34 @@ export class DefaultLayout {
   async reset(shell: SizingShell, agentInFront: boolean): Promise<void> {
     const sizes = defaultSizes(agentInFront);
     try {
-      await shell.pendingUpdates;
+      await this.waitForMoves(shell);
       for (const area of SHELL_AREAS) shell.resize(sizes[area], area);
-      await this.check(shell, sizes);
+      if (await this.waitForMoves(shell)) this.check(shell, sizes);
     } catch (err) {
       this.reporter.warn("[spexr] Reset Layout's sizes could not be set", err);
     }
   }
 
+  /**
+   * Wait for Theia's pending panel moves, at most `waitMs`. Resolves whether
+   * they ended; a timeout is warned about.
+   */
+  private async waitForMoves(shell: SizingShell): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), this.waitMs);
+    });
+    try {
+      const ended = await Promise.race([shell.pendingUpdates.then(() => true as const), timeout]);
+      if (!ended) this.reporter.warn(`[spexr] Theia's panel moves did not end within ${this.waitMs}ms; the sizes are not checked`);
+      return ended;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** The areas whose size, read back, is more than a pixel off; each is warned about. */
-  private async check(shell: SizingShell, sizes: Readonly<Record<ShellArea, number>>): Promise<ShellArea[]> {
-    await shell.pendingUpdates;
+  private check(shell: SizingShell, sizes: Readonly<Record<ShellArea, number>>): ShellArea[] {
     const data = shell.getLayoutData();
     const off = SHELL_AREAS.filter((area) => {
       const size = data[LAYOUT_DATA_KEY[area]]?.size;
