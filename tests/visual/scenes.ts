@@ -275,15 +275,28 @@ export async function firstVisibleLine(page: Page): Promise<number | null> {
 /**
  * The bottom panel's top edge, in CSS px, as the shell laid it out; null
  * when it is not showing. The demo's starts at y 666 (reference/
- * demo-regions.json, region "panel"); spexr's first-launch sizes (S5c) put
- * it there, give or take the status bar's grid rounding.
+ * demo-regions.json, region "panel"); spexr's default sizes (S5c) put it
+ * there, give or take the status bar's grid rounding. Theia moves the panel's
+ * handle asynchronously when it opens, so the edge is read once it has held
+ * still for half a second (five reads 100ms apart), or after `timeoutMs`.
  */
-export async function bottomPanelTop(page: Page): Promise<{ top: number } | null> {
-  return page.evaluate(() => {
-    const panel = document.getElementById("theia-bottom-content-panel");
-    const r = panel?.getBoundingClientRect();
-    return r && r.height > 0 ? { top: Math.round(r.top * 100) / 100 } : null;
-  });
+export async function bottomPanelTop(page: Page, timeoutMs = 5_000): Promise<{ top: number } | null> {
+  return page.evaluate(async (timeoutMs) => {
+    const read = (): number | null => {
+      const r = document.getElementById("theia-bottom-content-panel")?.getBoundingClientRect();
+      return r && r.height > 0 ? Math.round(r.top * 100) / 100 : null;
+    };
+    const deadline = performance.now() + timeoutMs;
+    let last = read();
+    let held = 0;
+    while (held < 5 && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const now = read();
+      held = now === last ? held + 1 : 0;
+      last = now;
+    }
+    return last === null ? null : { top: last };
+  }, timeoutMs);
 }
 
 /** `Meta+P` on macOS, `Control+P` elsewhere: Theia's Quick Open. */

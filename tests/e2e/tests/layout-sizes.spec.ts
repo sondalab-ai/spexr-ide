@@ -9,8 +9,13 @@
  * restores keeps its own sizes, above the floors (the agent terminal's 432px
  * on the left, 352px on the right). The page fixture waits for the layout's
  * settled mark, which comes after the sizes.
+ *
+ * The right island is read with a project tab in front: the Darkfactory
+ * dashboard, which a launch can leave in front, collapses the right panel
+ * by design (darkfactory-sidebar-policy.ts), and a project tab brings it back
+ * at its size.
  */
-import { test, expect } from "../fixtures/app.js";
+import { test, expect, activateTab } from "../fixtures/app.js";
 import type { Page } from "@playwright/test";
 
 type Area = "left" | "right" | "bottom";
@@ -40,6 +45,12 @@ async function runCommand(page: Page, label: string): Promise<void> {
   await page.locator(".quick-input-widget").waitFor({ state: "hidden", timeout: 15_000 });
 }
 
+/** The right island's width with a project tab (Welcome) in front of the main area. */
+async function rightIslandWidth(page: Page): Promise<number | undefined> {
+  await activateTab(page, "Welcome");
+  return (await island(page, "right"))?.w;
+}
+
 /** Drag the split handle between the left island and the main area by `dx` px. */
 async function dragLeftSash(page: Page, dx: number): Promise<void> {
   const at = await page.evaluate(() => {
@@ -63,7 +74,7 @@ async function dragLeftSash(page: Page, dx: number): Promise<void> {
 test.describe("the default layout's island sizes", () => {
   test("a workspace's first open sizes the islands: left 432 (the agent terminal's), right 352, bottom 204", async ({ page }) => {
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(432, 0);
-    await expect.poll(async () => (await island(page, "right"))?.w, { timeout: 15_000 }).toBeCloseTo(352, 0);
+    await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
     // The bottom panel can start hidden; it opens at the size it was given.
     if ((await island(page, "bottom")) === null) await runCommand(page, "View: Toggle Bottom Panel");
     await expect.poll(async () => (await island(page, "bottom"))?.h, { timeout: 15_000 }).toBeCloseTo(204, 0);
@@ -79,6 +90,6 @@ test.describe("the default layout's island sizes", () => {
     await page.reload();
     await page.waitForSelector("body[data-spexr-layout-ready]", { timeout: 60_000 });
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(532, 0);
-    await expect.poll(async () => (await island(page, "right"))?.w, { timeout: 15_000 }).toBeCloseTo(352, 0);
+    await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
   });
 });

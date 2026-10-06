@@ -140,7 +140,7 @@ export const sel = {
  * in the event. Playwright's own click is not used here: it can miss the hit
  * test or land on a neighbouring widget while the layout is still settling.
  */
-async function activateTab(page: Page, label: string): Promise<void> {
+export async function activateTab(page: Page, label: string): Promise<void> {
   await page.evaluate((wanted) => {
     const labels = [
       ...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel, .p-TabBar-tabLabel"),
