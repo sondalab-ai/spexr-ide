@@ -27,6 +27,7 @@ import { Emitter, type Event } from "@theia/core/lib/common/event";
 import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
 import { agentSessionKey, launchLine, withSessionId } from "./session-launch.js";
+import { SHIFT_TAB, isMultiline } from "../agent-pane/agent-pane-composer-model.js";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
@@ -591,6 +592,34 @@ export class ClaudeTerminalManager {
    */
   send(text: string): void {
     this.widget?.sendText(text);
+  }
+
+  /** Whether a Claude session is running in the agent terminal now. */
+  isRunning(): boolean {
+    return !!this.widget && isReusableTerminal(this.widget);
+  }
+
+  /**
+   * Type a message into the agent's TUI and submit it, as the keyboard would.
+   * Starts the agent first when none runs, and waits until it takes input. A
+   * message with a line break goes in as a paste (the terminal brackets it
+   * when the TUI asked for that, so it stays one message); Enter is `\r`.
+   */
+  async sendPrompt(prompt: string): Promise<void> {
+    if (!this.isRunning()) await this.ensureStarted();
+    await this.whenReady();
+    const term = this.widget;
+    if (!term) throw new Error("the agent did not start");
+    if (isMultiline(prompt)) term.paste(prompt);
+    else term.sendText(prompt);
+    term.sendText("\r");
+  }
+
+  /** Press Shift+Tab `presses` times in the agent's TUI: it cycles the permission mode (Plan is one stop). */
+  async sendModeCycle(presses: number): Promise<void> {
+    if (!this.isRunning()) return;
+    await this.whenReady();
+    for (let i = 0; i < presses; i++) this.widget?.sendText(SHIFT_TAB);
   }
 
   /** Returns the current placement of the widget. */

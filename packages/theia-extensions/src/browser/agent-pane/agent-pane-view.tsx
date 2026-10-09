@@ -12,6 +12,8 @@ export interface AgentPaneViewProps {
   readonly onToggleExpanded: () => void;
   /** Bring the agent terminal forward: where permission prompts are answered. */
   readonly onReveal: () => void;
+  /** The composer, pinned under the log. */
+  readonly composer?: React.ReactNode;
 }
 
 const noop = (): void => undefined;
@@ -45,7 +47,7 @@ const ToolRow: React.FC<{ readonly tool: PaneTool }> = ({ tool }) => (
 /** The head's title: the session's name; the id's own short form when it has none yet. */
 const titleOf = (s: AgentPaneSnapshot): string => s.title ?? nls.localize("spexr/agentPane/untitled", "New session");
 
-const Empty: React.FC<{ readonly onReveal: () => void }> = ({ onReveal }) => (
+const Empty: React.FC<{ readonly onReveal: () => void; readonly composer?: React.ReactNode }> = ({ onReveal, composer }) => (
   <section className="spexr-agent-pane spexr-agent-pane--empty" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
     <PanelHead eyebrow={nls.localize("spexr/agentPane/eyebrow", "Agent")} title={nls.localize("spexr/agentPane/emptyTitle", "No session yet")} />
     <div className="spexr-panel-body spexr-agent-pane__empty">
@@ -56,6 +58,7 @@ const Empty: React.FC<{ readonly onReveal: () => void }> = ({ onReveal }) => (
         {nls.localize("spexr/agentPane/openTerminal", "Open the agent terminal")}
       </button>
     </div>
+    {composer}
   </section>
 );
 
@@ -66,8 +69,8 @@ const Empty: React.FC<{ readonly onReveal: () => void }> = ({ onReveal }) => (
  * latest diff and the plan; a row asking the user to come to the terminal when
  * the agent waits for them. Nothing here animates in.
  */
-export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded, onToggleExpanded, onReveal }) => {
-  if (!snapshot) return <Empty onReveal={onReveal} />;
+export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded, onToggleExpanded, onReveal, composer }) => {
+  if (!snapshot) return <Empty onReveal={onReveal} composer={composer} />;
   const turn = snapshot.turn;
   const family = modelFamily(snapshot.model);
   const prose = turn?.prose?.[turn.prose.length - 1];
@@ -139,6 +142,7 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
           </div>
         ) : null}
       </div>
+      {composer}
     </section>
   );
 };

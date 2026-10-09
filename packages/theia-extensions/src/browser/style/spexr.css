@@ -2354,7 +2354,22 @@ body .theia-notifications-container.theia-notification-toasts {
    them); the head, the card and the rows are the right island's own above.
    Nothing here animates in: the demo's entrance is not carried. */
 .spexr-agent-pane-widget {
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The pane is a column: the head, the log that scrolls, and the composer
+   pinned under it. */
+.spexr-agent-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.spexr-agent-pane .spexr-panel-head {
+  flex: none;
 }
 
 .spexr-panel-head--aside {
@@ -2383,13 +2398,18 @@ body .theia-notifications-container.theia-notification-toasts {
 
 .spexr-agent-pane__log {
   display: grid;
+  flex: 1;
   gap: 16px;
   align-content: start;
+  min-height: 0;
+  overflow-y: auto;
   padding: 16px;
 }
 
 .spexr-agent-pane__empty {
+  flex: 1;
   display: grid;
+  align-content: start;
   gap: 12px;
   justify-items: start;
 }
@@ -2606,6 +2626,76 @@ body .theia-notifications-container.theia-notification-toasts {
 
 .spexr-agent-plan__item .sl-check__label {
   font-size: 13px;
+}
+
+/* The composer (S6i): Lumen's message box, r12 on the kit's control edge. Its
+   focus is the container's, one flush accent ring in place of the edge (the
+   field inside draws none). */
+.spexr-agent-composer {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  margin: 12px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--slc-raised);
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+}
+
+.spexr-agent-composer:focus-within {
+  box-shadow: 0 0 0 var(--sl-focus-ring-width, 2px) var(--slc-focus);
+}
+
+.spexr-agent-composer__field {
+  display: block;
+}
+
+.spexr-agent-composer__input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 2px 4px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--slc-text);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.spexr-agent-composer__input::placeholder {
+  color: var(--slc-text-muted);
+  opacity: 1;
+}
+
+.spexr-agent-composer__note {
+  margin: 0;
+  padding-inline: 4px;
+  color: var(--slc-text-secondary);
+  font-size: var(--sl-text-xs);
+  line-height: 16px;
+}
+
+.spexr-agent-composer__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spexr-agent-composer__spacer {
+  flex: 1;
+}
+
+.spexr-agent-composer__chip {
+  border-radius: 6px;
+  text-transform: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A card of rows: Lumen's tool list, on the raised ground at r8. Its outline

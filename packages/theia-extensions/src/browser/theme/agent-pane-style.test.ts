@@ -99,6 +99,38 @@ describe("the agent pane in spexr.css", () => {
     expect(px(tag, "border-radius")).toBe(AGENT_PANE.modelRadius);
   });
 
+  it("is the table's composer: r12 on the control edge, 12px off the island, 8px of padding and gap, on the raised ground", () => {
+    const c = rules(".spexr-agent-composer");
+    expect(px(c, "border-radius")).toBe(AGENT_PANE.composerRadius);
+    expect(px(c, "margin")).toBe(AGENT_PANE.composerMargin);
+    expect(px(c, "padding")).toBe(AGENT_PANE.composerPadding);
+    expect(px(c, "gap")).toBe(AGENT_PANE.composerGap);
+    expect(c).toMatch(/box-shadow:\s*0 0 0 1px var\(--slc-edge-control\)/);
+    expect(c).toMatch(/background:\s*var\(--slc-raised\)/);
+    expect(px(rules(".spexr-agent-composer__bar"), "gap")).toBe(AGENT_PANE.composerGap);
+  });
+
+  it("focuses the composer with one flush ring in the focus colour, in place of the edge, and the field draws none", () => {
+    expect(rules(".spexr-agent-composer:focus-within")).toMatch(/box-shadow:\s*0 0 0 var\(--sl-focus-ring-width, 2px\) var\(--slc-focus\)/);
+    expect(rules(".spexr-agent-composer__input")).toMatch(/outline:\s*none/);
+  });
+
+  it("is the table's field: two rows of the prose's type, 2px by 4px of padding, no border, no fill, no resize", () => {
+    const f = rules(".spexr-agent-composer__input");
+    expect(f).toMatch(new RegExp(`padding:\\s*${AGENT_PANE.fieldPaddingBlock}px ${AGENT_PANE.fieldPaddingInline}px`));
+    expect(px(f, "font-size")).toBe(AGENT_PANE.proseSize);
+    expect(px(f, "line-height")).toBe(AGENT_PANE.proseLeading);
+    expect(f).toMatch(/border:\s*0/);
+    expect(f).toMatch(/resize:\s*none/);
+    expect(f).toMatch(/background:\s*transparent/);
+    expect(read("../agent-pane/agent-pane-composer.tsx")).toMatch(new RegExp(`rows=\\{${AGENT_PANE.fieldRows}\\}`));
+  });
+
+  it("is the table's chip: r6, in the mono, sentence case", () => {
+    expect(px(rules(".spexr-agent-composer__chip"), "border-radius")).toBe(AGENT_PANE.chipRadius);
+    expect(rules(".spexr-agent-composer__chip")).toMatch(/text-transform:\s*none/);
+  });
+
   it("does not animate: no transition, animation or keyframes", () => {
     for (const { selector, body } of AGENT_SELECTORS) {
       expect(body, selector).not.toMatch(/\banimation\b|\btransition\b/);
@@ -121,6 +153,16 @@ describe("the agent pane's sources", () => {
     expect(view).toMatch(/nls\.localize\("spexr\/agentPane\/needsYou", "Waiting for you in the terminal"\)/);
     expect(view).toMatch(/nls\.localize\("spexr\/agentPane\/reveal", "Reveal"\)/);
     expect(view).not.toMatch(/style=\{\{/);
+  });
+
+  it("builds the composer from the kit's parts: a pressed chip, a ghost Plan and a primary Send, both small, with a keycap", () => {
+    const src = read("../agent-pane/agent-pane-composer.tsx");
+    expect(src).toMatch(/className="sl-chip spexr-agent-composer__chip" aria-pressed=\{p\.chipPressed\}/);
+    expect(src).toMatch(/className="sl-btn sl-btn--ghost sl-btn--sm" aria-pressed=\{p\.planPressed\}/);
+    expect(src).toMatch(/type="submit" className="sl-btn sl-btn--primary sl-btn--sm"/);
+    expect(src).toMatch(/<kbd className="sl-kbd"[^>]*>\{"\u23ce"\}<\/kbd>/);
+    expect(src).toMatch(/Waiting for you in the terminal/);
+    expect(src).not.toMatch(/style=\{\{/);
   });
 
   it("is the first tile of the right island and takes the head's own title row off", () => {
@@ -215,4 +257,33 @@ describe.each(THEMES)("the agent pane on %s", (theme) => {
   it("reads the model tag at 4.5:1 on its accent wash", () => {
     atLeast(4.5, accentText, mix(accent, 16, surface), "tag");
   });
+
+  /** --slc-edge-control (components.css): the surface's lightness stepped 5 shades away (and a half more on paper). */
+  it("outlines the composer at 3:1 against the island and the raised ground, and rings its focus at 3:1", () => {
+    const k = kitFile("components.css");
+    const step = Number(/--slc-shade-step:\s*([\d.]+)/.exec(k)![1]);
+    const steps = Number(/--slc-edge-control-steps:\s*([\d.]+)/.exec(k)![1]);
+    const [L, C, h] = toOklch(surface);
+    const edge = fromOklch([theme === "dark" ? L + step * steps : L - step * (steps + 0.5), C, h]);
+    atLeast(3, edge, surface, "edge on the island");
+    atLeast(3, edge, raised, "edge on the raised ground");
+    // --slc-focus is --sl-focus-ring, the accent ink (capped on light).
+    atLeast(3, accentText, surface, "focus ring on the island");
+    atLeast(3, accentText, raised, "focus ring on the raised ground");
+  });
+
+  it("reads the field, its placeholder and the note at 4.5:1 on the raised ground", () => {
+    atLeast(4.5, text, raised, "typed text");
+    atLeast(4.5, muted, raised, "placeholder");
+    atLeast(4.5, secondary, raised, "note");
+  });
+
+  it("reads a pressed chip and a pressed Plan at 4.5:1: the accent ink on its 12% wash, and the idle chip's muted ink on the raised ground", () => {
+    atLeast(4.5, accentText, mix(acc(), 12, raised), "pressed");
+    atLeast(4.5, muted, raised, "idle chip");
+  });
+
+  function acc(): string {
+    return accent;
+  }
 });
