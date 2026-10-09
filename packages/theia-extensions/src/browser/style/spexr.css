@@ -101,7 +101,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
    something the kit does not ship yet (density, accent eyebrow):
    https://github.com/sondalab-ai/sondalab-ui/issues/33
-   Density: a wider button, and a small one in the 14px face. Since kit 0.32
+   Density: a wider button. Since kit 0.32
    the primary's foot is a background layer, so this padding gives every
    variant the kit's rows -- 1 + 8 + 14 + 8 + 1 = 32px, and 1 + 4 + 14 + 4 + 1
    = 24px small -- opaque, on a glass pane, under high contrast and with the
@@ -113,7 +113,6 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 .sl-btn--sm {
   padding: var(--sl-space-1) var(--sl-space-3);
-  font-size: var(--sl-text-sm);
 }
 
 /* A panel is narrower than a page: the kit's empty-state padding would push
