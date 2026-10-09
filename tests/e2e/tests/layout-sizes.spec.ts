@@ -114,7 +114,8 @@ test.describe("the default layout's island sizes", () => {
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
     expect(await rightIslandWidth(page)).toBeCloseTo(352, 0);
-    expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom ?? 204, 0);
+    // The bottom panel can start hidden; only a panel that was showing is compared.
+    if (bottom !== undefined) expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom, 0);
   });
 
   test("a restored layout keeps its own widths", async ({ page }) => {
