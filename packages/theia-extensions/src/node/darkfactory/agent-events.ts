@@ -50,8 +50,12 @@ const PLAN_TOOLS = new Set(["TodoWrite", "TaskCreate", "TaskUpdate", "ExitPlanMo
 
 /** The longest prompt kept: the goal is cut there too (parseTranscript). */
 const MAX_PROMPT_CHARS = 2000;
-/** A response faster than this is a measurement error, not a model. */
-const MAX_PLAUSIBLE_TOK_PER_SEC = 2000;
+/**
+ * A response faster than this is a measurement error, not a model: replayed
+ * over real transcripts the median is about 70 tok/s and no honest one passes
+ * a few hundred.
+ */
+const MAX_PLAUSIBLE_TOK_PER_SEC = 500;
 
 const VERBS: Record<string, string> = {
   Read: "Read",

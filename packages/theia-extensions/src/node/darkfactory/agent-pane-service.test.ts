@@ -17,6 +17,8 @@ interface Setup {
   names: string;
   now: { t: number };
   watched: string[];
+  /** The callbacks of the watchers the service armed, by path. */
+  callbacks: Map<string, (filename?: string) => void>;
   closed: string[];
   live: { dirs: Set<string> };
   specReads: { n: number; plan: Array<{ text: string; done: boolean }> | undefined };
@@ -36,6 +38,7 @@ function setup(): Setup {
   const now = { t: 1_800_000_000_000 };
   const events: Setup["events"] = [];
   const watched: string[] = [];
+  const callbacks = new Map<string, (filename?: string) => void>();
   const closed: string[] = [];
   const live = { dirs: new Set([ws]) };
   const specReads = { n: 0, plan: undefined as Array<{ text: string; done: boolean }> | undefined };
@@ -47,8 +50,9 @@ function setup(): Setup {
   const svc = new AgentPaneBackendService({
     configDirs: () => [config],
     now: () => now.t,
-    watch: (path) => {
+    watch: (path, onChange) => {
       watched.push(path);
+      callbacks.set(path, onChange);
       return { close: () => closed.push(path) };
     },
     liveDirs: async () => live.dirs,
@@ -59,7 +63,7 @@ function setup(): Setup {
     },
   });
   svc.setClient(client);
-  return { ws, config, projects, names, now, events, svc, watched, closed, live, specReads };
+  return { ws, config, projects, names, now, events, svc, watched, callbacks, closed, live, specReads };
 }
 
 let seq = 0;
@@ -310,5 +314,30 @@ describe("AgentPaneBackendService", () => {
     s.events.length = 0;
     await s.svc.refresh();
     expect(s.events).toEqual([]);
+  });
+
+  it("does not take the followed transcript's own writes for news in the folder, only its neighbours'", async () => {
+    write(s.projects, IDS.A, head(IDS.A) + promptLine(IDS.A, s.ws, 1, "go"), 1_800_000_000);
+    await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws });
+    await settle(s.svc);
+    const internals = s.svc as unknown as { dirDirty: boolean };
+    expect(internals.dirDirty).toBe(false);
+    s.callbacks.get(s.projects)!(`${IDS.A}.jsonl`);
+    expect(internals.dirDirty).toBe(false);
+    s.callbacks.get(s.projects)!(`${IDS.B}.jsonl`);
+    expect(internals.dirDirty).toBe(true);
+    await s.svc.stop();
+  });
+
+  it("keeps looking for a missing transcript however long the follow lasts", async () => {
+    await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws });
+    const internals = s.svc as unknown as { locateTimer: ReturnType<typeof setTimeout> | undefined; scheduleLocate(): void };
+    expect(internals.locateTimer).toBeDefined();
+    clearTimeout(internals.locateTimer);
+    internals.locateTimer = undefined;
+    s.now.t += 24 * 3_600_000;
+    internals.scheduleLocate();
+    expect(internals.locateTimer).toBeDefined();
+    await s.svc.stop();
   });
 });
