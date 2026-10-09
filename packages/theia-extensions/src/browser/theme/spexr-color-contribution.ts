@@ -1,7 +1,10 @@
 import { injectable } from "@theia/core/shared/inversify";
 import type { ColorContribution } from "@theia/core/lib/browser/color-application-contribution";
 import type { ColorRegistry } from "@theia/core/lib/browser/color-registry";
+import { ColorDefaults } from "@theia/core/lib/common/color";
+import { terminalAnsiColorMap } from "@theia/terminal/lib/common/terminal-preferences";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
+import { terminalColors } from "./spexr-terminal-palette.js";
 import { ACCENT, ACCENT_FILL, KIT_STATUS_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 
 type PerTheme = { dark: string; light: string };
@@ -190,6 +193,24 @@ export class SpexrColorContribution implements ColorContribution {
           hcLight: "editor.background",
         },
         description: `SPEXR: ${id} on the SPEXR surface neutral, the fill of an island at rest.`,
+      });
+    }
+
+    // The terminal's ink, cursor, selection and sixteen ANSI colours, from kit
+    // roles (spexr-terminal-palette.ts). Registering an id replaces all four of
+    // its defaults, so high contrast is handed Theia's own back: the ANSI
+    // colours' from its map, the ink as the theme's foreground, the selection
+    // as the editor's, and no cursor colour (the ink).
+    const dark = terminalColors("dark");
+    const light = terminalColors("light");
+    for (const id of Object.keys(dark)) {
+      const theia = terminalAnsiColorMap[id]?.defaults;
+      const hcDark = id === "terminal.foreground" ? "foreground" : id === "terminal.selectionBackground" ? "editor.selectionBackground" : ColorDefaults.getHCDark(theia);
+      const hcLight = id === "terminal.foreground" ? "foreground" : id === "terminal.selectionBackground" ? "editor.selectionBackground" : ColorDefaults.getHCLight(theia);
+      colors.register({
+        id,
+        defaults: { dark: dark[id]!, light: light[id]!, ...(hcDark !== undefined ? { hcDark } : {}), ...(hcLight !== undefined ? { hcLight } : {}) },
+        description: `SPEXR: ${id} from the kit's roles.`,
       });
     }
   }

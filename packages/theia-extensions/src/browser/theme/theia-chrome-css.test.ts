@@ -184,6 +184,21 @@ describe("the editor tabs' Theia colours", () => {
   });
 });
 
+// Errors, warnings and infos in Theia's chrome are the kit's tones as text; the
+// registry's reds and blues stay in Monaco's own squiggles and hovers.
+describe("Theia's severity colours", () => {
+  const roles: Record<string, string> = { Error: "danger", Warning: "warning", Info: "info" };
+  it.each(["light", "dark"])("are the kit's danger, warning and info as text on %s", (theme) => {
+    for (const [severity, role] of Object.entries(roles)) {
+      const expected = `var(--slc-${role}-text, var(--slc-${role}))`;
+      expect(value(theme, `editor${severity}-foreground`), severity).toBe(expected);
+      expect(value(theme, `problems${severity}Icon-foreground`), severity).toBe(expected);
+    }
+    expect(value(theme, "list-errorForeground")).toBe("var(--slc-danger-text, var(--slc-danger))");
+    expect(value(theme, "list-warningForeground")).toBe("var(--slc-warning-text, var(--slc-warning))");
+  });
+});
+
 // High contrast keeps Theia's own HC colours and the kit's yellow: the
 // injection there is the UI face only, no indigo fill, no light accent.
 describe("high contrast", () => {

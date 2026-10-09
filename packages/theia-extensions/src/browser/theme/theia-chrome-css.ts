@@ -177,6 +177,20 @@ body {
   --theia-notificationsWarningIcon-foreground: var(--slc-warning-text, var(--slc-warning)) !important;
   --theia-notificationsErrorIcon-foreground: var(--slc-danger-text, var(--slc-danger)) !important;
 
+  /* Errors, warnings and infos in Theia's chrome (the Problems view and its
+     counters, list decorations, the editor-severity colours Theia's own CSS
+     reads) in the kit's tones as text: the registry holds Theia's reds and
+     blues, which the stylesheet's kit roles replace. Monaco's own squiggles,
+     gutter marks and hovers read the Monaco theme and keep Monaco's colours. */
+  --theia-editorError-foreground: var(--slc-danger-text, var(--slc-danger)) !important;
+  --theia-editorWarning-foreground: var(--slc-warning-text, var(--slc-warning)) !important;
+  --theia-editorInfo-foreground: var(--slc-info-text, var(--slc-info)) !important;
+  --theia-problemsErrorIcon-foreground: var(--slc-danger-text, var(--slc-danger)) !important;
+  --theia-problemsWarningIcon-foreground: var(--slc-warning-text, var(--slc-warning)) !important;
+  --theia-problemsInfoIcon-foreground: var(--slc-info-text, var(--slc-info)) !important;
+  --theia-list-errorForeground: var(--slc-danger-text, var(--slc-danger)) !important;
+  --theia-list-warningForeground: var(--slc-warning-text, var(--slc-warning)) !important;
+
   /* Selection is a tile (kit 0.31): the tile rung under the primary ink on
      Theia's lists and trees and the quick pick, focused or not. The tile is
      found by the seam spexr.css draws on it (the accent where the list has
