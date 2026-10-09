@@ -1309,6 +1309,167 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   color: var(--slc-text);
 }
 
+/* ══ THE LEFT ISLAND'S EXPLORER (S6b, Lumen's Explorer) ═════════════════════
+   Measured from the demo at 1440x900 and put on the 4px grid in
+   shell/workbench-geometry.ts (WORKBENCH: paneTool, paneToolInset,
+   sectionHead, sectionInset, gitLetter); theme/explorer-style.test.ts holds
+   every number here to it.
+
+   A section header (the Search view's two sections, an Explorer section the
+   user shows again, the project folder over the tree) is an eyebrow: mono,
+   uppercase, --sl-text-micro (10.5px) at 500 and +0.06em, in the muted ink,
+   28px tall with its text 8px down and 16px in (Lumen's 9.6 / 14.4 / 29.6).
+   The chevron stays out of the way until the header is hovered or focused;
+   a collapsed section keeps it, since it is then the only sign the section
+   has a body. It sits in the 16px gutter, so the text keeps its place.
+   Theia hides the header of a container's only visible section and folds
+   the section's name into the container's title; the Explorer keeps its
+   header, and the project folder's name is its eyebrow, as Lumen's.
+   Theia's section header height is the variable below, scoped to the left
+   island (the right and bottom keep Theia's), and, in script,
+   ViewContainerPart.HEADER_HEIGHT (shell/section-header-height.ts), which is
+   one static for every container: it is the collapsed slot's height, so a
+   collapsed section elsewhere is 28px tall too, its 24px header inside it. */
+#theia-left-content-panel {
+  --theia-view-container-title-height: 28px;
+}
+
+#theia-left-content-panel .theia-view-container-part-header {
+  position: relative;
+  box-sizing: border-box;
+  height: var(--theia-view-container-title-height);
+  padding: 8px calc(16px - var(--spexr-island-ring)) 4px;
+  align-items: flex-start;
+  box-shadow: none;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-micro);
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-left-content-panel .theia-view-container-part-header {
+  background: transparent;
+  color: var(--slc-text-muted);
+}
+
+#theia-left-content-panel .theia-view-container-part-header .theia-ExpansionToggle {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-start: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  opacity: 0;
+  transition: opacity var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+#theia-left-content-panel .theia-view-container-part-header:is(:hover, :focus-within) .theia-ExpansionToggle,
+#theia-left-content-panel .part.collapsed .theia-view-container-part-header .theia-ExpansionToggle {
+  opacity: 1;
+}
+
+#theia-left-content-panel .theia-view-container-part-header .theia-view-container-part-title {
+  align-self: center;
+}
+
+/* The Explorer's one section keeps its header. Theia hides it with an inline
+   display:none and sets the body to 100% of the part, which would push the
+   tree's foot under the part's edge by the header's height. With more than
+   one visible section the header is there anyway. */
+#explorer-view-container .theia-view-container-part-header {
+  display: flex !important;
+}
+
+#explorer-view-container .part > .body {
+  height: var(--theia-view-container-content-height) !important;
+}
+
+/* Its tools are in the head (Theia moved them there with the title), so the
+   copy a section header shows on hover would repeat them. With two or more
+   visible sections the head has none and each header carries its own. */
+#explorer-view-container > .lm-SplitPanel:not(:has(> .part:not(.lm-mod-hidden) ~ .part:not(.lm-mod-hidden))) .theia-view-container-part-header .theia-view-container-part-title {
+  display: none !important;
+}
+
+/* The Explorer's head, Lumen's: its tools are a "+" (New File) and "...",
+   24px ghost buttons 8px in from the island's edge; New Folder, Refresh and
+   Collapse All fade in while the head is hovered or has the focus. They keep
+   their place in the layout (opacity and visibility, never display), so the
+   "+" and "..." do not move; a tool that is hidden cannot take the focus, so
+   the head's focus-within shows them as the keyboard reaches the "+". */
+#theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar {
+  gap: 4px;
+  padding-inline: 0 calc(8px - var(--spexr-island-ring));
+}
+
+#theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar .item {
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--sl-radius-md);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+#theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar .item > div {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  line-height: 1;
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar .item {
+  color: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar .item.enabled:hover {
+  color: var(--slc-text);
+  background-color: color-mix(in srgb, var(--slc-text) 7%, transparent);
+}
+
+#theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar .codicon-new-file::before {
+  content: "\ea60";
+}
+
+#theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar .item:has(> :is(.codicon-new-folder, .codicon-refresh, .codicon-collapse-all)) {
+  transition:
+    opacity var(--sl-motion-fast) var(--sl-motion-ease),
+    visibility var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+#theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar:not(:hover, :focus-within) .lm-TabBar-toolbar .item:has(> :is(.codicon-new-folder, .codicon-refresh, .codicon-collapse-all)) {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* A tool or a section header reached by the keyboard takes the kit's flush
+   ring (the ring's width inside the box, as the kit's controls). */
+#theia-left-content-panel :is(.theia-sidepanel-toolbar .lm-TabBar-toolbar .item > div, .theia-view-container-part-header):focus-visible {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+/* A changed file's mark in the Explorer (S6b, L7): one letter, mono at 600,
+   right-aligned 16px in from the island's edge, in the row's own ink where
+   the name is (spexr-file-tree-decorator-adapter.ts keeps git's colour on the
+   letter alone). The letter's colour is git's status tone, read at 4.5:1 on
+   the island and on a selected row (theme/explorer-style.test.ts). */
+#theia-left-content-panel .theia-FileTree .theia-TreeNodeContent {
+  padding-right: calc(16px - var(--spexr-island-ring));
+}
+
+#theia-left-content-panel .theia-FileTree .theia-TreeNodeTail {
+  justify-content: flex-end;
+  font-family: var(--sl-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Forced colours drop the tile, the seam and the glyph's accent: the current
    activity item gets the Highlight outline the S2 tiles have. The pane's own
    outline and seam are the kit's (workbench.css). */
@@ -4048,7 +4209,7 @@ code {
   width: 18px; height: 18px; border-radius: var(--sl-radius-sm);
 }
 
-/* Smart Search (Explorer) */
+/* Smart Search (the Search view) */
 .spexr-smart-search__body { padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
 .spexr-smart-search__input { width: 100%; box-sizing: border-box; }
 .spexr-smart-search__status { font-size: 11px; opacity: 0.7; }

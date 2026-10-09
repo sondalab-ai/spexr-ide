@@ -51,6 +51,7 @@
           "editor.renderLineHighlight": "all",
           "editor.bracketPairColorization.enabled": false,
           "workbench.tree.indent": 16,
+          "problems.decorations.enabled": false,
           "workspace.preserveWindow": true
         }
       }

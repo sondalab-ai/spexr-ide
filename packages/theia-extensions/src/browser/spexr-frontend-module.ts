@@ -59,6 +59,8 @@ import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shel
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
 import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
+import { SpexrExplorerChromeContribution } from "./shell/explorer-chrome-contribution.js";
+import { applySectionHeaderHeight } from "./shell/section-header-height.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
 import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-contribution.js";
@@ -89,6 +91,10 @@ import { ScmCommitWidget } from "@theia/scm/lib/browser/scm-commit-widget";
 import { SpexrScmCommitWidget } from "./scm/spexr-scm-commit-widget.js";
 import { GitIgnoredDecorationProvider } from "./scm/git-ignored-decoration-provider.js";
 import { GitStateDecorationProvider } from "./scm/git-state-decoration-provider.js";
+import { SpexrProblemDecorationsProvider } from "./scm/spexr-problem-decorations-provider.js";
+import { ProblemDecorationsProvider } from "@theia/markers/lib/browser/problem/problem-decorations-provider";
+import { SpexrFileTreeDecoratorAdapter } from "./scm/spexr-file-tree-decorator-adapter.js";
+import { FileTreeDecoratorAdapter } from "@theia/filesystem/lib/browser/file-tree/file-tree-decorator-adapter";
 import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-proxy.js";
 import { SpexrGitClientDispatcher, SpexrGitClientToken } from "./scm/git-client.js";
 import { SpexrGitCommandsContribution } from "./scm/git-commands-contribution.js";
@@ -140,6 +146,8 @@ import { SpexrDarkfactorySidebarVisibilityContribution } from "./darkfactory/dar
  * discovers contributions through these bindings.
  */
 export default new ContainerModule((bind, _unbind, isBound, rebind) => {
+  // Before any view container makes its layout (section-header-height.ts).
+  applySectionHeaderHeight();
   bindViewContribution(bind, SpexrSpecViewContribution);
   bind(SpexrSpecWidget).toSelf();
   bind(WidgetFactory)
@@ -338,6 +346,9 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(GitStatusBarContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitStatusBarContribution);
 
+  // A changed file's colour is its letter's alone (S6b, L7).
+  rebind(ProblemDecorationsProvider).to(SpexrProblemDecorationsProvider).inSingletonScope();
+  rebind(FileTreeDecoratorAdapter).to(SpexrFileTreeDecoratorAdapter).inSingletonScope();
   bind(GitIgnoredDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitIgnoredDecorationProvider);
 
@@ -420,6 +431,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(SpexrSmartSearchContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrSmartSearchContribution);
   bind(CommandContribution).toService(SpexrSmartSearchContribution);
+  bind(SpexrExplorerChromeContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrExplorerChromeContribution);
   bind(DescriptionJobStatusBarContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(DescriptionJobStatusBarContribution);
 
