@@ -113,6 +113,12 @@ export interface AgentPaneBinding {
   workspacePath: string;
   /** A name for the head (custom name, summary or goal), when the frontend has one. */
   title?: string;
+  /**
+   * The id comes from storage, not from a launch this window made: the session
+   * may be long finished, so a newer transcript in its folder is taken as its
+   * successor only while a Claude process runs there.
+   */
+  fromStorage?: boolean;
 }
 
 export interface AgentPaneService {

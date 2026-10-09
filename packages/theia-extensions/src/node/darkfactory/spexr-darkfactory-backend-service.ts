@@ -204,6 +204,8 @@ export interface DarkfactoryDeps {
   generator?: DescriptionGenerator;
   /** Sentence encoder for the session index; absent in tests that do not search. */
   embed?: (texts: string[]) => Promise<Float32Array[]>;
+  /** The tool counter, shared with the agent pane so a transcript is scanned once. */
+  toolCounter?: ToolCounter;
   /** Index location override, so tests never touch the real home directory. */
   sessionIndexPath?: string;
   /** Session-name store override, so tests never touch the real home directory. */
@@ -404,7 +406,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private sessionIndex?: Promise<SessionIndex>;
   private indexing = false;
   /** Tool-call counts by transcript, kept up to date by the index crawl and by each scan for live sessions. */
-  private readonly toolCounter = new ToolCounter();
+  private readonly toolCounter: ToolCounter;
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
   private readonly sessionIndexPath: string | undefined;
   private readonly sessionNamesPath: string | undefined;
@@ -466,6 +468,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
           installed.flatMap((h) => h.processNames()),
         );
       });
+    this.toolCounter = d.toolCounter ?? new ToolCounter();
     this.generator = d.generator;
     this.embed = d.embed;
     this.sessionIndexPath = d.sessionIndexPath;
@@ -474,9 +477,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.dirExists = d.dirExists ?? defaultDirExists;
     this.lineage = d.lineage ?? new SessionLineage();
     this.projectGroups = d.projectGroups ?? new ProjectGroups(this.now);
-    if (this.embed) {
-      setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
-    }
+    // Without an encoder the crawl only counts tool calls, which every tile wants.
+    setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
   }
 
   /**

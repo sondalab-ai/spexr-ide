@@ -1,6 +1,6 @@
 import { watch, type FSWatcher } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
 import { parseSpecPlan } from "@spexr/spec";
 import { buildAgentPaneSnapshot, diffSnapshots, parseCheckboxes, type PaneEntry } from "./agent-events.js";
 import { chooseSuccessor, type SuccessorCandidate } from "./agent-successor.js";
@@ -21,9 +21,15 @@ const MAX_ENTRIES = 6000;
 const DEBOUNCE_MS = 150;
 /** How often a transcript that does not exist yet is looked for. */
 const LOCATE_MS = 1500;
+/** The wait for a transcript that is not there backs off to this, and ends after {@link LOCATE_GIVE_UP_MS}. */
+const LOCATE_MAX_MS = 15_000;
+const LOCATE_GIVE_UP_MS = 10 * 60_000;
 const LIVE_TTL_MS = 5000;
 /** The project folder is listed for a successor at most this often: it can hold thousands of transcripts. */
 const SUCCESSOR_EVERY_MS = 3000;
+/** The spec plan is read again at most this often. */
+const SPEC_PLAN_TTL_MS = 5000;
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The folder name Claude Code gives a project: every character that is not a letter or digit becomes `-`. */
 export function encodeProjectDir(path: string): string {
@@ -42,6 +48,8 @@ export interface AgentPaneDeps {
   /** The checkboxes of the workspace's spec plan, the last of the plan chain. */
   specPlan?: (workspacePath: string) => Promise<PanePlanItem[] | undefined>;
   debounceMs?: number;
+  /** The tool counter, shared with the wall so a transcript is scanned once. */
+  counter?: ToolCounter;
 }
 
 const defaultWatch = (path: string, onChange: () => void): { close(): void } | undefined => {
@@ -102,24 +110,35 @@ function parse(line: string): PaneEntry | undefined {
   }
 }
 
+/** What a scan of the project folder found besides the followed transcript. */
+interface FolderScan {
+  /** Transcripts written after the followed one, with what choosing a successor needs. */
+  newer: Array<SuccessorCandidate & { file: string }>;
+  /** The latest write of any other transcript in the folder. */
+  maxOtherMtime: number;
+}
+
 /**
  * Backs the agent pane: follows the transcript of the session the agent
  * terminal started, turns it into {@link AgentPaneSnapshot}s and pushes what
- * changed. One follow at a time.
+ * changed. One follow at a time, and one service per connection (it holds
+ * watchers and timers, which {@link dispose} releases).
  *
  * The transcript is found by session id under every Claude config dir (it
  * does not exist until Claude writes its first line, so the project folder is
- * watched for it), read incrementally with the follow reader, and watched. When
- * the conversation moves to another transcript (`/clear`, `/resume`) the
- * follow moves with it and the client is told. Updates arrive per transcript
- * record, not as a token stream.
+ * watched, once, for it, and looked for with a backing-off poll), read
+ * incrementally with the follow reader, and watched. When the conversation
+ * moves to another transcript (`/clear`, `/resume`) the follow moves with it
+ * and the client is told; the folder is listed for that only when it changed.
+ * Updates arrive per transcript record, not as a token stream.
  */
 export class AgentPaneBackendService implements AgentPaneService {
   private client: AgentPaneClient | undefined;
   private readonly deps: Required<Pick<AgentPaneDeps, "configDirs" | "now" | "watch" | "liveDirs" | "specPlan" | "debounceMs">> & { namesPath: string };
   private readonly lineage = new SessionLineage();
-  private readonly counter = new ToolCounter();
+  private readonly counter: ToolCounter;
   private live: { at: number; value: Set<string> | null } | undefined;
+  private specPlanCache: { workspace: string; at: number; dirMtime: number; value: PanePlanItem[] | undefined } | undefined;
 
   private binding: AgentPaneBinding | undefined;
   private transcript: string | undefined;
@@ -127,14 +146,25 @@ export class AgentPaneBackendService implements AgentPaneService {
   private entries: PaneEntry[] = [];
   private raw: string[] = [];
   private last: AgentPaneSnapshot | undefined;
-  private watchers: Array<{ close(): void }> = [];
+  private cwd: string | undefined;
+  private fileWatcher: { close(): void } | undefined;
+  private dirWatcher: { close(): void } | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  private locating: ReturnType<typeof setInterval> | undefined;
+  private locateTimer: ReturnType<typeof setTimeout> | undefined;
+  private successorTimer: ReturnType<typeof setTimeout> | undefined;
   /** Bumped by every follow and stop, so a refresh begun for an earlier one drops its result. */
   private epoch = 0;
   private refreshing: Promise<void> | undefined;
   private again = false;
+  /** The folder changed (its watcher fired) since the last scan for a successor. */
+  private dirDirty = true;
+  private dirMtime: number | undefined;
   private successorCheckedAt: number | undefined;
+  /** The last scan saw transcripts newer than ours and chose none of them: look again soon. */
+  private pendingCandidates = false;
+  private maxOtherMtime = 0;
+  private locateStartedAt = 0;
+  private locateDelay = LOCATE_MS;
 
   constructor(deps: AgentPaneDeps = {}) {
     this.deps = {
@@ -146,6 +176,7 @@ export class AgentPaneBackendService implements AgentPaneService {
       debounceMs: deps.debounceMs ?? DEBOUNCE_MS,
       namesPath: deps.namesPath ?? resolveSessionNamesPath(),
     };
+    this.counter = deps.counter ?? new ToolCounter();
   }
 
   setClient(client: AgentPaneClient): void {
@@ -153,14 +184,21 @@ export class AgentPaneBackendService implements AgentPaneService {
   }
 
   async follow(binding: AgentPaneBinding): Promise<AgentPaneSnapshot | undefined> {
+    // The id names a file under a Claude config dir and the path a folder to
+    // look in: neither may carry anything but what Claude and the backend write.
+    if (!SESSION_ID.test(binding.sessionId)) throw new Error("agent pane: the session id is not a UUID");
+    if (!isAbsolute(binding.workspacePath) || normalize(binding.workspacePath).replace(/(.)[\\/]+$/, "$1") !== binding.workspacePath.replace(/(.)[\\/]+$/, "$1")) {
+      throw new Error("agent pane: the workspace path is not an absolute, normalised path");
+    }
     await this.stop();
     const epoch = ++this.epoch;
     this.binding = binding;
+    this.locateStartedAt = this.deps.now();
+    this.locateDelay = LOCATE_MS;
     await this.locate();
     if (epoch !== this.epoch) return undefined;
     if (!this.transcript) {
-      this.locating = setInterval(() => void this.locate().then(() => this.transcript && this.schedule()).catch(() => undefined), LOCATE_MS);
-      this.locating.unref?.();
+      this.scheduleLocate();
       return undefined;
     }
     await this.refresh();
@@ -169,13 +207,25 @@ export class AgentPaneBackendService implements AgentPaneService {
 
   async stop(): Promise<void> {
     this.epoch++;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.locating) clearInterval(this.locating);
-    this.timer = this.locating = undefined;
-    for (const w of this.watchers.splice(0)) w.close();
-    this.binding = this.transcript = this.cursor = this.last = undefined;
+    for (const t of [this.timer, this.locateTimer, this.successorTimer]) if (t) clearTimeout(t);
+    this.timer = this.locateTimer = this.successorTimer = undefined;
+    this.fileWatcher?.close();
+    this.dirWatcher?.close();
+    this.fileWatcher = this.dirWatcher = undefined;
+    this.binding = this.transcript = this.cursor = this.last = this.cwd = undefined;
     this.entries = [];
     this.raw = [];
+    this.dirDirty = true;
+    this.dirMtime = undefined;
+    this.successorCheckedAt = undefined;
+    this.pendingCandidates = false;
+    this.maxOtherMtime = 0;
+  }
+
+  /** Stop, and let go of the client: the connection this service served has closed. */
+  dispose(): void {
+    void this.stop();
+    this.client = undefined;
   }
 
   /** The projects folders to look in: the workspace's own folder in each account first. */
@@ -184,7 +234,7 @@ export class AgentPaneBackendService implements AgentPaneService {
     return this.deps.configDirs().map((dir) => join(projectsDirOf(dir), encoded));
   }
 
-  /** Find the transcript by session id, arm the watchers when found. */
+  /** Find the transcript by session id and attach to it; else arm the folder's watcher, once. */
   private async locate(): Promise<void> {
     const b = this.binding;
     if (!b || this.transcript) return;
@@ -197,14 +247,38 @@ export class AgentPaneBackendService implements AgentPaneService {
         return;
       }
     }
-    // Claude has not written its first line: the folder, when it exists, tells when it does.
-    for (const dir of dirs) {
-      if (await stat(dir).then(() => true, () => false)) {
-        const w = this.deps.watch(dir, () => this.schedule());
-        if (w) this.watchers.push(w);
-        return;
+    // Claude has not written its first line: the folder, once it exists, tells when it does.
+    if (!this.dirWatcher) {
+      for (const dir of dirs) {
+        if (await stat(dir).then(() => true, () => false)) {
+          this.armDirWatcher(dir);
+          return;
+        }
       }
     }
+  }
+
+  /** Poll for a transcript that is not there, slower each time, and give up after ten minutes. */
+  private scheduleLocate(): void {
+    if (this.locateTimer || this.deps.now() - this.locateStartedAt > LOCATE_GIVE_UP_MS) return;
+    const epoch = this.epoch;
+    this.locateTimer = setTimeout(() => {
+      this.locateTimer = undefined;
+      if (epoch !== this.epoch) return;
+      this.locateDelay = Math.min(this.locateDelay * 2, LOCATE_MAX_MS);
+      void this.locate()
+        .then(() => (this.transcript ? this.refresh() : this.scheduleLocate()))
+        .catch(() => undefined);
+    }, this.locateDelay);
+    this.locateTimer.unref?.();
+  }
+
+  private armDirWatcher(dir: string): void {
+    if (this.dirWatcher) return;
+    this.dirWatcher = this.deps.watch(dir, () => {
+      this.dirDirty = true;
+      this.schedule();
+    });
   }
 
   private attach(file: string, dir: string): void {
@@ -212,18 +286,21 @@ export class AgentPaneBackendService implements AgentPaneService {
     this.cursor = undefined;
     this.entries = [];
     this.raw = [];
-    for (const w of this.watchers.splice(0)) w.close();
-    if (this.locating) clearInterval(this.locating);
-    this.locating = undefined;
-    for (const path of [file, dir]) {
-      const w = this.deps.watch(path, () => this.schedule());
-      if (w) this.watchers.push(w);
-    }
+    this.cwd = undefined;
+    this.pendingCandidates = false;
+    if (this.locateTimer) clearTimeout(this.locateTimer);
+    this.locateTimer = undefined;
+    this.fileWatcher?.close();
+    this.fileWatcher = this.deps.watch(file, () => this.schedule());
+    this.armDirWatcher(dir);
   }
 
   private schedule(): void {
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.refresh().catch(() => undefined), this.deps.debounceMs);
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.refresh().catch(() => undefined);
+    }, this.deps.debounceMs);
     this.timer.unref?.();
   }
 
@@ -274,15 +351,18 @@ export class AgentPaneBackendService implements AgentPaneService {
       this.raw.splice(0, this.raw.length - MAX_ENTRIES);
     }
 
-    const next = await this.snapshot(b, file);
+    const scan = await this.scanFolder(file);
+    const next = await this.snapshot(b, file, epoch);
+    const successor = scan ? await this.findSuccessor(b, file, scan) : undefined;
     if (epoch !== this.epoch) return;
-    const push = diffSnapshots(this.last, next);
-    this.last = next;
-    if (push?.kind === "snapshot") this.client?.onSnapshot(push.snapshot);
-    else if (push) this.client?.onDelta(push.delta);
-
-    const successor = await this.findSuccessor(b, file);
-    if (epoch !== this.epoch || !successor) return;
+    // Moving on: the old session's last picture (it is no longer the folder's newest) is not worth pushing.
+    if (!successor) {
+      const push = diffSnapshots(this.last, next);
+      this.last = next;
+      if (push?.kind === "snapshot") this.client?.onSnapshot(push.snapshot);
+      else if (push) this.client?.onDelta(push.delta);
+      return;
+    }
     const from = b.sessionId;
     this.transcript = undefined;
     this.binding = { ...b, sessionId: successor.sessionId };
@@ -292,26 +372,47 @@ export class AgentPaneBackendService implements AgentPaneService {
     this.again = true;
   }
 
-  private async snapshot(b: AgentPaneBinding, file: string): Promise<AgentPaneSnapshot> {
+  private async snapshot(b: AgentPaneBinding, file: string, epoch: number): Promise<AgentPaneSnapshot> {
     const parsed = parseTranscript(this.raw);
-    const [names, liveDirs, fallbackPlan, mtimeMs, toolCount] = await Promise.all([
+    this.cwd = parsed.cwd ?? this.cwd;
+    const [names, liveDirs, mtimeMs] = await Promise.all([
       loadSessionNames(this.deps.namesPath),
       this.liveDirs(),
-      this.deps.specPlan(b.workspacePath).catch(() => undefined),
       stat(file).then((s) => s.mtimeMs, () => this.deps.now()),
-      this.counter.count(file),
     ]);
     const status = parsed.cwd
-      ? classifySession(parsed.cwd, mtimeMs, true, liveDirs, this.deps.now(), this.entries, parsed.permissionMode)
+      ? classifySession(parsed.cwd, mtimeMs, mtimeMs >= this.maxOtherMtime, liveDirs, this.deps.now(), this.entries, parsed.permissionMode)
       : undefined;
     const title = names.get(b.sessionId) || b.title || parsed.goal.slice(0, 120) || undefined;
-    const snap = buildAgentPaneSnapshot(this.entries, {
+    const inputs = {
       sessionId: b.sessionId,
       ...(title ? { title } : {}),
       ...(status ? { state: status.state, needsYou: status.needsYou } : {}),
-      ...(fallbackPlan ? { fallbackPlan } : {}),
+    };
+    let snap = buildAgentPaneSnapshot(this.entries, inputs);
+    // The spec's plan is the chain's last resort: read only when nothing in the transcript is a plan.
+    if (!snap.plan) {
+      const fallbackPlan = await this.specPlan(b.workspacePath);
+      if (fallbackPlan) snap = buildAgentPaneSnapshot(this.entries, { ...inputs, fallbackPlan });
+    }
+    // The exact count is a scan of the whole file: the snapshot goes out with what the counter has, and the count follows as a delta.
+    const known = this.counter.cached(file);
+    if (known !== undefined) snap = { ...snap, toolCount: known };
+    void this.counter.count(file).then((count) => {
+      if (count !== known && epoch === this.epoch) this.schedule();
     });
-    return toolCount !== undefined ? { ...snap, toolCount } : snap;
+    return snap;
+  }
+
+  /** The workspace's spec plan, read at most every few seconds and not at all while the folder is unchanged. */
+  private async specPlan(workspace: string): Promise<PanePlanItem[] | undefined> {
+    const now = this.deps.now();
+    const dirMtime = await stat(join(workspace, "docs", "specs", ".context")).then((s) => s.mtimeMs, () => 0);
+    const c = this.specPlanCache;
+    if (c && c.workspace === workspace && c.dirMtime === dirMtime && now - c.at < SPEC_PLAN_TTL_MS) return c.value;
+    const value = await this.deps.specPlan(workspace).catch(() => undefined);
+    this.specPlanCache = { workspace, at: now, dirMtime, value };
+    return value;
   }
 
   private async liveDirs(): Promise<Set<string> | null> {
@@ -322,48 +423,81 @@ export class AgentPaneBackendService implements AgentPaneService {
     return value;
   }
 
-  /** Look for the transcript the conversation moved to, only when another has been written since. */
-  private async findSuccessor(b: AgentPaneBinding, file: string): Promise<{ sessionId: string; file: string; dir: string } | undefined> {
-    const wait = (this.successorCheckedAt ?? -Infinity) + SUCCESSOR_EVERY_MS - this.deps.now();
+  /**
+   * List the project folder for transcripts written after ours, only when it
+   * may have changed: its watcher fired, its own mtime moved, or the last scan
+   * left a newer transcript undecided. At most once per few seconds; a scan
+   * wanted sooner is deferred to a timer that is cleared with the follow.
+   */
+  private async scanFolder(file: string): Promise<FolderScan | undefined> {
+    const dir = join(file, "..");
+    const dirMtime = await stat(dir).then((s) => s.mtimeMs, () => undefined);
+    const changed = this.dirDirty || dirMtime !== this.dirMtime || this.pendingCandidates;
+    if (!changed) return undefined;
+    const now = this.deps.now();
+    const wait = (this.successorCheckedAt ?? -Infinity) + SUCCESSOR_EVERY_MS - now;
     if (wait > 0) {
-      const t = setTimeout(() => this.schedule(), wait);
-      t.unref?.();
+      if (!this.successorTimer) {
+        this.successorTimer = setTimeout(() => {
+          this.successorTimer = undefined;
+          this.schedule();
+        }, wait);
+        this.successorTimer.unref?.();
+      }
       return undefined;
     }
-    this.successorCheckedAt = this.deps.now();
-    const dir = join(file, "..");
+    this.successorCheckedAt = now;
+    this.dirDirty = false;
+    this.dirMtime = dirMtime;
     let names: string[];
     try {
       names = (await readdir(dir)).filter((n) => n.endsWith(".jsonl"));
     } catch {
       return undefined;
     }
+    const ownId = file.slice(dir.length + 1, -".jsonl".length);
     const ownMtime = await stat(file).then((s) => s.mtimeMs, () => 0);
-    const newer: Array<SuccessorCandidate & { file: string }> = [];
+    const newer: FolderScan["newer"] = [];
+    let maxOther = 0;
     for (const name of names) {
       const sessionId = name.slice(0, -".jsonl".length);
-      if (sessionId === b.sessionId) continue;
+      if (sessionId === ownId) continue;
       const path = join(dir, name);
       const mtimeMs = await stat(path).then((s) => s.mtimeMs, () => 0);
+      maxOther = Math.max(maxOther, mtimeMs);
       if (mtimeMs <= ownMtime) continue;
       const root = await readRoot(path);
       newer.push({ sessionId, mtimeMs, file: path, ...(root?.atMs !== undefined ? { firstAtMs: root.atMs } : {}), ...(root ? { rootUuid: root.uuid } : {}) });
     }
-    if (newer.length === 0) return undefined;
+    this.maxOtherMtime = maxOther;
+    return { newer, maxOtherMtime: maxOther };
+  }
 
+  /** The transcript the conversation moved to, among those the scan found newer than ours. */
+  private async findSuccessor(b: AgentPaneBinding, file: string, scan: FolderScan): Promise<{ sessionId: string; file: string; dir: string } | undefined> {
+    const dir = join(file, "..");
+    this.pendingCandidates = scan.newer.length > 0;
+    if (scan.newer.length === 0) return undefined;
+    // A stored id may be a session that ended long ago: a newer transcript is its successor only while Claude runs in the folder.
+    if (b.fromStorage) {
+      const live = await this.liveDirs();
+      if (!live || !this.cwd || !live.has(this.cwd)) return undefined;
+    }
+    const ownMtime = await stat(file).then((s) => s.mtimeMs, () => 0);
     const own = await readRoot(file);
     const lastAtMs = this.lastEntryMs();
     const nodes: LineageNode[] = [
       lineageNode(b.sessionId, file, ownMtime, this.entries),
-      ...(await Promise.all(newer.map(async (c) => lineageNode(c.sessionId, c.file, c.mtimeMs, (await tailEntries(c.file)) as unknown[])))),
+      ...(await Promise.all(scan.newer.map(async (c) => lineageNode(c.sessionId, c.file, c.mtimeMs, (await tailEntries(c.file)) as unknown[])))),
     ];
     const superseded = await this.lineage.superseded(nodes);
     const chosen = chooseSuccessor(
       { sessionId: b.sessionId, ...(lastAtMs !== undefined ? { lastAtMs } : {}), ...(own ? { rootUuid: own.uuid } : {}) },
       superseded,
-      newer,
+      scan.newer,
     );
-    const found = newer.find((c) => c.sessionId === chosen);
+    const found = scan.newer.find((c) => c.sessionId === chosen);
+    if (found) this.pendingCandidates = false;
     return found ? { sessionId: found.sessionId, file: found.file, dir } : undefined;
   }
 
