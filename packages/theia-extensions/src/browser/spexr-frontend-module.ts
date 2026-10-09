@@ -91,6 +91,8 @@ import { ScmCommitWidget } from "@theia/scm/lib/browser/scm-commit-widget";
 import { SpexrScmCommitWidget } from "./scm/spexr-scm-commit-widget.js";
 import { GitIgnoredDecorationProvider } from "./scm/git-ignored-decoration-provider.js";
 import { GitStateDecorationProvider } from "./scm/git-state-decoration-provider.js";
+import { SpexrFileTreeDecoratorAdapter } from "./scm/spexr-file-tree-decorator-adapter.js";
+import { FileTreeDecoratorAdapter } from "@theia/filesystem/lib/browser/file-tree/file-tree-decorator-adapter";
 import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-proxy.js";
 import { SpexrGitClientDispatcher, SpexrGitClientToken } from "./scm/git-client.js";
 import { SpexrGitCommandsContribution } from "./scm/git-commands-contribution.js";
@@ -342,6 +344,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(GitStatusBarContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitStatusBarContribution);
 
+  // A changed file's colour is its letter's alone (S6b, L7).
+  if (isBound(FileTreeDecoratorAdapter)) rebind(FileTreeDecoratorAdapter).to(SpexrFileTreeDecoratorAdapter).inSingletonScope();
   bind(GitIgnoredDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitIgnoredDecorationProvider);
 
