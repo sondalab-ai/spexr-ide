@@ -149,6 +149,38 @@ describe("a toast", () => {
   });
 });
 
+// Theia's markup has two rows (glyph, words and dismiss; source and buttons).
+// A toast with one action is laid out as the demo's single row.
+describe("a toast with one action", () => {
+  const INLINE = `${NOT_HC} .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child)`;
+
+  it("is Theia's two rows in the markup, the source and the buttons in the second", () => {
+    const component = theia("@theia/messages/src/browser/notification-component.tsx");
+    expect(component).toMatch(/theia-notification-list-item-content-main[\s\S]*theia-notification-icon[\s\S]*theia-notification-message[\s\S]*theia-notification-actions[\s\S]*theia-notification-list-item-content-bottom[\s\S]*theia-notification-source[\s\S]*theia-notification-buttons/);
+    expect(theia("@theia/messages/src/browser/style/notifications.css")).toMatch(/\.theia-notification-list-item-content\.collapsed\s+\.theia-notification-list-item-content-bottom\s*\{\s*display: none;/);
+  });
+
+  it("is one grid row: the glyph, the words with the source under them, the action, the dismiss, 12px apart", () => {
+    const grid = rule(`${INLINE} {`);
+    expect(grid).toMatch(/display:\s*grid/);
+    expect(grid).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\) auto auto/);
+    expect(grid).toMatch(/align-items:\s*center/);
+    expect(grid).toMatch(/column-gap:\s*var\(--sl-space-3\)/);
+    expect(TOAST.gap).toBe(12);
+    expect(rule(`${INLINE} :is(.theia-notification-list-item-content-main, .theia-notification-list-item-content-bottom) {`)).toMatch(/display:\s*contents/);
+    expect(rule(`${INLINE} .theia-notification-icon {`)).toMatch(/grid-area:\s*1 \/ 1 \/ span 2/);
+    expect(rule(`${INLINE} .theia-notification-message {`)).toMatch(/grid-area:\s*1 \/ 2/);
+    expect(rule(`${INLINE} .theia-notification-source {`)).toMatch(/grid-area:\s*2 \/ 2/);
+    expect(rule(`${INLINE} .theia-notification-buttons {`)).toMatch(/grid-area:\s*1 \/ 3 \/ span 2/);
+    expect(rule(`${INLINE} .theia-notification-actions {`)).toMatch(/grid-area:\s*1 \/ 4 \/ span 2/);
+  });
+
+  it("leaves a toast with no action, several, or a collapsed one to Theia's rows", () => {
+    expect(INLINE).toContain(":not(.collapsed)");
+    expect(INLINE).toContain("button:only-child");
+  });
+});
+
 describe("where the toasts float", () => {
   it("ends 8px inside the editor island's right edge, which the shell publishes, not the window's", () => {
     const stack = rule("body .theia-notifications-container {");

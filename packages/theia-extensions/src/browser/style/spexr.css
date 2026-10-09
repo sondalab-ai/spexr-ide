@@ -1736,6 +1736,45 @@ body .theia-notifications-container.theia-notification-toasts {
   color: var(--slc-text-muted);
 }
 
+/* A toast with one action is one row, as Lumen's: the glyph, the words (the
+   source under them), the action, the dismiss, 12px apart. Theia puts the
+   buttons in a row of their own under the words, which made the toast 19px
+   taller than the demo's. The two rows of Theia's markup (the glyph, words
+   and dismiss; the source and the buttons) are laid out as one grid, which
+   changes no order a keyboard or a screen reader meets: only the buttons
+   are focusable. A toast with none or several actions keeps Theia's rows
+   (several would crowd the words), and so does a collapsed one. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--sl-space-3);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) :is(.theia-notification-list-item-content-main, .theia-notification-list-item-content-bottom) {
+  display: contents;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-icon {
+  grid-area: 1 / 1 / span 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-message {
+  grid-area: 1 / 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-source {
+  grid-area: 2 / 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-buttons {
+  grid-area: 1 / 3 / span 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-actions {
+  grid-area: 1 / 4 / span 2;
+}
+
 /* The mark: the glyph in its tone on a 16% wash of itself (Lumen's; the
    kit's badge is 12%), 24px round. Theia colours the glyph through its icon
    variables, which the theme layer sets to the same tones. */
