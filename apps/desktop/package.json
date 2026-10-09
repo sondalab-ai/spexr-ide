@@ -45,6 +45,10 @@
           "editor.fontFamily": "'JetBrains Mono', 'Geist Mono', 'SF Mono', monospace",
           "editor.wordWrap": "on",
           "editor.cursorStyle": "block",
+          "editor.minimap.enabled": false,
+          "editor.padding.top": 12,
+          "editor.glyphMargin": false,
+          "editor.renderLineHighlight": "all",
           "workbench.tree.indent": 16,
           "workspace.preserveWindow": true
         }
