@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TOOL_ROWS_SHOWN, formatDuration, modelFamily, shortId, toolIcon, visibleTools } from "./agent-pane-format.js";
+import { TOOL_ROWS_SHOWN, formatDuration, inlineCode, modelFamily, plainTarget, shortId, toolIcon, visibleTools } from "./agent-pane-format.js";
 import type { PaneTool } from "../../common/agent-pane-protocol.js";
 
 describe("modelFamily", () => {
@@ -60,5 +60,38 @@ describe("visibleTools", () => {
     expect(folded.shown.map((t) => t.id)).toEqual(["t7", "t8", "t9", "t10"]);
     expect(folded.hidden).toBe(7);
     expect(visibleTools(tools(11), true)).toEqual({ shown: tools(11), hidden: 0 });
+  });
+});
+
+describe("plainTarget", () => {
+  it("takes a search pattern's regex escapes out, and leaves a file or a command alone", () => {
+    expect(plainTarget({ id: "a", state: "done", verb: "Search", target: "cache\\.write" })).toBe("cache.write");
+    expect(plainTarget({ id: "a", state: "done", verb: "Find", target: "src/**/*.ts" })).toBe("src/**/*.ts");
+    expect(plainTarget({ id: "a", state: "done", verb: "Run", target: "echo a\\.b" })).toBe("echo a\\.b");
+    expect(plainTarget({ id: "a", state: "done", verb: "Read", target: "a\\b.ts" })).toBe("a\\b.ts");
+    expect(plainTarget({ id: "a", state: "done" })).toBeUndefined();
+  });
+});
+
+describe("inlineCode", () => {
+  it("splits text at backtick spans", () => {
+    expect(inlineCode("Make `cache.write` awaited and `x` too")).toEqual([
+      { code: false, text: "Make " },
+      { code: true, text: "cache.write" },
+      { code: false, text: " awaited and " },
+      { code: true, text: "x" },
+      { code: false, text: " too" },
+    ]);
+  });
+
+  it("keeps an unmatched backtick, an empty span and plain text as text", () => {
+    expect(inlineCode("a ` b")).toEqual([{ code: false, text: "a ` b" }]);
+    expect(inlineCode("a `` b")).toEqual([{ code: false, text: "a `` b" }]);
+    expect(inlineCode("plain")).toEqual([{ code: false, text: "plain" }]);
+    expect(inlineCode("")).toEqual([]);
+  });
+
+  it("does not span lines", () => {
+    expect(inlineCode("`a\nb`")).toEqual([{ code: false, text: "`a\nb`" }]);
   });
 });

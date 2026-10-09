@@ -273,8 +273,10 @@ export interface AgentPaneState {
   readonly prompt: string | null;
   readonly prose: string | null;
   readonly tools: ReadonlyArray<{ readonly text: string; readonly state: string | null; readonly meta: string }>;
-  /** The fold's words (`7 earlier`, `Show fewer`); null when there is no fold. */
+  /** The fold's words (`7 earlier`: the same folded or expanded); null when there is no fold. */
   readonly fold: string | null;
+  /** The fold as a control: a button a keyboard reaches, 24px at least, whose aria-expanded follows the card. */
+  readonly foldButton: { readonly tag: string; readonly disabled: boolean; readonly tabIndex: number; readonly expanded: string | null; readonly height: number } | null;
   readonly diff: { readonly file: string; readonly stat: string; readonly rows: ReadonlyArray<{ readonly kind: "add" | "del"; readonly text: string }> } | null;
   readonly plan: ReadonlyArray<{ readonly text: string; readonly checked: boolean }>;
   readonly needsYou: boolean;
@@ -306,11 +308,15 @@ export async function probeAgentPane(page: Page): Promise<AgentPaneState> {
       prompt: text(".spexr-agent-prompt"),
       prose: text(".spexr-agent-prose"),
       tools: [...(root?.querySelectorAll(".spexr-agent-tool") ?? [])].map((row) => ({
-        text: (row.querySelector(".spexr-agent-tool__text")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+        text: ((row.querySelector(".spexr-agent-tool__text")?.textContent ?? "") + (row.querySelector(".spexr-agent-stat")?.textContent ?? "")).replace(/\s+/g, " ").trim(),
         state: row.getAttribute("data-state"),
         meta: (row.querySelector(".spexr-agent-tool__meta")?.textContent ?? "").trim(),
       })),
       fold: text(".spexr-agent-tools__fold"),
+      foldButton: (() => {
+        const f = root?.querySelector<HTMLButtonElement>(".spexr-agent-tools__fold");
+        return f ? { tag: f.tagName, disabled: f.disabled, tabIndex: f.tabIndex, expanded: f.getAttribute("aria-expanded"), height: Math.round(f.getBoundingClientRect().height * 100) / 100 } : null;
+      })(),
       diff: diff
         ? {
             file: (diff.querySelector(".spexr-agent-diff__file")?.textContent ?? "").trim(),
@@ -395,8 +401,13 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
 
   const want = expanded ? 11 : 4;
   if (state.tools.length !== want) problems.push(`agent pane: ${state.tools.length} tool rows, want ${want}`);
-  const fold = expanded ? "Show fewer" : "7 earlier";
-  if (state.fold !== fold) problems.push(`agent pane: the fold reads ${JSON.stringify(state.fold)}, want ${JSON.stringify(fold)}`);
+  if (state.fold !== "7 earlier") problems.push(`agent pane: the fold reads ${JSON.stringify(state.fold)}, want "7 earlier" (the same folded and expanded)`);
+  const fb = state.foldButton;
+  if (!fb || fb.tag !== "BUTTON" || fb.disabled || fb.tabIndex < 0) problems.push(`agent pane: the fold is not a button a keyboard reaches: ${JSON.stringify(fb)}`);
+  else {
+    if (fb.expanded !== String(expanded)) problems.push(`agent pane: the fold's aria-expanded is ${JSON.stringify(fb.expanded)}, want "${expanded}"`);
+    if (fb.height < 24) problems.push(`agent pane: the fold is ${fb.height}px tall, want 24 at least`);
+  }
   const running = state.tools.filter((t) => t.state === "run");
   if (running.length !== 1 || running[0]!.meta !== "running" || !/pnpm sl-audit/.test(running[0]!.text)) problems.push(`agent pane: running rows ${JSON.stringify(running)}, want one: pnpm sl-audit`);
   const edit = state.tools.find((t) => /^Edit resolve\.ts/.test(t.text));

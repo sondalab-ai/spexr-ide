@@ -3,7 +3,7 @@ import { OutlineViewContribution } from "@theia/outline-view/lib/browser/outline
 
 /**
  * Theia's Outline, no longer opened by the default layout: the right island
- * starts with the agent pane (rank 0) and the views behind it, and the
+ * starts with the agent pane and the views behind it, and the
  * Outline stays a command and a tile away for whoever wants it. Everything
  * else about the view is Theia's own; a layout that already holds it keeps it.
  */

@@ -2431,11 +2431,18 @@ body .theia-notifications-container.theia-notification-toasts {
   overflow-wrap: anywhere;
 }
 
+/* Its edge is the kit's one control edge, as the other cards' (owner, S6h), and
+   a long prompt is held to six lines: the full text is its title. */
 .spexr-agent-prompt {
   padding: 8px 12px;
   border-radius: 8px 8px 8px 4px;
   background: var(--slc-tile);
-  box-shadow: 0 0 0 1px var(--sl-border-default);
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
 }
 
 .spexr-agent-needs {
@@ -2464,6 +2471,9 @@ body .theia-notifications-container.theia-notification-toasts {
    accent wash and says so in the accent ink; an edit's size is +n in the
    success ink and -m in the danger ink. */
 .spexr-agent-tools__fold {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   margin: 0 0 4px;
   padding: 0;
   border: 0;
@@ -2479,6 +2489,8 @@ body .theia-notifications-container.theia-notification-toasts {
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: 384px;
+  overflow-y: auto;
   border-radius: 8px;
   box-shadow: 0 0 0 1px var(--slc-edge-control);
   background: var(--slc-raised);
@@ -2548,7 +2560,7 @@ body .theia-notifications-container.theia-notification-toasts {
 }
 
 .spexr-agent-stat {
-  margin-inline-start: 8px;
+  flex: none;
   font-family: var(--sl-font-mono);
   font-size: var(--sl-text-xs);
 }
@@ -2622,6 +2634,14 @@ body .theia-notifications-container.theia-notification-toasts {
   display: grid;
   gap: 8px;
   padding-top: 4px;
+}
+
+.spexr-agent-plan__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
 }
 
 .spexr-agent-plan__item .sl-check__label {

@@ -83,14 +83,22 @@ export const RIGHT_PANEL = {
 } as const;
 
 /**
+ * The rank that puts the pane first in the right activity bar. Theia reads a
+ * rank only when it is truthy (`if (options.rank)` in the side panel handler),
+ * so 0 would be ignored and the tile appended last; a fraction is truthy and
+ * sorts before Memory's 1, Experts' 2 and TODO's 3.
+ */
+export const AGENT_PANE_RANK = 0.5;
+
+/**
  * The agent pane (S6h) as Lumen's right pane at 1440x900, on the same 4px
  * grid as {@link RIGHT_PANEL}, whose head, card and row it reuses. The demo's
  * values (showcase/screens.css and lab/directions-2/dir-lumen.css, measured in
  * tests/visual/reference/demo-regions.json) round as the owner's rule says:
  * 14.4 and 9.6 become 16 and 8, a 1.6 line of 11.5px code becomes 20px. Radii
  * and type sizes are shape, so Lumen's are kept (the prompt r8 with an r4
- * corner, the tag r6, prose at 13.5/1.55). spexr.css repeats these numbers;
- * agent-pane-style.test.ts holds the two together.
+ * corner, the tag r6, prose at 13.5/1.55). spexr.css repeats these numbers,
+ * which CSS cannot read from here; agent-pane-style.test.ts holds the two together.
  */
 export const AGENT_PANE = {
   /** The log's padding, and the gap between its blocks (Lumen 14.4). */
@@ -115,10 +123,10 @@ export const AGENT_PANE = {
   /** The plan's checks are apart by this (Lumen 6.4), and its labels are 13px. */
   planGap: 8,
   planLabelSize: 13,
-  /** The model tag: Lumen's mono 11.5px at r6 (the kit's tag is 11.5 at r6 already; spelled out here). */
+  /** The model tag: Lumen's mono 11.5px at r6, set on the kit's tag in spexr.css (the kit's own tag is 11.5px with a 6px radius at 0.36.2 too; the rule keeps it so). */
   modelSize: 11.5,
   modelRadius: 6,
-  /** The tool card folds all but this many rows (Lumen shows four). */
+  /** The tool card folds all but this many rows (Lumen shows four), and scrolls past this height once expanded. */
   toolRows: 4,
   /** The composer: 12px off the island's edges (Lumen .75rem), 8px of padding and between its rows (Lumen .5rem), r12. */
   composerMargin: 12,
@@ -131,6 +139,11 @@ export const AGENT_PANE = {
   fieldPaddingInline: 4,
   /** The file chip's radius: r6. */
   chipRadius: 6,
+  toolListMaxHeight: 384,
+  /** A long prompt is held to this many lines. */
+  promptLines: 6,
+  /** The fold's touch target. */
+  foldMinHeight: 24,
 } as const;
 
 /**

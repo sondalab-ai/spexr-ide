@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
-import { AGENT_PANE, RIGHT_PANEL } from "../shell/workbench-geometry.js";
+import { AGENT_PANE, AGENT_PANE_RANK, RIGHT_PANEL } from "../shell/workbench-geometry.js";
 import { contrastRatio, fromOklch, toOklch } from "./contrast-util.js";
 
 const read = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
@@ -131,6 +131,20 @@ describe("the agent pane in spexr.css", () => {
     expect(rules(".spexr-agent-composer__chip")).toMatch(/text-transform:\s*none/);
   });
 
+  it("rings the prompt on the kit's control edge, holds a long one to six lines and keeps its breaks", () => {
+    const prompt = rules(".spexr-agent-prompt");
+    expect(prompt).toMatch(/box-shadow:\s*0 0 0 1px var\(--slc-edge-control\)/);
+    expect(prompt).toMatch(new RegExp(`-webkit-line-clamp:\\s*${AGENT_PANE.promptLines}`));
+    expect(prompt).toMatch(/white-space:\s*pre-wrap/);
+  });
+
+  it("scrolls an expanded tool list past its height, never cuts an edit's size and gives the fold a 24px target", () => {
+    expect(px(rules(".spexr-agent-tools__list"), "max-height")).toBe(AGENT_PANE.toolListMaxHeight);
+    expect(rules(".spexr-agent-tools__list")).toMatch(/overflow-y:\s*auto/);
+    expect(rules(".spexr-agent-stat")).toMatch(/flex:\s*none/);
+    expect(px(rules(".spexr-agent-tools__fold"), "min-height")).toBe(AGENT_PANE.foldMinHeight);
+  });
+
   it("does not animate: no transition, animation or keyframes", () => {
     for (const { selector, body } of AGENT_SELECTORS) {
       expect(body, selector).not.toMatch(/\banimation\b|\btransition\b/);
@@ -166,7 +180,9 @@ describe("the agent pane's sources", () => {
   });
 
   it("is the first tile of the right island and takes the head's own title row off", () => {
-    expect(read("../agent-pane/agent-pane-view-contribution.ts")).toMatch(/area:\s*"right",\s*rank:\s*0/);
+    expect(read("../agent-pane/agent-pane-view-contribution.ts")).toMatch(/area:\s*"right",\s*rank:\s*AGENT_PANE_RANK/);
+    expect(AGENT_PANE_RANK).toBeGreaterThan(0);
+    expect(AGENT_PANE_RANK).toBeLessThan(1);
     expect(read("../shell/panel-title-contribution.ts")).toMatch(/AGENT_PANE_VIEW_ID/);
   });
 });
@@ -183,6 +199,13 @@ const neutral = (theme: Theme, key: string): string => {
 
 const status = (theme: Theme, name: "success" | "danger"): string => new RegExp(`--sl-status-${name}:\\s*(#[0-9a-f]{6})`).exec(kitFile(`themes/${theme}.css`))![1]!;
 
+/** The role names a rule's `color:` chain reads, in order: `var(--slc-success-text, var(--slc-success))` is [slc-success-text, slc-success]. */
+function inkChain(selector: string): string[] {
+  const m = /(?:^|[\s;])color:\s*(var\(.*\))\s*;?/.exec(rules(selector));
+  expect(m, `${selector} has no role colour`).not.toBeNull();
+  return [...m![1]!.matchAll(/--([a-z-]+)/g)].map((x) => x[1]!);
+}
+
 /** `color-mix(in srgb, fg pct%, bg)` of two opaque colours, per channel as the browser rounds it. */
 function mix(fg: string, pct: number, bg: string): string {
   const ch = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -192,24 +215,57 @@ function mix(fg: string, pct: number, bg: string): string {
 
 // The owner's rules: text at least 4.5:1, a state indicator at least 3:1.
 describe.each(THEMES)("the agent pane on %s", (theme) => {
-  const text = neutral(theme, "text-primary");
-  const secondary = neutral(theme, "text-secondary");
-  const muted = neutral(theme, "text-muted");
   const surface = neutral(theme, "bg-surface");
   const raised = neutral(theme, "bg-surface-raised");
   const tile = neutral(theme, "bg-tile");
-  const success = status(theme, "success");
-  const danger = status(theme, "danger");
   const accent = kitNeutrals.products.spexr.accent[theme];
-  const accentText = ((): string => {
+  const accentInk = ((): string => {
     if (theme === "dark") return accent;
     const cap = Number(/--sl-accent-text-lmax:\s*([\d.]+)/.exec(kitFile("themes/light.css"))![1]);
     const [L, C, h] = toOklch(accent);
     return fromOklch([Math.min(L, cap), C, h]);
   })();
+  /**
+   * The ink a rule paints, from the roles its own `color:` names, so the test
+   * reads what the CSS renders: the first role the kit defines wins, as `var()`
+   * with a fallback does. The kit declares `--slc-success-text` and
+   * `--slc-danger-text` only inside the accent band's rule (asserted), so
+   * elsewhere those fall back to the status colours.
+   */
+  const ink = (selector: string): string => {
+    const known: Record<string, string> = {
+      "slc-text": neutral(theme, "text-primary"),
+      "slc-text-secondary": neutral(theme, "text-secondary"),
+      "slc-text-muted": neutral(theme, "text-muted"),
+      "slc-accent-text": accentInk,
+      "slc-success": status(theme, "success"),
+      "slc-danger": status(theme, "danger"),
+    };
+    for (const role of inkChain(selector)) {
+      if (role === "slc-success-text" || role === "slc-danger-text") {
+        // Declared only inside the accent band's own rule (components.css); outside it the CSS falls back to the status role.
+        const kit = kitFile("components.css");
+        const at = kit.indexOf(`--${role}:`);
+        const selector = kit.slice(kit.lastIndexOf("}", at) + 1, kit.lastIndexOf("{", at));
+        expect(selector, `--${role} is declared outside a band: read it here`).toMatch(/band/i);
+        continue;
+      }
+      if (known[role]) return known[role]!;
+    }
+    throw new Error(`${selector}: no known role in ${inkChain(selector).join(", ")}`);
+  };
+  const text = ink(".spexr-agent-prompt");
+  const secondary = ink(".spexr-agent-tool");
+  const muted = ink(".spexr-agent-tool__meta");
+  const success = ink(".spexr-agent-stat i");
+  const danger = ink(".spexr-agent-stat s");
+  const accentText = ink('.spexr-agent-tool[data-state="run"] .spexr-agent-tool__meta');
+  const addInk = ink(".spexr-agent-diff__row--add");
+  const delInk = ink(".spexr-agent-diff__row--del");
+  const captionInk = ink(".spexr-agent-diff__caption");
   const running = mix(accent, 7, raised);
-  const addWash = mix(success, 10, raised);
-  const delWash = mix(danger, 10, raised);
+  const addWash = mix(status(theme, "success"), 10, raised);
+  const delWash = mix(status(theme, "danger"), 10, raised);
   const captionWash = mix(text, 4, raised);
 
   const atLeast = (min: number, ink: string, ground: string, label: string): void => {
@@ -218,10 +274,11 @@ describe.each(THEMES)("the agent pane on %s", (theme) => {
 
   it("reads the prompt, the prose and the head's ink at 4.5:1 on their grounds", () => {
     atLeast(4.5, text, tile, "prompt on the tile");
+    atLeast(4.5, ink(".spexr-agent-prose"), surface, "prose");
     atLeast(4.5, text, surface, "prose on the island");
-    atLeast(4.5, muted, surface, "the plan's eyebrow and the id on the island");
-    atLeast(4.5, muted, raised, "the fold's muted mono on the raised ground");
-    atLeast(4.5, secondary, surface, "the empty hint");
+    atLeast(4.5, ink(".spexr-agent-tools__fold"), surface, "the fold on the island");
+    atLeast(4.5, neutral(theme, "text-muted"), surface, "the plan's eyebrow and the id on the island");
+    atLeast(4.5, ink(".spexr-agent-pane__hint"), surface, "the empty hint");
   });
 
   it("reads a tool row at 4.5:1 on the raised ground and on a running row's wash", () => {
@@ -242,16 +299,31 @@ describe.each(THEMES)("the agent pane on %s", (theme) => {
   });
 
   it("reads the diff at 4.5:1: the added and removed lines on their washes, the caption on its own", () => {
-    atLeast(4.5, success, addWash, "added line");
-    atLeast(4.5, danger, delWash, "removed line");
-    atLeast(4.5, secondary, captionWash, "caption");
+    atLeast(4.5, addInk, addWash, "added line");
+    atLeast(4.5, delInk, delWash, "removed line");
+    atLeast(4.5, captionInk, captionWash, "caption");
     atLeast(4.5, success, captionWash, "+n in the caption");
     atLeast(4.5, danger, captionWash, "-m in the caption");
   });
 
   it("reads the needs-you row at 4.5:1, and its icon at 3:1", () => {
-    atLeast(4.5, text, raised, "words");
-    atLeast(3, accentText, raised, "icon");
+    atLeast(4.5, ink(".spexr-agent-needs"), raised, "words");
+    atLeast(3, ink(".spexr-agent-needs__icon"), raised, "icon");
+  });
+
+  /** --slc-edge-control (components.css): the surface's lightness stepped 5 shades away (and a half more on paper). */
+  function controlEdge(): string {
+    const k = kitFile("components.css");
+    const step = Number(/--slc-shade-step:\s*([\d.]+)/.exec(k)![1]);
+    const steps = Number(/--slc-edge-control-steps:\s*([\d.]+)/.exec(k)![1]);
+    const [L, C, h] = toOklch(surface);
+    return fromOklch([theme === "dark" ? L + step * steps : L - step * (steps + 0.5), C, h]);
+  }
+
+  it("rings the prompt card at 3:1 on the kit's control edge, against the island outside and the tile inside", () => {
+    const edge = controlEdge();
+    atLeast(3, edge, surface, "edge on the island");
+    atLeast(3, edge, tile, "edge on the tile");
   });
 
   it("reads the model tag at 4.5:1 on its accent wash", () => {

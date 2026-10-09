@@ -18,3 +18,15 @@ export function takeAgentPaneReveal(storage: Pick<Storage, "getItem" | "setItem"
     return false;
   }
 }
+
+/**
+ * What the layout does with the agent pane at startup. A fresh layout opens it
+ * (Theia's own default-layout hook does not: the view is not `openByDefault`);
+ * a saved layout gets it opened and brought to the front once, through the
+ * migration; after that nothing is done, so a pane the user closed stays
+ * closed. The migration's flag is consumed in every case.
+ */
+export function agentPaneStartup(fresh: boolean, storage: Pick<Storage, "getItem" | "setItem">): { open: boolean } {
+  const migrate = takeAgentPaneReveal(storage);
+  return { open: fresh || migrate };
+}

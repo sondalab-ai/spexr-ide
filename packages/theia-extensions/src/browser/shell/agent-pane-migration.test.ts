@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_PANE_MIGRATION_KEY, takeAgentPaneReveal } from "./agent-pane-migration.js";
+import { AGENT_PANE_MIGRATION_KEY, agentPaneStartup, takeAgentPaneReveal } from "./agent-pane-migration.js";
 
 const memory = (): Pick<Storage, "getItem" | "setItem"> & { data: Map<string, string> } => {
   const data = new Map<string, string>();
@@ -20,5 +20,30 @@ describe("takeAgentPaneReveal", () => {
     expect(takeAgentPaneReveal(throwing)).toBe(false);
     const forgetful = { getItem: () => null, setItem: () => undefined };
     expect(takeAgentPaneReveal(forgetful)).toBe(false);
+  });
+});
+
+describe("agentPaneStartup", () => {
+  it("opens the pane, in front, on a fresh layout, and consumes the migration", () => {
+    const store = memory();
+    expect(agentPaneStartup(true, store)).toEqual({ open: true });
+    expect(store.data.get(AGENT_PANE_MIGRATION_KEY)).toBe("1");
+  });
+
+  it("opens it once on a saved layout, then leaves it alone: a pane the user closed stays closed", () => {
+    const store = memory();
+    expect(agentPaneStartup(false, store)).toEqual({ open: true });
+    expect(agentPaneStartup(false, store)).toEqual({ open: false });
+    expect(agentPaneStartup(false, store)).toEqual({ open: false });
+  });
+
+  it("still opens it on a later fresh layout (another workspace), migration or not", () => {
+    const store = memory();
+    agentPaneStartup(false, store);
+    expect(agentPaneStartup(true, store).open).toBe(true);
+  });
+
+  it("opens nothing on a saved layout when the store cannot be written: a broken store never reopens it on every launch", () => {
+    expect(agentPaneStartup(false, { getItem: () => null, setItem: () => undefined }).open).toBe(false);
   });
 });
