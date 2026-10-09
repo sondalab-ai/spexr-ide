@@ -340,4 +340,20 @@ describe("AgentPaneBackendService", () => {
     expect(internals.locateTimer).toBeDefined();
     await s.svc.stop();
   });
+
+  it("reads the phase and mode from the transcript as it is now, not from the last push", async () => {
+    const path = write(s.projects, IDS.A, head(IDS.A) + promptLine(IDS.A, s.ws, 1, "go") + useLine(IDS.A, s.ws, 2, "t1", "make"), 1_800_000_000);
+    await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws });
+    expect(await s.svc.readPhase()).toEqual({ sessionId: IDS.A, phase: "working", permissionMode: "auto" });
+    appendFileSync(path, resultLine(IDS.A, s.ws, 3, "t1") + line({ ...env(IDS.A, s.ws, 4), type: "assistant", message: { id: "m-end", role: "assistant", content: [{ type: "text", text: "done" }] } }));
+    expect(await s.svc.readPhase()).toMatchObject({ phase: "ready" });
+    await s.svc.stop();
+  });
+
+  it("has no phase when nothing is followed or the transcript is not there yet", async () => {
+    expect(await s.svc.readPhase()).toBeUndefined();
+    await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws });
+    expect(await s.svc.readPhase()).toBeUndefined();
+    await s.svc.stop();
+  });
 });

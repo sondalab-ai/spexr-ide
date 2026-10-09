@@ -6,7 +6,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, probeWindowSize, readTheme, sizeW
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { agentSession, liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
-import { checkAgentPane, checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
+import { SEEDED_DRAFT, checkAgentPane, checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
 import { probeProcesses, startLiveStubs, type LiveStubs } from "./stubs";
 import { AGENT_PANE_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
@@ -171,6 +171,18 @@ for (const theme of THEMES) {
             `ps comm=claude: ${JSON.stringify(ps.psClaude)}, stub cwds: ${JSON.stringify(ps.cwd)}`,
         );
       }
+      // S6h/S6i: the agent pane has followed its session (its tools are there,
+      // one running), and the composer holds the demo's draft. The draft is set
+      // as a keystroke would set it but without focusing the field: focus would
+      // light the right island, and the base scene's lit island is the editor's.
+      await page.locator("#theia-right-content-panel .spexr-agent-tool").first().waitFor({ state: "visible", timeout: 60_000 });
+      await page.locator('#theia-right-content-panel .spexr-agent-tool[data-state="run"]').first().waitFor({ state: "visible", timeout: 30_000 });
+      await page.locator("#theia-right-content-panel .spexr-agent-composer__input").evaluate((el, text) => {
+        const field = el as HTMLTextAreaElement;
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, text);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      }, SEEDED_DRAFT);
+      await page.waitForFunction((text) => document.querySelector<HTMLTextAreaElement>("#theia-right-content-panel .spexr-agent-composer__input")?.value === text, SEEDED_DRAFT);
       await shoot("base", baseAck);
       fixtureState = await probeFixtureState(page);
       const execText = (cmd: string, args: string[]): string => execFileSync(cmd, args, { encoding: "utf8", timeout: 10_000 });
@@ -190,8 +202,6 @@ for (const theme of THEMES) {
       // S6h: the agent pane in front of the right island, folded as the base
       // scene has it, then the tool card expanded (the agent-pane scene). The
       // pane follows the session its terminal started, so it is waited for.
-      await page.locator("#theia-right-content-panel .spexr-agent-tool").first().waitFor({ state: "visible", timeout: 60_000 });
-      await page.locator('#theia-right-content-panel .spexr-agent-tool[data-state="run"]').first().waitFor({ state: "visible", timeout: 30_000 });
       meta.agentPane = { sessionId: agent.sessionId };
       meta.agentPane.base = { state: await probeAgentPane(page), regions: await probeRegions(page, AGENT_PANE_REGIONS) };
       check("agent pane", checkAgentPane(meta.agentPane.base.state, meta.agentPane.base.regions, false));
@@ -258,6 +268,20 @@ for (const theme of THEMES) {
       meta.litRim = await probeLitRim(page);
       check("lit rim", checkLitRim(meta.litRim));
       writeMeta();
+
+      // S6i: composer-focus. The field takes focus, which lights the right
+      // island and rings the composer in the focus colour. Focus is then
+      // handed back to the editor, whose island the later scenes expect lit.
+      await page.locator("#theia-right-content-panel .spexr-agent-composer__input").focus();
+      await page.waitForFunction(() => document.querySelector("#theia-right-content-panel .spexr-agent-composer")?.matches(":focus-within") === true);
+      await page.waitForFunction(() => document.querySelector<HTMLElement>('.spexr-island[data-island="right"]')?.hasAttribute("data-lit") === true);
+      await shoot("composer-focus");
+      const focusState = await probeAgentPane(page);
+      meta.agentPane.focus = { state: focusState, regions: await probeRegions(page, AGENT_PANE_REGIONS) };
+      check("composer focus", checkAgentPane(focusState, meta.agentPane.focus.regions, false, true));
+      writeMeta();
+      await page.evaluate(() => (document.querySelector(".monaco-editor textarea") as HTMLElement | null)?.focus());
+      await page.waitForFunction(() => document.querySelector<HTMLElement>('.spexr-island[data-island="main"]')?.hasAttribute("data-lit") === true && !document.querySelector<HTMLElement>('.spexr-island[data-island="right"]')?.hasAttribute("data-lit"), undefined, { timeout: 15_000 });
 
       // palette: the command palette open on a query that finds several
       // commands, some with a shortcut, the first one selected. Placed against

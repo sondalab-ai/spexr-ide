@@ -59,12 +59,23 @@ export interface AgentPaneTurn {
   diff?: PaneDiff;
 }
 
+/**
+ * Where the followed session's turn stands, read from its transcript:
+ * - `ready`: the last message ended the turn and no tool call is open. Claude
+ *   is at its prompt; this is the only phase in which typing into it is safe.
+ * - `working`: a turn is open (a prompt or a result to act on, a call running).
+ * - `permission`: a call that asks for permission is unresolved: Claude may be
+ *   showing a dialog, where Enter would accept it.
+ */
+export type PanePhase = "ready" | "working" | "permission";
+
 export interface AgentPaneSnapshot {
   sessionId: string;
   title?: string;
   model?: string;
   state?: AgentState;
   needsYou?: boolean;
+  phase?: PanePhase;
   /** The last `permission-mode` record. */
   permissionMode?: string;
   /** `permissionMode` is `plan`: the composer's Plan toggle reads this back. */
@@ -96,6 +107,7 @@ export interface AgentPaneDelta {
   model?: string;
   state?: AgentState;
   needsYou?: boolean;
+  phase?: PanePhase;
   permissionMode?: string;
   planMode?: boolean;
   tokPerSec?: number;
@@ -132,6 +144,19 @@ export interface AgentPaneService {
   follow(binding: AgentPaneBinding): Promise<AgentPaneSnapshot | undefined>;
   /** Stop following. */
   stop(): Promise<void>;
+  /**
+   * The followed session's phase and permission mode, read from the transcript
+   * as it is now (not from the last push): what a guard asks right before it
+   * types into the agent. Undefined when nothing is followed or no transcript
+   * exists yet, which is never "ready".
+   */
+  readPhase(): Promise<AgentPaneCheckpoint | undefined>;
+}
+
+export interface AgentPaneCheckpoint {
+  sessionId: string;
+  phase?: PanePhase;
+  permissionMode?: string;
 }
 
 export interface AgentPaneClient {

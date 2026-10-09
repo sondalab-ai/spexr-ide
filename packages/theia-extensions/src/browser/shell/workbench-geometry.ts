@@ -128,6 +128,17 @@ export const AGENT_PANE = {
   modelRadius: 6,
   /** The tool card folds all but this many rows (Lumen shows four), and scrolls past this height once expanded. */
   toolRows: 4,
+  /** The composer: 12px off the island's edges (Lumen .75rem), 8px of padding and between its rows (Lumen .5rem), r12. */
+  composerMargin: 12,
+  composerPadding: 8,
+  composerGap: 8,
+  composerRadius: 12,
+  /** Its field: two rows of the prose's 13.5/1.55, 2px above and below, 4px in (Lumen 3.2 / 4.8). */
+  fieldRows: 2,
+  fieldPaddingBlock: 2,
+  fieldPaddingInline: 4,
+  /** The file chip's radius: r6. */
+  chipRadius: 6,
   toolListMaxHeight: 384,
   /** A long prompt is held to this many lines. */
   promptLines: 6,

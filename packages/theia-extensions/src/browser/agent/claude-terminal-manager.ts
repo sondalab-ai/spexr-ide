@@ -27,6 +27,8 @@ import { Emitter, type Event } from "@theia/core/lib/common/event";
 import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
 import { agentSessionKey, launchLine, withSessionId } from "./session-launch.js";
+import { SHIFT_TAB } from "../agent-pane/agent-pane-composer-model.js";
+import { WorkspaceTrustService } from "@theia/workspace/lib/browser/workspace-trust-service";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
@@ -81,6 +83,9 @@ export class ClaudeTerminalManager {
 
   @inject(StorageService)
   private readonly storage!: StorageService;
+
+  @inject(WorkspaceTrustService)
+  private readonly trust!: WorkspaceTrustService;
 
   @optional()
   @inject(SpexrAgentServiceProxy)
@@ -343,6 +348,11 @@ export class ClaudeTerminalManager {
       void this.messages.info("SPEXR: open a workspace to start the Claude session.");
       return false;
     }
+    // Restricted Mode: the agent runs tools in the folder, so nothing starts until the workspace is trusted.
+    if (!(await this.isTrusted())) {
+      void this.messages.info("Trust this workspace to start the agent.");
+      return false;
+    }
     if (!this.agentService) return false;
 
     // Remembered first: the account and launch settings below are read
@@ -591,6 +601,52 @@ export class ClaudeTerminalManager {
    */
   send(text: string): void {
     this.widget?.sendText(text);
+  }
+
+  /** Whether a Claude session is running in the agent terminal now. */
+  isRunning(): boolean {
+    return !!this.widget && isReusableTerminal(this.widget);
+  }
+
+  /**
+   * The keys the composer types into the agent's TUI, one at a time: the
+   * guards (agent-pane/agent-pane-guard.ts) decide when each is safe. Nothing
+   * here checks idleness; each refuses only what can never be right, an agent
+   * that is not running or a workspace that is not trusted.
+   */
+  private agentTerminal(): TerminalWidget {
+    const term = this.widget;
+    if (!term || !isReusableTerminal(term)) throw new Error("the agent is not running");
+    return term;
+  }
+
+  /** Put text in the TUI's input without submitting it: a paste, bracketed when the TUI asked for that. */
+  pasteIntoAgent(text: string): void {
+    this.agentTerminal().paste(text);
+  }
+
+  /** Press Enter in the agent's TUI. */
+  submitAgentInput(): void {
+    this.agentTerminal().sendText("\r");
+  }
+
+  /** Press Shift+Tab once in the agent's TUI: it moves to the next permission mode. */
+  cycleAgentMode(): void {
+    this.agentTerminal().sendText(SHIFT_TAB);
+  }
+
+  /** Whether Theia trusts the workspace (always, when workspace trust is off). */
+  async isTrusted(): Promise<boolean> {
+    try {
+      return await this.trust.getWorkspaceTrust();
+    } catch {
+      return false;
+    }
+  }
+
+  /** Fires when workspace trust changes. */
+  get onDidChangeTrust(): Event<boolean> {
+    return this.trust.onDidChangeWorkspaceTrust;
   }
 
   /** Returns the current placement of the widget. */

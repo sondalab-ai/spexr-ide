@@ -81,6 +81,8 @@ export interface CaptureMeta {
   agentPane?: {
     base?: { state: AgentPaneState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>> };
     expanded?: { state: AgentPaneState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>> };
+    /** The composer-focus scene: the field focused, the composer ringed (S6i). */
+    focus?: { state: AgentPaneState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>> };
     sessionId?: string;
   };
   /** The scene checks that failed (S5f), by scene; the capture throws after writing them. */

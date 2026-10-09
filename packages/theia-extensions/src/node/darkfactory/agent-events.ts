@@ -1,4 +1,5 @@
 import { basename, isAbsolute, relative } from "node:path";
+import { AUTO_APPROVE_MODES, lastTurn, type StateEntry } from "./session-state.js";
 import { isGenuinePrompt } from "./transcript-parser.js";
 import {
   PANE_DIFF_LINES,
@@ -7,6 +8,7 @@ import {
   type AgentPaneSnapshot,
   type PaneDiff,
   type PanePlanItem,
+  type PanePhase,
   type PanePlanSource,
   type PaneTool,
 } from "../../common/agent-pane-protocol.js";
@@ -346,6 +348,23 @@ export function tokPerSecOf(entries: readonly PaneEntry[]): number | undefined {
   return rate > MAX_PLAUSIBLE_TOK_PER_SEC ? undefined : rate;
 }
 
+/**
+ * Where the turn stands: `ready` only when the last real message ended it (the
+ * agent's closing text, or an interrupt) and no call is open; a call that asks
+ * for permission and has no result is `permission`; anything else is
+ * `working`; under an auto-approving permission mode a call awaiting its
+ * result is `working` too. A subagent's entries are not the session's turn.
+ */
+export function phaseOf(entries: readonly PaneEntry[], calls: readonly Call[], permissionMode?: string): PanePhase {
+  const own = entries.filter((e) => e.isSidechain !== true) as StateEntry[];
+  const turn = lastTurn(own);
+  const open = calls.some((c) => !c.result && !interruptedAfter(entries, c.index));
+  // Under a mode that approves on its own an open call is work, not a dialog.
+  if (turn === "permission" && !AUTO_APPROVE_MODES.has(permissionMode ?? "")) return "permission";
+  if (turn === "ended" && !open) return "ready";
+  return "working";
+}
+
 /** The index of the latest genuine prompt, or -1. */
 function turnStart(entries: readonly PaneEntry[]): number {
   for (let i = entries.length - 1; i >= 0; i--) if (promptText(entries[i]!) !== undefined) return i;
@@ -418,6 +437,7 @@ export function buildAgentPaneSnapshot(entries: readonly PaneEntry[], inputs: Pa
     ...(model ? { model } : {}),
     ...(inputs.state ? { state: inputs.state } : {}),
     ...(inputs.needsYou !== undefined ? { needsYou: inputs.needsYou } : {}),
+    ...(entries.length ? { phase: phaseOf(entries, calls, permissionMode) } : {}),
     ...(permissionMode ? { permissionMode, planMode: permissionMode === "plan" } : {}),
     ...(Object.keys(turn).length ? { turn } : {}),
     ...(plan ? { plan: plan.plan, planSource: plan.source } : {}),
@@ -457,7 +477,7 @@ export function diffSnapshots(
     delta.plan = next.plan;
     if (next.planSource) delta.planSource = next.planSource;
   }
-  for (const key of ["title", "model", "state", "needsYou", "permissionMode", "planMode", "tokPerSec", "toolCount", "updatedAtMs"] as const) {
+  for (const key of ["title", "model", "state", "needsYou", "phase", "permissionMode", "planMode", "tokPerSec", "toolCount", "updatedAtMs"] as const) {
     if (!same(prev[key], next[key]) && next[key] !== undefined) (delta as unknown as Record<string, unknown>)[key] = next[key];
   }
   // A field that went away (a plan removed, a diff gone) cannot be said in a delta.

@@ -281,6 +281,18 @@ export interface AgentPaneState {
   readonly plan: ReadonlyArray<{ readonly text: string; readonly checked: boolean }>;
   readonly needsYou: boolean;
   readonly empty: boolean;
+  /** The composer (S6i); null when the pane has none. */
+  readonly composer: {
+    readonly draft: string;
+    readonly chip: { readonly text: string; readonly pressed: boolean } | null;
+    readonly planPressed: boolean;
+    readonly planDisabled: boolean;
+    readonly sendDisabled: boolean;
+    readonly sendText: string;
+    /** The composer, the pane or neither holds focus: where the caret is. */
+    readonly focused: boolean;
+    readonly note: string | null;
+  } | null;
 }
 
 /** Read the agent pane: its head, its prompt, its tool rows, its diff card and its plan. */
@@ -321,6 +333,23 @@ export async function probeAgentPane(page: Page): Promise<AgentPaneState> {
       })),
       needsYou: !!root?.querySelector(".spexr-agent-needs"),
       empty: !!root?.classList.contains("spexr-agent-pane--empty"),
+      composer: (() => {
+        const c = root?.querySelector<HTMLElement>(".spexr-agent-composer");
+        if (!c) return null;
+        const chip = c.querySelector<HTMLElement>(".spexr-agent-composer__chip");
+        const plan = c.querySelector<HTMLButtonElement>(".sl-btn--ghost");
+        const send = c.querySelector<HTMLButtonElement>(".sl-btn--primary");
+        return {
+          draft: c.querySelector<HTMLTextAreaElement>("textarea")?.value ?? "",
+          chip: chip ? { text: (chip.textContent ?? "").trim(), pressed: chip.getAttribute("aria-pressed") === "true" } : null,
+          planPressed: plan?.getAttribute("aria-pressed") === "true",
+          planDisabled: plan?.disabled === true,
+          sendDisabled: send?.disabled === true,
+          sendText: (send?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          focused: c.matches(":focus-within"),
+          note: (c.querySelector(".spexr-agent-composer__note")?.textContent ?? "").trim() || null,
+        };
+      })(),
     };
   });
 }
@@ -343,12 +372,15 @@ const AGENT = { ring: 1, inline: 16, head: 69, headTol: 1.5, cardWidth: 318, row
  * running; the +14 -3 edit; the plan's three checks, two of them checked. `expanded` is the tool card showing
  * every row (11) instead of the last four with "7 earlier".
  */
-export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded: boolean): string[] {
+export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded: boolean, focused = false): string[] {
   const problems: string[] = [];
   const pane = regions["ap.pane"]?.[0];
   if (!pane) return ["agent pane: the right island is not on screen"];
   if (state.empty) return ["agent pane: the pane is empty (no session was followed)"];
   const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  // Expanded, the log outgrows the island and scrolls: its scrollbar (up to 12px) narrows every card.
+  const cardWidth = expanded ? AGENT.cardWidth - 6 : AGENT.cardWidth;
+  const cardTol = expanded ? 7 : 1;
   if (!near(pane.x, AGENT.island.x, 1) || !near(pane.w, AGENT.island.w, 1)) problems.push(`agent pane: the island is at x ${pane.x}, ${pane.w} wide, want ${AGENT.island.x} (the demo's 1082 less the right activity bar) and ${AGENT.island.w}`);
 
   const head = regions["ap.head"]?.[0];
@@ -367,7 +399,7 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
 
   const prompt = regions["ap.prompt"]?.[0];
   if (!prompt) problems.push("agent pane: no prompt card");
-  else if (!near(prompt.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(prompt.w, AGENT.cardWidth, 1)) problems.push(`agent pane: prompt card at ${prompt.x - pane.x} in, ${prompt.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
+  else if (!near(prompt.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(prompt.w, cardWidth, cardTol)) problems.push(`agent pane: prompt card at ${prompt.x - pane.x} in, ${prompt.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
   if (!state.prompt?.startsWith("Make cache.write awaited")) problems.push(`agent pane: prompt ${JSON.stringify(state.prompt)}`);
 
   const want = expanded ? 11 : 4;
@@ -388,7 +420,7 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
 
   const card = regions["ap.tools"]?.[0];
   if (!card) problems.push("agent pane: no tool card");
-  else if (!near(card.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(card.w, AGENT.cardWidth, 1)) problems.push(`agent pane: tool card at ${card.x - pane.x} in, ${card.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
+  else if (!near(card.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(card.w, cardWidth, cardTol)) problems.push(`agent pane: tool card at ${card.x - pane.x} in, ${card.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
   for (const [i, row] of (regions["ap.tool"] ?? []).entries()) {
     const h = i === 0 ? AGENT.row : AGENT.row + AGENT.rowBorder;
     if (!near(row.h, h, 1)) problems.push(`agent pane: tool row ${i} is ${row.h}px tall, want ${h}`);
@@ -401,7 +433,8 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
       problems.push(`agent pane: diff rows ${state.diff.rows.map((r) => r.kind).join(",")}, want 3 removed then 3 added`);
     }
     const dcard = regions["ap.diff"]?.[0];
-    if (!dcard || !near(dcard.w, AGENT.cardWidth, 1)) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
+    // Scrolled out of the island when expanded: its geometry is then not measured.
+    if (!(expanded && !dcard) && (!dcard || !near(dcard.w, cardWidth, cardTol))) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
   }
 
   if (state.plan.map((p) => p.checked).join() !== "true,true,false") problems.push(`agent pane: plan checks ${state.plan.map((p) => p.checked).join()}, want true,true,false`);
@@ -410,5 +443,48 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
     if (!near(box.w, AGENT.check, 1) || !near(box.h, AGENT.check, 1)) problems.push(`agent pane: check box ${i} is ${box.w}x${box.h}, want ${AGENT.check}`);
   }
   if (state.needsYou) problems.push("agent pane: a needs-you row shows, but the audit's agent is working");
+  problems.push(...checkComposer(state, regions, pane, focused));
+  return problems;
+}
+
+/** The demo's composer draft, which the capture puts in the field without focusing it. */
+export const SEEDED_DRAFT = "Also fix the colour literal, then open a PR";
+
+/**
+ * The composer against the demo's (`agent.composer` 328 x 100.3 at 12px from
+ * the island's edges, `agent.textarea`, `agent.chip` 24 high, the Plan and Send
+ * buttons 24 high): 12px off the ring's inside, so 326 wide against the demo's
+ * 328; the seeded draft; the chip `@resolve.ts` pressed; Plan idle and Send
+ * with its keycap, both disabled while the agent works, with "Agent is
+ * working" shown; the focus ring only in the composer-focus scene.
+ */
+function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[number], focused: boolean): string[] {
+  const problems: string[] = [];
+  const c = state.composer;
+  const box = regions["ap.composer"]?.[0];
+  if (!c || !box) return ["agent pane: no composer"];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  if (!near(box.x - pane.x, 13, 1) || !near(box.w, 326, 1.5)) problems.push(`composer: at ${box.x - pane.x} in, ${box.w} wide, want 13 and 326 (the demo's 12 and 328, in the ring)`);
+  if (!near(pane.y + pane.h - (box.y + box.h), 13, 1.5)) problems.push(`composer: ${pane.y + pane.h - (box.y + box.h)}px above the island's bottom edge, want 13`);
+  // The demo's is 100.3. While the agent works a note line sits in it (S6i's security decision: Send is off, and says why): +24.
+  const noted = c.note !== null;
+  const [lo, hi] = noted ? [110, 128] : [90, 104];
+  if (box.h < lo || box.h > hi) problems.push(`composer: ${box.h}px tall, want about the demo's 100 (${lo} to ${hi}${noted ? ", with its note" : ""})`);
+  const field = regions["ap.field"]?.[0];
+  if (!field || !near(field.x - box.x, 8, 1) || !near(field.w, box.w - 16, 1.5)) problems.push(`composer: the field is at ${field ? field.x - box.x : "?"} in, ${field?.w} wide, want 8 and ${box.w - 16}`);
+  if (field && (field.h < 44 || field.h > 50)) problems.push(`composer: the field is ${field.h}px tall, want about the demo's 46.9 (44 to 50)`);
+  if (c.draft !== SEEDED_DRAFT) problems.push(`composer: draft ${JSON.stringify(c.draft)}, want ${JSON.stringify(SEEDED_DRAFT)}`);
+  if (!c.chip || c.chip.text !== "@resolve.ts" || !c.chip.pressed) problems.push(`composer: chip ${JSON.stringify(c.chip)}, want "@resolve.ts" pressed`);
+  for (const key of ["ap.chip", "ap.planbtn", "ap.send"]) {
+    const r = regions[key]?.[0];
+    if (!r) problems.push(`composer: no ${key}`);
+    else if (!near(r.h, 24, 1.5)) problems.push(`composer: ${key} is ${r.h}px tall, want the demo's 24`);
+  }
+  // The audit's agent is mid-turn (a call is open): Send and Plan are off, and the composer says why. The demo's are on;
+  // typing into a working Claude can answer a permission dialog with Enter, so they are not (S6i's security decision).
+  if (c.planPressed || !c.planDisabled) problems.push(`composer: Plan pressed=${c.planPressed} disabled=${c.planDisabled}, want idle and disabled while the agent works`);
+  if (!c.sendDisabled || !/^Send\s*\u23ce$/.test(c.sendText)) problems.push(`composer: Send disabled=${c.sendDisabled} text ${JSON.stringify(c.sendText)}, want disabled "Send \u23ce"`);
+  if (c.note !== "Agent is working") problems.push(`composer: the note reads ${JSON.stringify(c.note)}, want "Agent is working"`);
+  if (c.focused !== focused) problems.push(`composer: focus-within is ${c.focused}, want ${focused}`);
   return problems;
 }

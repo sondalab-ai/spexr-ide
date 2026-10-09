@@ -88,6 +88,10 @@ describe("buildAgentPaneSnapshot on the parity fixture", () => {
     expect(snap.tokPerSec).toBeLessThan(92);
   });
 
+  it("is working: the audit is open under auto", () => {
+    expect(snap.phase).toBe("working");
+  });
+
   it("reads the permission mode from the standalone record", () => {
     expect(snap.permissionMode).toBe("auto");
     expect(snap.planMode).toBe(false);
@@ -377,5 +381,50 @@ describe("a tool's path", () => {
 
   it("is left out when it is the target, as for a bare name or a command", () => {
     expect(buildAgentPaneSnapshot(at("/w/proj", "a.ts"), { sessionId: "x" }).turn!.tools![0]!.path).toBeUndefined();
+  });
+});
+
+describe("phase", () => {
+  const u = (secs: number, content: unknown, extra: Partial<PaneEntry> = {}): PaneEntry => ({ timestamp: new Date(Date.parse("2026-10-09T10:00:00Z") + secs * 1000).toISOString(), message: { role: "user", content }, ...extra });
+  const a = (secs: number, content: unknown[], id = `m${secs}`, extra: Partial<PaneEntry> = {}): PaneEntry => ({ timestamp: new Date(Date.parse("2026-10-09T10:00:00Z") + secs * 1000).toISOString(), message: { id, role: "assistant", content }, ...extra });
+  const phase = (entries: PaneEntry[]): string | undefined => buildAgentPaneSnapshot(entries, { sessionId: "x" }).phase;
+  const text = [{ type: "text", text: "done" }];
+  const bash = (id: string): Record<string, unknown> => ({ type: "tool_use", id, name: "Bash", input: { command: "make" } });
+  const read = (id: string): Record<string, unknown> => ({ type: "tool_use", id, name: "Read", input: { file_path: "/a" } });
+
+  it("is ready only when the turn ended with the agent's text and no call is open", () => {
+    expect(phase([u(0, "go"), a(1, text)])).toBe("ready");
+    expect(phase([u(0, "go"), a(1, [read("t")]), u(2, [{ type: "tool_result", tool_use_id: "t", content: "ok" }]), a(3, text)])).toBe("ready");
+  });
+
+  it("is working while a prompt, a result or a call that needs no permission is open", () => {
+    expect(phase([u(0, "go")])).toBe("working");
+    expect(phase([u(0, "go"), a(1, [read("t")])])).toBe("working");
+    expect(phase([u(0, "go"), a(1, [read("t")]), u(2, [{ type: "tool_result", tool_use_id: "t", content: "ok" }])])).toBe("working");
+    expect(phase([u(0, "go"), a(1, [{ type: "thinking", thinking: "" }])])).toBe("working");
+  });
+
+  it("is permission while a call that asks for permission has no result", () => {
+    expect(phase([u(0, "go"), a(1, [bash("t")])])).toBe("permission");
+  });
+
+  it("takes an open call for work, not a dialog, under a mode that approves on its own", () => {
+    const entries = [{ type: "permission-mode", permissionMode: "auto" } as PaneEntry, u(0, "go"), a(1, [bash("t")])];
+    expect(phase(entries)).toBe("working");
+    expect(phase([{ type: "permission-mode", permissionMode: "bypassPermissions" } as PaneEntry, u(0, "go"), a(1, [bash("t")])])).toBe("working");
+    expect(phase([{ type: "permission-mode", permissionMode: "default" } as PaneEntry, u(0, "go"), a(1, [bash("t")])])).toBe("permission");
+  });
+
+  it("is not ready when text ends the message but a call earlier in the turn never answered", () => {
+    expect(phase([u(0, "go"), a(1, [read("t")], "m1"), a(2, text, "m2")])).toBe("working");
+  });
+
+  it("is ready after an interrupt, and takes a subagent's open call for nobody's", () => {
+    expect(phase([u(0, "go"), a(1, [bash("t")]), u(2, [{ type: "text", text: "[Request interrupted by user]" }])])).toBe("ready");
+    expect(phase([u(0, "go"), a(1, text), a(2, [bash("s")], "side", { isSidechain: true })])).toBe("ready");
+  });
+
+  it("is absent for a transcript with no entries", () => {
+    expect(phase([])).toBeUndefined();
   });
 });

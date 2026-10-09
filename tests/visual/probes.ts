@@ -697,4 +697,10 @@ export const AGENT_PANE_REGIONS: readonly ShellRegion[] = [
   { key: "ap.diff", selector: "#theia-right-content-panel .spexr-agent-diff" },
   { key: "ap.plan", selector: "#theia-right-content-panel .spexr-agent-plan" },
   { key: "ap.check.box", selector: "#theia-right-content-panel .spexr-agent-plan .sl-check__box" },
+  // S6i: the composer and its parts (the demo's `agent.composer`, `agent.textarea`, `agent.chip`, `agent.plan.button`, `agent.send`).
+  { key: "ap.composer", selector: "#theia-right-content-panel .spexr-agent-composer" },
+  { key: "ap.field", selector: "#theia-right-content-panel .spexr-agent-composer__input" },
+  { key: "ap.chip", selector: "#theia-right-content-panel .spexr-agent-composer__chip" },
+  { key: "ap.planbtn", selector: "#theia-right-content-panel .spexr-agent-composer .sl-btn--ghost" },
+  { key: "ap.send", selector: "#theia-right-content-panel .spexr-agent-composer .sl-btn--primary" },
 ];
