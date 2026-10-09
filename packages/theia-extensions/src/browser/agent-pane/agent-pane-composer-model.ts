@@ -17,7 +17,6 @@ export const SHIFT_TAB = "\x1b[Z";
 export function sanitizeMessage(text: string): string {
   return text
     .replace(/\r\n?/g, "\n")
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
 }
 
