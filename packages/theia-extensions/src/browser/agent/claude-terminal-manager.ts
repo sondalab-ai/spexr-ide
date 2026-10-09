@@ -23,6 +23,7 @@ import {
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import { readLaunchProfiles } from "../preferences/launch-profiles.js";
+import { Emitter, type Event } from "@theia/core/lib/common/event";
 import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
 import { agentSessionKey, withSessionId } from "./session-launch.js";
@@ -110,6 +111,9 @@ export class ClaudeTerminalManager {
   private agentRoot: string | undefined;
   /** The id the running agent's Claude was started with (`--session-id`). */
   private sessionId: string | undefined;
+  private readonly sessionChanged = new Emitter<void>();
+  /** Fires when the running agent's session id changes: a launch, or the terminal going away. */
+  readonly onDidChangeSession: Event<void> = this.sessionChanged.event;
   private agentRootLoaded = false;
 
   /** Folder the running terminal was launched in; undefined when none runs. */
@@ -279,6 +283,7 @@ export class ClaudeTerminalManager {
 
   private rememberSessionId(rootUri: string, sessionId: string): void {
     this.sessionId = sessionId;
+    this.sessionChanged.fire();
     void this.storage.setData(agentSessionKey(rootUri), sessionId).catch(() => {});
   }
 
@@ -314,7 +319,10 @@ export class ClaudeTerminalManager {
     const adopted = this.terminalService.getById(CLAUDE_TERMINAL_ID);
     adopted?.dispose();
     this.widget = undefined;
-    this.sessionId = undefined;
+    if (this.sessionId !== undefined) {
+      this.sessionId = undefined;
+      this.sessionChanged.fire();
+    }
     this.currentExpertId = undefined;
     this.runningRoot = undefined;
   }
