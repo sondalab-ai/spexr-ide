@@ -188,6 +188,172 @@ export interface LogProbes {
   readonly userPluginDirsMissing: number;
 }
 
+/** One sampled part of the editor: where it is on the page, what it says and the colour it computes to. */
+export interface EditorSample {
+  readonly text: string;
+  readonly rect: { x: number; y: number; w: number; h: number };
+  readonly color: string;
+  readonly background: string;
+}
+
+/**
+ * The editor as Monaco lays it out and paints it (S5d), in CSS px, read from
+ * the DOM: the gutter's edges from the editor's left edge, the colours its
+ * theme resolves to, a token of each type with its colour and rect (so the
+ * capture's pixels can be sampled there), the terminal's registry palette.
+ * The demo's numbers are in reference/demo-regions.json (`code.no`, `code.tx`,
+ * `syntax.*`); `paddingTop` is read by {@link probeEditorPadding}.
+ */
+export interface EditorProbe {
+  readonly editor: { x: number; y: number; w: number; h: number } | null;
+  /** Right edge of the line numbers' text, from the editor's left edge (demo 38). */
+  readonly numbersRight: number | null;
+  /** Left edge of the lines' text, from the editor's left edge (demo 56). */
+  readonly textLeft: number | null;
+  readonly lineHeight: number | null;
+  readonly fontSize: number | null;
+  /** The current line's wash, and the selection's, as the editor paints them. */
+  readonly currentLine: EditorSample | null;
+  readonly selection: EditorSample | null;
+  readonly lineNumber: EditorSample | null;
+  readonly activeLineNumber: EditorSample | null;
+  /** A token of each type, found by its text in the visible lines: keyword, string, function, number, type, comment, variable. */
+  readonly tokens: Record<string, EditorSample | null>;
+  /** The colours Monaco's theme resolves to on the editor (`--vscode-*`). */
+  readonly monacoColors: Record<string, string>;
+  /** Theia's terminal colours from the colour registry (`--theia-terminal-*`), the palette xterm is given. */
+  readonly terminalColors: Record<string, string>;
+  /** The Monaco theme the page has set, as the class on the body. */
+  readonly bodyEditorTheme: string | null;
+  /** Monaco's minimap, shown or not. */
+  readonly minimap: boolean;
+}
+
+/** Reads {@link EditorProbe} from the page. */
+export async function probeEditor(page: Page): Promise<EditorProbe> {
+  return page.evaluate(() => {
+    const round = (n: number): number => Math.round(n * 100) / 100;
+    const editor = [...document.querySelectorAll<HTMLElement>("#theia-main-content-panel .monaco-editor")].find(
+      (e) => e.getBoundingClientRect().width > 0 && e.querySelector(".view-lines") && e.checkVisibility({ visibilityProperty: true }),
+    );
+    const none = {
+      editor: null,
+      numbersRight: null,
+      textLeft: null,
+      lineHeight: null,
+      fontSize: null,
+      currentLine: null,
+      selection: null,
+      lineNumber: null,
+      activeLineNumber: null,
+      tokens: {},
+      monacoColors: {},
+      terminalColors: {},
+      bodyEditorTheme: null,
+      minimap: false,
+    };
+    if (!editor) return none;
+    const er = editor.getBoundingClientRect();
+    const rectOf = (el: Element): { x: number; y: number; w: number; h: number } => {
+      const r = el.getBoundingClientRect();
+      return { x: round(r.x), y: round(r.y), w: round(r.width), h: round(r.height) };
+    };
+    const textRect = (el: Element): DOMRect => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getBoundingClientRect();
+    };
+    const sample = (el: Element | null | undefined, ink?: Element): EditorSample | null => {
+      if (!el) return null;
+      const cs = getComputedStyle(ink ?? el);
+      const bg = getComputedStyle(el).backgroundColor;
+      return { text: (el.textContent ?? "").trim().slice(0, 40), rect: rectOf(ink ?? el), color: cs.color, background: bg };
+    };
+    const lineNumbers = [...editor.querySelectorAll<HTMLElement>(".margin-view-overlays .line-numbers")].filter((el) => (el.textContent ?? "").trim() !== "");
+    const plain = lineNumbers.find((el) => !el.classList.contains("active-line-number"));
+    const active = lineNumbers.find((el) => el.classList.contains("active-line-number"));
+    const firstNumber = plain ?? lineNumbers[0];
+    const viewLine = [...editor.querySelectorAll<HTMLElement>(".view-lines .view-line")].find((el) => (el.textContent ?? "").trim().length > 10);
+    const cs = viewLine ? getComputedStyle(viewLine) : null;
+
+    const leaves = [...editor.querySelectorAll<HTMLElement>(".view-lines .view-line span")].filter((el) => el.children.length === 0 && (el.textContent ?? "").trim() !== "");
+    const find = (test: (text: string) => boolean): EditorSample | null => {
+      const el = leaves.find((l) => test((l.textContent ?? "").trim()));
+      return el ? sample(el, el) : null;
+    };
+    const tokens: Record<string, EditorSample | null> = {
+      keyword: find((t) => /^(import|const|await|return|if|export|new|from)$/.test(t)),
+      string: find((t) => /^"[^"]*"$/.test(t)),
+      function: find((t) => /^(read|stale|run|write|resolve)$/.test(t)),
+      number: find((t) => /^[\d_]+$/.test(t)),
+      type: find((t) => /^(Probe|Answer|Cache|Promise|Evidence)$/.test(t)),
+      comment: find((t) => t.startsWith("//")),
+      variable: find((t) => /^(hit|probe|answer|evidence|key|timeout)$/.test(t)),
+    };
+
+    const ecs = getComputedStyle(editor);
+    const monacoColors: Record<string, string> = {};
+    for (const name of ["editor-background", "editor-foreground", "editor-lineHighlightBackground", "editor-lineHighlightBorder", "editor-selectionBackground", "editor-inactiveSelectionBackground", "editorLineNumber-foreground", "editorLineNumber-activeForeground", "editorCursor-foreground", "editorGutter-background"]) {
+      monacoColors[name] = ecs.getPropertyValue(`--vscode-${name}`).trim();
+    }
+    const root = getComputedStyle(document.documentElement);
+    const terminalColors: Record<string, string> = {};
+    for (const name of ["foreground", "background", "selectionBackground", "ansiBlack", "ansiRed", "ansiGreen", "ansiYellow", "ansiBlue", "ansiMagenta", "ansiCyan", "ansiWhite", "ansiBrightBlack", "ansiBrightRed", "ansiBrightGreen", "ansiBrightYellow", "ansiBrightBlue", "ansiBrightMagenta", "ansiBrightCyan", "ansiBrightWhite"]) {
+      terminalColors[name] = root.getPropertyValue(`--theia-terminal-${name}`).trim();
+    }
+    const minimap = editor.querySelector<HTMLElement>(".minimap");
+    return {
+      editor: rectOf(editor),
+      numbersRight: firstNumber ? round(textRect(firstNumber).right - er.left) : null,
+      textLeft: viewLine ? round(viewLine.getBoundingClientRect().left - er.left) : null,
+      lineHeight: cs ? parseFloat(cs.lineHeight) : null,
+      fontSize: cs ? parseFloat(cs.fontSize) : null,
+      currentLine: sample(editor.querySelector(".view-overlays .current-line, .margin-view-overlays .current-line")),
+      selection: sample(editor.querySelector(".cslr.selected-text, .selected-text")),
+      lineNumber: sample(plain),
+      activeLineNumber: sample(active),
+      tokens,
+      monacoColors,
+      terminalColors,
+      bodyEditorTheme: [...document.body.classList].find((c) => /^(spexr-|dark-theia|light-theia|hc-)/.test(c)) ?? null,
+      minimap: !!minimap && minimap.getBoundingClientRect().width > 0,
+    };
+  });
+}
+
+/**
+ * The editor's padding at the top: scrolled to the first line, how far the
+ * first line's text sits below the editor's top edge (demo 12, the code
+ * block's `padding-top`). Scrolls the editor by wheel, so the capture's scenes
+ * are over; returns null when no editor shows or line 1 never came into view.
+ */
+export async function probeEditorPadding(page: Page): Promise<{ paddingTop: number; firstLine: number } | null> {
+  const box = await page.evaluate(() => {
+    const editor = [...document.querySelectorAll<HTMLElement>("#theia-main-content-panel .monaco-editor")].find(
+      (e) => e.getBoundingClientRect().width > 0 && e.querySelector(".view-lines") && e.checkVisibility({ visibilityProperty: true }),
+    );
+    const r = editor?.getBoundingClientRect();
+    return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+  });
+  if (!box) return null;
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.wheel(0, -20_000);
+  await page.waitForTimeout(500);
+  return page.evaluate(() => {
+    const editor = [...document.querySelectorAll<HTMLElement>("#theia-main-content-panel .monaco-editor")].find(
+      (e) => e.getBoundingClientRect().width > 0 && e.querySelector(".view-lines") && e.checkVisibility({ visibilityProperty: true }),
+    );
+    if (!editor) return null;
+    const top = editor.getBoundingClientRect().top;
+    const numbers = [...editor.querySelectorAll<HTMLElement>(".margin-view-overlays .line-numbers")]
+      .map((el) => ({ n: Number(el.textContent?.trim()), y: el.getBoundingClientRect().top - top }))
+      .filter((l) => Number.isFinite(l.n) && l.n > 0)
+      .sort((a, b) => a.y - b.y);
+    const first = numbers.find((l) => l.n === 1);
+    return first ? { paddingTop: Math.round(first.y * 100) / 100, firstLine: 1 } : null;
+  });
+}
+
 export async function probePage(page: Page): Promise<PageProbes> {
   const probes = await probeTagged(page);
   return { ...probes, parity: { ...probes.parity, ...(await probeRegions(page, SHELL_REGIONS)) } };

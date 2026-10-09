@@ -84,6 +84,14 @@ function renderSummary(runs: Run[]): string {
   md += row("Geist Mono faces", (m) => (m.readiness?.geistMonoFaces ?? []).join("; ") || "none declared");
   md += row("editor font", (m) => m.page?.editorFont);
   md += row("Monaco char width", (m) => m.page?.monacoCharWidth);
+  md += row("editor gutter: numbers end / text starts (demo 38 / 56)", (m) => (m.editor ? `${m.editor.numbersRight} / ${m.editor.textLeft}` : ""));
+  md += row("editor padding-top (demo 12)", (m) => m.editor?.paddingTop);
+  md += row("editor line height / font size (demo 22 / 13)", (m) => (m.editor ? `${m.editor.lineHeight} / ${m.editor.fontSize}` : ""));
+  md += row("editor theme (body class) / minimap", (m) => (m.editor ? `${m.editor.bodyEditorTheme} / ${m.editor.minimap ? "shown" : "off"}` : ""));
+  md += row("editor current line / selection", (m) => (m.editor ? `${m.editor.currentLine?.background} / ${m.editor.selection?.background}` : ""));
+  md += row("editor tokens (computed colours)", (m) =>
+    m.editor ? Object.entries(m.editor.tokens).map(([k, v]) => `${k} ${v ? v.color : "none"}`).join("; ") : "",
+  );
   md += row("devicePixelRatio", (m) => m.page?.devicePixelRatio);
   md += row("viewport / content size", (m) => `${m.page?.innerSize} / ${m.main?.contentSize}`);
   md += row("titleBarStyle", (m) =>
