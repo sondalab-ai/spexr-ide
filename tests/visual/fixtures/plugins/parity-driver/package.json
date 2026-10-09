@@ -15,14 +15,20 @@
     "onCommand:parity.probe",
     "onCommand:parity.base",
     "onCommand:parity.toast",
-    "onCommand:parity.focusTree"
+    "onCommand:parity.focusTree",
+    "onCommand:parity.shell",
+    "onCommand:parity.shell2",
+    "onCommand:parity.cleanup"
   ],
   "contributes": {
     "commands": [
       { "command": "parity.probe", "title": "Probe environment", "category": "Parity" },
       { "command": "parity.base", "title": "Base scene", "category": "Parity" },
       { "command": "parity.toast", "title": "Toast scene", "category": "Parity" },
-      { "command": "parity.focusTree", "title": "Focus tree scene", "category": "Parity" }
+      { "command": "parity.focusTree", "title": "Focus tree scene", "category": "Parity" },
+      { "command": "parity.shell", "title": "Shell: first command", "category": "Parity" },
+      { "command": "parity.shell2", "title": "Shell: second command", "category": "Parity" },
+      { "command": "parity.cleanup", "title": "Save fixture files", "category": "Parity" }
     ]
   }
 }

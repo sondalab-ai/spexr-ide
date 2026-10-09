@@ -178,3 +178,74 @@ export function checkEdge(scene: string, samples: readonly Rgb[]): string[] {
   if (onGround < 3) problems.push(`${scene}: the edge ${edge} reads ${onGround.toFixed(2)}:1 on the ground ${ground}, want 3`);
   return problems;
 }
+
+/* ── S6a: the parity fixture loaded ─────────────────────────────────────── */
+
+/** What the base scene shows of the fixture's content, read from the page. */
+export interface FixtureState {
+  /** `[data-parity="title.agents"]`'s text; null when the pill is not drawn. */
+  readonly agentsPill: string | null;
+  /** The bell carries its dot (`sl-titlebar__btn--dot`). */
+  readonly bellDot: boolean;
+  /** Toasts on screen: the base scene has the dot and no toast. */
+  readonly toasts: number;
+}
+
+/** Read the pill, the bell and the toasts. Cheap enough to poll while the backend's scan lands. */
+export async function probeFixtureState(page: Page): Promise<FixtureState> {
+  return page.evaluate(() => {
+    const pill = document.querySelector<HTMLElement>('[data-parity="title.agents"]');
+    const bell = document.querySelector<HTMLElement>('[data-parity="title.bell"]');
+    const shown = (el: Element): boolean => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    };
+    return {
+      agentsPill: pill ? (pill.textContent ?? "").trim() : null,
+      bellDot: !!bell && bell.classList.contains("sl-titlebar__btn--dot"),
+      toasts: [...document.querySelectorAll(".theia-notification-list-item")].filter(shown).length,
+    };
+  });
+}
+
+/** The fixture extension's and the pnpm stub's own report, as the capture read it. */
+export interface FixtureReport {
+  /** The parity driver's base acknowledgement: `fixture.problems`, `fixture.dirty`. */
+  readonly base?: { readonly problems?: number; readonly dirty?: readonly string[] };
+  /** The exit codes the `pnpm` stub recorded, by script. */
+  readonly pnpm: Readonly<Record<string, number | undefined>>;
+  /** Stub pids the scanner would count: `ps` lines whose command is `claude`, and their cwds. */
+  readonly processes?: { readonly pids: readonly number[]; readonly psClaude: readonly string[]; readonly cwd: Readonly<Record<string, string | null>>; readonly dirs: readonly string[] };
+}
+
+/**
+ * The fixture is what the demo shows (S6a): two agents running (the title
+ * pill, which needs both stubs seen by the scanner and both transcripts
+ * classified as working), the bell with its dot and no toast, two warnings,
+ * resolve.ts and evidence.ts unsaved, and the shell terminal having run
+ * `pnpm test probe` (exit 0) and `pnpm sl-audit` (exit 1). The terminal's
+ * canvas cannot be read, so the two commands are known by the stub's records.
+ */
+export function checkFixture(state: FixtureState, report: FixtureReport): string[] {
+  const problems: string[] = [];
+  if (state.agentsPill !== "2 agents running") problems.push(`fixture: the agents pill reads ${JSON.stringify(state.agentsPill)}, want "2 agents running"`);
+  if (!state.bellDot) problems.push("fixture: the bell has no dot (no notification in the centre)");
+  if (state.toasts !== 0) problems.push(`fixture: ${state.toasts} toast(s) over the base scene, want none`);
+  if (report.base?.problems !== 2) problems.push(`fixture: ${report.base?.problems} problems, want 2 (the demo's warning count)`);
+  for (const file of ["resolve.ts", "evidence.ts"]) {
+    if (!report.base?.dirty?.includes(file)) problems.push(`fixture: ${file} is not unsaved (dirty: ${(report.base?.dirty ?? []).join(", ") || "none"})`);
+  }
+  if (report.pnpm["test-probe"] !== 0) problems.push(`fixture: pnpm test probe recorded exit ${report.pnpm["test-probe"]}, want 0`);
+  if (report.pnpm["sl-audit"] !== 1) problems.push(`fixture: pnpm sl-audit recorded exit ${report.pnpm["sl-audit"]}, want 1`);
+  const proc = report.processes;
+  if (!proc) problems.push("fixture: no process probe");
+  else {
+    for (const pid of proc.pids) {
+      if (!proc.psClaude.some((l) => l.startsWith(`${pid} `))) problems.push(`fixture: ps does not list stub ${pid} as claude`);
+    }
+    for (const dir of proc.dirs) {
+      if (!Object.values(proc.cwd).includes(dir)) problems.push(`fixture: no stub has cwd ${dir} (lsof: ${JSON.stringify(proc.cwd)})`);
+    }
+  }
+  return problems;
+}
