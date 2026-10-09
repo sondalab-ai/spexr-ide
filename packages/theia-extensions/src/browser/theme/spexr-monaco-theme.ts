@@ -52,10 +52,12 @@ export function editorInks(theme: SpexrThemeKind): { surface: string; raised: st
  * The current line's wash is the primary ink at 4.5%, a selection the accent
  * at 18% (the demo's `color-mix` values). Monaco takes `#rrggbbaa`, whose
  * alpha is a byte, and a byte is cut down, never rounded up: 4.5% is 0x0b
- * (4.3%, the byte Chrome paints for the demo too) and 18% is 0x2d (17.6%; 0x2e
- * is 18.0%). A wash no heavier than asked is what keeps the muted ink on a
- * selection at 4.5:1 where it sits closest: the dark comment on the lit
- * island's raised rung reads 4.496 with 0x2e and 4.56 with 0x2d.
+ * (4.3%) and 18% is 0x2d (17.6%; the demo's 0x2e is 18.0%). A wash no heavier
+ * than asked keeps the muted ink on a selection at 4.5:1 where it sits
+ * closest: the dark comment on the lit island's raised rung reads 4.496 with
+ * 0x2e and 4.56 with 0x2d. Monaco hands a colour to CSS with its alpha at two
+ * decimals, so the current line is painted at 4.0%: one or two levels of 255
+ * under the demo's 4.5% (measured, S5d).
  */
 export const CURRENT_LINE_ALPHA = 0.045;
 export const SELECTION_ALPHA = 0.18;

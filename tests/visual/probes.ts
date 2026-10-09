@@ -194,6 +194,7 @@ export interface EditorSample {
   readonly rect: { x: number; y: number; w: number; h: number };
   readonly color: string;
   readonly background: string;
+  readonly fontStyle: string;
 }
 
 /**
@@ -267,7 +268,7 @@ export async function probeEditor(page: Page): Promise<EditorProbe> {
       if (!el) return null;
       const cs = getComputedStyle(ink ?? el);
       const bg = getComputedStyle(el).backgroundColor;
-      return { text: (el.textContent ?? "").trim().slice(0, 40), rect: rectOf(ink ?? el), color: cs.color, background: bg };
+      return { text: (el.textContent ?? "").trim().slice(0, 40), rect: rectOf(ink ?? el), color: cs.color, background: bg, fontStyle: cs.fontStyle };
     };
     const lineNumbers = [...editor.querySelectorAll<HTMLElement>(".margin-view-overlays .line-numbers")].filter((el) => (el.textContent ?? "").trim() !== "");
     const plain = lineNumbers.find((el) => !el.classList.contains("active-line-number"));
@@ -288,7 +289,7 @@ export async function probeEditor(page: Page): Promise<EditorProbe> {
       number: find((t) => /^[\d_]+$/.test(t)),
       type: find((t) => /^(Probe|Answer|Cache|Promise|Evidence)$/.test(t)),
       comment: find((t) => t.startsWith("//")),
-      variable: find((t) => /\b(hit|probe|answer|evidence)\b/.test(t) && !/^(import|const|await|return|if|export|new|from)\b/.test(t)),
+      variable: find((t) => /\b(hit|probe|answer|evidence)\b/.test(t) && !/^(\/\/|import|const|await|return|if|export|new|from)/.test(t)),
     };
 
     const ecs = getComputedStyle(editor);
