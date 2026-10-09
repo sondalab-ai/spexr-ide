@@ -10,6 +10,11 @@
  * on the left, 352px on the right). The page fixture waits for the layout's
  * settled mark, which comes after the sizes.
  *
+ * The left island follows the view in front (S6b, D2): 432px with the agent
+ * terminal, 264px with the Explorer, and the width a user gives a view is
+ * remembered for that view. A first launch has the agent terminal in front,
+ * so it stays at 432px.
+ *
  * The right island is read with a project tab in front: the Darkfactory
  * dashboard, which a launch can leave in front, collapses the right panel
  * by design (darkfactory-sidebar-policy.ts), and a project tab brings it back
@@ -71,6 +76,21 @@ async function dragLeftSash(page: Page, dx: number): Promise<void> {
   await page.mouse.up();
 }
 
+/**
+ * Bring a view to the front of the left island through its activity tile
+ * (`#shell-tab-<widget id>`). A tile already in front is left alone: clicking
+ * it would collapse the island.
+ */
+async function showLeftView(page: Page, widgetId: string): Promise<void> {
+  const tab = page.locator(`#shell-tab-${widgetId}`);
+  await tab.waitFor({ state: "visible", timeout: 15_000 });
+  if (!(await tab.evaluate((el) => el.classList.contains("lm-mod-current")))) await tab.click();
+  await expect(tab).toHaveClass(/lm-mod-current/, { timeout: 10_000 });
+}
+
+const AGENT_TERMINAL = "spexr-claude";
+const EXPLORER = "explorer-view-container";
+
 test.describe("the default layout's island sizes", () => {
   test("a workspace's first open sizes the islands: left 432 (the agent terminal's), right 352, bottom 204", async ({ page }) => {
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(432, 0);
@@ -78,6 +98,14 @@ test.describe("the default layout's island sizes", () => {
     // The bottom panel can start hidden; it opens at the size it was given.
     if ((await island(page, "bottom")) === null) await runCommand(page, "View: Toggle Bottom Panel");
     await expect.poll(async () => (await island(page, "bottom"))?.h, { timeout: 15_000 }).toBeCloseTo(204, 0);
+  });
+
+  test("the left island follows the view in front: 432 with the agent terminal, 264 with the Explorer", async ({ page }) => {
+    await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(432, 0);
+    await showLeftView(page, EXPLORER);
+    await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
+    await showLeftView(page, AGENT_TERMINAL);
+    await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(432, 0);
   });
 
   test("a restored layout keeps its own widths above the floors", async ({ page }) => {
@@ -91,5 +119,11 @@ test.describe("the default layout's island sizes", () => {
     await page.waitForSelector("body[data-spexr-layout-ready]", { timeout: 60_000 });
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(532, 0);
     await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
+
+    // The width is the agent terminal's own: the Explorer opens at 264, and the agent terminal comes back at 532.
+    await showLeftView(page, EXPLORER);
+    await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
+    await showLeftView(page, AGENT_TERMINAL);
+    await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(532, 0);
   });
 });
