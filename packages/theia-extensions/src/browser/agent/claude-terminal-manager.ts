@@ -23,7 +23,9 @@ import {
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import { readLaunchProfiles } from "../preferences/launch-profiles.js";
+import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
+import { agentSessionKey, withSessionId } from "./session-launch.js";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
@@ -106,6 +108,8 @@ export class ClaudeTerminalManager {
    * terminal restored after a reload is still running in that folder.
    */
   private agentRoot: string | undefined;
+  /** The id the running agent's Claude was started with (`--session-id`). */
+  private sessionId: string | undefined;
   private agentRootLoaded = false;
 
   /** Folder the running terminal was launched in; undefined when none runs. */
@@ -259,6 +263,25 @@ export class ClaudeTerminalManager {
     }
   }
 
+  /** The id the running agent's Claude was started with, for the agent pane; undefined before a launch. */
+  currentSessionId(): string | undefined {
+    return this.sessionId;
+  }
+
+  /** The id the last launch for a workspace used, kept across restarts. */
+  async storedSessionId(rootUri: string): Promise<string | undefined> {
+    try {
+      return await this.storage.getData<string>(agentSessionKey(rootUri));
+    } catch {
+      return undefined;
+    }
+  }
+
+  private rememberSessionId(rootUri: string, sessionId: string): void {
+    this.sessionId = sessionId;
+    void this.storage.setData(agentSessionKey(rootUri), sessionId).catch(() => {});
+  }
+
   private rememberAgentRoot(rootUri: string): void {
     this.agentRoot = rootUri;
     void this.storage.setData(this.agentRootKey(), rootUri).catch(() => {});
@@ -291,6 +314,7 @@ export class ClaudeTerminalManager {
     const adopted = this.terminalService.getById(CLAUDE_TERMINAL_ID);
     adopted?.dispose();
     this.widget = undefined;
+    this.sessionId = undefined;
     this.currentExpertId = undefined;
     this.runningRoot = undefined;
   }
@@ -322,8 +346,11 @@ export class ClaudeTerminalManager {
       const account = await this.chooseAccount();
       if (!account) return false; // the account prompt was dismissed
       await this.linkMemory(workspaceRoot, account.configDir.trim() || undefined);
-      const shellArgs = await this.buildShellArgs(workspaceRoot, expert?.id);
+      // A fresh id per launch: Claude refuses `--session-id` for one that already exists.
+      const sessionId = generateUuid();
+      const shellArgs = withSessionId(await this.buildShellArgs(workspaceRoot, expert?.id), sessionId);
       await this.launch(workspaceRoot, account, shellArgs, expert, root.resource.toString());
+      this.rememberSessionId(root.resource.toString(), sessionId);
       this.currentExpertId = expert?.id;
       this.runningRoot = root.resource.toString();
       return true;
