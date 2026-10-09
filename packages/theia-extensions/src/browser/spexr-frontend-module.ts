@@ -54,6 +54,7 @@ import { SpexrApplicationShell } from "./shell/island-shell.js";
 import { ElectronMainMenuFactory } from "@theia/core/lib/electron-browser/menu/electron-main-menu-factory";
 import { SpexrElectronMainMenuFactory } from "./shell/menu-keycaps-factory.js";
 import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
+import { SpexrEditorAnchorContribution } from "./shell/editor-anchor-contribution.js";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
@@ -211,6 +212,9 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   rebind(ApplicationShell).to(SpexrApplicationShell).inSingletonScope();
   bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
+  // The editor island's place, for the palette and the toasts that float above it (S5f).
+  bind(SpexrEditorAnchorContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrEditorAnchorContribution);
 
   // Lumen keycaps: a browser menu's shortcut is one kit keycap per key
   // (shell/menu-keycaps-factory.ts). Electron only, where Theia binds the
