@@ -2305,7 +2305,8 @@ body .theia-notifications-container.theia-notification-toasts {
 /* Spec + memory panels */
 .spexr-spec-widget,
 .spexr-memory-widget,
-.spexr-experts-widget {
+.spexr-experts-widget,
+.spexr-agent-pane-widget {
   background: var(--sl-bg-surface);
 }
 
@@ -2346,6 +2347,290 @@ body .theia-notifications-container.theia-notification-toasts {
 
 .spexr-panel-body {
   padding: 16px;
+}
+
+/* The agent pane (S6h): Lumen's right pane, read-only. The numbers are
+   AGENT_PANE in shell/workbench-geometry.ts (agent-pane-style.test.ts holds
+   them); the head, the card and the rows are the right island's own above.
+   Nothing here animates in: the demo's entrance is not carried. */
+.spexr-agent-pane-widget {
+  overflow-y: auto;
+}
+
+.spexr-panel-head--aside {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.spexr-panel-head__text {
+  min-width: 0;
+}
+
+.spexr-panel-head--aside .spexr-panel-head__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spexr-agent-pane__model {
+  flex: none;
+  font-size: 11.5px;
+  border-radius: 6px;
+  text-transform: none;
+}
+
+.spexr-agent-pane__log {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 16px;
+}
+
+.spexr-agent-pane__empty {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.spexr-agent-pane__hint {
+  margin: 0;
+  color: var(--slc-text-secondary);
+  font-size: var(--sl-text-sm);
+  line-height: var(--sl-line-relaxed);
+}
+
+/* The prompt: a tile at r8 with an r4 corner, as Lumen's speech card. */
+.spexr-agent-prompt,
+.spexr-agent-prose {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--slc-text);
+  overflow-wrap: anywhere;
+}
+
+/* Its edge is the kit's one control edge, as the other cards' (owner, S6h), and
+   a long prompt is held to six lines: the full text is its title. */
+.spexr-agent-prompt {
+  padding: 8px 12px;
+  border-radius: 8px 8px 8px 4px;
+  background: var(--slc-tile);
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+.spexr-agent-needs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--slc-raised);
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  color: var(--slc-text);
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.spexr-agent-needs__icon {
+  color: var(--slc-accent-text);
+}
+
+.spexr-agent-needs__text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The tool card: the right island's card of rows. A running row takes a 7%
+   accent wash and says so in the accent ink; an edit's size is +n in the
+   success ink and -m in the danger ink. */
+.spexr-agent-tools__fold {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--slc-text-muted);
+  font-family: var(--sl-font-mono);
+  font-size: 10.5px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.spexr-agent-tools__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 384px;
+  overflow-y: auto;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  background: var(--slc-raised);
+  overflow: hidden;
+}
+
+.spexr-agent-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding-block: 8px;
+  padding-inline: 12px;
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--slc-text-secondary);
+}
+
+.spexr-agent-tool + .spexr-agent-tool {
+  border-top: 1px solid var(--sl-border-subtle);
+}
+
+.spexr-agent-tool__icon {
+  flex: none;
+  color: var(--slc-text-muted);
+}
+
+/* The name and target take what they need, up to the row, and are cut with an
+   ellipsis only when the row is full; the edit's size follows directly, and
+   the duration is pushed to the right edge. */
+.spexr-agent-tool__text {
+  flex: 0 1 auto;
+  min-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spexr-agent-tool__target {
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  color: var(--slc-text);
+}
+
+.spexr-agent-tool__meta {
+  flex: none;
+  margin-inline-start: auto;
+  font-family: var(--sl-font-mono);
+  font-size: 10.5px;
+  color: var(--slc-text-muted);
+}
+
+.spexr-agent-tool[data-state="done"] .spexr-agent-tool__icon {
+  color: var(--slc-success-text, var(--slc-success));
+}
+
+.spexr-agent-tool[data-state="run"] {
+  background: color-mix(in srgb, var(--slc-accent) 7%, var(--slc-raised));
+}
+
+.spexr-agent-tool[data-state="run"] .spexr-agent-tool__icon,
+.spexr-agent-tool[data-state="run"] .spexr-agent-tool__meta {
+  color: var(--slc-accent-text);
+}
+
+.spexr-agent-tool[data-state="error"] .spexr-agent-tool__icon,
+.spexr-agent-tool[data-state="error"] .spexr-agent-tool__meta {
+  color: var(--slc-danger-text, var(--slc-danger));
+}
+
+.spexr-agent-stat {
+  flex: none;
+  margin-inline-start: 8px;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+}
+
+.spexr-agent-stat i {
+  font-style: normal;
+  color: var(--slc-success-text, var(--slc-success));
+}
+
+.spexr-agent-stat s {
+  text-decoration: none;
+  color: var(--slc-danger-text, var(--slc-danger));
+}
+
+/* The diff card: the latest edit's changed lines, each on its own wash. */
+.spexr-agent-diff {
+  margin: 0;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  background: var(--slc-raised);
+  overflow: hidden;
+  font-family: var(--sl-font-mono);
+  font-size: 11.5px;
+}
+
+.spexr-agent-diff__caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 12px;
+  line-height: 16px;
+  color: var(--slc-text-secondary);
+  background: color-mix(in srgb, var(--slc-text) 4%, transparent);
+}
+
+.spexr-agent-diff__file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.spexr-agent-diff__body {
+  margin: 0;
+  padding: 4px 0;
+  font: inherit;
+  line-height: 20px;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.spexr-agent-diff__row {
+  display: block;
+  padding-inline: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spexr-agent-diff__row--add {
+  color: var(--slc-success-text, var(--slc-success));
+  background: color-mix(in srgb, var(--slc-success) 10%, transparent);
+}
+
+.spexr-agent-diff__row--del {
+  color: var(--slc-danger-text, var(--slc-danger));
+  background: color-mix(in srgb, var(--slc-danger) 10%, transparent);
+}
+
+.spexr-agent-plan {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.spexr-agent-plan__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.spexr-agent-plan__item .sl-check__label {
+  font-size: 13px;
 }
 
 /* A card of rows: Lumen's tool list, on the raised ground at r8. Its outline

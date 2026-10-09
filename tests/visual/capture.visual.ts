@@ -5,10 +5,10 @@ import path from "path";
 import { CONTENT, closeApp, hasWebgl2, launch, probeWindowSize, readTheme, sizeWindow, waitForReady, type Launched } from "./app";
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
-import { liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
-import { checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeFixtureState, probeLitRim, samplePixels } from "./checks";
+import { agentSession, liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
+import { checkAgentPane, checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
 import { probeProcesses, startLiveStubs, type LiveStubs } from "./stubs";
-import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
+import { AGENT_PANE_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureStable,
   bottomPanelTop,
@@ -140,6 +140,15 @@ for (const theme of THEMES) {
       await waitForAck(ackDir, "shell2");
       pnpm["sl-audit"] = ((await waitForAck(ackDir, "pnpm-sl-audit", 60_000)) as { exit?: number }).exit;
 
+      // S6h: the agent terminal's Claude stub writes the "Refactor the audit"
+      // transcript under the --session-id the product gave it, which the agent
+      // pane follows. The terminal starts before the layout is ready, so this
+      // is normally already there.
+      const agentWait = Date.now();
+      while (!agentSession(prepared) && Date.now() - agentWait < 90_000) await page.waitForTimeout(500);
+      const agent = agentSession(prepared);
+      if (!agent) throw new Error("fixture: the agent terminal's claude stub never wrote its session (agent-session.json): the terminal did not start it with --session-id");
+
       // base: resolve.ts in front, cursor 41:18, line 45 selected, line 36 at the top.
       touchTranscripts(prepared);
       await runCommand(page, "Parity: Base scene");
@@ -177,6 +186,58 @@ for (const theme of THEMES) {
       };
       writeMeta();
       check("fixture", checkFixture(fixtureState, meta.fixture.report!));
+
+      // S6h: the agent pane in front of the right island, folded as the base
+      // scene has it, then the tool card expanded (the agent-pane scene). The
+      // pane follows the session its terminal started, so it is waited for.
+      await page.locator("#theia-right-content-panel .spexr-agent-tool").first().waitFor({ state: "visible", timeout: 60_000 });
+      await page.locator('#theia-right-content-panel .spexr-agent-tool[data-state="run"]').first().waitFor({ state: "visible", timeout: 30_000 });
+      meta.agentPane = { sessionId: agent.sessionId };
+      meta.agentPane.base = { state: await probeAgentPane(page), regions: await probeRegions(page, AGENT_PANE_REGIONS) };
+      check("agent pane", checkAgentPane(meta.agentPane.base.state, meta.agentPane.base.regions, false));
+      writeMeta();
+      const fold = page.locator("#theia-right-content-panel .spexr-agent-tools__fold");
+      // Dispatched, not clicked: a real click would focus the right island and light it, and the base scene's lit island is the editor's.
+      await fold.dispatchEvent("click");
+      await page.locator("#theia-right-content-panel .spexr-agent-tool").nth(10).waitFor({ state: "visible", timeout: 15_000 });
+      await shoot("agent-pane");
+      meta.agentPane.expanded = { state: await probeAgentPane(page), regions: await probeRegions(page, AGENT_PANE_REGIONS) };
+      check("agent pane (expanded)", checkAgentPane(meta.agentPane.expanded.state, meta.agentPane.expanded.regions, true));
+      writeMeta();
+      await fold.dispatchEvent("click");
+      await page.locator("#theia-right-content-panel .spexr-agent-tool").nth(4).waitFor({ state: "detached", timeout: 15_000 });
+
+      // S6h: the agent-needs-you scene. The audit's agent asks for permission
+      // when its mode is not an auto-approving one and its last call has no
+      // result, so a `permission-mode: default` record is appended to its
+      // transcript and the file is dated a few seconds back (a call waits that
+      // long before it counts as a prompt). The pane shows "Waiting for you in
+      // the terminal"; the mode is put back after.
+      const needsTranscript = agent.path;
+      const modeRecord = (mode: string): string => JSON.stringify({ type: "permission-mode", permissionMode: mode, sessionId: agent.sessionId }) + "\n";
+      const dated = (secondsAgo: number): void => {
+        const at = new Date(Date.now() - secondsAgo * 1000);
+        fs.utimesSync(needsTranscript, at, at);
+      };
+      // Known drift: with the audit's agent waiting, the title-bar pill reads "1 agent running", not the base scene's "2 agents running" (it counts working sessions, and this one is not).
+      fs.appendFileSync(needsTranscript, modeRecord("default"));
+      const needs = page.locator("#theia-right-content-panel .spexr-agent-needs");
+      const needsDeadline = Date.now() + 60_000;
+      while (!(await needs.isVisible().catch(() => false)) && Date.now() < needsDeadline) {
+        dated(5);
+        await page.waitForTimeout(1_500);
+      }
+      await needs.waitFor({ state: "visible", timeout: 5_000 });
+      await shoot("agent-needs-you");
+      const needsState = await probeAgentPane(page);
+      const needsProblems: string[] = [];
+      if (!needsState.needsYou) needsProblems.push("agent pane: no needs-you row");
+      if (!(await needs.getByRole("button", { name: "Reveal" }).isVisible())) needsProblems.push("agent pane: the needs-you row has no Reveal button");
+      if (!/Waiting for you in the terminal/.test(await needs.innerText())) needsProblems.push("agent pane: the needs-you row does not say what it waits for");
+      check("agent pane (needs you)", needsProblems);
+      fs.appendFileSync(needsTranscript, modeRecord("auto"));
+      touchTranscripts(prepared);
+      await needs.waitFor({ state: "detached", timeout: 60_000 });
       meta.baseFirstVisibleLine = await firstVisibleLine(page);
       meta.page = await probePage(page);
       meta.editor = await probeEditor(page);

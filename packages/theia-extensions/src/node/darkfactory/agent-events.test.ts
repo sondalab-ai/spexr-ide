@@ -118,7 +118,7 @@ describe("tolerance", () => {
   it("does not need originalFile or structuredPatch on an Edit result", () => {
     const entries = [prompt("go"), call("t1", "Edit", { file_path: "/a/b.ts" }), result("t1", "updated", { filePath: "/a/b.ts" })];
     const s = buildAgentPaneSnapshot(entries, { sessionId: "x" });
-    expect(s.turn!.tools).toEqual([{ id: "t1", name: "Edit", verb: "Edit", target: "b.ts", state: "done", durationMs: 200 }]);
+    expect(s.turn!.tools).toEqual([{ id: "t1", name: "Edit", verb: "Edit", target: "b.ts", path: "/a/b.ts", state: "done", durationMs: 200 }]);
     expect(s.turn!.diff).toBeUndefined();
   });
 
@@ -360,5 +360,22 @@ describe("review regressions", () => {
     const b = buildAgentPaneSnapshot([...entries, toolResult(2, "a")], { sessionId: "x" });
     expect(a.turn!.prose).toBeUndefined();
     expect(diffSnapshots(a, b)).toMatchObject({ kind: "delta", delta: { tools: [{ id: "a", state: "done" }] } });
+  });
+});
+
+describe("a tool's path", () => {
+  const at = (cwd: string, file: string): PaneEntry[] => [
+    { timestamp: "2026-10-09T10:00:00Z", message: { role: "user", content: "go" } },
+    { timestamp: "2026-10-09T10:00:01Z", cwd, message: { id: "m", role: "assistant", content: [{ type: "tool_use", id: "t", name: "Read", input: { file_path: file } }] } },
+  ];
+
+  it("is relative to the directory the call was made in when the file is inside it, and absolute otherwise", () => {
+    expect(buildAgentPaneSnapshot(at("/w/proj", "/w/proj/src/probe/cache.ts"), { sessionId: "x" }).turn!.tools![0]).toMatchObject({ target: "cache.ts", path: "src/probe/cache.ts" });
+    expect(buildAgentPaneSnapshot(at("/w/proj", "/etc/hosts"), { sessionId: "x" }).turn!.tools![0]).toMatchObject({ target: "hosts", path: "/etc/hosts" });
+    expect(buildAgentPaneSnapshot(at("/w/proj", "/w/proj-other/a.ts"), { sessionId: "x" }).turn!.tools![0]!.path).toBe("/w/proj-other/a.ts");
+  });
+
+  it("is left out when it is the target, as for a bare name or a command", () => {
+    expect(buildAgentPaneSnapshot(at("/w/proj", "a.ts"), { sessionId: "x" }).turn!.tools![0]!.path).toBeUndefined();
   });
 });

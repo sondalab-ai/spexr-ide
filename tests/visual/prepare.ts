@@ -215,17 +215,7 @@ function writeHome(run: PreparedRun): void {
 /** A stand-in for the Claude CLI: prints one line and waits, so the agent terminal is still. */
 function writeClaudeStub(bin: string): void {
   const stub = path.join(bin, "claude");
-  fs.writeFileSync(
-    stub,
-    [
-      "#!/bin/sh",
-      "# tests/visual fixture: not the Claude CLI. A one-shot call (-p) has no model to ask, so it ends.",
-      'case "$1" in -p|--print) exit 0 ;; esac',
-      "printf 'claude (visual fixture stub)\\n'",
-      "while :; do sleep 3600; done",
-      "",
-    ].join("\n"),
-  );
+  fs.copyFileSync(path.join(__dirname, "fixtures", "bin", "claude"), stub);
   fs.chmodSync(stub, 0o755);
 }
 
@@ -302,6 +292,13 @@ export interface SeededSession {
   readonly ageMinutes: number;
   readonly live: boolean;
   readonly tools: number;
+  /**
+   * The agent terminal's own session (S6h): not written here. The `claude`
+   * stub the terminal starts is given `--session-id <uuid>` by the product,
+   * and writes this transcript under that id, so the agent pane follows a
+   * session its terminal really started.
+   */
+  readonly viaAgentTerminal?: boolean;
 }
 
 export function seededSessions(): SeededSession[] {
@@ -328,7 +325,13 @@ function seedParityFixture(run: PreparedRun): void {
   fs.writeFileSync(path.join(run.site, "package.json"), JSON.stringify({ name: "prism-site", private: true, version: "0.1.0" }, null, 2) + "\n");
 
   const names: Record<string, string> = {};
+  fs.mkdirSync(path.join(run.root, "templates"), { recursive: true });
   for (const s of seededSessions()) {
+    if (s.viaAgentTerminal) {
+      fs.copyFileSync(path.join(SESSIONS_DIR, s.file), path.join(run.root, "templates", "agent.jsonl"));
+      fs.writeFileSync(path.join(run.root, "templates", "agent.env"), `TEMPLATE_SESSION=${s.sessionId}\nAGENT_NAME="${s.name}"\n`);
+      continue;
+    }
     const text = fs.readFileSync(path.join(SESSIONS_DIR, s.file), "utf8").split("{{WS}}").join(ws).split("{{SITE}}").join(site);
     const target = transcriptPath(run, s);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -337,7 +340,8 @@ function seedParityFixture(run: PreparedRun): void {
   }
   touchTranscripts(run);
   fs.mkdirSync(path.join(run.home, ".spexr"), { recursive: true });
-  fs.writeFileSync(path.join(run.home, ".spexr", "session-names.json"), JSON.stringify(names, null, 2) + "\n");
+  // One line, which the claude stub extends with the agent terminal's own session.
+  fs.writeFileSync(path.join(run.home, ".spexr", "session-names.json"), JSON.stringify(names) + "\n");
 
   const pnpm = path.join(run.bin, "pnpm");
   fs.copyFileSync(path.join(__dirname, "fixtures", "bin", "pnpm"), pnpm);
@@ -352,8 +356,26 @@ function seedParityFixture(run: PreparedRun): void {
 export function touchTranscripts(run: PreparedRun, now: number = Date.now()): void {
   for (const s of seededSessions()) {
     const at = new Date(now - s.ageMinutes * 60_000);
-    fs.utimesSync(transcriptPath(run, s), at, at);
+    const file = s.viaAgentTerminal ? agentTranscript(run) : transcriptPath(run, s);
+    if (file) fs.utimesSync(file, at, at);
   }
+}
+
+/**
+ * The transcript the `claude` stub wrote for the agent terminal's session,
+ * and the id it was started with; undefined until the stub has run.
+ */
+export function agentSession(run: PreparedRun): { sessionId: string; path: string } | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(run.root, "agent-session.json"), "utf8")) as { sessionId: string; path: string };
+  } catch {
+    return undefined;
+  }
+}
+
+function agentTranscript(run: PreparedRun): string | undefined {
+  const found = agentSession(run)?.path;
+  return found && fs.existsSync(found) ? found : undefined;
 }
 
 /** The directories the live agents work in, as realpaths (lsof reports the resolved one). */

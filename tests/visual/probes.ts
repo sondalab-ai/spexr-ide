@@ -674,3 +674,27 @@ export function probeLog(logFile: string, configDir: string): LogProbes {
     userPluginDirsMissing: missing.filter((m) => userDirs.has(m)).length,
   };
 }
+
+/**
+ * The agent pane's regions (S6h), with it in front of the right island: the
+ * island, the head and its parts, the prompt, the tool card and its rows, the
+ * diff card, the plan and its check boxes. The demo's counterparts are
+ * `agent`, `agent.head`, `agent.eyebrow`, `agent.title`, `agent.model`,
+ * `agent.msg.user`, `agent.tools`, `agent.tool`, `agent.tool.run`,
+ * `agent.diffcard`, `agent.plan` and `agent.check.box`.
+ */
+export const AGENT_PANE_REGIONS: readonly ShellRegion[] = [
+  { key: "ap.pane", selector: '.spexr-island[data-island="right"]' },
+  { key: "ap.head", selector: "#theia-right-content-panel .spexr-agent-pane .spexr-panel-head" },
+  { key: "ap.eyebrow", selector: "#theia-right-content-panel .spexr-agent-pane .spexr-panel-head__eyebrow" },
+  { key: "ap.title", selector: "#theia-right-content-panel .spexr-agent-pane .spexr-panel-head__title" },
+  { key: "ap.model", selector: "#theia-right-content-panel .spexr-agent-pane__model" },
+  { key: "ap.prompt", selector: "#theia-right-content-panel .spexr-agent-prompt" },
+  { key: "ap.prose", selector: "#theia-right-content-panel .spexr-agent-prose" },
+  { key: "ap.tools", selector: "#theia-right-content-panel .spexr-agent-tools__list" },
+  { key: "ap.tool", selector: "#theia-right-content-panel .spexr-agent-tool" },
+  { key: "ap.tool.run", selector: '#theia-right-content-panel .spexr-agent-tool[data-state="run"]' },
+  { key: "ap.diff", selector: "#theia-right-content-panel .spexr-agent-diff" },
+  { key: "ap.plan", selector: "#theia-right-content-panel .spexr-agent-plan" },
+  { key: "ap.check.box", selector: "#theia-right-content-panel .spexr-agent-plan .sl-check__box" },
+];

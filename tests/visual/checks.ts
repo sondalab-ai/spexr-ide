@@ -262,3 +262,153 @@ export function checkFixture(state: FixtureState, report: FixtureReport): string
   }
   return problems;
 }
+
+/* ── S6h: the agent pane ────────────────────────────────────────────────── */
+
+/** What the agent pane shows, read from the page's text and attributes. */
+export interface AgentPaneState {
+  readonly eyebrow: string | null;
+  readonly title: string | null;
+  readonly model: string | null;
+  readonly prompt: string | null;
+  readonly prose: string | null;
+  readonly tools: ReadonlyArray<{ readonly text: string; readonly state: string | null; readonly meta: string }>;
+  /** The fold's words (`7 earlier`: the same folded or expanded); null when there is no fold. */
+  readonly fold: string | null;
+  /** The fold as a control: a button a keyboard reaches, 24px at least, whose aria-expanded follows the card. */
+  readonly foldButton: { readonly tag: string; readonly disabled: boolean; readonly tabIndex: number; readonly expanded: string | null; readonly height: number } | null;
+  readonly diff: { readonly file: string; readonly stat: string; readonly rows: ReadonlyArray<{ readonly kind: "add" | "del"; readonly text: string }> } | null;
+  readonly plan: ReadonlyArray<{ readonly text: string; readonly checked: boolean }>;
+  readonly needsYou: boolean;
+  readonly empty: boolean;
+}
+
+/** Read the agent pane: its head, its prompt, its tool rows, its diff card and its plan. */
+export async function probeAgentPane(page: Page): Promise<AgentPaneState> {
+  return page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>("#theia-right-content-panel .spexr-agent-pane");
+    const text = (sel: string): string | null => (root?.querySelector(sel)?.textContent ?? null)?.replace(/\s+/g, " ").trim() ?? null;
+    const diff = root?.querySelector(".spexr-agent-diff");
+    return {
+      eyebrow: text(".spexr-panel-head__eyebrow"),
+      title: text(".spexr-panel-head__title"),
+      model: text(".spexr-agent-pane__model"),
+      prompt: text(".spexr-agent-prompt"),
+      prose: text(".spexr-agent-prose"),
+      tools: [...(root?.querySelectorAll(".spexr-agent-tool") ?? [])].map((row) => ({
+        text: ((row.querySelector(".spexr-agent-tool__text")?.textContent ?? "") + (row.querySelector(".spexr-agent-stat")?.textContent ?? "")).replace(/\s+/g, " ").trim(),
+        state: row.getAttribute("data-state"),
+        meta: (row.querySelector(".spexr-agent-tool__meta")?.textContent ?? "").trim(),
+      })),
+      fold: text(".spexr-agent-tools__fold"),
+      foldButton: (() => {
+        const f = root?.querySelector<HTMLButtonElement>(".spexr-agent-tools__fold");
+        return f ? { tag: f.tagName, disabled: f.disabled, tabIndex: f.tabIndex, expanded: f.getAttribute("aria-expanded"), height: Math.round(f.getBoundingClientRect().height * 100) / 100 } : null;
+      })(),
+      diff: diff
+        ? {
+            file: (diff.querySelector(".spexr-agent-diff__file")?.textContent ?? "").trim(),
+            stat: (diff.querySelector(".spexr-agent-stat")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+            rows: [...diff.querySelectorAll(".spexr-agent-diff__row")].map((r) => ({
+              kind: r.classList.contains("spexr-agent-diff__row--add") ? ("add" as const) : ("del" as const),
+              text: r.textContent ?? "",
+            })),
+          }
+        : null,
+      plan: [...(root?.querySelectorAll(".spexr-agent-plan__item") ?? [])].map((label) => ({
+        text: (label.querySelector(".sl-check__label")?.textContent ?? "").trim(),
+        checked: (label.querySelector("input") as HTMLInputElement | null)?.checked === true,
+      })),
+      needsYou: !!root?.querySelector(".spexr-agent-needs"),
+      empty: !!root?.classList.contains("spexr-agent-pane--empty"),
+    };
+  });
+}
+
+/**
+ * The agent pane's geometry as the demo's (S6h), on the 4px grid: AGENT_PANE
+ * and RIGHT_PANEL in workbench-geometry.ts. The check box is the kit's 18px
+ * (kit 0.36.2), not the demo's 16: a kit part is reused as it is.
+ */
+const AGENT = { ring: 1, inline: 16, head: 69, headTol: 1.5, cardWidth: 318, row: 32, rowBorder: 1, check: 18, island: { x: 1030, w: 352 } };
+
+/**
+ * The agent pane against the demo's right pane (reference/demo-regions.json
+ * `agent.*`, x 1082-1434), with "Refactor the audit" from the fixture in it.
+ * spexr keeps its right activity bar, so the island sits 52px to the left, at
+ * x 1030, and is 352 wide as the demo's; its 1px ring takes 1px off each side
+ * of the demo's 320px cards, which are 318. The checks: a head of 69px (the
+ * demo's 69.8) with the model tag 16px inside the ring; the prompt, tool and
+ * diff cards 16px in; tool rows 32px (33 with the hairline above); exactly one
+ * running; the +14 -3 edit; the plan's three checks, two of them checked. `expanded` is the tool card showing
+ * every row (11) instead of the last four with "7 earlier".
+ */
+export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded: boolean): string[] {
+  const problems: string[] = [];
+  const pane = regions["ap.pane"]?.[0];
+  if (!pane) return ["agent pane: the right island is not on screen"];
+  if (state.empty) return ["agent pane: the pane is empty (no session was followed)"];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  if (!near(pane.x, AGENT.island.x, 1) || !near(pane.w, AGENT.island.w, 1)) problems.push(`agent pane: the island is at x ${pane.x}, ${pane.w} wide, want ${AGENT.island.x} (the demo's 1082 less the right activity bar) and ${AGENT.island.w}`);
+
+  const head = regions["ap.head"]?.[0];
+  if (!head) problems.push("agent pane: no head");
+  else {
+    if (!near(head.h, AGENT.head, AGENT.headTol)) problems.push(`agent pane: head ${head.h}px, want ${AGENT.head}`);
+    const title = regions["ap.title"]?.[0];
+    if (title && !near(title.y - pane.y, 32 + AGENT.ring, 2)) problems.push(`agent pane: the title is ${title.y - pane.y}px from the top, want ${32 + AGENT.ring} (the demo's 32 and the ring)`);
+  }
+  if (!/^Agent · [0-9a-f]{6}$/i.test(state.eyebrow ?? "")) problems.push(`agent pane: eyebrow ${JSON.stringify(state.eyebrow)}, want "Agent · <6 characters>"`);
+  if (state.title !== "Refactor the audit") problems.push(`agent pane: title ${JSON.stringify(state.title)}, want "Refactor the audit"`);
+  if (state.model !== "Opus") problems.push(`agent pane: model tag ${JSON.stringify(state.model)}, want "Opus"`);
+  const tag = regions["ap.model"]?.[0];
+  if (!tag) problems.push("agent pane: no model tag");
+  else if (!near(pane.x + pane.w - (tag.x + tag.w), AGENT.inline + AGENT.ring, 1.5)) problems.push(`agent pane: the model tag ends ${pane.x + pane.w - (tag.x + tag.w)}px from the right edge, want ${AGENT.inline + AGENT.ring}`);
+
+  const prompt = regions["ap.prompt"]?.[0];
+  if (!prompt) problems.push("agent pane: no prompt card");
+  else if (!near(prompt.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(prompt.w, AGENT.cardWidth, 1)) problems.push(`agent pane: prompt card at ${prompt.x - pane.x} in, ${prompt.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
+  if (!state.prompt?.startsWith("Make cache.write awaited")) problems.push(`agent pane: prompt ${JSON.stringify(state.prompt)}`);
+
+  const want = expanded ? 11 : 4;
+  if (state.tools.length !== want) problems.push(`agent pane: ${state.tools.length} tool rows, want ${want}`);
+  if (state.fold !== "7 earlier") problems.push(`agent pane: the fold reads ${JSON.stringify(state.fold)}, want "7 earlier" (the same folded and expanded)`);
+  const fb = state.foldButton;
+  if (!fb || fb.tag !== "BUTTON" || fb.disabled || fb.tabIndex < 0) problems.push(`agent pane: the fold is not a button a keyboard reaches: ${JSON.stringify(fb)}`);
+  else {
+    if (fb.expanded !== String(expanded)) problems.push(`agent pane: the fold's aria-expanded is ${JSON.stringify(fb.expanded)}, want "${expanded}"`);
+    if (fb.height < 24) problems.push(`agent pane: the fold is ${fb.height}px tall, want 24 at least`);
+  }
+  const running = state.tools.filter((t) => t.state === "run");
+  if (running.length !== 1 || running[0]!.meta !== "running" || !/pnpm sl-audit/.test(running[0]!.text)) problems.push(`agent pane: running rows ${JSON.stringify(running)}, want one: pnpm sl-audit`);
+  const edit = state.tools.find((t) => /^Edit resolve\.ts/.test(t.text));
+  if (!edit || !/\+14 −3/.test(edit.text) || edit.meta !== "1.1 s") problems.push(`agent pane: the resolve.ts edit row is ${JSON.stringify(edit)}, want +14 −3 at 1.1 s`);
+  const test = state.tools.find((t) => /pnpm test probe/.test(t.text));
+  if (!test || test.meta !== "2.4 s" || test.state !== "done") problems.push(`agent pane: the pnpm test row is ${JSON.stringify(test)}, want done at 2.4 s`);
+
+  const card = regions["ap.tools"]?.[0];
+  if (!card) problems.push("agent pane: no tool card");
+  else if (!near(card.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(card.w, AGENT.cardWidth, 1)) problems.push(`agent pane: tool card at ${card.x - pane.x} in, ${card.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
+  for (const [i, row] of (regions["ap.tool"] ?? []).entries()) {
+    const h = i === 0 ? AGENT.row : AGENT.row + AGENT.rowBorder;
+    if (!near(row.h, h, 1)) problems.push(`agent pane: tool row ${i} is ${row.h}px tall, want ${h}`);
+  }
+
+  if (!state.diff) problems.push("agent pane: no diff card");
+  else {
+    if (state.diff.file !== "resolve.ts" || !/\+14 −3/.test(state.diff.stat)) problems.push(`agent pane: diff card ${state.diff.file} ${state.diff.stat}, want resolve.ts +14 −3`);
+    if (state.diff.rows.length !== 6 || !state.diff.rows.slice(0, 3).every((r) => r.kind === "del") || !state.diff.rows.slice(3).every((r) => r.kind === "add")) {
+      problems.push(`agent pane: diff rows ${state.diff.rows.map((r) => r.kind).join(",")}, want 3 removed then 3 added`);
+    }
+    const dcard = regions["ap.diff"]?.[0];
+    if (!dcard || !near(dcard.w, AGENT.cardWidth, 1)) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
+  }
+
+  if (state.plan.map((p) => p.checked).join() !== "true,true,false") problems.push(`agent pane: plan checks ${state.plan.map((p) => p.checked).join()}, want true,true,false`);
+  if (state.plan.map((p) => p.text).join("|") !== "Await the write|Re-run the probe suite|Fix the R finding") problems.push(`agent pane: plan ${state.plan.map((p) => p.text).join("|")}`);
+  for (const [i, box] of (regions["ap.check.box"] ?? []).entries()) {
+    if (!near(box.w, AGENT.check, 1) || !near(box.h, AGENT.check, 1)) problems.push(`agent pane: check box ${i} is ${box.w}x${box.h}, want ${AGENT.check}`);
+  }
+  if (state.needsYou) problems.push("agent pane: a needs-you row shows, but the audit's agent is working");
+  return problems;
+}

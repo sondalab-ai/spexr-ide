@@ -11,6 +11,8 @@ import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-servi
 import { SpexrSpecViewContribution } from "../views/spec-view-contribution.js";
 import { SpexrMemoryViewContribution } from "../views/memory-view-contribution.js";
 import { SpexrExpertsViewContribution } from "../views/experts-view-contribution.js";
+import { AgentPaneViewContribution } from "../agent-pane/agent-pane-view-contribution.js";
+import { agentPaneStartup } from "./agent-pane-migration.js";
 import { SpexrWelcomeViewContribution, WELCOME_VIEW_ID } from "../views/welcome-view-contribution.js";
 import { SPEC_VIEW_ID } from "../views/spec-view-contribution.js";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
@@ -50,6 +52,9 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
 
   @inject(SpexrExpertsViewContribution)
   private readonly expertsView!: SpexrExpertsViewContribution;
+
+  @inject(AgentPaneViewContribution)
+  private readonly agentPaneView!: AgentPaneViewContribution;
 
   @inject(SpexrWelcomeViewContribution)
   @optional()
@@ -103,6 +108,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       if (!alreadyConfigured) await this.openWelcome();
       await this.openSideViews();
       await this.revealRegisteredDefaults();
+      await this.revealAgentPane(!alreadyConfigured);
       if (!alreadyConfigured) await this.openTerminal();
       // A project switch has to land on a project tab: the restored layout, plus
       // the Darkfactory reveal above, would otherwise leave the dashboard in
@@ -156,6 +162,20 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     }
   }
 
+  /**
+   * The agent pane is the right island's first tile. It is opened, and brought
+   * to the front, on a fresh layout and once on a saved one (the migration);
+   * a pane the user closed is not reopened on later launches. It comes after
+   * the other views are revealed, so it is the one in front.
+   */
+  private async revealAgentPane(fresh: boolean): Promise<void> {
+    try {
+      if (agentPaneStartup(fresh, localStorage).open) await this.agentPaneView.openView({ activate: false, reveal: true });
+    } catch (err) {
+      console.warn("[spexr] the agent pane could not be opened", err);
+    }
+  }
+
   async resetLayout(): Promise<void> {
     const mainWidgets = this.shell.getWidgets("main");
     if (mainWidgets.length > 0) {
@@ -176,6 +196,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     await this.closeViewSafely(this.specView);
     await this.closeViewSafely(this.memoryView);
     await this.closeViewSafely(this.expertsView);
+    await this.closeViewSafely(this.agentPaneView);
     if (this.welcomeView) await this.closeViewSafely(this.welcomeView);
     if (this.navigatorView) await this.closeViewSafely(this.navigatorView);
   }
@@ -197,6 +218,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     try {
       await this.openWelcome();
       await this.openSideViews();
+      await this.agentPaneView.openView({ activate: false, reveal: true });
       await this.openTerminal();
       this.expandLeftPanel();
       await this.darkfactorySidebar.syncRightPanel(true);

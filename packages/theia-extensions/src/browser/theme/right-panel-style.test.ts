@@ -142,7 +142,7 @@ describe("the right island's view sources", () => {
 
   it("takes Theia's title row off the three views, which name themselves", () => {
     const src = read("../shell/panel-title-contribution.ts");
-    expect(src).toMatch(/new Set\(\[MEMORY_VIEW_ID, EXPERTS_VIEW_ID, TODO_VIEW_ID\]\)/);
+    expect(src).toMatch(/new Set\(\[AGENT_PANE_VIEW_ID, MEMORY_VIEW_ID, EXPERTS_VIEW_ID, TODO_VIEW_ID\]\)/);
   });
 
   it("marks the active expert as the current row, on the kit's row class", () => {
