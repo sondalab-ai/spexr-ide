@@ -138,6 +138,9 @@ for (const theme of THEMES) {
       // The lit island's light (S5f), in the base scene, where the main island
       // is the lit one: exactly one island lit, wearing the wash, the tint and
       // the drop.
+      // The editor island, measured here: with the palette open it is under
+      // the palette's centre, where probeRegions' hit test would drop it.
+      meta.editorIsland = (await probeRegions(page, EDITOR_REGIONS))["main"];
       meta.litRim = await probeLitRim(page);
       check("lit rim", checkLitRim(meta.litRim));
       writeMeta();
@@ -150,9 +153,9 @@ for (const theme of THEMES) {
       await page.locator(".quick-input-list .monaco-list-row.focused").first().waitFor({ state: "visible", timeout: 30_000 });
       await page.locator(".quick-input-list .monaco-keybinding-key").first().waitFor({ state: "visible", timeout: 30_000 });
       await shoot("palette");
-      meta.paletteParity = { ...(await probeRegions(page, PALETTE_REGIONS)), ...(await probeRegions(page, EDITOR_REGIONS)) };
+      meta.paletteParity = await probeRegions(page, PALETTE_REGIONS);
       writeMeta();
-      check("palette", checkPalette(meta.paletteParity, meta.paletteParity["main"], await page.evaluate(() => window.innerWidth)));
+      check("palette", checkPalette(meta.paletteParity, meta.editorIsland, await page.evaluate(() => window.innerWidth)));
       await page.keyboard.press("Escape");
       await paletteInput.waitFor({ state: "hidden", timeout: 15_000 });
 
@@ -161,9 +164,9 @@ for (const theme of THEMES) {
       const toastAck = (await waitForAck(ackDir, "toast")) as SceneAck;
       await page.locator(".theia-notification-list-item", { hasText: "Probe saved" }).first().waitFor({ state: "visible", timeout: 15_000 });
       await shoot("toast", toastAck);
-      meta.toastParity = { ...(await probeRegions(page, TOAST_REGIONS)), ...(await probeRegions(page, EDITOR_REGIONS)) };
+      meta.toastParity = await probeRegions(page, TOAST_REGIONS);
       writeMeta();
-      check("toast", checkToast(meta.toastParity, meta.toastParity["main"], await page.evaluate(() => window.innerHeight)));
+      check("toast", checkToast(meta.toastParity, meta.editorIsland, await page.evaluate(() => window.innerHeight)));
 
       // focus-tree: the Explorer focused, resolve.ts its selected row.
       await runCommand(page, "Parity: Focus tree scene");

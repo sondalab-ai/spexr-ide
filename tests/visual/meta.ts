@@ -54,8 +54,10 @@ export interface CaptureMeta {
   page?: PageProbes;
   /** The editor's gutter, colours and tokens in the base scene, and its padding once scrolled to the top (S5d). */
   editor?: EditorProbe & { paddingTop?: number | null };
-  /** The palette scene's widget, rows and keycaps, keyed like the demo's `palette.*` regions, with the editor island's (S5f). */
+  /** The palette scene's widget, rows and keycaps, keyed like the demo's `palette.*` regions (S5f). */
   paletteParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
+  /** The editor island in the base scene, which the palette and the toast are placed against (S5f). */
+  editorIsland?: Array<{ x: number; y: number; w: number; h: number }>;
   /** What the lit main island wears in the base scene: the lit islands, the wash, the tint and the drop (S5f). */
   litRim?: LitRim;
   /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */
