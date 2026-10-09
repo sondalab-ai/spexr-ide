@@ -16,8 +16,9 @@ import { DescriptionGeneratorToken, type DescriptionGenerator } from "./search/d
 import { WorkerDescriptionGenerator } from "./search/worker-description-generator.js";
 import { SpexrSearchBackendService } from "./search/spexr-search-backend-service.js";
 import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common/darkfactory-protocol.js";
-import { AGENT_PANE_SERVICE_PATH, type AgentPaneClient } from "../common/agent-pane-protocol.js";
+import { AGENT_PANE_SERVICE_PATH, type AgentPaneClient, type AgentPaneService } from "../common/agent-pane-protocol.js";
 import { AgentPaneBackendService } from "./darkfactory/agent-pane-service.js";
+import { ToolCounter } from "./darkfactory/tool-count.js";
 import { SpexrDarkfactoryBackendService } from "./darkfactory/spexr-darkfactory-backend-service.js";
 import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
 import { SpexrResourceBackendService } from "./resources/spexr-resource-backend-service.js";
@@ -82,10 +83,13 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     })
     .inSingletonScope();
 
+  // One counter for the wall and the agent pane: a transcript is scanned once.
+  const toolCounter = new ToolCounter();
   bind(SpexrDarkfactoryBackendService)
     .toDynamicValue(
       (ctx) =>
         new SpexrDarkfactoryBackendService({
+          toolCounter,
           generator: ctx.container.get<DescriptionGenerator>(DescriptionGeneratorToken),
           embed: (texts) => ctx.container.get<Embedder>(EmbedderToken).embed(texts),
         }),
@@ -101,15 +105,20 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     })
     .inSingletonScope();
 
-  bind(AgentPaneBackendService).toDynamicValue(() => new AgentPaneBackendService()).inSingletonScope();
+  // The pane's service holds watchers and timers for one follow, so each
+  // connection gets its own and releases it when the connection closes. Only
+  // the interface's methods are exposed over RPC.
   bind(ConnectionHandler)
-    .toDynamicValue((ctx) => {
-      const service = ctx.container.get(AgentPaneBackendService);
-      return new RpcConnectionHandler<AgentPaneClient>(AGENT_PANE_SERVICE_PATH, (client) => {
-        service.setClient(client);
-        return service;
-      });
-    })
+    .toDynamicValue(
+      () =>
+        new RpcConnectionHandler<AgentPaneClient>(AGENT_PANE_SERVICE_PATH, (client) => {
+          const service = new AgentPaneBackendService({ counter: toolCounter });
+          service.setClient(client);
+          client.onDidCloseConnection(() => service.dispose());
+          const exposed: AgentPaneService = { follow: (binding) => service.follow(binding), stop: () => service.stop() };
+          return exposed;
+        }),
+    )
     .inSingletonScope();
 
   bind(SchedulePty).toSelf().inSingletonScope();

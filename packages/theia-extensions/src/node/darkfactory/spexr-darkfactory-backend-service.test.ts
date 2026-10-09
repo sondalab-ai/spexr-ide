@@ -127,6 +127,25 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     }
   });
 
+  it("counts tool calls on a crawl with no encoder, so idle and done tiles carry their count", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-count-"));
+    const transcriptPath = join(dir, "s1.jsonl");
+    const use = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Bash","input":{}}]}}`;
+    await writeFile(transcriptPath, [use, use, ""].join("\n"));
+    try {
+      const s = svc({
+        configDirs: [],
+        liveProjectDirs: () => Promise.resolve(new Set<string>()),
+        listTranscripts: async () => (await defaultTranscripts()).map((u) => ({ ...u, claude: { ...u.claude!, transcriptPath } })),
+      });
+      await s.indexNow();
+      expect((await s.listTiles())[0]).toMatchObject({ state: "idle", toolCount: 2 });
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("currentTiles starts one push before the first scan, and no other while it runs", async () => {
     let scans = 0;
     let release!: () => void;

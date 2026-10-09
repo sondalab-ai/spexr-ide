@@ -21,6 +21,10 @@ export interface PaneEntry {
   type?: string;
   timestamp?: string;
   isMeta?: boolean;
+  /** A subagent's entry: its calls and words are not the session's own. */
+  isSidechain?: boolean;
+  /** The summary Claude writes at a compaction: a user entry the user did not type. */
+  isCompactSummary?: boolean;
   permissionMode?: string;
   message?: {
     id?: string;
@@ -42,7 +46,12 @@ export interface PaneInputs {
 }
 
 /** Tools whose calls are the plan, not work: kept out of the turn's tool list. */
-const PLAN_TOOLS = new Set(["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TaskStop", "ExitPlanMode"]);
+const PLAN_TOOLS = new Set(["TodoWrite", "TaskCreate", "TaskUpdate", "ExitPlanMode"]);
+
+/** The longest prompt kept: the goal is cut there too (parseTranscript). */
+const MAX_PROMPT_CHARS = 2000;
+/** A response faster than this is a measurement error, not a model. */
+const MAX_PLAUSIBLE_TOK_PER_SEC = 2000;
 
 const VERBS: Record<string, string> = {
   Read: "Read",
@@ -86,6 +95,7 @@ function pairCalls(entries: readonly PaneEntry[]): Call[] {
   const calls: Call[] = [];
   const byId = new Map<string, Call>();
   entries.forEach((e, index) => {
+    if (e.isSidechain === true) return;
     const role = e.message?.role;
     if (role === "assistant") {
       for (const b of blocksOf(e)) {
@@ -113,10 +123,10 @@ function pairCalls(entries: readonly PaneEntry[]): Call[] {
 /** The text of a genuine user prompt, or undefined for a tool result, meta line or injected text. */
 function promptText(e: PaneEntry): string | undefined {
   const m = e.message;
-  if (m?.role !== "user") return undefined;
+  if (m?.role !== "user" || e.isSidechain === true || e.isCompactSummary === true) return undefined;
   if (Array.isArray(m.content) && m.content.some((b) => asRecord(b)?.["type"] === "tool_result")) return undefined;
   const text = typeof m.content === "string" ? m.content : Array.isArray(m.content) ? m.content.map((b) => asString(asRecord(b)?.["text"])).find((t) => t !== undefined) : undefined;
-  return text !== undefined && isGenuinePrompt(e.isMeta === true, text) ? collapse(text) : undefined;
+  return text !== undefined && isGenuinePrompt(e.isMeta === true, text) ? collapse(text).slice(0, MAX_PROMPT_CHARS) : undefined;
 }
 
 /** The target a verb acts on: a file's name, a command's first line, a pattern. */
@@ -142,6 +152,18 @@ function patchLines(extra: unknown): string[] {
   });
 }
 
+/**
+ * What a call changed, as `+`/`-` lines: its `structuredPatch`, or, for a Write
+ * that created the file (an empty patch), the content it wrote as added lines.
+ */
+function changeLines(call: Call): string[] {
+  const lines = patchLines(call.result?.extra);
+  if (lines.length > 0 || call.name !== "Write" || !call.result || call.result.isError) return lines;
+  const content = asString(call.input["content"]) ?? asString(asRecord(call.result.extra)?.["content"]);
+  if (content === undefined || content === "") return [];
+  return content.replace(/\n$/, "").split("\n").map((l) => `+${l}`);
+}
+
 const countOf = (lines: readonly string[], sign: "+" | "-"): number => lines.filter((l) => l.startsWith(sign)).length;
 
 function toolOf(call: Call, interrupted: boolean): PaneTool {
@@ -152,7 +174,7 @@ function toolOf(call: Call, interrupted: boolean): PaneTool {
   if (target) tool.target = target;
   if (call.at !== undefined && call.result?.at !== undefined && call.result.at >= call.at) tool.durationMs = call.result.at - call.at;
   if (call.name === "Edit" || call.name === "MultiEdit" || call.name === "Write") {
-    const lines = patchLines(call.result?.extra);
+    const lines = changeLines(call);
     if (lines.length > 0) {
       tool.added = countOf(lines, "+");
       tool.removed = countOf(lines, "-");
@@ -166,7 +188,7 @@ function diffOf(calls: readonly Call[]): PaneDiff | undefined {
   for (let i = calls.length - 1; i >= 0; i--) {
     const call = calls[i]!;
     if (call.name !== "Edit" && call.name !== "MultiEdit" && call.name !== "Write") continue;
-    const lines = patchLines(call.result?.extra);
+    const lines = changeLines(call);
     if (lines.length === 0) continue;
     const changed = lines.filter((l) => l.startsWith("+") || l.startsWith("-"));
     const file = asString(asRecord(call.result?.extra)?.["filePath"]) ?? asString(call.input["file_path"]);
@@ -276,14 +298,17 @@ export function planOf(
 /**
  * Output tokens per second of the latest response. Claude Code writes one
  * entry per content block of a response, all with the same `message.id` and
- * `usage`; the response took as long as from the entry before its first block
- * (the prompt or the tool result it answered) to its last block.
+ * `usage`, and the blocks of one response can be apart (a parallel tool call,
+ * its results, another block): the entries are grouped by id across the gaps.
+ * The response took as long as from the entry before its first block (the
+ * prompt or the tool result it answered) to its last. A subagent's entries are
+ * not the session's; a value no model reaches is dropped, not shown.
  */
 export function tokPerSecOf(entries: readonly PaneEntry[]): number | undefined {
   let last = -1;
   for (let i = entries.length - 1; i >= 0; i--) {
     const m = entries[i]!.message;
-    if (m?.role === "assistant" && m.id && typeof m.usage?.output_tokens === "number") {
+    if (entries[i]!.isSidechain !== true && m?.role === "assistant" && m.id && typeof m.usage?.output_tokens === "number") {
       last = i;
       break;
     }
@@ -292,13 +317,14 @@ export function tokPerSecOf(entries: readonly PaneEntry[]): number | undefined {
   const id = entries[last]!.message!.id;
   const tokens = entries[last]!.message!.usage!.output_tokens as number;
   let first = last;
-  while (first > 0 && entries[first - 1]!.message?.role === "assistant" && entries[first - 1]!.message?.id === id) first--;
+  for (let i = last - 1; i >= 0; i--) if (entries[i]!.message?.id === id && entries[i]!.message?.role === "assistant") first = i;
   let before = first - 1;
-  while (before >= 0 && timeOf(entries[before]) === undefined) before--;
+  while (before >= 0 && (entries[before]!.message?.role === "assistant" || timeOf(entries[before]) === undefined)) before--;
   const from = before >= 0 ? timeOf(entries[before]) : undefined;
   const to = timeOf(entries[last]);
   if (from === undefined || to === undefined || to <= from || tokens <= 0) return undefined;
-  return Math.round(tokens / ((to - from) / 1000));
+  const rate = Math.round(tokens / ((to - from) / 1000));
+  return rate > MAX_PLAUSIBLE_TOK_PER_SEC ? undefined : rate;
 }
 
 /** The index of the latest genuine prompt, or -1. */
@@ -310,6 +336,7 @@ function turnStart(entries: readonly PaneEntry[]): number {
 /** True when an interrupt marker follows `index`: the user stopped the turn there. */
 function interruptedAfter(entries: readonly PaneEntry[], index: number): boolean {
   for (let i = index + 1; i < entries.length; i++) {
+    if (promptText(entries[i]!) !== undefined) return false;
     const e = entries[i] as { message?: { content?: unknown }; content?: unknown };
     const content = e.message?.content ?? e.content;
     const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((b) => asString(asRecord(b)?.["text"]) ?? "").join(" ") : "";
@@ -336,7 +363,7 @@ export function buildAgentPaneSnapshot(entries: readonly PaneEntry[], inputs: Pa
   const prompt = start >= 0 ? promptText(entries[start]!) : undefined;
   const prose: string[] = [];
   for (const e of turnEntries) {
-    if (e.message?.role !== "assistant") continue;
+    if (e.message?.role !== "assistant" || e.isSidechain === true) continue;
     for (const b of blocksOf(e)) {
       const text = b["type"] === "text" ? asString(b["text"]) : undefined;
       if (text?.trim()) prose.push(collapse(text));
@@ -351,6 +378,7 @@ export function buildAgentPaneSnapshot(entries: readonly PaneEntry[], inputs: Pa
   let permissionMode: string | undefined;
   let updatedAtMs: number | undefined;
   for (const e of entries) {
+    if (e.isSidechain === true) continue;
     if (e.message?.role === "assistant" && e.message.model) model = e.message.model;
     // The mode is a standalone record when it changes, and a field of every user entry.
     if (typeof e.permissionMode === "string" && (e.type === "permission-mode" || e.message?.role === "user")) permissionMode = e.permissionMode;
@@ -414,8 +442,10 @@ export function diffSnapshots(
     if (!same(prev[key], next[key]) && next[key] !== undefined) (delta as unknown as Record<string, unknown>)[key] = next[key];
   }
   // A field that went away (a plan removed, a diff gone) cannot be said in a delta.
-  const lost = (["plan", "model", "tokPerSec"] as const).some((k) => prev[k] !== undefined && next[k] === undefined) ||
-    (prev.turn?.diff !== undefined && next.turn?.diff === undefined);
+  const lost =
+    (["plan", "model", "tokPerSec"] as const).some((k) => prev[k] !== undefined && next[k] === undefined) ||
+    (prev.turn?.diff !== undefined && next.turn?.diff === undefined) ||
+    (prev.turn?.prose !== undefined && next.turn?.prose === undefined);
   if (lost) return { kind: "snapshot", snapshot: next };
   return { kind: "delta", delta };
 }

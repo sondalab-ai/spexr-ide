@@ -25,7 +25,7 @@ import {
 import { readLaunchProfiles } from "../preferences/launch-profiles.js";
 import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
-import { agentSessionKey, withSessionId } from "./session-launch.js";
+import { agentSessionKey, launchLine, withSessionId } from "./session-launch.js";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
@@ -34,7 +34,6 @@ import {
   isHomeRelative,
   launchPlanFor,
   resolveAccount,
-  shellQuoteConfigDir,
   type ClaudeLaunchProfile,
   type LaunchPlan,
   type ResolvedAccount,
@@ -44,10 +43,6 @@ import { CLAUDE_TERMINAL_ID } from "./claude-terminal-id.js";
 
 export { CLAUDE_TERMINAL_ID };
 
-/** Wrap an argument in single quotes for safe inclusion in a shell command. */
-function shellQuote(arg: string): string {
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
 
 /** Quiet period after the last PTY output that signals the TUI finished rendering. */
 const READY_IDLE_MS = 1_200;
@@ -277,6 +272,11 @@ export class ClaudeTerminalManager {
     }
   }
 
+  /** The pane followed the session to its successor (/clear, /resume): that is the agent's session now, and a reload follows it. */
+  adoptSessionId(rootUri: string, sessionId: string): void {
+    this.rememberSessionId(rootUri, sessionId);
+  }
+
   private rememberSessionId(rootUri: string, sessionId: string): void {
     this.sessionId = sessionId;
     void this.storage.setData(agentSessionKey(rootUri), sessionId).catch(() => {});
@@ -348,9 +348,10 @@ export class ClaudeTerminalManager {
       await this.linkMemory(workspaceRoot, account.configDir.trim() || undefined);
       // A fresh id per launch: Claude refuses `--session-id` for one that already exists.
       const sessionId = generateUuid();
-      const shellArgs = withSessionId(await this.buildShellArgs(workspaceRoot, expert?.id), sessionId);
+      const { args: shellArgs, applied } = withSessionId(await this.buildShellArgs(workspaceRoot, expert?.id), sessionId);
       await this.launch(workspaceRoot, account, shellArgs, expert, root.resource.toString());
-      this.rememberSessionId(root.resource.toString(), sessionId);
+      // Only an id the launch carried is the session's; one that was left out must not be followed.
+      if (applied) this.rememberSessionId(root.resource.toString(), sessionId);
       this.currentExpertId = expert?.id;
       this.runningRoot = root.resource.toString();
       return true;
@@ -377,12 +378,7 @@ export class ClaudeTerminalManager {
    * itself, so the variable is unset and left to it.
    */
   private resolveShell(plan: LaunchPlan, shellArgs: string[]): { shellArgs: string[] } {
-    const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
-    const account = plan.exportConfigDir
-      ? `export CLAUDE_CONFIG_DIR=${shellQuoteConfigDir(plan.exportConfigDir)}`
-      : "unset CLAUDE_CONFIG_DIR";
-    const line = `${account}; ${[bin, ...shellArgs.map(shellQuote)].join(" ")}`;
-    return { shellArgs: ["-i", "-l", "-c", line] };
+    return { shellArgs: ["-i", "-l", "-c", launchLine(plan, shellArgs)] };
   }
 
   private async buildShellArgs(workspaceRoot: string, expertId?: string): Promise<string[]> {

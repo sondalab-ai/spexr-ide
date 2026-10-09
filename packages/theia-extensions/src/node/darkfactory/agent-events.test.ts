@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildAgentPaneSnapshot, diffSnapshots, parseCheckboxes, tokPerSecOf, type PaneEntry } from "./agent-events.js";
+import type { AgentPaneSnapshot } from "../../common/agent-pane-protocol.js";
 
 /** The S6a fixture's transcripts, with the workspace paths filled in. */
 const DIR = fileURLToPath(new URL("../../../../../tests/visual/fixtures/claude-sessions/", import.meta.url));
@@ -257,5 +258,105 @@ describe("diffSnapshots", () => {
 
   it("falls back to a snapshot when a field goes away", () => {
     expect(diffSnapshots(more, { ...more, plan: undefined, planSource: undefined, toolCount: 15 })?.kind).toBe("snapshot");
+  });
+});
+
+describe("review regressions", () => {
+  const msg = (id: string, secs: number, content: unknown[], tokens = 400, extra: Partial<PaneEntry> = {}): PaneEntry => ({
+    timestamp: stamp(secs),
+    message: { id, role: "assistant", model: "claude-opus-5-5", content, usage: { output_tokens: tokens } },
+    ...extra,
+  });
+  const stamp = (s: number): string => new Date(Date.parse("2026-10-09T10:00:00Z") + s * 1000).toISOString();
+  const user = (secs: number, content: unknown, extra: Partial<PaneEntry> = {}): PaneEntry => ({ timestamp: stamp(secs), message: { role: "user", content }, ...extra });
+  const toolResult = (secs: number, id: string): PaneEntry => user(secs, [{ type: "tool_result", tool_use_id: id, content: "ok" }]);
+  const use = (id: string): Record<string, unknown> => ({ type: "tool_use", id, name: "Read", input: { file_path: "/a" } });
+
+  it("keeps a response's rate sane when its blocks are apart (a parallel tool call, its results, another block)", () => {
+    const entries = [user(0, "go"), msg("m", 1, [use("a")]), toolResult(1.001, "a"), msg("m", 1.002, [use("b")]), toolResult(1.003, "b")];
+    const rate = tokPerSecOf(entries);
+    expect(rate === undefined || rate <= 2000).toBe(true);
+    // The group is read across the gap: from the prompt to the response's last block.
+    expect(tokPerSecOf([user(0, "go"), msg("m", 1, [use("a")]), toolResult(1.5, "a"), msg("m", 2, [use("b")], 400)])).toBe(200);
+  });
+
+  it("drops a rate no model reaches", () => {
+    expect(tokPerSecOf([user(0, "go"), msg("m", 0.01, [{ type: "text", text: "x" }], 5000)])).toBeUndefined();
+  });
+
+  it("ignores a subagent's response when timing the session's", () => {
+    const entries = [user(0, "go"), msg("m", 2, [{ type: "text", text: "x" }], 400), msg("side", 2.001, [{ type: "text", text: "y" }], 90_000, { isSidechain: true })];
+    expect(tokPerSecOf(entries)).toBe(200);
+  });
+
+  it("does not take a compaction summary for the prompt, and caps a long prompt at 2,000 characters", () => {
+    const summary = user(1, "This session is being continued from a previous conversation...", { isCompactSummary: true });
+    const entries = [user(0, "the real prompt"), summary];
+    expect(buildAgentPaneSnapshot(entries, { sessionId: "x" }).turn!.prompt).toBe("the real prompt");
+    const long = buildAgentPaneSnapshot([user(0, "x".repeat(5000))], { sessionId: "x" });
+    expect(long.turn!.prompt).toHaveLength(2000);
+  });
+
+  it("leaves a subagent's calls, prose and model out", () => {
+    const entries = [
+      user(0, "go"),
+      msg("m1", 1, [{ type: "text", text: "mine" }, use("a")]),
+      msg("m2", 2, [{ type: "text", text: "theirs" }, use("b")], 10, { isSidechain: true }),
+      { ...msg("m3", 3, [], 10, { isSidechain: true }), message: { id: "m3", role: "assistant", model: "claude-haiku-5-5", content: [] } },
+    ];
+    const s = buildAgentPaneSnapshot(entries, { sessionId: "x" });
+    expect(s.turn!.tools!.map((t) => t.id)).toEqual(["a"]);
+    expect(s.turn!.prose).toEqual(["mine"]);
+    expect(s.model).toBe("claude-opus-5-5");
+    expect(s.toolCount).toBe(1);
+  });
+
+  it("counts a Write that created a file (an empty patch) from its content, and shows it in the diff card", () => {
+    const entries = [
+      user(0, "go"),
+      msg("m", 1, [{ type: "tool_use", id: "w", name: "Write", input: { file_path: "/a/new.ts", content: "one\ntwo\nthree\n" } }]),
+      { ...user(2, [{ type: "tool_result", tool_use_id: "w", content: "created" }]), toolUseResult: { type: "create", filePath: "/a/new.ts", structuredPatch: [] } },
+    ];
+    const s = buildAgentPaneSnapshot(entries, { sessionId: "x" });
+    expect(s.turn!.tools![0]).toMatchObject({ verb: "Write", added: 3, removed: 0 });
+    expect(s.turn!.diff).toEqual({ file: "new.ts", added: 3, removed: 0, lines: ["+one", "+two", "+three"] });
+  });
+
+  it("keeps TaskStop and TaskOutput visible as tools, while TaskCreate and TaskUpdate fold into the plan", () => {
+    const entries = [
+      user(0, "go"),
+      msg("a", 1, [{ type: "tool_use", id: "c", name: "TaskCreate", input: { subject: "x" } }]),
+      msg("b", 2, [{ type: "tool_use", id: "s", name: "TaskStop", input: { taskId: "1" } }]),
+      msg("c", 3, [{ type: "tool_use", id: "o", name: "TaskOutput", input: { taskId: "1" } }]),
+    ];
+    expect(buildAgentPaneSnapshot(entries, { sessionId: "x" }).turn!.tools!.map((t) => t.name)).toEqual(["TaskStop", "TaskOutput"]);
+  });
+
+  it("stops looking for an interrupt at the next prompt: an old interrupt does not fail a later running call", () => {
+    const entries = [
+      user(0, "first"),
+      msg("a", 1, [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "x" } }]),
+      user(2, [{ type: "text", text: "[Request interrupted by user]" }]),
+      user(3, "second"),
+      msg("b", 4, [{ type: "tool_use", id: "t2", name: "Bash", input: { command: "y" } }]),
+    ];
+    const s = buildAgentPaneSnapshot(entries, { sessionId: "x" });
+    expect(s.turn!.tools!.map((t) => [t.id, t.state])).toEqual([["t2", "run"]]);
+    const earlier = buildAgentPaneSnapshot(entries.slice(0, 3), { sessionId: "x" });
+    expect(earlier.turn!.tools![0]!.state).toBe("error");
+  });
+
+  it("sends a snapshot, not a delta, when the prose goes away", () => {
+    const a = buildAgentPaneSnapshot([user(0, "go"), msg("m", 1, [{ type: "text", text: "hello" }])], { sessionId: "x" });
+    const b: AgentPaneSnapshot = { ...a, turn: { prompt: "go" } };
+    expect(diffSnapshots(a, b)?.kind).toBe("snapshot");
+  });
+
+  it("sends a delta for a turn with an identical prompt and no prose, only tools moving", () => {
+    const entries = [user(0, "go"), msg("m", 1, [use("a")])];
+    const a = buildAgentPaneSnapshot(entries, { sessionId: "x" });
+    const b = buildAgentPaneSnapshot([...entries, toolResult(2, "a")], { sessionId: "x" });
+    expect(a.turn!.prose).toBeUndefined();
+    expect(diffSnapshots(a, b)).toMatchObject({ kind: "delta", delta: { tools: [{ id: "a", state: "done" }] } });
   });
 });

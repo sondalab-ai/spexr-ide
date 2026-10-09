@@ -5,11 +5,15 @@ import { forEachConcurrent } from "./concurrency.js";
 interface Scanned {
   offset: number;
   count: number;
+  /** The file's inode when scanned: a different one is a different file, whatever its size. */
+  ino: number;
 }
 
 /** Bytes read per step; a long line is carried across steps, never cut. */
 const CHUNK_BYTES = 1 << 20;
 const NEWLINE = 0x0a;
+/** A line longer than this is not a record Claude Code writes: it is skipped, not held in memory. */
+const MAX_LINE_BYTES = 32 << 20;
 /**
  * How a tool call is written in Claude Code's compact JSONL. Inside a string
  * the quotes are escaped (`\"type\":\"tool_use\"`), so the text of a tool
@@ -29,7 +33,8 @@ function occurrences(buf: Buffer): number {
  * each call to {@link count} reads only what the file gained since the last,
  * counting complete lines only, so a line still being written is counted once
  * its newline arrives and never twice. The scan is cached by path and offset;
- * a file that shrank (rewritten, or replaced by another) starts over.
+ * a file that shrank, or whose inode changed (replaced by another, a larger
+ * one included), starts over. A line past {@link MAX_LINE_BYTES} is skipped.
  *
  * A line holds a call's `tool_use` block once, so the count is of calls, not
  * of lines. Resume copies carry the conversation they continue, calls included.
@@ -52,10 +57,11 @@ export class ToolCounter {
       return undefined;
     }
     try {
-      const { size } = await fh.stat();
+      const { size, ino } = await fh.stat();
       let state = this.scanned.get(path);
-      if (!state || size < state.offset) state = { offset: 0, count: 0 };
+      if (!state || size < state.offset || state.ino !== ino) state = { offset: 0, count: 0, ino };
       let carry = Buffer.alloc(0);
+      let skipping = false;
       let at = state.offset;
       let count = state.count;
       let done = state.offset;
@@ -64,17 +70,31 @@ export class ToolCounter {
         const { bytesRead } = await fh.read(buf, 0, buf.length, at);
         if (bytesRead === 0) break;
         at += bytesRead;
-        const data = carry.length ? Buffer.concat([carry, buf.subarray(0, bytesRead)]) : buf.subarray(0, bytesRead);
+        let data = carry.length ? Buffer.concat([carry, buf.subarray(0, bytesRead)]) : buf.subarray(0, bytesRead);
+        if (skipping) {
+          const nl = data.indexOf(NEWLINE);
+          if (nl === -1) {
+            carry = Buffer.alloc(0);
+            done = at;
+            continue;
+          }
+          data = data.subarray(nl + 1);
+          skipping = false;
+        }
         const lastNl = data.lastIndexOf(NEWLINE);
         if (lastNl === -1) {
-          carry = Buffer.from(data);
+          if (data.length > MAX_LINE_BYTES) {
+            carry = Buffer.alloc(0);
+            skipping = true;
+            done = at;
+          } else carry = Buffer.from(data);
           continue;
         }
         count += occurrences(data.subarray(0, lastNl + 1));
         done = at - (data.length - (lastNl + 1));
         carry = Buffer.from(data.subarray(lastNl + 1));
       }
-      this.scanned.set(path, { offset: done, count });
+      this.scanned.set(path, { offset: done, count, ino });
       return count;
     } catch {
       return this.scanned.get(path)?.count;

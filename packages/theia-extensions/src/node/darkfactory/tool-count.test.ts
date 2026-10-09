@@ -101,3 +101,21 @@ describe("countSessions and syncToolCounts", () => {
     expect(c.cached(a)).toBeUndefined();
   });
 });
+
+describe("ToolCounter, review regressions", () => {
+  it("starts over when the file was replaced by a larger one, not only a smaller", async () => {
+    const path = file(use("a") + "\n");
+    const c = new ToolCounter();
+    expect(await c.count(path)).toBe(1);
+    // A new file at the same path: a different inode, and bigger than the old offset.
+    rmSync(path);
+    writeFileSync(path, [two("b", "c"), two("d", "e"), two("f", "g")].join("\n") + "\n");
+    expect(await c.count(path)).toBe(6);
+  });
+
+  it("skips a line past the limit instead of holding it, and counts what follows", async () => {
+    const huge = "x".repeat(33 << 20);
+    const path = file(use("a") + "\n" + huge + "\n" + two("b", "c") + "\n");
+    expect(await new ToolCounter().count(path)).toBe(3);
+  });
+});
