@@ -84,7 +84,7 @@ export class SmartSearchWidget extends ReactWidget {
   @postConstruct()
   protected init(): void {
     this.id = SmartSearchWidget.ID;
-    this.title.label = "Search";
+    this.title.label = "Smart Search";
     this.title.caption = "Smart Search";
     this.title.closable = false;
     this.addClass("spexr-smart-search");

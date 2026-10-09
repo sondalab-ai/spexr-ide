@@ -102,20 +102,29 @@ test.describe("the default layout's island sizes", () => {
     await expect.poll(async () => (await island(page, "bottom"))?.h, { timeout: 15_000 }).toBeCloseTo(204, 0);
   });
 
+  test("switching the left view leaves the right and bottom islands where they are", async ({ page }) => {
+    await showLeftView(page, EXPLORER);
+    await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
+    const right = await rightIslandWidth(page);
+    const bottom = (await island(page, "bottom"))?.h;
+    for (const view of [SEARCH, EXPLORER, SEARCH]) {
+      await showLeftView(page, view);
+      await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
+    }
+    expect(await rightIslandWidth(page)).toBeCloseTo(right ?? 352, 0);
+    // The bottom panel can start hidden; only a panel that was showing is compared.
+    if (bottom !== undefined) expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom, 0);
+  });
+
   test("the left island's width is each view's own: a drag on the Explorer stays with it", async ({ page }) => {
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
-    // The bottom island keeps its size, and the right its 352px, through every view switch below.
-    const bottom = (await island(page, "bottom"))?.h;
     await dragLeftSash(page, 60);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
     await showLeftView(page, SEARCH);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
-    expect(await rightIslandWidth(page)).toBeCloseTo(352, 0);
-    // The bottom panel can start hidden; only a panel that was showing is compared.
-    if (bottom !== undefined) expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom, 0);
   });
 
   test("a restored layout keeps its own widths", async ({ page }) => {
