@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SHIFT_TAB, assemblePrompt, composerState, isMultiline, planPresses, sanitizeMessage, type ComposerInputs } from "./agent-pane-composer-model.js";
+import { SHIFT_TAB, assemblePrompt, composerState, sanitizeMessage, type ComposerInputs } from "./agent-pane-composer-model.js";
 
 describe("sanitizeMessage", () => {
   it("normalises line endings and keeps newlines and tabs", () => {
@@ -38,32 +38,16 @@ describe("assemblePrompt", () => {
   });
 });
 
-describe("isMultiline", () => {
-  it("tells a message that would submit at its first line", () => {
-    expect(isMultiline("a\nb")).toBe(true);
-    expect(isMultiline("a b")).toBe(false);
-  });
-});
-
-describe("planPresses", () => {
-  it.each([
-    ["default", 2],
-    [undefined, 2],
-    ["acceptEdits", 1],
-    ["plan", 1],
-    ["auto", 1],
-    ["bypassPermissions", 1],
-  ])("from %s sends %d", (mode, presses) => expect(planPresses(mode)).toBe(presses));
-
+describe("SHIFT_TAB", () => {
   it("is the escape sequence a Shift+Tab key sends", () => {
     expect(SHIFT_TAB).toBe("\u001b[Z");
   });
 });
 
 describe("composerState", () => {
-  const base: ComposerInputs = { draft: "go", running: true, needsYou: false, ownSession: true, sending: false };
+  const base: ComposerInputs = { draft: "go", running: true, phase: "ready", trusted: true, ownSession: true, sending: false };
 
-  it("lets a running, free agent be sent to and planned", () => {
+  it("lets a running agent at its prompt be sent to and planned", () => {
     expect(composerState(base)).toEqual({ mode: "send", canSend: true, canPlan: true });
   });
 
@@ -71,12 +55,27 @@ describe("composerState", () => {
     expect(composerState({ ...base, draft: "  " })).toEqual({ mode: "send", canSend: false, canPlan: true });
   });
 
-  it("disables both while the agent waits for the user, and says why", () => {
-    expect(composerState({ ...base, needsYou: true })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "needs-you" });
+  it("disables both while the agent is working, and says so", () => {
+    expect(composerState({ ...base, phase: "working" })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "working" });
   });
 
-  it("allows Send with no agent running (it starts one), but not Plan, which is a key into a running TUI", () => {
-    expect(composerState({ ...base, running: false })).toEqual({ mode: "send", canSend: true, canPlan: false });
+  it("disables both while the phase is not known yet: never ready by default", () => {
+    expect(composerState({ ...base, phase: undefined })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "working" });
+  });
+
+  it("disables both while a permission may be pending, and says why", () => {
+    expect(composerState({ ...base, phase: "permission" })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "needs-you" });
+  });
+
+  it("disables everything in an untrusted workspace, whatever the phase", () => {
+    for (const running of [true, false]) {
+      expect(composerState({ ...base, trusted: false, running })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "untrusted" });
+    }
+  });
+
+  it("allows Send with no agent running (it only starts one), but not Plan, which is a key into a running TUI", () => {
+    expect(composerState({ ...base, running: false, phase: undefined })).toEqual({ mode: "send", canSend: true, canPlan: false });
+    expect(composerState({ ...base, running: false, phase: undefined, draft: "" })).toEqual({ mode: "send", canSend: false, canPlan: false });
   });
 
   it("disables both while a send is in flight", () => {

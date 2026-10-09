@@ -64,9 +64,13 @@ export const AgentPaneComposer: React.FC<AgentPaneComposerProps> = (p) => {
           }}
         />
       </label>
-      {state.reason === "needs-you" ? (
+      {state.reason ? (
         <p id={reasonId} className="spexr-agent-composer__note" role="status">
-          {nls.localize("spexr/agentPane/sendBlocked", "Waiting for you in the terminal: answer there first.")}
+          {state.reason === "needs-you"
+            ? nls.localize("spexr/agentPane/sendBlocked", "Waiting for you in the terminal: answer there first.")
+            : state.reason === "untrusted"
+              ? nls.localize("spexr/agentPane/trust", "Trust this workspace to start the agent.")
+              : nls.localize("spexr/agentPane/working", "Agent is working")}
         </p>
       ) : null}
       <div className="spexr-agent-composer__bar">

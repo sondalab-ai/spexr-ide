@@ -439,9 +439,9 @@ export const SEEDED_DRAFT = "Also fix the colour literal, then open a PR";
  * The composer against the demo's (`agent.composer` 328 x 100.3 at 12px from
  * the island's edges, `agent.textarea`, `agent.chip` 24 high, the Plan and Send
  * buttons 24 high): 12px off the ring's inside, so 326 wide against the demo's
- * 328; the seeded draft; the chip `@resolve.ts` pressed; Plan idle and enabled
- * (the agent runs in `auto`, not plan mode); Send enabled with its keycap; the
- * focus ring only in the composer-focus scene.
+ * 328; the seeded draft; the chip `@resolve.ts` pressed; Plan idle and Send
+ * with its keycap, both disabled while the agent works, with "Agent is
+ * working" shown; the focus ring only in the composer-focus scene.
  */
 function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[number], focused: boolean): string[] {
   const problems: string[] = [];
@@ -462,9 +462,11 @@ function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[numb
     if (!r) problems.push(`composer: no ${key}`);
     else if (!near(r.h, 24, 1.5)) problems.push(`composer: ${key} is ${r.h}px tall, want the demo's 24`);
   }
-  if (c.planPressed || c.planDisabled) problems.push(`composer: Plan pressed=${c.planPressed} disabled=${c.planDisabled}, want idle and enabled`);
-  if (c.sendDisabled || !/^Send\s*\u23ce$/.test(c.sendText)) problems.push(`composer: Send disabled=${c.sendDisabled} text ${JSON.stringify(c.sendText)}, want enabled "Send \u23ce"`);
-  if (c.note) problems.push(`composer: a note shows (${JSON.stringify(c.note)}), want none while the agent works`);
+  // The audit's agent is mid-turn (a call is open): Send and Plan are off, and the composer says why. The demo's are on;
+  // typing into a working Claude can answer a permission dialog with Enter, so they are not (S6i's security decision).
+  if (c.planPressed || !c.planDisabled) problems.push(`composer: Plan pressed=${c.planPressed} disabled=${c.planDisabled}, want idle and disabled while the agent works`);
+  if (!c.sendDisabled || !/^Send\s*\u23ce$/.test(c.sendText)) problems.push(`composer: Send disabled=${c.sendDisabled} text ${JSON.stringify(c.sendText)}, want disabled "Send \u23ce"`);
+  if (c.note !== "Agent is working") problems.push(`composer: the note reads ${JSON.stringify(c.note)}, want "Agent is working"`);
   if (c.focused !== focused) problems.push(`composer: focus-within is ${c.focused}, want ${focused}`);
   return problems;
 }

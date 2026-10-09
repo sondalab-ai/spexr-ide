@@ -12,7 +12,7 @@ import { classifySession } from "./session-state.js";
 import { liveProjectDirs } from "./process-scanner.js";
 import { ToolCounter } from "./tool-count.js";
 import { parseTranscript } from "./transcript-parser.js";
-import type { AgentPaneBinding, AgentPaneClient, AgentPaneService, AgentPaneSnapshot, PanePlanItem } from "../../common/agent-pane-protocol.js";
+import type { AgentPaneBinding, AgentPaneCheckpoint, AgentPaneClient, AgentPaneService, AgentPaneSnapshot, PanePlanItem } from "../../common/agent-pane-protocol.js";
 
 /** How much of a transcript's end the first read takes: a turn's head can be far back in a long one. */
 const TAIL_BYTES = 4 << 20;
@@ -217,6 +217,21 @@ export class AgentPaneBackendService implements AgentPaneService {
     this.successorCheckedAt = undefined;
     this.pendingCandidates = false;
     this.maxOtherMtime = 0;
+  }
+
+  async readPhase(): Promise<AgentPaneCheckpoint | undefined> {
+    if (!this.binding || !this.transcript) {
+      if (this.binding) await this.refresh();
+      if (!this.transcript) return undefined;
+    }
+    await this.refresh();
+    const last = this.last;
+    if (!last || !this.binding) return undefined;
+    return {
+      sessionId: this.binding.sessionId,
+      ...(last.phase ? { phase: last.phase } : {}),
+      ...(last.permissionMode ? { permissionMode: last.permissionMode } : {}),
+    };
   }
 
   /** Stop, and let go of the client: the connection this service served has closed. */

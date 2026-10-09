@@ -115,7 +115,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
           const service = new AgentPaneBackendService({ counter: toolCounter });
           service.setClient(client);
           client.onDidCloseConnection(() => service.dispose());
-          const exposed: AgentPaneService = { follow: (binding) => service.follow(binding), stop: () => service.stop() };
+          const exposed: AgentPaneService = { follow: (binding) => service.follow(binding), stop: () => service.stop(), readPhase: () => service.readPhase() };
           return exposed;
         }),
     )

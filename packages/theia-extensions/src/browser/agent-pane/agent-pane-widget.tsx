@@ -14,7 +14,8 @@ import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import { AGENT_PANE_VIEW_ID } from "./agent-pane-view-contribution.js";
 import { AgentPaneView } from "./agent-pane-view.js";
 import { AgentPaneComposer } from "./agent-pane-composer.js";
-import { assemblePrompt, composerState, planPresses } from "./agent-pane-composer-model.js";
+import { assemblePrompt, composerState } from "./agent-pane-composer-model.js";
+import { guardedPlanToggle, guardedSend, type GuardPorts } from "./agent-pane-guard.js";
 
 /** The storage key of a workspace's unsent draft. */
 export const agentDraftKey = (rootUri: string): string => `spexr.agent.draft:${rootUri}`;
@@ -52,6 +53,8 @@ export class AgentPaneWidget extends ReactWidget {
   /** The file chip is on: the message is led by the active file's path. Lumen shows it pressed. */
   private chipPressed = true;
   private sending = false;
+  /** Theia's workspace trust; false until known, so nothing can be typed before it is. */
+  private trusted = false;
   /**
    * False when the pane follows a session that is not the agent terminal's own
    * (S6j's read-only follows set it): the composer then only offers to open it.
@@ -97,6 +100,16 @@ export class AgentPaneWidget extends ReactWidget {
     );
     this.toDispose.push(this.terminal.onDidChangeSession(() => void this.bind()));
     this.toDispose.push(this.editors.onCurrentEditorChanged(() => this.update()));
+    void this.terminal.isTrusted().then((t) => {
+      this.trusted = t;
+      this.update();
+    });
+    this.toDispose.push(
+      this.terminal.onDidChangeTrust((t) => {
+        this.trusted = t;
+        this.update();
+      }),
+    );
     this.toDispose.push({ dispose: () => this.flushDraft() });
     this.toDispose.push({ dispose: () => void this.service.stop().catch(() => undefined) });
     void this.bind();
@@ -141,6 +154,25 @@ export class AgentPaneWidget extends ReactWidget {
     void this.storage.setData(agentDraftKey(this.draftRoot), this.draft).catch(() => undefined);
   }
 
+  /** The agent terminal as the guards drive it. */
+  private ports(): GuardPorts {
+    return {
+      trusted: () => this.terminal.isTrusted(),
+      running: () => this.terminal.isRunning(),
+      start: () => this.terminal.ensureStarted(),
+      checkpoint: () => this.service.readPhase().catch(() => undefined),
+      paste: (text) => this.terminal.pasteIntoAgent(text),
+      submit: () => this.terminal.submitAgentInput(),
+      cycleMode: () => this.terminal.cycleAgentMode(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    };
+  }
+
+  /**
+   * Send the draft, only to an idle agent (agent-pane-guard.ts): the transcript
+   * is read before the text is typed and again before Enter, and with no agent
+   * running the agent is only started.
+   */
   private async send(): Promise<void> {
     const file = this.chipPressed ? this.activeFile() : undefined;
     const prompt = assemblePrompt(this.draft, file?.path);
@@ -148,8 +180,12 @@ export class AgentPaneWidget extends ReactWidget {
     this.sending = true;
     this.update();
     try {
-      await this.terminal.sendPrompt(prompt);
-      this.setDraft("");
+      const outcome = await guardedSend(prompt, this.ports());
+      if (outcome === "sent") this.setDraft("");
+      else if (outcome === "started") this.messages.info(nls.localize("spexr/agentPane/started", "The agent is starting. Send your message when it is ready."));
+      else if (outcome === "busy") this.messages.warn(nls.localize("spexr/agentPane/busy", "The agent is working. Your message was not sent."));
+      else if (outcome === "raced") this.messages.warn(nls.localize("spexr/agentPane/raced", "The agent became busy: your message is in its input, not submitted. Press Enter in the terminal when it is ready."));
+      else this.messages.info(nls.localize("spexr/agentPane/trust", "Trust this workspace to start the agent."));
     } catch (err) {
       this.messages.warn(`The message was not sent: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -158,8 +194,25 @@ export class AgentPaneWidget extends ReactWidget {
     }
   }
 
-  private plan(): void {
-    void this.terminal.sendModeCycle(planPresses(this.snapshot?.permissionMode)).catch((err) => this.messages.warn(`Plan mode was not toggled: ${err instanceof Error ? err.message : String(err)}`));
+  /** Plan: Shift+Tab one press at a time, the mode read back each time, never left in a mode that does not ask. */
+  private async plan(): Promise<void> {
+    if (this.sending) return;
+    this.sending = true;
+    this.update();
+    try {
+      const outcome = await guardedPlanToggle(this.ports());
+      if (!outcome.ok) {
+        const note = outcome.unsafe
+          ? ` The session is in ${outcome.mode}, which does not ask before acting: press Shift+Tab in the terminal until it says plan or default.`
+          : "";
+        this.messages.warn(`Plan mode was not changed (${outcome.reason}).${note}`);
+      }
+    } catch (err) {
+      this.messages.warn(`Plan mode was not changed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.sending = false;
+      this.update();
+    }
   }
 
   /** Follow the agent terminal's session, or show the empty state when it has none. */
@@ -200,7 +253,8 @@ export class AgentPaneWidget extends ReactWidget {
     const state = composerState({
       draft: this.draft,
       running: this.terminal.isRunning(),
-      needsYou: this.snapshot?.needsYou === true,
+      phase: this.snapshot?.phase,
+      trusted: this.trusted,
       ownSession: this.ownSession,
       sending: this.sending,
     });
@@ -226,7 +280,7 @@ export class AgentPaneWidget extends ReactWidget {
             planPressed={this.snapshot?.planMode === true}
             state={state}
             onSend={() => void this.send()}
-            onPlan={() => this.plan()}
+            onPlan={() => void this.plan()}
             onOpenInTerminal={() => void this.terminal.reveal()}
           />
         }
