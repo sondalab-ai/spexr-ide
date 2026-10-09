@@ -319,6 +319,27 @@ describe("the global focus ring", () => {
   });
 });
 
+// The Spec tab's body and the Darkfactory wall's body take the focus when their
+// tab is activated; Theia's :focus rule (and spexr's own global ring on a
+// keyboard activation) would frame the whole body. Neither frame is drawn, on
+// the :focus and the :focus-visible state, and the rule outweighs the global
+// ring. Rules on the controls inside are not touched: they are descendants.
+describe("the body of the Spec tab and of the Darkfactory wall", () => {
+  const ring = specificity("html :focus-visible:not(iframe)");
+  for (const body of [".spexr-spec-widget", ".spexr-darkfactory"]) {
+    for (const state of [":focus", ":focus-visible"]) {
+      const sel = `${body}${state}`;
+      it(`${sel} draws no outline and outranks the global ring`, () => {
+        const clean = spexr.replace(/\/\*[\s\S]*?\*\//g, "");
+        const rules = [...clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => splitList(m[1]!.replace(/\s+/g, " ")).includes(sel));
+        expect(rules, sel).toHaveLength(1);
+        expect(rules[0]![2]!.trim(), sel).toBe("outline: none;");
+        expect(cmp(specificity(sel), ring), sel).toBeGreaterThan(0);
+      });
+    }
+  }
+});
+
 // A chord's separator carries both separator classes, so the key gap rule
 // matches the cap after it too: the chord's 6px must outweigh the key's 3px.
 describe("a menu shortcut's chord gap", () => {

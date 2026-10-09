@@ -20,10 +20,11 @@ describe("the Darkfactory wall", () => {
   });
 
   // Theia's :focus rule frames a focused widget node in the focus border; the
-  // lit island already marks the focus, so a mouse activation draws no frame.
-  it("draws no focus frame on a mouse activation, and keeps it for the keyboard", () => {
+  // lit island already marks the focus, so the wall's body draws no frame, on a
+  // mouse or a keyboard activation (the controls inside keep their own ring).
+  it("draws no focus frame on its body", () => {
     const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
-    expect(css).toMatch(/\n\.spexr-darkfactory:focus:not\(:focus-visible\) \{\s*outline: none;\s*\}/);
-    expect(css).not.toMatch(/\.spexr-darkfactory:focus-visible \{[^}]*outline: none/);
+    expect(css).toMatch(/\.spexr-darkfactory:focus-visible,?\s*\{?[^{}]*\{\s*outline: none;\s*\}/);
+    expect(css).not.toMatch(/\.spexr-darkfactory:focus:not\(:focus-visible\)/);
   });
 });

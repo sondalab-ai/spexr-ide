@@ -3910,8 +3910,11 @@ code {
 }
 
 /* --- Darkfactory: agent monitoring wall --- */
-/* The wall takes the focus when its tab is activated; the lit island already shows that, so a mouse click draws no second indigo frame (keyboard activation keeps it). */
-.spexr-darkfactory:focus:not(:focus-visible) {
+/* The Spec tab's body and the wall's body take the focus when their tab is activated (the shell needs that); Theia's global :focus rule would frame the whole body in a 1px ring, on a mouse and on a keyboard activation alike. Neither draws it. The focusable controls inside keep their own ring. (0,2,0): ahead of the global ring's (0,1,2). */
+.spexr-spec-widget:focus,
+.spexr-spec-widget:focus-visible,
+.spexr-darkfactory:focus,
+.spexr-darkfactory:focus-visible {
   outline: none;
 }
 
