@@ -82,6 +82,68 @@ export const RIGHT_PANEL = {
   nameLine: 16,
 } as const;
 
+/**
+ * The command palette (Theia's quick input) as Lumen's, at 1440x900 (S5f).
+ * It floats over the editor island: centred on it, 118px from the window's
+ * top (the island's tab strip and breadcrumbs, and one gap, below the
+ * title bar: where the demo's first line of code starts), 580px wide as the
+ * kit's. A row is Lumen's 38px, which is between two grid steps: the owner's
+ * plan names it, so it is the one value here the 4px grid does not hold (the
+ * kit's own palette row is 36). spexr.css repeats these numbers, and
+ * patches/@theia__monaco-editor-core@1.108.201.patch gives Monaco's list its
+ * row heights from the same three; palette-style.test.ts holds all three together.
+ */
+export const PALETTE = {
+  /** The widget's width: the kit's and Lumen's. */
+  width: 580,
+  /** The widget's top edge, from the window's top: the title bar, the editor's tab strip and breadcrumbs, and one island gap. */
+  top: WORKBENCH.titleBar + WORKBENCH.tabStrip + WORKBENCH.breadcrumbs + ISLAND_GAP,
+  /** An entry's row: Lumen's 38 (the kit's 36). */
+  row: 38,
+  /** An entry with a detail line under its label: two lines in a 4px grid step more than a row. */
+  detailRow: 48,
+  /** A group's heading row (Monaco's separator): Lumen's 27.75 on the grid. */
+  group: 28,
+  /** The input's head: the kit's 52 (Lumen 54). */
+  head: 52,
+  /** The kit's field in the head: the one control height. */
+  field: 32,
+  /** The list's padding above its first row, and at the sides and below (the kit's 4 / 8 / 8). */
+  listTop: 4,
+  listInline: 8,
+  listBottom: 8,
+  /** A row's padding at the sides, and its gap from the glyph to the label (the kit's 12 / 12). */
+  rowInline: 12,
+  rowGap: 12,
+  /** Between two keycaps (the kit's 4; Lumen's 3). */
+  keyGap: 4,
+  /** The palette's radius: the kit's large radius (Lumen's 14). */
+  radius: 14,
+  /** A row's radius: the kit's medium radius (Lumen's 8). */
+  rowRadius: 8,
+} as const;
+
+/**
+ * A toast as Lumen's, at 1440x900 (S5f): 360px wide, its right edge 8px inside
+ * the editor island's, its bottom {@link WORKBENCH.toastOffset} above the
+ * window's. The kit's 0.34 toast: r12, padding 12 / 12 / 16 / 16, a 24px mark
+ * and a 32px dismiss, 12px apart. spexr.css repeats the numbers and
+ * toasts-style.test.ts holds them.
+ */
+export const TOAST = {
+  width: 360,
+  /** From the editor island's right edge, inward (Lumen 8: the demo's 1068 against the island's 1076). */
+  inset: 8,
+  radius: 12,
+  paddingTop: 12,
+  paddingEnd: 12,
+  paddingBottom: 16,
+  paddingStart: 16,
+  mark: 24,
+  dismiss: 32,
+  gap: 12,
+} as const;
+
 /** A shell area Theia can resize. */
 export type ShellArea = "left" | "right" | "bottom";
 

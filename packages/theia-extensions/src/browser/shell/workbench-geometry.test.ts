@@ -9,7 +9,9 @@ import {
   BOTTOM_ISLAND,
   DefaultLayout,
   EXPLORER_ISLAND,
+  PALETTE,
   RIGHT_ISLAND,
+  TOAST,
   WORKBENCH,
   areaSize,
   defaultIslands,
@@ -50,6 +52,28 @@ describe("the geometry table", () => {
   it("centres a tab and a status item on the grid", () => {
     expect((WORKBENCH.tabStrip - WORKBENCH.tab) / 2).toBe(4);
     expect((WORKBENCH.statusBar - WORKBENCH.statusItem) / 2).toBe(4);
+  });
+});
+
+describe("the palette's and the toast's tables", () => {
+  it("anchors the palette at the demo's y 118, from the frame it floats in", () => {
+    expect(PALETTE.top).toBe(118);
+    expect(PALETTE.top).toBe(44 + 36 + 32 + ISLAND_GAP);
+    expect(PALETTE.width).toBe(580);
+  });
+
+  // The row is the owner's Lumen 38; the top is the frame's 6px island gap (44 + 36 + 32 + 6); the radius is shape, as the table's own note says.
+  it("keeps every palette length on the grid except Lumen's 38px row, its 118px top and its 14px radius", () => {
+    const offGrid = Object.entries(PALETTE).filter(([, v]) => v % 4 !== 0).map(([k]) => k);
+    expect(offGrid).toEqual(["top", "row", "radius"]);
+    expect(PALETTE.row).toBe(38);
+    expect(PALETTE.detailRow).toBeGreaterThan(PALETTE.row);
+  });
+
+  it("sizes the toast as the demo's 360px card, the dismiss and the mark on the grid", () => {
+    expect(TOAST.width).toBe(360);
+    expect(Object.entries(TOAST).filter(([, v]) => v % 4 !== 0)).toEqual([]);
+    expect(WORKBENCH.toastOffset).toBe(48);
   });
 });
 
