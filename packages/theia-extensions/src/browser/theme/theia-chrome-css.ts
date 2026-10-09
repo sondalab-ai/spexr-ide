@@ -6,8 +6,9 @@ import { ACCENT, ACCENT_FILL, fillStep, labelOn } from "./spexr-accent.js";
  * variable overrides that put Theia's native chrome (buttons, focus rings,
  * badges, lists, activity bar, status bar) on the SPEXR accent, its
  * registered fill, the SPEXR neutrals and the kit's selection tile, and the
- * kit's UI face (Geist) instead of the platform font. High contrast gets the
- * face only: its colours stay Theia's own HC theme and the kit's yellow.
+ * kit's faces (Geist for the UI, Geist Mono for code) instead of the
+ * platform's. High contrast gets the faces only: its colours stay Theia's own
+ * HC theme and the kit's yellow.
  * Pure, so it can be rendered outside Theia.
  * `fills`: the labelled fill per theme, the registry's unless a test hands
  * it another.
@@ -15,11 +16,26 @@ import { ACCENT, ACCENT_FILL, fillStep, labelOn } from "./spexr-accent.js";
 export function theiaChromeCss(spexrTheme: string, fills: { light: string; dark: string } = ACCENT_FILL): string {
   const font = `
 /* Theia's chrome in the kit's UI face (Geist). On body too: Theia's os.css sets
-   this variable on body.mac / .windows / .linux, which would shadow :root. The
-   editor and terminal keep their own coding mono (editor.fontFamily). */
+   the UI variable on body.mac / .windows / .linux, which would shadow :root.
+   Theia's code variable (its console, its own hovers, the workspace trust
+   dialog and spexr's own mono text) takes the code face, Geist Mono. Monaco
+   and xterm draw code in editor.fontFamily and terminal.integrated.fontFamily
+   (apps/desktop/package.json), the same face. */
 :root,
 body {
   --theia-ui-font-family: var(--sl-font-sans) !important;
+  --theia-code-font-family: var(--sl-font-code) !important;
+}
+
+/* Monaco's hovers, suggest details and parameter hints set their code in
+   --monaco-monospace-font, which Monaco declares on .monaco-editor itself
+   ("SF Mono", Monaco, Menlo, …), so the variable on :root alone would lose
+   inside the editor. Important on both, so the code face wins in and out of
+   the editor (a hover rendered outside it still reads :root). */
+:root,
+body,
+.monaco-editor {
+  --monaco-monospace-font: var(--sl-font-code) !important;
 }`;
   if (spexrTheme === "high-contrast") return font;
 

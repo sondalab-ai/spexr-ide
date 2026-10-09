@@ -54,15 +54,12 @@ describe("the editor's preference defaults", () => {
     expect(provider).toMatch(/names = optionName\.split\('\.'\)|doSetOption\(options, value, optionName\.split\('\.'\)\)/);
   });
 
-  // tests/visual/prepare.ts seeds the demo's 13/22 only because S5a's
-  // preferences are not in this branch. Once the product defaults them, the
-  // seed would hide a regression in those defaults: drop it then.
-  it("fails once the product defaults editor.fontSize while the capture still seeds it", () => {
+  // S5a's preferences are in the stack: the capture takes them as shipped,
+  // since a seed in tests/visual/prepare.ts would hide a regression in them.
+  it("defaults the editor to the demo's 13px on 22px rows, and the capture does not seed them", () => {
     const prepare = readFileSync(join(repo, "tests/visual/prepare.ts"), "utf8");
-    expect(prepare).toMatch(/"editor\.fontSize": 13,/);
-    expect(prepare).toMatch(/"editor\.lineHeight": 22,/);
-    const seeded = /"editor\.fontSize": \d+/.test(prepare);
-    const defaulted = "editor.fontSize" in defaults() || "editor.lineHeight" in defaults();
-    expect(seeded && defaulted, "drop the editor.fontSize / editor.lineHeight seed in tests/visual/prepare.ts: the product defaults them now").toBe(false);
+    expect(defaults()["editor.fontSize"]).toBe(13);
+    expect(defaults()["editor.lineHeight"]).toBe(22);
+    expect(/"editor\.(fontSize|lineHeight)":/.test(prepare), "drop the editor.fontSize / editor.lineHeight seed in tests/visual/prepare.ts: the product defaults them").toBe(false);
   });
 });

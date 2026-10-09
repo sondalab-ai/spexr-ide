@@ -200,10 +200,49 @@ describe("Theia's severity colours", () => {
 });
 
 // High contrast keeps Theia's own HC colours and the kit's yellow: the
-// injection there is the UI face only, no indigo fill, no light accent.
+// injection there is the faces only, no indigo fill, no light accent.
 describe("high contrast", () => {
-  it("gets the UI face and nothing else", () => {
+  it("gets the UI and code faces and nothing else", () => {
     const vars = [...theiaChromeCss("high-contrast").matchAll(/--theia-([\w-]+):/g)].map((m) => m[1]);
-    expect(vars).toEqual(["ui-font-family"]);
+    expect(vars).toEqual(["ui-font-family", "code-font-family"]);
+  });
+});
+
+// Theia's code variable was its Menlo/Consolas stack; it is the code face
+// (Geist Mono, through --sl-font-code), on every theme, set on body too.
+describe("Theia's code font", () => {
+  it.each(["light", "dark", "high-contrast"])("is the code face on %s", (theme) => {
+    expect(value(theme, "code-font-family")).toBe("var(--sl-font-code)");
+  });
+
+  it("is set where the UI face is, on :root and body", () => {
+    const block = /:root,\s*body\s*\{([^}]*)\}/.exec(theiaChromeCss("dark"))?.[1] ?? "";
+    expect(block).toContain("--theia-code-font-family: var(--sl-font-code) !important;");
+  });
+});
+
+// Monaco's hovers, suggest details and parameter hints read
+// --monaco-monospace-font, which Monaco declares on .monaco-editor ("SF Mono",
+// Monaco, Menlo, …); the code face must win there as well as on :root.
+describe("Monaco's own code font", () => {
+  it.each(["light", "dark", "high-contrast"])("is the code face, inside the editor too, on %s", (theme) => {
+    const rule = [...theiaChromeCss(theme).replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) =>
+      m[2]!.includes("--monaco-monospace-font"),
+    );
+    expect(rule?.[1]!.split(",").map((s) => s.trim())).toEqual([":root", "body", ".monaco-editor"]);
+    expect(rule?.[2]).toContain("--monaco-monospace-font: var(--sl-font-code) !important;");
+  });
+});
+
+// --sl-font-code was JetBrains Mono first (owner, 2026-10-02); it is the
+// kit's mono since the owner reversed that on 2026-10-05.
+describe("the code face role", () => {
+  it("is the kit's mono", () => {
+    const css = readFileSync(
+      fileURLToPath(new URL("../../../../ui-kit/src/themes/spexr-overrides.css", import.meta.url)),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(/--sl-font-code:\s*([^;]+);/.exec(css)?.[1]).toBe("var(--sl-font-mono)");
+    expect(css).not.toContain("JetBrains");
   });
 });

@@ -233,12 +233,8 @@ function writeClaudeStub(bin: string): void {
  *   run caught them and the next did not;
  * - no TypeScript diagnostics: the fixture imports a `./types` that the demo
  *   never shows, and a red squiggle there is not the demo's warning;
- * - the editor at the demo's 13px on 22px rows (S5a's preferences, which are
- *   not in this branch): the gutter is measured against the demo's, and its
- *   width is a count of character widths. The face stays the default's, which
- *   has Geist Mono's advance (0.6 em), so the widths are the same. Temporary:
- *   drop the two seeds when S5a joins the stack, or they would hide a
- *   regression in its own preferences;
+ * - the editor takes S5a's product defaults (Geist Mono, 13px on 22px rows),
+ *   unseeded, so a regression in those preferences shows in the capture;
  * - the folders spexr writes into a workspace at runtime stay out of the tree.
  */
 function seedSettings(configDir: string, theme: Theme): void {
@@ -250,8 +246,6 @@ function seedSettings(configDir: string, theme: Theme): void {
     "spexr.claude.launchProfilesDetected": true,
     "editor.cursorBlinking": "solid",
     "editor.occurrencesHighlight": "off",
-    "editor.fontSize": 13,
-    "editor.lineHeight": 22,
     "terminal.integrated.cursorBlinking": false,
     "typescript.validate.enable": false,
     "files.exclude": {

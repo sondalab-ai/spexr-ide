@@ -3,16 +3,17 @@
  *
  * The Sondalab kit ships the shared grammar (type, spacing, neutrals, status,
  * 3-theme machinery) and its default amber/teal accent. SPEXR keeps its own
- * signature: the indigo accent, the IDE-specific roles (agent / hljs), and a
- * coding mono for the editor. These are product tokens, not brand tokens,
+ * signature: the indigo accent, the IDE-specific roles (agent / hljs), and the
+ * code face role. These are product tokens, not brand tokens,
  * so they live here instead of in the vendored (generated) files.
  */
 
 :root {
-  /* Editor / code contexts keep a coding mono (owner, 2026-10-02): JetBrains
-     Mono, then the kit's Geist Mono. The kit's mono (--sl-font-mono, Geist
-     Mono) carries labels and data but is not forced into code here. */
-  --sl-font-code: "JetBrains Mono", "Geist Mono", "SF Mono", "Menlo", "Consolas", monospace;
+  /* Code contexts use the kit's mono, Geist Mono, like the editor and the
+     terminal (editor.fontFamily, terminal.integrated.fontFamily). The owner
+     chose JetBrains Mono here on 2026-10-02 and reversed it on 2026-10-05,
+     for parity with the Lumen demo. */
+  --sl-font-code: var(--sl-font-mono);
 
   /* Syntax highlight — adopt the shared DS atom-one palette (--sl-code-*, which
      flips per [data-sl-theme]). Mapped once here; hljs stays undefined in HC,
