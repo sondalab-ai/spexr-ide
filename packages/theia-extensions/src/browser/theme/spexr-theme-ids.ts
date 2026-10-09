@@ -41,3 +41,28 @@ export const SPEXR_THEME_BY_THEIA: Readonly<Record<string, string>> = {
   ...Object.fromEntries(Object.entries(THEIA_THEME_BY_SPEXR).map(([spexr, theia]) => [theia, spexr])),
   ...LEGACY_THEME_ALIASES,
 };
+
+/**
+ * The SPEXR theme to start on, first source that has one: the user's own
+ * choice (`spexr.theme`), then Theia's stored theme id (localStorage `theme`,
+ * read through the id maps, which is what the startup guard does), then the
+ * Theia theme that is current when the contribution starts, then the OS.
+ *
+ * The stored id comes before the current theme because a profile that last ran
+ * a spexr theme stores `spexr-dark`, which Theia cannot resolve at
+ * construction (the themes register at initialize), so its current theme can
+ * be the OS-default one for a moment; the stored id is what was chosen.
+ */
+export function resolveStartTheme(sources: {
+  readonly stored?: string | undefined;
+  readonly storedTheiaId?: string | null | undefined;
+  readonly currentTheiaId?: string | undefined;
+  readonly system: string;
+}): string {
+  return (
+    sources.stored ??
+    (sources.storedTheiaId ? SPEXR_THEME_BY_THEIA[sources.storedTheiaId] : undefined) ??
+    (sources.currentTheiaId ? SPEXR_THEME_BY_THEIA[sources.currentTheiaId] : undefined) ??
+    sources.system
+  );
+}

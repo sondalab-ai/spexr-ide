@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LEGACY_THEME_ALIASES, SPEXR_COLOR_THEMES, SPEXR_COLOR_THEME_LABELS, SPEXR_THEME_BY_THEIA, THEIA_THEME_BY_SPEXR } from "./spexr-theme-ids.js";
+import { LEGACY_THEME_ALIASES, SPEXR_COLOR_THEMES, resolveStartTheme, SPEXR_COLOR_THEME_LABELS, SPEXR_THEME_BY_THEIA, THEIA_THEME_BY_SPEXR } from "./spexr-theme-ids.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -31,6 +31,31 @@ describe("the spexr colour themes and their aliases", () => {
     expect(THEIA_THEME_BY_SPEXR["high-contrast"]).toBe("hc-theia");
     expect(THEIA_THEME_BY_SPEXR["dark"]).toBe("spexr-dark");
     expect(THEIA_THEME_BY_SPEXR["light"]).toBe("spexr-light");
+  });
+
+  // A profile that last ran spexr-dark stores that id; Theia cannot resolve it
+  // until the themes register at initialize, so its current theme can be the OS
+  // default for a moment. The stored id is the choice and must win.
+  it("starts on the stored Theia id before the current theme, so a stored spexr-* id survives a launch whose OS kind differs", () => {
+    const system = "light";
+    expect(resolveStartTheme({ storedTheiaId: "spexr-dark", currentTheiaId: "light", system })).toBe("dark");
+    expect(resolveStartTheme({ storedTheiaId: "spexr-light", currentTheiaId: "dark", system: "dark" })).toBe("light");
+    expect(resolveStartTheme({ storedTheiaId: "hc-theia", currentTheiaId: "dark", system })).toBe("high-contrast");
+    // the old ids resolve the same way
+    expect(resolveStartTheme({ storedTheiaId: "dark", currentTheiaId: "light", system })).toBe("dark");
+  });
+
+  it("starts, in order, on the user's choice, the stored id, the current theme, then the OS", () => {
+    expect(resolveStartTheme({ stored: "light", storedTheiaId: "spexr-dark", currentTheiaId: "dark", system: "dark" })).toBe("light");
+    expect(resolveStartTheme({ storedTheiaId: null, currentTheiaId: "spexr-light", system: "dark" })).toBe("light");
+    expect(resolveStartTheme({ storedTheiaId: "a-third-party-theme", currentTheiaId: "dark", system: "light" })).toBe("dark");
+    expect(resolveStartTheme({ system: "dark" })).toBe("dark");
+  });
+
+  it("is what the theme contribution starts with", () => {
+    const text = read(join(here, "spexr-theme-contribution.ts"));
+    expect(text).toMatch(/resolveStartTheme\(\{\s+stored,\s+storedTheiaId: this\.readStoredTheiaThemeId\(\),/);
+    expect(text).toMatch(/getItem\("theme"\)/);
   });
 
   it("is mirrored by the startup guard's map of a stored Theia theme, which reads localStorage 'theme' before any script runs", () => {

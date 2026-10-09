@@ -156,6 +156,30 @@ function bracketColors(theme: SpexrThemeKind): Record<string, string> {
 }
 
 /**
+ * The editor's severities, in syntax hues (the kit's status tones are not in
+ * `neutrals.json`): errors the `number` hue, warnings the `builtin`, infos
+ * the `function`. Monaco draws a squiggle from `editorError.foreground`
+ * and its kin, and the overview ruler's marks and the gutter's change bars
+ * from the other keys; every one is a text-grade hue, so at least 4.5:1 on
+ * the editor's grounds. Added, modified and deleted lines are the string,
+ * builtin and number hues.
+ */
+function severityColors(theme: SpexrThemeKind): Record<string, string> {
+  const c = codeRoles(theme);
+  return {
+    "editorError.foreground": c.number,
+    "editorWarning.foreground": c.builtin,
+    "editorInfo.foreground": c.function,
+    "editorOverviewRuler.errorForeground": c.number,
+    "editorOverviewRuler.warningForeground": c.builtin,
+    "editorOverviewRuler.infoForeground": c.function,
+    "editorGutter.addedBackground": c.string,
+    "editorGutter.modifiedBackground": c.builtin,
+    "editorGutter.deletedBackground": c.number,
+  };
+}
+
+/**
  * The editor's own colours for a theme: the surface and code ink, the current
  * line (the primary ink at 4.5%, with no border), the selection (the accent at
  * 18%, the same unfocused; a matched bracket the same wash), the line numbers (muted, the current one in the
@@ -181,6 +205,7 @@ export function editorColors(theme: SpexrThemeKind): Record<string, string> {
     "editorLineNumber.foreground": muted,
     "editorLineNumber.activeForeground": primary,
     "editorCursor.foreground": accent,
+    ...severityColors(theme),
     "editorBracketMatch.background": selection,
     "editorBracketMatch.border": withAlpha(accent, 0),
     ...bracketColors(theme),

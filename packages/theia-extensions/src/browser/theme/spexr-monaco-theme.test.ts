@@ -122,6 +122,20 @@ describe("the Monaco theme's editor colours", () => {
     expect(colours["editorBracketMatch.border"]).toBe(`${editorInks(theme).accent}00`);
   });
 
+  it.each(themes)("%s: the squiggles, ruler marks and gutter change bars are kit syntax hues, as the severity says", (theme) => {
+    const colours = editorColors(theme);
+    const roles = codeRoles(theme);
+    expect(colours["editorError.foreground"]).toBe(roles.number);
+    expect(colours["editorWarning.foreground"]).toBe(roles.builtin);
+    expect(colours["editorInfo.foreground"]).toBe(roles.function);
+    expect(colours["editorOverviewRuler.errorForeground"]).toBe(roles.number);
+    expect(colours["editorOverviewRuler.warningForeground"]).toBe(roles.builtin);
+    expect(colours["editorOverviewRuler.infoForeground"]).toBe(roles.function);
+    expect(colours["editorGutter.addedBackground"]).toBe(roles.string);
+    expect(colours["editorGutter.modifiedBackground"]).toBe(roles.builtin);
+    expect(colours["editorGutter.deletedBackground"]).toBe(roles.number);
+  });
+
   it("encodes the kit's rgba hairlines as #rrggbbaa", () => {
     expect(rgbaToHex8("rgba(20,22,27,0.08)")).toBe("#14161b14");
     expect(throws(() => rgbaToHex8("#14161b"))).toBe(true);
@@ -163,6 +177,23 @@ describe("contrast of the editor's text on its grounds", () => {
       }
     }
     if (process.env.VERBOSE) console.info(`  min syntax contrast ${theme}: ${min.toFixed(2)}:1`);
+  });
+
+  // A squiggle, a ruler mark and a change bar are indicators: 3:1 is their
+  // floor; the hues are text-grade, so they clear it by a wide margin.
+  it.each(themes)("%s: severity squiggles and change bars read at least 3:1 on every ground", (theme) => {
+    const colours = editorColors(theme);
+    const ids = Object.keys(colours).filter((id) => /^(editor(Error|Warning|Info)\.foreground|editorOverviewRuler\.(error|warning|info)Foreground|editorGutter\.(added|modified|deleted)Background)$/.test(id));
+    expect(ids).toHaveLength(9);
+    let min = Infinity;
+    for (const id of ids) {
+      for (const [ground, bg] of grounds(theme)) {
+        const ratio = contrastRatio(colours[id]!, bg);
+        expect(ratio, `${theme} ${id} on ${ground}`).toBeGreaterThanOrEqual(3);
+        min = Math.min(min, ratio);
+      }
+    }
+    if (process.env.VERBOSE) console.info(`  min severity contrast ${theme}: ${min.toFixed(2)}:1`);
   });
 
   // The selection over the current line is two washes: the muted ink (the
