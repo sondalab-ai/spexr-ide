@@ -18,6 +18,8 @@ export interface PreparedRun {
   readonly userData: string;
   /** Where the fixture extension writes its acknowledgements. */
   readonly ackDir: string;
+  /** The second project, `prism-site`: a live agent's directory and nothing else (S6a). */
+  readonly site: string;
 }
 
 export type Theme = "dark" | "light";
@@ -96,14 +98,16 @@ export function prepareRun(root: string, theme: Theme): PreparedRun {
     configDir: path.join(root, "theia"),
     userData: path.join(root, "ud"),
     ackDir: path.join(root, "ack"),
+    site: path.join(root, "ws", "prism-site"),
   };
-  for (const dir of [run.workspace, run.home, run.bin, run.configDir, run.userData, run.ackDir]) {
+  for (const dir of [run.workspace, run.site, run.home, run.bin, run.configDir, run.userData, run.ackDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
   writeHome(run);
   writeClaudeStub(run.bin);
   buildRepository(run);
   seedSettings(run.configDir, theme);
+  seedParityFixture(run);
   return run;
 }
 
@@ -213,7 +217,14 @@ function writeClaudeStub(bin: string): void {
   const stub = path.join(bin, "claude");
   fs.writeFileSync(
     stub,
-    ["#!/bin/sh", "# tests/visual fixture: not the Claude CLI.", "printf 'claude (visual fixture stub)\\n'", "while :; do sleep 3600; done", ""].join("\n"),
+    [
+      "#!/bin/sh",
+      "# tests/visual fixture: not the Claude CLI. A one-shot call (-p) has no model to ask, so it ends.",
+      'case "$1" in -p|--print) exit 0 ;; esac',
+      "printf 'claude (visual fixture stub)\\n'",
+      "while :; do sleep 3600; done",
+      "",
+    ].join("\n"),
   );
   fs.chmodSync(stub, 0o755);
 }
@@ -274,4 +285,79 @@ function replaceOnce(text: string, from: string, to: string): string {
     throw new Error(`fixture history: expected exactly one "${from}"`);
   }
   return text.slice(0, at) + to + text.slice(at + from.length);
+}
+
+/* ── S6a: the parity fixture's content ─────────────────────────────────────── */
+
+const SESSIONS_DIR = path.join(__dirname, "fixtures", "claude-sessions");
+
+/** One seeded transcript, from fixtures/claude-sessions/manifest.json. */
+export interface SeededSession {
+  readonly file: string;
+  /** `ws` is the probe-engine workspace, `site` the prism-site project. */
+  readonly project: "ws" | "site";
+  readonly sessionId: string;
+  readonly name: string;
+  /** How long ago the transcript was last written; 0 for a live agent. */
+  readonly ageMinutes: number;
+  readonly live: boolean;
+  readonly tools: number;
+}
+
+export function seededSessions(): SeededSession[] {
+  return JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, "manifest.json"), "utf8")) as SeededSession[];
+}
+
+/** Where Claude Code keeps a project's transcripts: the cwd with every non-alphanumeric turned into `-`. */
+function transcriptPath(run: PreparedRun, s: SeededSession): string {
+  const dir = fs.realpathSync(s.project === "ws" ? run.workspace : run.site);
+  return path.join(run.home, ".claude", "projects", dir.replace(/[^a-zA-Z0-9]/g, "-"), `${s.sessionId}.jsonl`);
+}
+
+/**
+ * What the Lumen demo has that a bare run does not (S6a): three sessions in
+ * the workspace and a second project's, the names the user gave them, the
+ * `pnpm` stub the driver runs in the shell terminal, and the prism-site
+ * folder the second live agent works in. The transcripts hold `{{WS}}` and
+ * `{{SITE}}` for the two real paths, which are only known here; the live
+ * agents' processes are started by the capture (stubs.ts), not here.
+ */
+function seedParityFixture(run: PreparedRun): void {
+  const ws = fs.realpathSync(run.workspace);
+  const site = fs.realpathSync(run.site);
+  fs.writeFileSync(path.join(run.site, "package.json"), JSON.stringify({ name: "prism-site", private: true, version: "0.1.0" }, null, 2) + "\n");
+
+  const names: Record<string, string> = {};
+  for (const s of seededSessions()) {
+    const text = fs.readFileSync(path.join(SESSIONS_DIR, s.file), "utf8").split("{{WS}}").join(ws).split("{{SITE}}").join(site);
+    const target = transcriptPath(run, s);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, text);
+    names[s.sessionId] = s.name;
+  }
+  touchTranscripts(run);
+  fs.mkdirSync(path.join(run.home, ".spexr"), { recursive: true });
+  fs.writeFileSync(path.join(run.home, ".spexr", "session-names.json"), JSON.stringify(names, null, 2) + "\n");
+
+  const pnpm = path.join(run.bin, "pnpm");
+  fs.copyFileSync(path.join(__dirname, "fixtures", "bin", "pnpm"), pnpm);
+  fs.chmodSync(pnpm, 0o755);
+}
+
+/**
+ * Give each transcript the age the manifest says, counted from now. A live
+ * agent counts as running only while its transcript is newer than ten
+ * minutes, so the capture calls this again right before the scene.
+ */
+export function touchTranscripts(run: PreparedRun, now: number = Date.now()): void {
+  for (const s of seededSessions()) {
+    const at = new Date(now - s.ageMinutes * 60_000);
+    fs.utimesSync(transcriptPath(run, s), at, at);
+  }
+}
+
+/** The directories the live agents work in, as realpaths (lsof reports the resolved one). */
+export function liveAgentDirs(run: PreparedRun): string[] {
+  const live = new Set(seededSessions().filter((s) => s.live).map((s) => s.project));
+  return [...live].map((p) => fs.realpathSync(p === "ws" ? run.workspace : run.site));
 }
