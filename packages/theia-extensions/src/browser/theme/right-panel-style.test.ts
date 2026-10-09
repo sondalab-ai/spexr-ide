@@ -105,6 +105,8 @@ describe("the right island's views in spexr.css", () => {
 
   it("stands the active expert on the kit's seam: a current list row, the accent whether or not focus is in", () => {
     expect(rules(".spexr-experts-list__item")).toMatch(/--sl-seam-focus:\s*1;/);
+    // The kit's row is 100% wide: without border-box its padding pushes it out of the card, clipped.
+    expect(rules(".spexr-experts-list__item")).toMatch(/box-sizing:\s*border-box;/);
     expect(rules(".spexr-experts-list__item[aria-current] .spexr-experts-list__icon")).toMatch(/color:\s*var\(--slc-accent-text\)/);
     expect(kitFile("components.css")).toMatch(/\.sl-list__row:is\(\[aria-selected="true"\], \[aria-current\]:not\(\[aria-current="false"\]\)\),/);
   });

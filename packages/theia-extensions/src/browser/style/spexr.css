@@ -3298,6 +3298,7 @@ code {
    inside, since the state is the app's, not the keyboard's. */
 .spexr-experts-list__item {
   --sl-seam-focus: 1;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--sl-space-2);
