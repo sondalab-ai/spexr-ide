@@ -182,6 +182,15 @@ interface UnifiedRef {
   claude?: TranscriptRef;
 }
 
+/**
+ * Where a name map (sessionId or projectPath → the name the user gave it) is
+ * kept. The service loads it once and saves the whole map after every change.
+ */
+export interface NameStore {
+  load(): Promise<Map<string, string>>;
+  save(names: Map<string, string>): Promise<void>;
+}
+
 /** Constructor seams so the service is unit-testable without a real home dir. */
 export interface DarkfactoryDeps {
   /** Fixed list, or a provider re-read on every scan (production discovers per scan). */
@@ -209,6 +218,14 @@ export interface DarkfactoryDeps {
   sessionNamesPath?: string;
   /** Project-name store override, so tests never touch the real home directory. */
   projectNamesPath?: string;
+  /**
+   * Session-name store; default is the JSON file at {@link sessionNamesPath}.
+   * Tests that drive fake timers inject an in-memory one: a real read is I/O
+   * those timers cannot advance, so a scan would still be in flight at the next tick.
+   */
+  sessionNameStore?: NameStore;
+  /** Project-name store; default is the JSON file at {@link projectNamesPath}. See {@link sessionNameStore}. */
+  projectNameStore?: NameStore;
   /** Directory-existence seam used by the name sweep (default: a `stat` that must say "directory"). */
   dirExists?: (path: string) => Promise<boolean>;
   /** Resume-chain tracker; tests inject one with in-memory file seams. */
@@ -404,8 +421,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private indexing = false;
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
   private readonly sessionIndexPath: string | undefined;
-  private readonly sessionNamesPath: string | undefined;
-  private readonly projectNamesPath: string | undefined;
+  private readonly sessionNameStore: NameStore;
+  private readonly projectNameStore: NameStore;
   /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
   private sessionNames?: Promise<Map<string, string>>;
   /** The last queued names write; see {@link writeSessionNames}. */
@@ -466,8 +483,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.generator = d.generator;
     this.embed = d.embed;
     this.sessionIndexPath = d.sessionIndexPath;
-    this.sessionNamesPath = d.sessionNamesPath;
-    this.projectNamesPath = d.projectNamesPath;
+    // An unset path stays undefined, so the stores resolve their default (and
+    // its env override) on each call, as they did before the seam existed.
+    this.sessionNameStore = d.sessionNameStore ?? {
+      load: () => loadSessionNames(d.sessionNamesPath),
+      save: (names) => saveSessionNames(names, d.sessionNamesPath),
+    };
+    this.projectNameStore = d.projectNameStore ?? {
+      load: () => loadProjectNames(d.projectNamesPath),
+      save: (names) => saveProjectNames(names, d.projectNamesPath),
+    };
     this.dirExists = d.dirExists ?? defaultDirExists;
     this.lineage = d.lineage ?? new SessionLineage();
     this.projectGroups = d.projectGroups ?? new ProjectGroups(this.now);
@@ -832,7 +857,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const gone = staleProjectNames(projectNames, await this.projectDirState([...projectNames.keys()]));
     if (gone.length > 0) {
       for (const path of gone) projectNames.delete(path);
-      await saveProjectNames(projectNames, this.projectNamesPath);
+      await this.projectNameStore.save(projectNames);
     }
   }
 
@@ -1016,18 +1041,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * A failed write does not block the ones queued after it.
    */
   private writeSessionNames(names: Map<string, string>): Promise<void> {
-    const next = this.sessionNamesWrite.then(() => saveSessionNames(names, this.sessionNamesPath));
+    const next = this.sessionNamesWrite.then(() => this.sessionNameStore.save(names));
     this.sessionNamesWrite = next.catch(() => undefined);
     return next;
   }
 
   private loadNames(): Promise<Map<string, string>> {
-    if (!this.sessionNames) this.sessionNames = loadSessionNames(this.sessionNamesPath);
+    if (!this.sessionNames) this.sessionNames = this.sessionNameStore.load();
     return this.sessionNames;
   }
 
   private loadProjectNames(): Promise<Map<string, string>> {
-    if (!this.projectNames) this.projectNames = loadProjectNames(this.projectNamesPath);
+    if (!this.projectNames) this.projectNames = this.projectNameStore.load();
     return this.projectNames;
   }
 
@@ -1080,7 +1105,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const trimmed = name.trim().slice(0, MAX_PROJECT_NAME_CHARS);
     if (trimmed) names.set(key, trimmed);
     else names.delete(key);
-    await saveProjectNames(names, this.projectNamesPath);
+    await this.projectNameStore.save(names);
 
     let changed = false;
     for (const [sessionId, tile] of this.lastTiles) {
