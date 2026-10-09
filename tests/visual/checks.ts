@@ -161,16 +161,43 @@ function contrast(a: Rgb, b: Rgb): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
-/** Where to sample an overlay's left edge: its 1px edge, the ground 6px outside it, its own fill 3px inside, at the middle of its left side. */
+/** Rows sampled along an overlay's left edge. */
+const EDGE_ROWS = 5;
+
+/**
+ * Where to sample an overlay's left edge, at EDGE_ROWS rows spread around the
+ * middle of its left side (8px apart, closer on a short box): first its 1px
+ * edge, then the ground 6px outside it, then its own fill 3px inside it, each
+ * as one run of EDGE_ROWS points. One pixel per colour read a glyph of the
+ * terminal text behind the toast as the ground; {@link checkEdge} takes the
+ * median of each run.
+ */
 export function edgePoints(box: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number }> {
-  const y = box.y + Math.min(box.h / 2, 24);
-  return [{ x: box.x - 1, y }, { x: box.x - 6, y }, { x: box.x + 3, y }];
+  const mid = box.y + Math.min(box.h / 2, 24);
+  const step = Math.max(0, Math.min(8, (box.h - 16) / 4));
+  const ys = Array.from({ length: EDGE_ROWS }, (_, i) => mid + (i - (EDGE_ROWS - 1) / 2) * step);
+  return [box.x - 1, box.x - 6, box.x + 3].flatMap((x) => ys.map((y) => ({ x, y })));
 }
 
-/** The overlay's boundary, as painted: its edge at 3:1 against its own fill and against the ground behind it (the owner's rule for boundaries). */
+/** The per-channel median of a run of colours: a stray glyph pixel does not move it. */
+function median(run: readonly Rgb[]): Rgb {
+  const at = (ch: 0 | 1 | 2): number => {
+    const v = run.map((c) => c[ch]).sort((x, y) => x - y);
+    return v[Math.floor(v.length / 2)]!;
+  };
+  return [at(0), at(1), at(2)];
+}
+
+/**
+ * The overlay's boundary, as painted: its edge at 3:1 against its own fill and
+ * against the ground behind it (the owner's rule for boundaries). `samples` is
+ * what {@link edgePoints} asked for: edge, ground and fill runs in that order,
+ * each reduced to its median (a run of one is itself).
+ */
 export function checkEdge(scene: string, samples: readonly Rgb[]): string[] {
-  const [edge, ground, fill] = samples;
-  if (!edge || !ground || !fill) return [`${scene}: no pixels sampled`];
+  const n = Math.floor(samples.length / 3);
+  if (n === 0 || samples.length % 3 !== 0) return [`${scene}: no pixels sampled`];
+  const [edge, ground, fill] = [0, 1, 2].map((i) => median(samples.slice(i * n, (i + 1) * n))) as [Rgb, Rgb, Rgb];
   const problems: string[] = [];
   const onFill = contrast(edge, fill);
   const onGround = contrast(edge, ground);
