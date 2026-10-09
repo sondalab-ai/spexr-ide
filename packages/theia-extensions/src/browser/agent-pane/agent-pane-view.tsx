@@ -1,7 +1,7 @@
 import * as React from "react";
 import { nls } from "@theia/core/lib/common/nls";
 import { PanelHead } from "../views/panel-head.js";
-import { formatDuration, modelFamily, shortId, toolIcon, visibleTools } from "./agent-pane-format.js";
+import { TOOL_ROWS_SHOWN, formatDuration, inlineCode, modelFamily, plainTarget, shortId, toolIcon, visibleTools } from "./agent-pane-format.js";
 import type { AgentPaneSnapshot, PaneTool } from "../../common/agent-pane-protocol.js";
 
 export interface AgentPaneViewProps {
@@ -30,22 +30,43 @@ const meta = (tool: PaneTool): string | undefined => {
   return tool.durationMs === undefined ? undefined : formatDuration(tool.durationMs);
 };
 
-const ToolRow: React.FC<{ readonly tool: PaneTool }> = ({ tool }) => (
-  <li className="spexr-agent-tool" data-state={tool.state}>
-    <span className={`codicon ${toolIcon(tool)} spexr-agent-tool__icon`} aria-hidden="true" />
-    <span className="spexr-agent-tool__text">
-      {tool.verb ?? tool.name}
-      {tool.target ? <b className="spexr-agent-tool__target"> {tool.target}</b> : null}
+/** A tool row: its name and target (cut with an ellipsis when long), the edit's size beside them, never cut, and the duration. */
+const ToolRow: React.FC<{ readonly tool: PaneTool }> = ({ tool }) => {
+  const target = plainTarget(tool);
+  return (
+    <li className="spexr-agent-tool" data-state={tool.state}>
+      <span className={`codicon ${toolIcon(tool)} spexr-agent-tool__icon`} aria-hidden="true" />
+      <span className="spexr-agent-tool__text" title={tool.path ?? target}>
+        {tool.verb ?? tool.name}
+        {target ? <b className="spexr-agent-tool__target"> {target}</b> : null}
+      </span>
       {tool.added !== undefined || tool.removed !== undefined ? <DiffStat added={tool.added} removed={tool.removed} /> : null}
-    </span>
-    <span className="spexr-agent-tool__meta">{meta(tool)}</span>
-  </li>
+      <span className="spexr-agent-tool__meta">{meta(tool)}</span>
+    </li>
+  );
+};
+
+/** Words with their backtick spans set as inline code, as the demo sets `cache.write`. */
+const Prose: React.FC<{ readonly text: string }> = ({ text }) => (
+  <>
+    {inlineCode(text).map((part, i) =>
+      part.code ? (
+        <code key={i} className="sl-code">
+          {part.text}
+        </code>
+      ) : (
+        <React.Fragment key={i}>{part.text}</React.Fragment>
+      ),
+    )}
+  </>
 );
 
-/** The head's title: the session's name; the id's own short form when it has none yet. */
+/** The head's title: the session's name, or a placeholder until it has one. */
 const titleOf = (s: AgentPaneSnapshot): string => s.title ?? nls.localize("spexr/agentPane/untitled", "New session");
 
-const Empty: React.FC<{ readonly onReveal: () => void }> = ({ onReveal }) => (
+const TOOLS_LIST_ID = "spexr-agent-tools-list";
+
+export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void }> = ({ onReveal }) => (
   <section className="spexr-agent-pane spexr-agent-pane--empty" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
     <PanelHead eyebrow={nls.localize("spexr/agentPane/eyebrow", "Agent")} title={nls.localize("spexr/agentPane/emptyTitle", "No session yet")} />
     <div className="spexr-panel-body spexr-agent-pane__empty">
@@ -67,11 +88,13 @@ const Empty: React.FC<{ readonly onReveal: () => void }> = ({ onReveal }) => (
  * the agent waits for them. Nothing here animates in.
  */
 export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded, onToggleExpanded, onReveal }) => {
-  if (!snapshot) return <Empty onReveal={onReveal} />;
+  if (!snapshot) return <AgentPaneEmpty onReveal={onReveal} />;
   const turn = snapshot.turn;
   const family = modelFamily(snapshot.model);
   const prose = turn?.prose?.[turn.prose.length - 1];
-  const { shown, hidden } = visibleTools(turn?.tools ?? [], expanded);
+  const tools = turn?.tools ?? [];
+  const { shown } = visibleTools(tools, expanded);
+  const foldable = tools.length - TOOL_ROWS_SHOWN;
   const diff = turn?.diff;
   return (
     <section className="spexr-agent-pane" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
@@ -90,18 +113,24 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
             </button>
           </div>
         ) : null}
-        {turn?.prompt ? <p className="spexr-agent-prompt">{turn.prompt}</p> : null}
-        {prose ? <p className="spexr-agent-prose">{prose}</p> : null}
+        {turn?.prompt ? (
+          <p className="spexr-agent-prompt" title={turn.prompt}>
+            {turn.prompt}
+          </p>
+        ) : null}
+        {prose ? (
+          <p className="spexr-agent-prose">
+            <Prose text={prose} />
+          </p>
+        ) : null}
         {shown.length > 0 ? (
           <div className="spexr-agent-tools">
-            {hidden > 0 || expanded ? (
-              <button type="button" className="spexr-agent-tools__fold" aria-expanded={expanded} onClick={onToggleExpanded}>
-                {expanded
-                  ? nls.localize("spexr/agentPane/fewer", "Show fewer")
-                  : nls.localize("spexr/agentPane/earlier", "{0} earlier", hidden)}
+            {foldable > 0 ? (
+              <button type="button" className="spexr-agent-tools__fold" aria-expanded={expanded} aria-controls={TOOLS_LIST_ID} onClick={onToggleExpanded}>
+                {nls.localize("spexr/agentPane/earlier", "{0} earlier", foldable)}
               </button>
             ) : null}
-            <ol className="spexr-agent-tools__list">
+            <ol id={TOOLS_LIST_ID} className="spexr-agent-tools__list" aria-label={nls.localize("spexr/agentPane/tools", "Tool calls")}>
               {shown.map((tool) => (
                 <ToolRow key={tool.id} tool={tool} />
               ))}
@@ -119,7 +148,7 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
             </figcaption>
             <pre className="spexr-agent-diff__body">
               {diff.lines.map((line, i) => (
-                <span key={i} className={`spexr-agent-diff__row spexr-agent-diff__row--${line.startsWith("+") ? "add" : "del"}`}>
+                <span key={i} className={`spexr-agent-diff__row spexr-agent-diff__row--${line.startsWith("+") ? "add" : "del"}`} title={line}>
                   {line}
                 </span>
               ))}
@@ -128,14 +157,20 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
         ) : null}
         {snapshot.plan && snapshot.plan.length > 0 ? (
           <div className="spexr-agent-plan">
-            <span className="sl-eyebrow">{nls.localize("spexr/agentPane/plan", "Plan")}</span>
-            {snapshot.plan.map((item, i) => (
-              <label key={i} className="sl-check spexr-agent-plan__item" onClick={(e) => e.preventDefault()}>
-                <input className="sl-check__input" type="checkbox" checked={item.done} readOnly aria-readonly="true" tabIndex={-1} onChange={noop} />
-                <span className="sl-check__box" />
-                <span className="sl-check__label">{item.text}</span>
-              </label>
-            ))}
+            <span className="sl-eyebrow" id="spexr-agent-plan-title">
+              {nls.localize("spexr/agentPane/plan", "Plan")}
+            </span>
+            <ul className="spexr-agent-plan__list" aria-labelledby="spexr-agent-plan-title">
+              {snapshot.plan.map((item, i) => (
+                <li key={i} className="spexr-agent-plan__item">
+                  <label className="sl-check" onClick={(e) => e.preventDefault()}>
+                    <input className="sl-check__input" type="checkbox" checked={item.done} readOnly aria-readonly="true" tabIndex={-1} onChange={noop} />
+                    <span className="sl-check__box" />
+                    <span className="sl-check__label">{item.text}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
       </div>

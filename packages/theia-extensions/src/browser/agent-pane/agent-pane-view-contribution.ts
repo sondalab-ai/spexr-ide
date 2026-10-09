@@ -1,6 +1,7 @@
 import { injectable } from "@theia/core/shared/inversify";
 import { AbstractViewContribution } from "@theia/core/lib/browser";
 import { nls } from "@theia/core/lib/common/nls";
+import { AGENT_PANE_RANK } from "../shell/workbench-geometry.js";
 import type { AgentPaneWidget } from "./agent-pane-widget.js";
 
 export const AGENT_PANE_VIEW_ID = "spexr.view.agent-pane";
@@ -14,7 +15,7 @@ export class AgentPaneViewContribution extends AbstractViewContribution<AgentPan
       widgetName: nls.localize("spexr/agentPane/title", "Agent"),
       defaultWidgetOptions: {
         area: "right",
-        rank: 0,
+        rank: AGENT_PANE_RANK,
       },
       toggleCommandId: "spexr.view.agent-pane.toggle",
     });

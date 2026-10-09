@@ -48,6 +48,26 @@ export function toolIcon(tool: PaneTool): string {
   }
 }
 
+/** A tool's target as it should read: a search pattern's regex escapes taken out (`cache\\.write` reads `cache.write`). */
+export function plainTarget(tool: PaneTool): string | undefined {
+  if (!tool.target) return undefined;
+  return tool.verb === "Search" || tool.verb === "Find" ? tool.target.replace(/\\(.)/g, "$1") : tool.target;
+}
+
+/** Text split at its backtick spans, so the view can set the spans as inline code; an unmatched backtick stays text. */
+export function inlineCode(text: string): Array<{ readonly code: boolean; readonly text: string }> {
+  const out: Array<{ code: boolean; text: string }> = [];
+  const re = /`([^`\n]+)`/g;
+  let at = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (m.index > at) out.push({ code: false, text: text.slice(at, m.index) });
+    out.push({ code: true, text: m[1]! });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push({ code: false, text: text.slice(at) });
+  return out;
+}
+
 /** The rows the card shows and how many it folded: the last few, or all when expanded. */
 export function visibleTools(tools: readonly PaneTool[], expanded: boolean): { shown: readonly PaneTool[]; hidden: number } {
   if (expanded || tools.length <= TOOL_ROWS_SHOWN) return { shown: tools, hidden: 0 };

@@ -12,7 +12,7 @@ import { SpexrSpecViewContribution } from "../views/spec-view-contribution.js";
 import { SpexrMemoryViewContribution } from "../views/memory-view-contribution.js";
 import { SpexrExpertsViewContribution } from "../views/experts-view-contribution.js";
 import { AgentPaneViewContribution } from "../agent-pane/agent-pane-view-contribution.js";
-import { takeAgentPaneReveal } from "./agent-pane-migration.js";
+import { agentPaneStartup } from "./agent-pane-migration.js";
 import { SpexrWelcomeViewContribution, WELCOME_VIEW_ID } from "../views/welcome-view-contribution.js";
 import { SPEC_VIEW_ID } from "../views/spec-view-contribution.js";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
@@ -108,7 +108,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       if (!alreadyConfigured) await this.openWelcome();
       await this.openSideViews();
       await this.revealRegisteredDefaults();
-      await this.revealAgentPane();
+      await this.revealAgentPane(!alreadyConfigured);
       if (!alreadyConfigured) await this.openTerminal();
       // A project switch has to land on a project tab: the restored layout, plus
       // the Darkfactory reveal above, would otherwise leave the dashboard in
@@ -163,15 +163,14 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   }
 
   /**
-   * The agent pane is the right island's first tile. It is attached on every
-   * launch (idempotent), and brought to the front of the island the first time
-   * only: on a fresh layout, and once on a layout saved before the pane
-   * existed. After that the user's own order stands. It comes after the other
-   * views are revealed, so it is the one in front.
+   * The agent pane is the right island's first tile. It is opened, and brought
+   * to the front, on a fresh layout and once on a saved one (the migration);
+   * a pane the user closed is not reopened on later launches. It comes after
+   * the other views are revealed, so it is the one in front.
    */
-  private async revealAgentPane(): Promise<void> {
+  private async revealAgentPane(fresh: boolean): Promise<void> {
     try {
-      await this.agentPaneView.openView({ activate: false, reveal: takeAgentPaneReveal(localStorage) });
+      if (agentPaneStartup(fresh, localStorage).open) await this.agentPaneView.openView({ activate: false, reveal: true });
     } catch (err) {
       console.warn("[spexr] the agent pane could not be opened", err);
     }

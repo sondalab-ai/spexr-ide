@@ -206,6 +206,37 @@ for (const theme of THEMES) {
       writeMeta();
       await fold.dispatchEvent("click");
       await page.locator("#theia-right-content-panel .spexr-agent-tool").nth(4).waitFor({ state: "detached", timeout: 15_000 });
+
+      // S6h: the agent-needs-you scene. The audit's agent asks for permission
+      // when its mode is not an auto-approving one and its last call has no
+      // result, so a `permission-mode: default` record is appended to its
+      // transcript and the file is dated a few seconds back (a call waits that
+      // long before it counts as a prompt). The pane shows "Waiting for you in
+      // the terminal"; the mode is put back after.
+      const needsTranscript = agent.path;
+      const modeRecord = (mode: string): string => JSON.stringify({ type: "permission-mode", permissionMode: mode, sessionId: agent.sessionId }) + "\n";
+      const dated = (secondsAgo: number): void => {
+        const at = new Date(Date.now() - secondsAgo * 1000);
+        fs.utimesSync(needsTranscript, at, at);
+      };
+      fs.appendFileSync(needsTranscript, modeRecord("default"));
+      const needs = page.locator("#theia-right-content-panel .spexr-agent-needs");
+      const needsDeadline = Date.now() + 60_000;
+      while (!(await needs.isVisible().catch(() => false)) && Date.now() < needsDeadline) {
+        dated(5);
+        await page.waitForTimeout(1_500);
+      }
+      await needs.waitFor({ state: "visible", timeout: 5_000 });
+      await shoot("agent-needs-you");
+      const needsState = await probeAgentPane(page);
+      const needsProblems: string[] = [];
+      if (!needsState.needsYou) needsProblems.push("agent pane: no needs-you row");
+      if (!(await needs.getByRole("button", { name: "Reveal" }).isVisible())) needsProblems.push("agent pane: the needs-you row has no Reveal button");
+      if (!/Waiting for you in the terminal/.test(await needs.innerText())) needsProblems.push("agent pane: the needs-you row does not say what it waits for");
+      check("agent pane (needs you)", needsProblems);
+      fs.appendFileSync(needsTranscript, modeRecord("auto"));
+      touchTranscripts(prepared);
+      await needs.waitFor({ state: "detached", timeout: 60_000 });
       meta.baseFirstVisibleLine = await firstVisibleLine(page);
       meta.page = await probePage(page);
       meta.editor = await probeEditor(page);
