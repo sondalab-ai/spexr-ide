@@ -1584,23 +1584,26 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
   }
 }
 
-/* ══ TOASTS AND THE NOTIFICATION CENTER (kit 0.33, .sl-toast) ═══════════════
+/* ══ TOASTS AND THE NOTIFICATION CENTER (kit 0.34, .sl-toast; Lumen's, S5f) ═
    Theia's notifications (@theia/messages) take the kit's toast on their own
-   DOM; nothing is re-rendered.
-   - A toast floats: the raised rung, its own border in shade as the ring,
-     the float recipe and the kit's large radius, newest last (nearest the
-     corner), as in the kit's stack.
-   - Its severity is a tone tick on its top edge (the kit's 0.33 measure,
-     2.75rem, with the tone's glow at --slc-glow's strength) and its glyph's
-     12% wash; the words stay neutral. Theia knows info, warning, error and
-     progress, and marks them only with its glyph, so the tone is read off
-     the glyph: error is the kit's danger, and progress, which wears the
-     info glyph, the info tone. Theia has no success.
+   DOM; nothing is re-rendered. TOAST (shell/workbench-geometry.ts) holds the
+   numbers and toasts-style.test.ts holds the two together.
+   - A toast floats: the raised rung, no border, the cast (the ring is the
+     cast's), r12, newest last (nearest the corner), as in the kit's stack.
+   - It is 360px wide and ends 8px inside the editor island's right edge, not
+     the window's (the shell publishes the edge, shell/editor-anchor.ts);
+     its bottom is 48px above the window's.
+   - Its severity is a tone tick on its top edge (the kit's 0.34 measure: a
+     1px line from 16px in to the middle, fading, the tone's glow at 50%) and
+     its glyph's 16% wash; the words stay neutral. Theia knows info, warning,
+     error and progress, and marks them only with its glyph, so the tone is
+     read off the glyph: error is the kit's danger, and progress, which wears
+     the info glyph, the info tone. Theia has no success.
    - It arrives as the kit's toast does: a 6px rise and a fade on the arrival
      curve, transitions only, so reduced motion (which zeroes the tokens)
      shows it at once. Only a toast: the center's rows never animate.
-   - The expand and clear glyphs are the kit's small icon buttons, in the one
-     control edge. Theia makes neither focusable; that is left as it is.
+   - The expand and clear glyphs are the kit's icon buttons, 32px at r8, in
+     the one control edge. Theia makes neither focusable; that is left as it is.
    - ARIA: Theia gives a notification no role and no live region. The kit's
      two regions, polite and alert, are spexr's (messages/toast-announcer.ts):
      they exist from start, outside Theia's container, which is display: none
@@ -1609,15 +1612,21 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#sta
    hover, and the row that holds the focus a flat tile with the seam in the
    accent (only a focused row is a tile, so the center holds the focus).
    Light and dark only: high contrast keeps Theia's own.
-   This is the kit's 0.33 toast. Kit 0.34 redrew it (no border, the cast,
-   a 1px tick to the middle, a 16% mark, a 32px dismiss); S5f takes that,
-   and anchors the toasts to the editor's right edge.
+   Not built: Lumen's stack-back card behind the toast, its timer along the
+   foot and the Undo button's key hint: Theia's toast has none of them.
    The stack sits 48px above the window's bottom (S5c), Lumen's toast offset:
    20px clear of the 28px status bar, where Theia's literal 36px was sized
    for its own 22px row. The notification center opens from the same
-   corner, so it moves with it. Layout, so in every theme. */
+   corner, so it moves with it, and is never wider than the editor island.
+   Layout, so in every theme. */
 body .theia-notifications-container {
+  right: calc(var(--spexr-editor-end) + 8px);
   bottom: 48px;
+  max-width: calc(var(--spexr-editor-width) - 16px);
+}
+
+body .theia-notifications-container.theia-notification-toasts {
+  width: 360px;
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item {
@@ -1640,7 +1649,7 @@ body .theia-notifications-container {
    registry's notification background, Theia's own grey: it would show at
    the corners the toast rounds off. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-container {
-  border-radius: var(--sl-radius-lg);
+  border-radius: 12px;
   background-color: transparent;
 }
 
@@ -1650,15 +1659,15 @@ body .theia-notifications-container {
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-container {
   margin-top: var(--sl-space-2);
-  border-radius: var(--sl-radius-lg);
+  border-radius: 12px;
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item {
   position: relative;
   background-color: var(--slc-raised);
-  border: 1px solid var(--slc-edge-raised);
-  border-radius: var(--sl-radius-lg);
-  box-shadow: var(--slc-depth-float);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: var(--slc-depth-cast);
   transition:
     opacity var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease)),
     translate var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease));
@@ -1674,33 +1683,20 @@ body .theia-notifications-container {
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item::before {
   content: "";
   position: absolute;
-  top: -1px;
+  top: 0;
   left: var(--sl-space-4);
-  width: 2.75rem;
-  height: 2px;
-  border-radius: 0 0 2px 2px;
-  background-color: var(--spexr-tone);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--spexr-tone) calc(var(--slc-glow) * 100%), transparent);
+  right: 50%;
+  height: 1px;
+  background-image: linear-gradient(90deg, var(--spexr-tone), transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--spexr-tone) calc(50% * min(1, var(--slc-glow) * 1000)), transparent);
   pointer-events: none;
-}
-
-/* Theia turns the border the accent on any focus, a mouse click included.
-   A mouse focus keeps the border, and draws no ring (the global focus rule,
-   at the top of this file); a keyboard focus draws the kit's ring inside the
-   toast, over the border, which joins it. */
-:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item:focus:not(:focus-visible) {
-  border-color: var(--slc-edge-raised);
-}
-
-:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item:focus-visible {
-  border-color: var(--slc-focus);
 }
 
 /* The kit's toast row: its padding, and the glyph, the words and the
    buttons on one line, 12px apart. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content {
   margin: 0;
-  padding: var(--sl-space-3) var(--sl-space-3) var(--sl-space-3) var(--sl-space-4);
+  padding: var(--sl-space-3) var(--sl-space-3) var(--sl-space-4) var(--sl-space-4);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content-main {
@@ -1724,9 +1720,9 @@ body .theia-notifications-container {
   color: var(--slc-text-muted);
 }
 
-/* The mark: the glyph in its tone on a 12% wash of itself (the kit's badge
-   recipe), 24px round. Theia colours the glyph through its icon variables,
-   which the theme layer sets to the same tones. */
+/* The mark: the glyph in its tone on a 16% wash of itself (Lumen's; the
+   kit's badge is 12%), 24px round. Theia colours the glyph through its icon
+   variables, which the theme layer sets to the same tones. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-icon {
   flex: none;
   display: grid;
@@ -1736,15 +1732,15 @@ body .theia-notifications-container {
   margin: 0;
   border-radius: 50%;
   color: var(--spexr-tone);
-  background-color: color-mix(in srgb, currentColor 12%, transparent);
+  background-color: color-mix(in srgb, currentColor 16%, transparent);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-icon::before {
   font-size: 16px;
 }
 
-/* The expand and clear glyphs, and the center's own: the kit's small icon
-   button (24px), transparent in the one control edge, the glyph in the
+/* The expand and clear glyphs, and the center's own: the kit's icon button
+   (32px, r8), transparent in the one control edge, the glyph in the
    secondary ink, hover bringing the surface rung up under it. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-actions {
   align-items: center;
@@ -1755,13 +1751,13 @@ body .theia-notifications-container {
   display: inline-grid;
   place-items: center;
   box-sizing: border-box;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 2rem;
+  height: 2rem;
   margin: 0;
   padding: 0;
   color: var(--slc-text-secondary);
   border: 1px solid var(--slc-edge-control);
-  border-radius: var(--sl-radius-sm);
+  border-radius: var(--sl-radius-md);
   transition:
     color var(--sl-motion-fast) var(--sl-motion-ease),
     background-color var(--sl-motion-fast) var(--sl-motion-ease),
@@ -1792,9 +1788,9 @@ body .theia-notifications-container {
 /* The center: the toast's surface. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notifications-container.theia-notification-center {
   background-color: var(--slc-raised);
-  border: 1px solid var(--slc-edge-raised);
-  border-radius: var(--sl-radius-lg);
-  box-shadow: var(--slc-depth-float);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: var(--slc-depth-cast);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header {
@@ -1802,7 +1798,7 @@ body .theia-notifications-container {
   padding-inline: var(--sl-space-4) var(--sl-space-2);
   color: var(--slc-text-secondary);
   background-color: transparent;
-  border-bottom: 1px solid var(--slc-edge-raised);
+  border-bottom: 1px solid var(--slc-border-subtle);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header-title {

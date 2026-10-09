@@ -248,7 +248,6 @@ describe("the toasts", () => {
   it.each([
     [".theia-notifications-container.theia-notification-toasts .theia-notification-list-item", `${NOT_HC} .theia-notification-toasts .theia-notification-list-item`],
     [".theia-notifications-container.theia-notification-toasts .theia-notification-list-item-container", `${NOT_HC} .theia-notification-toasts .theia-notification-list-item-container`],
-    [".theia-notification-list-item:focus", `${NOT_HC} .theia-notification-toasts .theia-notification-list-item:focus:not(:focus-visible)`],
     [".theia-notifications-container.theia-notification-center", `${NOT_HC} .theia-notifications-container.theia-notification-center`],
     [".theia-notification-center .theia-notification-list-item:not(:last-child)", `${NOT_HC} .theia-notification-center .theia-notification-list-item`],
     [".theia-notification-icon:before", `${NOT_HC} .theia-notification-icon::before`],
