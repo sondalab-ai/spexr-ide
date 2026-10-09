@@ -53,6 +53,10 @@ export interface CaptureMeta {
   page?: PageProbes;
   /** The editor's gutter, colours and tokens in the base scene, and its padding once scrolled to the top (S5d). */
   editor?: EditorProbe & { paddingTop?: number | null };
+  /** The palette scene's widget, rows and keycaps, keyed like the demo's `palette.*` regions, with the editor island's (S5f). */
+  paletteParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
+  /** What the lit main island wears in the base scene: the lit islands, the wash, the tint and the drop (S5f). */
+  litRim?: import("./checks").LitRim;
   /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */
   toastParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
   /** The right-panel scenes' regions by view (`todo`, `experts`, `memory`), keyed `rp.*` (S5e). */
@@ -66,6 +70,8 @@ export interface CaptureMeta {
   zoom?: ZoomProbe;
   /** macOS only: the bar through a full-screen round trip (S5b-2). */
   fullScreen?: FullScreenProbe;
+  /** The scene checks that failed (S5f), by scene; the capture throws after writing them. */
+  sceneProblems?: Record<string, string[]>;
   error?: string;
   close?: "closed" | "killed";
   log?: LogProbes;

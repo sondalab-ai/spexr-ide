@@ -5,12 +5,13 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
+import { checkLitRim, checkPalette, checkToast, probeLitRim } from "./checks";
+import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
-  QUICK_OPEN,
   captureStable,
   bottomPanelTop,
   firstVisibleLine,
+  openCommandPalette,
   parkPointer,
   runCommand,
   waitForAck,
@@ -96,6 +97,15 @@ for (const theme of THEMES) {
         writeMeta();
       };
 
+      // A scene that is not what it is meant to show fails the run (S5f): the
+      // problems are kept in meta.json, then thrown.
+      const fail = (scene: string, problems: readonly string[]): void => {
+        if (problems.length === 0) return;
+        (meta.sceneProblems ??= {})[scene] = [...problems];
+        writeMeta();
+        throw new Error(`${scene} scene: ${problems.join("; ")}`);
+      };
+
       // The demo shows the bottom panel; spexr can start with it collapsed.
       meta.bottomPanelOpened = await page.evaluate(() => {
         const panel = document.getElementById("theia-bottom-content-panel");
@@ -124,27 +134,35 @@ for (const theme of THEMES) {
       }
       writeMeta();
 
-      // palette: Quick Open with "probe" typed.
-      await page.keyboard.press("Escape");
-      await page.keyboard.press(QUICK_OPEN);
-      const input = page.locator(".quick-input-widget input.input");
-      await input.waitFor({ state: "visible", timeout: 15_000 });
-      await page.keyboard.type("probe");
-      await page
-        .locator(".quick-input-list .monaco-list-row", { hasText: "probe" })
-        .first()
-        .waitFor({ state: "visible", timeout: 30_000 });
+      // The lit island's light (S5f), in the base scene, where the main island
+      // is the lit one: exactly one island lit, wearing the wash, the tint and
+      // the drop.
+      meta.litRim = await probeLitRim(page);
+      fail("lit rim", checkLitRim(meta.litRim));
+      writeMeta();
+
+      // palette: the command palette open on a query that finds several
+      // commands, some with a shortcut, the first one selected. Placed against
+      // the editor island, which is measured with it (S5f).
+      const paletteInput = await openCommandPalette(page);
+      await paletteInput.fill(">toggle");
+      await page.locator(".quick-input-list .monaco-list-row.focused").first().waitFor({ state: "visible", timeout: 30_000 });
+      await page.locator(".quick-input-list .monaco-keybinding-key").first().waitFor({ state: "visible", timeout: 30_000 });
       await shoot("palette");
+      meta.paletteParity = { ...(await probeRegions(page, PALETTE_REGIONS)), ...(await probeRegions(page, EDITOR_REGIONS)) };
+      writeMeta();
+      fail("palette", checkPalette(meta.paletteParity, meta.paletteParity["main"], await page.evaluate(() => window.innerWidth)));
       await page.keyboard.press("Escape");
-      await input.waitFor({ state: "hidden", timeout: 15_000 });
+      await paletteInput.waitFor({ state: "hidden", timeout: 15_000 });
 
       // toast: an info message with an Undo action.
       await runCommand(page, "Parity: Toast scene");
       const toastAck = (await waitForAck(ackDir, "toast")) as SceneAck;
       await page.locator(".theia-notification-list-item", { hasText: "Probe saved" }).first().waitFor({ state: "visible", timeout: 15_000 });
       await shoot("toast", toastAck);
-      meta.toastParity = await probeRegions(page, TOAST_REGIONS);
+      meta.toastParity = { ...(await probeRegions(page, TOAST_REGIONS)), ...(await probeRegions(page, EDITOR_REGIONS)) };
       writeMeta();
+      fail("toast", checkToast(meta.toastParity, meta.toastParity["main"], await page.evaluate(() => window.innerHeight)));
 
       // focus-tree: the Explorer focused, resolve.ts its selected row.
       await runCommand(page, "Parity: Focus tree scene");

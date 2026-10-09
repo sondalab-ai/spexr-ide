@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 
@@ -44,6 +44,22 @@ export interface SceneAck {
  * so a slow filter cannot run a different one.
  */
 export async function runCommand(page: Page, label: string): Promise<void> {
+  const input = await openCommandPalette(page);
+  await input.fill(`>${label}`);
+  await page
+    .locator(".quick-input-list .monaco-list-row.focused", { hasText: label })
+    .waitFor({ state: "visible", timeout: 15_000 });
+  await page.keyboard.press("Enter");
+  await page.locator(".quick-input-widget").waitFor({ state: "hidden", timeout: 15_000 });
+}
+
+/**
+ * Open the command palette the way a user would, and return its input. Focus
+ * is first handed back to the page body: a key pressed while focus sits in an
+ * iframe (a webview) never reaches Theia's keybindings. F1 opens it with the
+ * `>` prefix, and the other binding is tried if it does not.
+ */
+export async function openCommandPalette(page: Page): Promise<Locator> {
   await page.keyboard.press("Escape");
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
   const input = page.locator(".quick-input-widget input.input");
@@ -57,12 +73,7 @@ export async function runCommand(page: Page, label: string): Promise<void> {
     if (opened) break;
   }
   if (!opened) throw new Error(`the command palette did not open (focus: ${await describeFocus(page)})`);
-  await input.fill(`>${label}`);
-  await page
-    .locator(".quick-input-list .monaco-list-row.focused", { hasText: label })
-    .waitFor({ state: "visible", timeout: 15_000 });
-  await page.keyboard.press("Enter");
-  await page.locator(".quick-input-widget").waitFor({ state: "hidden", timeout: 15_000 });
+  return input;
 }
 
 /** The focused element as `tag#id.class`, for error messages. */
@@ -299,6 +310,3 @@ export async function bottomPanelTop(page: Page, timeoutMs = 5_000): Promise<{ t
     return last === null ? null : { top: last, held: held >= 5 };
   }, timeoutMs);
 }
-
-/** `Meta+P` on macOS, `Control+P` elsewhere: Theia's Quick Open. */
-export const QUICK_OPEN = process.platform === "darwin" ? "Meta+P" : "Control+P";
