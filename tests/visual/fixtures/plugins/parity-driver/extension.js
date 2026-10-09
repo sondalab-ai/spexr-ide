@@ -24,6 +24,17 @@ const TOP_LINE = 36;
 const WARNING = { line: 46, text: "cache.write(probe.key, answer)", message: "Promise returned is not awaited" };
 
 /**
+ * S6a, the demo's other content. The second warning is in cache.ts, which is a
+ * background tab: resolve.ts's squiggle and the editor's lines stay as the
+ * base scene has them. The problems count is then 2, as the demo's.
+ */
+const SECOND_WARNING = { file: "src/probe/cache.ts", line: 22, text: "Date.now()", message: "Clock read in a hot path" };
+/** Dirty files: one space at the end of line 1, so no line moves and none shows in the 36-50 window. */
+const DIRTY_FILES = ["src/probe/resolve.ts", "src/probe/evidence.ts"];
+/** The one notification the bell holds. */
+const NOTIFICATION = "Cache warmed: 212 answers kept";
+
+/**
  * Write `<ack dir>/<name>.json`. Written atomically (temp file, then rename)
  * so the poller never reads half a file.
  */
@@ -137,6 +148,39 @@ function showShellTerminal() {
   return { names, shown: shell ? shell.name : null };
 }
 
+/** The shell terminal, waited for: the panel may open a moment after the window. */
+async function waitForShellTerminal(timeoutMs) {
+  const started = Date.now();
+  for (;;) {
+    const shell = vscode.window.terminals.find((t) => /^(bash|zsh|sh|fish)$/.test(t.name));
+    if (shell) return shell;
+    if (Date.now() - started > timeoutMs) return undefined;
+    await delay(250);
+  }
+}
+
+/** Put one space at the end of the first line, which leaves the file unsaved and every line where it was. */
+async function makeDirty(relative) {
+  const { doc } = await show(relative);
+  const edit = new vscode.WorkspaceEdit();
+  edit.insert(doc.uri, new vscode.Position(0, doc.lineAt(0).text.length), " ");
+  const applied = await vscode.workspace.applyEdit(edit);
+  return { file: relative, applied, dirty: doc.isDirty };
+}
+
+/**
+ * Raise the demo's one notification, then hide its toast: the bell keeps the
+ * dot and the capture has no toast over it. The toast arrives over RPC, so
+ * hiding is repeated until the first attempt after it has surely landed.
+ */
+async function notifyWithoutToast() {
+  void vscode.window.showInformationMessage(NOTIFICATION);
+  for (let i = 0; i < 8; i++) {
+    await delay(300);
+    await tryCommand("notifications.commands.hide");
+  }
+}
+
 /** @param {vscode.ExtensionContext} context */
 function activate(context) {
   const diagnostics = vscode.languages.createDiagnosticCollection("parity");
@@ -178,6 +222,18 @@ function activate(context) {
     );
     warning.source = "parity";
     diagnostics.set(doc.uri, [warning]);
+    const cacheDoc = await vscode.workspace.openTextDocument(workspaceUri(SECOND_WARNING.file));
+    const cacheLine = cacheDoc.lineAt(SECOND_WARNING.line - 1);
+    const at = cacheLine.text.indexOf(SECOND_WARNING.text);
+    const second = new vscode.Diagnostic(
+      new vscode.Range(SECOND_WARNING.line - 1, at, SECOND_WARNING.line - 1, at + SECOND_WARNING.text.length),
+      SECOND_WARNING.message,
+      vscode.DiagnosticSeverity.Warning,
+    );
+    second.source = "parity";
+    diagnostics.set(cacheDoc.uri, [second]);
+    const dirtied = [];
+    for (const file of DIRTY_FILES) dirtied.push(await makeDirty(file));
 
     const language = await waitForLanguageFeatures(doc.uri, 60_000);
     // The Explorer goes in front of the agent terminal the left panel reveals
@@ -187,6 +243,7 @@ function activate(context) {
     // Focus back to the editor, then the cursor again: showing the Explorer can move it.
     const { editor } = await show("src/probe/resolve.ts");
     const scroll = await placeCursor(editor);
+    await notifyWithoutToast();
 
     ack("base", {
       ok: true,
@@ -197,9 +254,41 @@ function activate(context) {
       topLine: scroll.topLine,
       scroll,
       file: path.basename(editor.document.fileName),
+      fixture: {
+        problems: vscode.languages.getDiagnostics().reduce((n, [, list]) => n + list.length, 0),
+        dirtied,
+        dirty: vscode.workspace.textDocuments.filter((d) => d.isDirty).map((d) => path.basename(d.fileName)),
+      },
       selections: editor.selections.map((s) => [s.start.line + 1, s.start.character + 1, s.end.line + 1, s.end.character + 1]),
       visible: editor.visibleRanges.map((r) => [r.start.line + 1, r.end.line + 1]),
     });
+  });
+
+  // S6a: the shell terminal runs the two commands the demo's panel shows. The
+  // pnpm stub (fixtures/bin/pnpm) acknowledges each one on its own, so the
+  // capture knows the command ran without reading the terminal's canvas.
+  register("parity.shell", async () => {
+    const shell = await waitForShellTerminal(60_000);
+    if (!shell) throw new Error("no shell terminal to run the demo's commands in");
+    shell.show(true);
+    shell.sendText("pnpm test probe");
+    ack("shell", { ok: true, terminal: shell.name });
+  });
+
+  register("parity.shell2", async () => {
+    const shell = await waitForShellTerminal(5_000);
+    if (!shell) throw new Error("no shell terminal for the second command");
+    shell.sendText("pnpm sl-audit");
+    ack("shell2", { ok: true, terminal: shell.name });
+  });
+
+  // Before the app closes: an unsaved file would otherwise stop it with a prompt.
+  register("parity.cleanup", async () => {
+    const saved = [];
+    for (const doc of vscode.workspace.textDocuments.filter((d) => d.isDirty)) {
+      saved.push({ file: path.basename(doc.fileName), saved: await doc.save() });
+    }
+    ack("cleanup", { ok: true, saved });
   });
 
   register("parity.toast", async () => {

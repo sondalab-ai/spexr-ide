@@ -190,3 +190,47 @@ export async function closeApp(app: ElectronApplication, ms = 20_000): Promise<"
   if (timer) clearTimeout(timer);
   return result;
 }
+
+/* ── S6a: can the window reach 1440×900? ─────────────────────────────────── */
+
+/** What was asked of the window, what it became, and the display it is on. */
+export interface WindowSizeOutcome {
+  readonly requested: { readonly width: number; readonly height: number };
+  /** `getContentSize()` after `setContentSize`, which {@link sizeWindow} has already called. */
+  readonly afterSetContentSize: string;
+  /** After a second try with `setBounds` (the content plus the frame's difference), at y 0; equal to the first when none was needed. */
+  readonly afterSetBounds: string;
+  readonly display: { readonly bounds: string; readonly workArea: string; readonly scaleFactor: number };
+  readonly innerSize: string;
+  /** True when the page itself is 1440×900. */
+  readonly reached: boolean;
+}
+
+/**
+ * Record whether the OS let the window reach the demo's 1440×900. On macOS the
+ * window is held inside the display's work area, so a runner whose display is
+ * shorter keeps a shorter page whatever `setContentSize` asks (the earlier
+ * captures were 1440×677). Called once, after {@link sizeWindow}. When
+ * `setContentSize` did not reach the target, a second lever, `setBounds`, is
+ * tried: it may move the window (to 0,0) and change its size, so it runs only
+ * then. Nothing here changes how the window is created.
+ */
+export async function probeWindowSize(app: ElectronApplication, page: Page): Promise<WindowSizeOutcome> {
+  const raw = await app.evaluate(({ BrowserWindow, screen }, size) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) throw new Error("no window");
+    const read = (): string => win.getContentSize().join("x");
+    const afterSetContentSize = read();
+    if (afterSetContentSize !== `${size.width}x${size.height}`) {
+      const frame = win.getSize()[1]! - win.getContentSize()[1]!;
+      win.setBounds({ x: 0, y: 0, width: size.width, height: size.height + frame });
+    }
+    const afterSetBounds = read();
+    const d = screen.getPrimaryDisplay();
+    const rect = (r: { x: number; y: number; width: number; height: number }): string => `${r.x},${r.y} ${r.width}x${r.height}`;
+    return { afterSetContentSize, afterSetBounds, display: { bounds: rect(d.bounds), workArea: rect(d.workArea), scaleFactor: d.scaleFactor } };
+  }, CONTENT);
+  await page.waitForTimeout(500);
+  const innerSize = await page.evaluate(() => `${window.innerWidth}x${window.innerHeight}`);
+  return { requested: CONTENT, ...raw, innerSize, reached: innerSize === `${CONTENT.width}x${CONTENT.height}` };
+}
