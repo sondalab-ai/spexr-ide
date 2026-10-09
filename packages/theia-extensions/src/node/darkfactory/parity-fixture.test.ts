@@ -122,9 +122,9 @@ describe("Refactor the audit", () => {
     expect(took("Edit", "resolve.ts")).toBe(1100);
   });
 
-  it("ends on a TodoWrite with 2 of 3 done, then the unresolved audit", () => {
+  it("ends on a TodoWrite with 2 of 3 completed, then the unresolved audit", () => {
     const todos = entries.flatMap((e) => (e.toolUseResult?.newTodos ? [e.toolUseResult.newTodos as Array<{ status: string }>] : []));
-    expect(todos[todos.length - 1]!.map((t) => t.status)).toEqual(["done", "done", "pending"]);
+    expect(todos[todos.length - 1]!.map((t) => t.status)).toEqual(["completed", "completed", "in_progress"]);
     const last = uses(entries)[13]!;
     expect(last.name).toBe("Bash");
     expect(last.input.command).toBe("pnpm sl-audit");

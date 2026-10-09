@@ -309,7 +309,7 @@ export function seededSessions(): SeededSession[] {
 }
 
 /** Where Claude Code keeps a project's transcripts: the cwd with every non-alphanumeric turned into `-`. */
-function transcriptPath(run: PreparedRun, s: SeededSession): string {
+export function transcriptPath(run: PreparedRun, s: SeededSession): string {
   const dir = fs.realpathSync(s.project === "ws" ? run.workspace : run.site);
   return path.join(run.home, ".claude", "projects", dir.replace(/[^a-zA-Z0-9]/g, "-"), `${s.sessionId}.jsonl`);
 }

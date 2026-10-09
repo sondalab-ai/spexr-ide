@@ -198,7 +198,7 @@ export interface WindowSizeOutcome {
   readonly requested: { readonly width: number; readonly height: number };
   /** `getContentSize()` after `setContentSize`, which {@link sizeWindow} has already called. */
   readonly afterSetContentSize: string;
-  /** After a second try with `setBounds` (the content plus the frame's difference), at y 0. */
+  /** After a second try with `setBounds` (the content plus the frame's difference), at y 0; equal to the first when none was needed. */
   readonly afterSetBounds: string;
   readonly display: { readonly bounds: string; readonly workArea: string; readonly scaleFactor: number };
   readonly innerSize: string;
@@ -210,8 +210,10 @@ export interface WindowSizeOutcome {
  * Record whether the OS let the window reach the demo's 1440×900. On macOS the
  * window is held inside the display's work area, so a runner whose display is
  * shorter keeps a shorter page whatever `setContentSize` asks (the earlier
- * captures were 1440×677). Called once, after {@link sizeWindow}; the second
- * lever is `setBounds`, and nothing here changes how the window is created.
+ * captures were 1440×677). Called once, after {@link sizeWindow}. When
+ * `setContentSize` did not reach the target, a second lever, `setBounds`, is
+ * tried: it may move the window (to 0,0) and change its size, so it runs only
+ * then. Nothing here changes how the window is created.
  */
 export async function probeWindowSize(app: ElectronApplication, page: Page): Promise<WindowSizeOutcome> {
   const raw = await app.evaluate(({ BrowserWindow, screen }, size) => {
@@ -219,8 +221,10 @@ export async function probeWindowSize(app: ElectronApplication, page: Page): Pro
     if (!win) throw new Error("no window");
     const read = (): string => win.getContentSize().join("x");
     const afterSetContentSize = read();
-    const frame = win.getSize()[1]! - win.getContentSize()[1]!;
-    win.setBounds({ x: 0, y: 0, width: size.width, height: size.height + frame });
+    if (afterSetContentSize !== `${size.width}x${size.height}`) {
+      const frame = win.getSize()[1]! - win.getContentSize()[1]!;
+      win.setBounds({ x: 0, y: 0, width: size.width, height: size.height + frame });
+    }
     const afterSetBounds = read();
     const d = screen.getPrimaryDisplay();
     const rect = (r: { x: number; y: number; width: number; height: number }): string => `${r.x},${r.y} ${r.width}x${r.height}`;

@@ -187,11 +187,15 @@ export interface FixtureState {
   readonly agentsPill: string | null;
   /** The bell carries its dot (`sl-titlebar__btn--dot`). */
   readonly bellDot: boolean;
-  /** Toasts on screen: the base scene has the dot and no toast. */
+  /** Toasts on screen: the base scene has the bell dot and no toast. */
   readonly toasts: number;
+  /** The text of every editor tab carrying Theia's dirty class (`theia-mod-dirty`). */
+  readonly dirtyTabs: readonly string[];
+  /** The status bar's problem item (`#status-bar-problem-marker-status`) as errors and warnings; null when absent or unreadable. */
+  readonly statusProblems: { readonly errors: number; readonly warnings: number } | null;
 }
 
-/** Read the pill, the bell and the toasts. Cheap enough to poll while the backend's scan lands. */
+/** Read the pill, the bell, the toasts, the dirty tabs and the status bar's problem count. Cheap enough to poll while the backend's scan lands. */
 export async function probeFixtureState(page: Page): Promise<FixtureState> {
   return page.evaluate(() => {
     const pill = document.querySelector<HTMLElement>('[data-parity="title.agents"]');
@@ -204,6 +208,11 @@ export async function probeFixtureState(page: Page): Promise<FixtureState> {
       agentsPill: pill ? (pill.textContent ?? "").trim() : null,
       bellDot: !!bell && bell.classList.contains("sl-titlebar__btn--dot"),
       toasts: [...document.querySelectorAll(".theia-notification-list-item")].filter(shown).length,
+      dirtyTabs: [...document.querySelectorAll<HTMLElement>(".lm-TabBar-tab.theia-mod-dirty")].map((t) => (t.textContent ?? "").trim()),
+      statusProblems: (() => {
+        const counts = (document.getElementById("status-bar-problem-marker-status")?.textContent ?? "").match(/\d+/g);
+        return counts && counts.length >= 2 ? { errors: Number(counts[0]), warnings: Number(counts[1]) } : null;
+      })(),
     };
   });
 }
@@ -231,6 +240,10 @@ export function checkFixture(state: FixtureState, report: FixtureReport): string
   if (state.agentsPill !== "2 agents running") problems.push(`fixture: the agents pill reads ${JSON.stringify(state.agentsPill)}, want "2 agents running"`);
   if (!state.bellDot) problems.push("fixture: the bell has no dot (no notification in the centre)");
   if (state.toasts !== 0) problems.push(`fixture: ${state.toasts} toast(s) over the base scene, want none`);
+  if (state.statusProblems?.warnings !== 2) problems.push(`fixture: the status bar shows ${JSON.stringify(state.statusProblems)}, want 2 warnings`);
+  for (const file of ["resolve.ts", "evidence.ts"]) {
+    if (!state.dirtyTabs.some((t) => t.includes(file))) problems.push(`fixture: no tab for ${file} carries the dirty class (dirty tabs: ${state.dirtyTabs.join(" | ") || "none"})`);
+  }
   if (report.base?.problems !== 2) problems.push(`fixture: ${report.base?.problems} problems, want 2 (the demo's warning count)`);
   for (const file of ["resolve.ts", "evidence.ts"]) {
     if (!report.base?.dirty?.includes(file)) problems.push(`fixture: ${file} is not unsaved (dirty: ${(report.base?.dirty ?? []).join(", ") || "none"})`);
