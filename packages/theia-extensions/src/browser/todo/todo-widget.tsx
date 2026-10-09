@@ -135,10 +135,13 @@ export class SpexrTodoWidget extends ReactWidget {
   }
 
   protected render(): React.ReactNode {
+    const title = nls.localize("spexr/todo/title", "TODO");
+    const eyebrow = nls.localize("spexr/todo/eyebrow", "Project · TODO");
+    const head = <PanelHead eyebrow={eyebrow} title={title} />;
     if (this.files.length === 0) {
       return (
-        <section className="spexr-todo" aria-label="TODO">
-          <PanelHead eyebrow="Project · TODO.md" title="TODO" />
+        <section className="spexr-todo" aria-label={title}>
+          {head}
           <div className="spexr-panel-body">
             <p className="spexr-todo__empty">Open a workspace to see its TODO.md.</p>
           </div>
@@ -148,44 +151,44 @@ export class SpexrTodoWidget extends ReactWidget {
     const multiRoot = this.files.length > 1;
     const done = this.files.reduce((n, f) => n + (f.items?.filter((i) => i.done).length ?? 0), 0);
     return (
-      <section className="spexr-todo" aria-label="TODO">
-        <PanelHead eyebrow="Project · TODO.md" title="TODO" />
+      <section className="spexr-todo" aria-label={title}>
+        {head}
         <div className="spexr-panel-body">
-        {this.files.map((file) => (
-          <div key={file.uri.toString()} className="spexr-todo__file">
-            {multiRoot && <h3 className="spexr-todo__folder">{file.root.path.base}</h3>}
-            {file.items === undefined ? (
-              <p className="spexr-todo__empty">No {TODO_FILE} in this folder.</p>
-            ) : file.items.every((i) => i.done) ? (
-              <p className="spexr-todo__empty">Nothing left to do.</p>
-            ) : (
-              <ul className="spexr-todo__list" role="list">
-                {file.items.filter((i) => !i.done).map((item) => this.renderItem(file, item))}
-              </ul>
-            )}
-          </div>
-        ))}
-        {done > 0 && (
-          <div className="spexr-todo__done">
-            <button
-              type="button"
-              className="sl-disclosure spexr-todo__done-toggle"
-              aria-expanded={this.showDone}
-              onClick={() => {
-                this.showDone = !this.showDone;
-                this.update();
-              }}
-            >
-              Done ({done})
-            </button>
-            {this.showDone &&
-              this.files.map((file) => (
-                <ul key={file.uri.toString()} className="spexr-todo__list" role="list">
-                  {file.items?.filter((i) => i.done).map((item) => this.renderItem(file, item))}
+          {this.files.map((file) => (
+            <div key={file.uri.toString()} className="spexr-todo__file">
+              {multiRoot && <h3 className="spexr-todo__folder">{file.root.path.base}</h3>}
+              {file.items === undefined ? (
+                <p className="spexr-todo__empty">No {TODO_FILE} in this folder.</p>
+              ) : file.items.every((i) => i.done) ? (
+                <p className="spexr-todo__empty">Nothing left to do.</p>
+              ) : (
+                <ul className="spexr-todo__list" role="list">
+                  {file.items.filter((i) => !i.done).map((item) => this.renderItem(file, item))}
                 </ul>
-              ))}
-          </div>
-        )}
+              )}
+            </div>
+          ))}
+          {done > 0 && (
+            <div className="spexr-todo__done">
+              <button
+                type="button"
+                className="sl-disclosure spexr-todo__done-toggle"
+                aria-expanded={this.showDone}
+                onClick={() => {
+                  this.showDone = !this.showDone;
+                  this.update();
+                }}
+              >
+                Done ({done})
+              </button>
+              {this.showDone &&
+                this.files.map((file) => (
+                  <ul key={file.uri.toString()} className="spexr-todo__list" role="list">
+                    {file.items?.filter((i) => i.done).map((item) => this.renderItem(file, item))}
+                  </ul>
+                ))}
+            </div>
+          )}
         </div>
       </section>
     );

@@ -12,6 +12,7 @@ import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import type { MemoryLinkStatus } from "../../common/agent-protocol.js";
 import { memoryDir } from "../workspace-paths.js";
 import { PanelHead } from "./panel-head.js";
+import { nls } from "@theia/core/lib/common/nls";
 
 const MEMORY_TYPES = ["user", "feedback", "project", "reference"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
@@ -72,7 +73,7 @@ export class SpexrMemoryWidget extends ReactWidget {
   constructor() {
     super();
     this.id = SpexrMemoryWidget.ID;
-    this.title.label = "Memory";
+    this.title.label = nls.localize("spexr/memory/title", "Memory");
     this.title.caption = "Browse and manage SPEXR memory";
     this.title.closable = true;
     this.title.iconClass = "codicon codicon-database";
@@ -249,194 +250,196 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
   const isBlocked = linkStatus === "blocked";
   const linkDisabled = !hasWorkspace || isLinked || isBlocked;
   const unlinkDisabled = !hasWorkspace || isUnlinked || isBlocked;
+  const eyebrow = nls.localize("spexr/memory/eyebrow", "Agent · notes");
+  const title = nls.localize("spexr/memory/title", "Memory");
   return (
   <section className="spexr-memory-panel" aria-label="Memory manager">
-    <PanelHead eyebrow="Agent · notes" title="Memory" />
+    <PanelHead eyebrow={eyebrow} title={title} />
     <div className="spexr-panel-body">
-    <p className="spexr-memory-panel__hint">
-      Persistent notes the agent loads on every session so it remembers what matters without
-      you re-explaining it each time.
-    </p>
+      <p className="spexr-memory-panel__hint">
+        Persistent notes the agent loads on every session so it remembers what matters without
+        you re-explaining it each time.
+      </p>
 
-    <div className="spexr-memory-panel__actions">
-      <button
-        type="button"
-        className="sl-btn sl-btn--primary"
-        onClick={onAdd}
-        disabled={!hasWorkspace}
-      >
-        + New memory
-      </button>
-      <button
-        type="button"
-        className="sl-btn sl-btn--ghost"
-        onClick={onRefresh}
-        disabled={!hasWorkspace}
-      >
-        Refresh
-      </button>
-    </div>
-
-    {hasWorkspace && entries.length > 0 ? (
-      <ul className="spexr-memory-list" role="list">
-        {entries.map((entry) => (
-          <li key={entry.uri} className="spexr-memory-list__item">
-            <div className="spexr-memory-list__meta">
-              <div className="spexr-memory-list__head">
-                <span
-                  className={`${entry.type === "user" ? "sl-tag" : "sl-tag sl-tag--plain"} spexr-memory-pill`}
-                  aria-label={`Type ${entry.type}`}
-                >
-                  {entry.type}
-                </span>
-                <span className="spexr-memory-list__name">{entry.name}</span>
-              </div>
-              {entry.description ? (
-                <span className="spexr-memory-list__desc">{entry.description}</span>
-              ) : null}
-              <span className="spexr-memory-list__filename">{entry.filename}</span>
-            </div>
-            <div className="spexr-memory-list__buttons">
-              <button
-                type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm"
-                onClick={() => onOpen(entry.uri)}
-                aria-label={`Open ${entry.name}`}
-              >
-                Open
-              </button>
-              <button
-                type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
-                onClick={() => onDelete(entry.uri)}
-                aria-label={`Delete ${entry.name}`}
-              >
-                Delete
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
-    ) : null}
-
-    {hasWorkspace && entries.length === 0 ? (
-      <div className="sl-empty spexr-memory-panel__empty">
-        <p className="sl-empty__body">
-          No project memories yet. Use <strong>+ New memory</strong> to add one.
-        </p>
-      </div>
-    ) : null}
-
-    {!hasWorkspace ? (
-      <div className="sl-empty spexr-memory-panel__empty">
-        <p className="sl-empty__body">
-          Open a workspace to manage its project memory.
-        </p>
-      </div>
-    ) : null}
-
-    <div className="spexr-memory-panel__section">
-      <h3 className="spexr-memory-panel__subtitle">
-        Agent connection{" "}
-        <span
-          className={`${LINK_BADGE[linkStatus].className} spexr-link-badge`}
-          aria-label={`Memory link status: ${LINK_BADGE[linkStatus].label}`}
+      <div className="spexr-memory-panel__actions">
+        <button
+          type="button"
+          className="sl-btn sl-btn--primary"
+          onClick={onAdd}
+          disabled={!hasWorkspace}
         >
-          {LINK_BADGE[linkStatus].label}
-        </span>
-      </h3>
-      {isBlocked ? (
-        <>
-          <p className="spexr-memory-panel__hint">
-            Claude already has its own memory for this project at the native location, so SPEXR
-            cannot link automatically. Resolving backs up the existing folder to a timestamped path
-            and links <code>docs/memory</code> in its place — nothing is deleted.
+          + New memory
+        </button>
+        <button
+          type="button"
+          className="sl-btn sl-btn--ghost"
+          onClick={onRefresh}
+          disabled={!hasWorkspace}
+        >
+          Refresh
+        </button>
+      </div>
+
+      {hasWorkspace && entries.length > 0 ? (
+        <ul className="spexr-memory-list" role="list">
+          {entries.map((entry) => (
+            <li key={entry.uri} className="spexr-memory-list__item">
+              <div className="spexr-memory-list__meta">
+                <div className="spexr-memory-list__head">
+                  <span
+                    className={`${entry.type === "user" ? "sl-tag" : "sl-tag sl-tag--plain"} spexr-memory-pill`}
+                    aria-label={`Type ${entry.type}`}
+                  >
+                    {entry.type}
+                  </span>
+                  <span className="spexr-memory-list__name">{entry.name}</span>
+                </div>
+                {entry.description ? (
+                  <span className="spexr-memory-list__desc">{entry.description}</span>
+                ) : null}
+                <span className="spexr-memory-list__filename">{entry.filename}</span>
+              </div>
+              <div className="spexr-memory-list__buttons">
+                <button
+                  type="button"
+                  className="sl-btn sl-btn--ghost sl-btn--sm"
+                  onClick={() => onOpen(entry.uri)}
+                  aria-label={`Open ${entry.name}`}
+                >
+                  Open
+                </button>
+                <button
+                  type="button"
+                  className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
+                  onClick={() => onDelete(entry.uri)}
+                  aria-label={`Delete ${entry.name}`}
+                >
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {hasWorkspace && entries.length === 0 ? (
+        <div className="sl-empty spexr-memory-panel__empty">
+          <p className="sl-empty__body">
+            No project memories yet. Use <strong>+ New memory</strong> to add one.
           </p>
-          <div className="spexr-memory-panel__actions">
-            <button
-              type="button"
-              className="sl-btn sl-btn--ghost sl-btn--danger"
-              onClick={onResolveConflict}
-            >
-              Resolve conflict…
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="spexr-memory-panel__hint">
-            Project memory is linked into the Claude session so the agent reads it live. Unlink to
-            stop sharing it with this account — your files stay; only the link is removed.
+        </div>
+      ) : null}
+
+      {!hasWorkspace ? (
+        <div className="sl-empty spexr-memory-panel__empty">
+          <p className="sl-empty__body">
+            Open a workspace to manage its project memory.
           </p>
-          <div className="spexr-memory-panel__actions">
-            <button
-              type="button"
-              className="sl-btn sl-btn--ghost"
-              onClick={onLink}
-              disabled={linkDisabled}
-            >
-              Link memory
-            </button>
-            <button
-              type="button"
-              className="sl-btn sl-btn--ghost sl-btn--danger"
-              onClick={onUnlink}
-              disabled={unlinkDisabled}
-            >
-              Unlink memory
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+        </div>
+      ) : null}
 
-    <div className="spexr-memory-panel__section">
-      <h3 className="spexr-memory-panel__subtitle">Scopes</h3>
-      <ul className="spexr-memory-panel__scopes">
-        <li>
-          <strong>baseline</strong> — community defaults shipped with SPEXR.
-        </li>
-        <li>
-          <strong>user</strong> — your personal prefs in <code>~/.spexr/memory/</code>, applied
-          across every project.
-        </li>
-        <li>
-          <strong>project</strong> — facts about this repo in{" "}
-          <code>&lt;workspace&gt;/docs/memory/</code> (managed above).
-        </li>
-      </ul>
-    </div>
+      <div className="spexr-memory-panel__section">
+        <h3 className="spexr-memory-panel__subtitle">
+          Agent connection{" "}
+          <span
+            className={`${LINK_BADGE[linkStatus].className} spexr-link-badge`}
+            aria-label={`Memory link status: ${LINK_BADGE[linkStatus].label}`}
+          >
+            {LINK_BADGE[linkStatus].label}
+          </span>
+        </h3>
+        {isBlocked ? (
+          <>
+            <p className="spexr-memory-panel__hint">
+              Claude already has its own memory for this project at the native location, so SPEXR
+              cannot link automatically. Resolving backs up the existing folder to a timestamped path
+              and links <code>docs/memory</code> in its place — nothing is deleted.
+            </p>
+            <div className="spexr-memory-panel__actions">
+              <button
+                type="button"
+                className="sl-btn sl-btn--ghost sl-btn--danger"
+                onClick={onResolveConflict}
+              >
+                Resolve conflict…
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="spexr-memory-panel__hint">
+              Project memory is linked into the Claude session so the agent reads it live. Unlink to
+              stop sharing it with this account — your files stay; only the link is removed.
+            </p>
+            <div className="spexr-memory-panel__actions">
+              <button
+                type="button"
+                className="sl-btn sl-btn--ghost"
+                onClick={onLink}
+                disabled={linkDisabled}
+              >
+                Link memory
+              </button>
+              <button
+                type="button"
+                className="sl-btn sl-btn--ghost sl-btn--danger"
+                onClick={onUnlink}
+                disabled={unlinkDisabled}
+              >
+                Unlink memory
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
-    <div className="spexr-memory-panel__section">
-      <h3 className="spexr-memory-panel__subtitle">What to save</h3>
-      <dl className="spexr-memory-panel__examples">
-        <dt>user</dt>
-        <dd>
-          Who you are and how you work. <em>“Senior backend engineer, prefers terse review
-          comments, replies in Italian.”</em>
-        </dd>
-        <dt>feedback</dt>
-        <dd>
-          Corrections and validated approaches. <em>“Don't mock the database in integration
-          tests — last quarter a mocked test passed while the prod migration failed.”</em>
-        </dd>
-        <dt>project</dt>
-        <dd>
-          Ongoing work, deadlines, motivations. <em>“Auth middleware rewrite driven by legal,
-          not tech debt — favor compliance over ergonomics.”</em>
-        </dd>
-        <dt>reference</dt>
-        <dd>
-          Where to look for things. <em>“Pipeline bugs tracked in Linear project ‘INGEST’.”</em>
-        </dd>
-      </dl>
-    </div>
+      <div className="spexr-memory-panel__section">
+        <h3 className="spexr-memory-panel__subtitle">Scopes</h3>
+        <ul className="spexr-memory-panel__scopes">
+          <li>
+            <strong>baseline</strong> — community defaults shipped with SPEXR.
+          </li>
+          <li>
+            <strong>user</strong> — your personal prefs in <code>~/.spexr/memory/</code>, applied
+            across every project.
+          </li>
+          <li>
+            <strong>project</strong> — facts about this repo in{" "}
+            <code>&lt;workspace&gt;/docs/memory/</code> (managed above).
+          </li>
+        </ul>
+      </div>
 
-    <p className="spexr-memory-panel__footnote">
-      Entries live as markdown under the matching scope folder. The agent reads them on
-      start; promote a note from <strong>project</strong> to <strong>user</strong> when it
-      stops being repo-specific.
-    </p>
+      <div className="spexr-memory-panel__section">
+        <h3 className="spexr-memory-panel__subtitle">What to save</h3>
+        <dl className="spexr-memory-panel__examples">
+          <dt>user</dt>
+          <dd>
+            Who you are and how you work. <em>“Senior backend engineer, prefers terse review
+            comments, replies in Italian.”</em>
+          </dd>
+          <dt>feedback</dt>
+          <dd>
+            Corrections and validated approaches. <em>“Don't mock the database in integration
+            tests — last quarter a mocked test passed while the prod migration failed.”</em>
+          </dd>
+          <dt>project</dt>
+          <dd>
+            Ongoing work, deadlines, motivations. <em>“Auth middleware rewrite driven by legal,
+            not tech debt — favor compliance over ergonomics.”</em>
+          </dd>
+          <dt>reference</dt>
+          <dd>
+            Where to look for things. <em>“Pipeline bugs tracked in Linear project ‘INGEST’.”</em>
+          </dd>
+        </dl>
+      </div>
+
+      <p className="spexr-memory-panel__footnote">
+        Entries live as markdown under the matching scope folder. The agent reads them on
+        start; promote a note from <strong>project</strong> to <strong>user</strong> when it
+        stops being repo-specific.
+      </p>
     </div>
   </section>
   );

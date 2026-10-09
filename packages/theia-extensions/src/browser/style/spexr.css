@@ -101,12 +101,13 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
    something the kit does not ship yet (density, accent eyebrow):
    https://github.com/sondalab-ai/sondalab-ui/issues/33
-   Density: a wider button. Since kit 0.32
-   the primary's foot is a background layer, so this padding gives every
-   variant the kit's rows -- 1 + 8 + 14 + 8 + 1 = 32px, and 1 + 4 + 14 + 4 + 1
-   = 24px small -- opaque, on a glass pane, under high contrast and with the
-   effects off. The danger tone is the kit's (.sl-btn--danger,
-   .sl-icon-btn--danger), with its band-safe ink and its own focus ring. */
+   Density: a wider button. Since kit 0.32 the primary's foot is a background
+   layer, so this padding gives every variant the kit's rows -- 1 + 8 + 14 + 8
+   + 1 = 32px, and 1 + 4 + 14 + 4 + 1 = 24px small -- opaque, on a glass pane,
+   under high contrast and with the effects off. A small button's type is the
+   kit's 12.5px (0.36), not set here. The danger tone is the kit's
+   (.sl-btn--danger, .sl-icon-btn--danger), with its band-safe ink and its own
+   focus ring. */
 .sl-btn {
   padding: var(--sl-space-2) var(--sl-space-4);
 }
@@ -2037,13 +2038,15 @@ body .theia-notifications-container {
   padding: 16px;
 }
 
-/* A card of rows: Lumen's tool list. A hairline ring on the raised ground at
-   r8, the rows apart by one hairline each, never by a gap. */
+/* A card of rows: Lumen's tool list, on the raised ground at r8. Its outline
+   is the kit's one control edge, a boundary that reads 3:1 (the demo's ring is
+   fainter; owner, S5e). The rows are apart by one faint structural hairline
+   each (--sl-border-subtle, a waiver the owner accepted), never by a gap. */
 .spexr-memory-list,
 .spexr-experts-list,
 .spexr-todo__file {
   border-radius: 8px;
-  box-shadow: 0 0 0 1px var(--sl-border-default);
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
   background: var(--slc-raised);
   overflow: hidden;
 }
@@ -4836,13 +4839,14 @@ code {
    above), so its text reads on a kit ground in both themes; an empty card
    was muted ink on a black wash, 4.0:1 on paper. The gap between projects
    outweighs the hairlines between items. */
-.spexr-todo__file { padding-inline: 12px; }
+.spexr-todo__file .spexr-todo__item { padding-inline: 12px; }
 .spexr-todo__file .spexr-todo__item:last-child { border-bottom: none; }
-.spexr-todo__file .spexr-todo__empty { padding-block: 8px; }
+.spexr-todo__file .spexr-todo__empty { padding: 8px 12px; }
 /* A folder's own name: data, so mono as written, not upper-cased. */
 .spexr-todo__folder {
   margin: 0;
   padding-block: 8px;
+  padding-inline: 12px;
   border-bottom: 1px solid var(--sl-border-subtle);
   font-family: var(--sl-font-mono); font-size: var(--sl-text-xs); font-weight: 600;
   color: var(--sl-text-muted);

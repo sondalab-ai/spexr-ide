@@ -56,17 +56,21 @@ describe("the right island's views in spexr.css", () => {
     expect(px(rules(".spexr-panel-body"), "padding")).toBe(RIGHT_PANEL.bodyPadding);
   });
 
-  it("is the table's card: r8 on a hairline ring, on the raised ground, clipping its rows", () => {
+  it("is the table's card: r8 on the kit's control edge, on the raised ground, clipping its rows", () => {
     for (const card of [".spexr-memory-list", ".spexr-experts-list", ".spexr-todo__file"]) {
       const body = rules(card);
       expect(px(body, "border-radius"), card).toBe(RIGHT_PANEL.cardRadius);
-      expect(body, card).toMatch(/box-shadow:\s*0 0 0 1px var\(--sl-border-default\)/);
+      expect(body, card).toMatch(/box-shadow:\s*0 0 0 1px var\(--slc-edge-control\)/);
       expect(body, card).toMatch(/background:\s*var\(--slc-raised\)/);
       expect(body, card).toMatch(/overflow:\s*hidden/);
     }
   });
 
-  it("is the table's row: 32px at least, 8px above and below, 12px in, apart by a hairline and never a gap", () => {
+  // The card's outline is a boundary and reads 3:1 (below). The rows' separators
+  // are deliberately NOT held to 3:1: they are faint structural hairlines
+  // (--sl-border-subtle, 1.1-1.3:1), as in the demo, a waiver the owner has
+  // accepted for S5e.
+  it("is the table's row: 32px at least, 8px above and below, 12px in, apart by a faint hairline and never a gap", () => {
     for (const row of [".spexr-memory-list__item", ".spexr-experts-list__item"]) {
       const body = rules(row);
       expect(px(body, "min-height"), row).toBe(RIGHT_PANEL.rowMinHeight);
@@ -77,7 +81,9 @@ describe("the right island's views in spexr.css", () => {
     for (const list of [".spexr-memory-list", ".spexr-experts-list"]) expect(rules(list), list).not.toMatch(/(^|[\s;])gap:/);
     expect(rules(".spexr-todo__item")).toMatch(/border-bottom:\s*1px solid var\(--sl-border-subtle\)/);
     expect(px(rules(".spexr-todo__item"), "padding-block")).toBe(RIGHT_PANEL.rowPaddingBlock);
-    expect(px(rules(".spexr-todo__file"), "padding-inline")).toBe(RIGHT_PANEL.rowPaddingInline);
+    // The TODO rows run full-bleed in their card like the others: the inset is on the rows, not the card.
+    expect(px(rules(".spexr-todo__file .spexr-todo__item"), "padding-inline")).toBe(RIGHT_PANEL.rowPaddingInline);
+    expect(rules(".spexr-todo__file")).not.toMatch(/padding/);
   });
 
   it("is the table's name: the mono, 12px at 500 on a 16px line, in the primary ink", () => {
@@ -90,7 +96,6 @@ describe("the right island's views in spexr.css", () => {
       expect(px(body, "line-height"), name).toBe(RIGHT_PANEL.nameLine);
       expect(body, name).toMatch(/color:\s*var\(--slc-text\)/);
     }
-    expect(RIGHT_PANEL.nameSize).toBe(12);
     expect(rules(".spexr-todo__folder")).toMatch(/font-family:\s*var\(--sl-font-mono\)/);
   });
 
@@ -111,6 +116,11 @@ describe("the right island's views in spexr.css", () => {
     expect(kitFile("components.css")).toMatch(/\.sl-list__row:is\(\[aria-selected="true"\], \[aria-current\]:not\(\[aria-current="false"\]\)\),/);
   });
 
+  it("leaves a small button's type to the kit", () => {
+    expect(rules(".sl-btn--sm")).not.toMatch(/font-size/);
+    expect(rules(".sl-btn--sm")).toMatch(/padding:/);
+  });
+
   it("gives the three views no glass ground, which only a glass button needed", () => {
     const ground = RULES.find((r) => r.body.includes("var(--spexr-glass-ground)") && r.selector.includes(".spexr-spec-widget"));
     expect(ground).toBeDefined();
@@ -123,7 +133,9 @@ describe("the right island's view sources", () => {
 
   it.each(Object.entries(sources))("%s has a head, no glass on its buttons and no per-item colour", (name, file) => {
     const src = read(file);
-    expect(src, name).toMatch(/<PanelHead eyebrow="[^"]+" title=/);
+    expect(src, name).toMatch(/<PanelHead eyebrow=\{\w+\} title=\{\w+\}/);
+    expect(src.match(/nls\.localize\("spexr\/\w+\/(eyebrow|title)"/g)!.length, `${name} localises its head`).toBeGreaterThanOrEqual(2);
+    expect(src, name).not.toMatch(/aria-label="TODO"/);
     expect(src, name).not.toMatch(/sl-fx-glass/);
     expect(src, name).not.toMatch(/\be\.color\b|borderColor|style=\{\{\s*color/);
   });
@@ -208,13 +220,22 @@ describe.each(THEMES)("the right island's views on %s", (theme) => {
     for (const ground of ["slc-raised", "slc-tile"]) expect(contrastRatio(status, neutral(theme, ground)), ground).toBeGreaterThanOrEqual(3);
   });
 
-  it("draws a check box on a card at 3:1: its edge, and its fill once checked", () => {
-    // --slc-edge-control (components.css): the surface's lightness stepped 5 shades away (and a half more on paper).
+  /** --slc-edge-control (components.css): the surface's lightness stepped 5 shades away (and a half more on paper). */
+  function controlEdge(): string {
     const k = kitFile("components.css");
     const step = Number(/--slc-shade-step:\s*([\d.]+)/.exec(k)![1]);
     const steps = Number(/--slc-edge-control-steps:\s*([\d.]+)/.exec(k)![1]);
     const [L, C, h] = toOklch(neutral(theme, "slc-surface"));
-    const edge = fromOklch([theme === "dark" ? L + step * steps : L - step * (steps + 0.5), C, h]);
+    return fromOklch([theme === "dark" ? L + step * steps : L - step * (steps + 0.5), C, h]);
+  }
+
+  it("outlines a card at 3:1 against the island outside it and the raised ground inside", () => {
+    const edge = controlEdge();
+    for (const ground of ["slc-surface", "slc-raised"]) expect(contrastRatio(edge, neutral(theme, ground)), `card edge on ${ground}`).toBeGreaterThanOrEqual(3);
+  });
+
+  it("draws a check box on a card at 3:1: its edge, and its fill once checked", () => {
+    const edge = controlEdge();
     expect(contrastRatio(edge, neutral(theme, "slc-raised")), "edge").toBeGreaterThanOrEqual(3);
     expect(contrastRatio(accentFill[theme], neutral(theme, "slc-raised")), "checked fill").toBeGreaterThanOrEqual(3);
   });
