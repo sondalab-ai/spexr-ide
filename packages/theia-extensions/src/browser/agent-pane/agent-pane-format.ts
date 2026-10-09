@@ -1,7 +1,8 @@
 import type { PaneTool } from "../../common/agent-pane-protocol.js";
+import { AGENT_PANE } from "../shell/workbench-geometry.js";
 
 /** How many tool rows the card shows before it folds the earlier ones: Lumen's four. */
-export const TOOL_ROWS_SHOWN = 4;
+export const TOOL_ROWS_SHOWN = AGENT_PANE.toolRows;
 
 /** The family of a model id for the head's tag (`claude-opus-5-5` is `Opus`); the id itself when it names none. */
 export function modelFamily(model: string | undefined): string | undefined {

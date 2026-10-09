@@ -61,6 +61,9 @@ export class AgentPaneWidget extends ReactWidget {
       this.client.onSessionAdopted$(({ from, to }) => {
         if (from !== this.followed) return;
         this.followed = to;
+        // The conversation moved on (/clear, /resume): it is the agent's session now, and a reload follows it.
+        const root = this.terminal.agentRootUri();
+        if (root) this.terminal.adoptSessionId(root, to);
         this.snapshot = undefined;
         this.update();
       }),
@@ -73,7 +76,8 @@ export class AgentPaneWidget extends ReactWidget {
   /** Follow the agent terminal's session, or show the empty state when it has none. */
   private async bind(): Promise<void> {
     const rootUri = this.terminal.agentRootUri();
-    const sessionId = this.terminal.currentSessionId() ?? (rootUri ? await this.terminal.storedSessionId(rootUri) : undefined);
+    const running = this.terminal.currentSessionId();
+    const sessionId = running ?? (rootUri ? await this.terminal.storedSessionId(rootUri) : undefined);
     if (!rootUri || !sessionId) {
       this.followed = undefined;
       this.snapshot = undefined;
@@ -86,7 +90,12 @@ export class AgentPaneWidget extends ReactWidget {
     this.snapshot = undefined;
     this.update();
     try {
-      const first = await this.service.follow({ sessionId, workspacePath: new URI(rootUri).path.fsPath() });
+      const first = await this.service.follow({
+        sessionId,
+        workspacePath: new URI(rootUri).path.fsPath(),
+        // An id from storage may be a session that ended: the backend then adopts a newer transcript only while a Claude runs there.
+        ...(running ? {} : { fromStorage: true }),
+      });
       if (first && this.followed === sessionId && !this.snapshot) {
         this.snapshot = first;
         this.update();

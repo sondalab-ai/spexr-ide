@@ -28,6 +28,10 @@ import {
 import { SpexrExpertsWidget } from "./views/experts-widget.js";
 import { SpexrTodoViewContribution, TODO_VIEW_ID } from "./todo/todo-view-contribution.js";
 import { SpexrTodoWidget } from "./todo/todo-widget.js";
+import { AgentPaneViewContribution, AGENT_PANE_VIEW_ID } from "./agent-pane/agent-pane-view-contribution.js";
+import { AgentPaneWidget } from "./agent-pane/agent-pane-widget.js";
+import { SpexrOutlineViewContribution } from "./shell/spexr-outline-contribution.js";
+import { OutlineViewContribution } from "@theia/outline-view/lib/browser/outline-view-contribution";
 import {
   SpexrSpecResourcesViewContribution,
   SPEC_RESOURCES_VIEW_ID,
@@ -243,6 +247,18 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     }))
     .inSingletonScope();
   bind(SpexrRevealOnRestore).toService(SpexrTodoViewContribution);
+  // The agent pane: the right island's first tile, in front on a fresh layout
+  // and brought forward once on a saved one (SpexrShellLayoutContribution,
+  // agent-pane-migration.ts). The Outline no longer opens by default.
+  bindViewContribution(bind, AgentPaneViewContribution);
+  bind(AgentPaneWidget).toSelf();
+  bind(WidgetFactory)
+    .toDynamicValue((ctx) => ({
+      id: AGENT_PANE_VIEW_ID,
+      createWidget: () => ctx.container.get(AgentPaneWidget),
+    }))
+    .inSingletonScope();
+  rebind(OutlineViewContribution).to(SpexrOutlineViewContribution).inSingletonScope();
   bind(SpexrRevealOnRestore).toService(ScmContribution);
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
