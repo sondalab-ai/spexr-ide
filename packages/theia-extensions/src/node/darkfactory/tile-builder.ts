@@ -26,6 +26,8 @@ export interface TileInput {
   projectCustomName?: string;
   /** Older copies of this conversation that this session's transcript took over. */
   supersedes?: string[];
+  /** The exact tool-call count, when the counter has scanned the transcript. */
+  toolCount?: number;
   /** The project this session is grouped under (see {@link AgentTile.groupPath}). */
   group?: { path: string; scratch?: true };
 }
@@ -64,6 +66,7 @@ export function buildTile(input: TileInput): AgentTile {
     ...(input.supersedes?.length ? { supersedes: input.supersedes } : {}),
     ...(input.group ? { groupPath: input.group.path } : {}),
     ...(input.group?.scratch ? { scratch: true as const } : {}),
+    ...(input.toolCount !== undefined ? { toolCount: input.toolCount } : {}),
     ...(p.cache
       ? {
           contextTokens: p.cache.contextTokens,

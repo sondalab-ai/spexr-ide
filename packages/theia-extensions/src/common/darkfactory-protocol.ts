@@ -72,6 +72,12 @@ export interface AgentTile {
   permissionMode?: string;
   lastActivityMs: number;
   turnCount: number;
+  /**
+   * Every tool call in the session's transcript, counted by a scan of the file
+   * rather than read from the bounded window the rest of the tile comes from.
+   * Absent until the first scan of that transcript has run.
+   */
+  toolCount?: number;
   /** Stable index into the frontend accent palette, derived from `projectPath`. */
   accentId: number;
   /** The name the user gave this session; absent until they rename it. */
