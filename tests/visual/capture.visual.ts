@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { checkLitRim, checkPalette, checkToast, probeLitRim } from "./checks";
+import { checkEdge, checkLitRim, checkPalette, checkToast, edgePoints, probeLitRim, samplePixels } from "./checks";
 import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureStable,
@@ -155,7 +155,9 @@ for (const theme of THEMES) {
       await shoot("palette");
       meta.paletteParity = await probeRegions(page, PALETTE_REGIONS);
       writeMeta();
-      check("palette", checkPalette(meta.paletteParity, meta.editorIsland, await page.evaluate(() => window.innerWidth)));
+      const paletteBox = meta.paletteParity["palette"]?.[0];
+      if (paletteBox) check("palette edge", checkEdge("palette", await samplePixels(page, path.join(out, "palette.png"), edgePoints(paletteBox))));
+      check("palette", checkPalette(meta.paletteParity, meta.editorIsland, await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }))));
       await page.keyboard.press("Escape");
       await paletteInput.waitFor({ state: "hidden", timeout: 15_000 });
 
@@ -167,6 +169,8 @@ for (const theme of THEMES) {
       meta.toastParity = await probeRegions(page, TOAST_REGIONS);
       writeMeta();
       check("toast", checkToast(meta.toastParity, meta.editorIsland, await page.evaluate(() => window.innerHeight)));
+      const toastBox = meta.toastParity["toast"]?.[0];
+      if (toastBox) check("toast edge", checkEdge("toast", await samplePixels(page, path.join(out, "toast.png"), edgePoints(toastBox))));
 
       // focus-tree: the Explorer focused, resolve.ts its selected row.
       await runCommand(page, "Parity: Focus tree scene");
@@ -246,22 +250,19 @@ for (const theme of THEMES) {
         writeMeta();
       }
 
-      // The scenes' own checks (S5f): the lit rim, the palette and the toast
-      // against the geometry table.
-      if (meta.sceneProblems) {
-        throw new Error(`scene checks: ${Object.entries(meta.sceneProblems).map(([scene, problems]) => `${scene}: ${problems.join("; ")}`).join(" | ")}`);
-      }
-
-      // The other assertion of the capture (S5b-2's review): on macOS the
-      // system's traffic lights sit in the bar's room and on its centre, at
-      // 100% and one zoom level out. Everything else is for looking at.
+      // The capture's assertions, thrown once with every problem (S5f): the
+      // scenes' checks against the geometry table, and (S5b-2's review) on
+      // macOS the system's traffic lights sitting in the bar's room and on
+      // its centre, at 100% and one zoom level out. Everything else is for
+      // looking at.
+      const problems = Object.entries(meta.sceneProblems ?? {}).map(([scene, found]) => `${scene}: ${found.join("; ")}`);
       if (OS === "mac") {
-        const problems = [
-          ...(meta.lights ? meta.lights.problems : ["no native capture to find the lights in"]),
-          ...(meta.zoom?.problems ?? []).map((p) => `zoom ${meta.zoom?.level}: ${p}`),
-        ];
-        if (problems.length) throw new Error(`macOS traffic lights: ${problems.join("; ")}`);
+        problems.push(
+          ...(meta.lights ? meta.lights.problems : ["no native capture to find the lights in"]).map((p) => `macOS traffic lights: ${p}`),
+          ...(meta.zoom?.problems ?? []).map((p) => `macOS traffic lights, zoom ${meta.zoom?.level}: ${p}`),
+        );
       }
+      if (problems.length) throw new Error(problems.join(" | "));
     } catch (err) {
       meta.error = String(err instanceof Error ? err.stack : err);
       if (launched) {

@@ -25,7 +25,7 @@ export interface EditorBox {
 /**
  * The anchor's variables for an editor island at `box` in a window
  * `windowWidth` across, in whole pixels. Nothing while the island has no
- * width (hidden, or not laid out yet), so the last place stays.
+ * width (hidden, or not laid out yet).
  */
 export function editorAnchor(box: EditorBox, windowWidth: number): Record<string, string> | undefined {
   const start = Math.round(box.left);
@@ -38,22 +38,46 @@ export function editorAnchor(box: EditorBox, windowWidth: number): Record<string
   };
 }
 
+/** The slice of the root element the anchor writes to; `HTMLElement` satisfies it. */
+export interface AnchorRoot {
+  readonly style: { setProperty(name: string, value: string): void; removeProperty(name: string): string };
+}
+
 /**
- * Publish the editor island's place on `root` now, and again on every window
- * resize and every size change of the island or of the two sides (a side
- * opening moves the island's left edge, and resizes the island unless the
- * other side gives the pixels back, so the sides are watched too).
+ * Write the anchor's variables on `root`, or, while the island has no width,
+ * remove them: the CSS then falls back to the whole window, never to where
+ * the island last was.
  */
-export function trackEditorAnchor(root: HTMLElement, main: HTMLElement, sides: readonly HTMLElement[]): void {
-  const win = root.ownerDocument.defaultView;
-  if (!win) return;
-  const publish = (): void => {
-    const vars = editorAnchor(main.getBoundingClientRect(), win.innerWidth);
-    if (!vars) return;
-    for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
-  };
-  win.addEventListener("resize", publish);
+export function publishEditorAnchor(root: AnchorRoot, box: EditorBox, windowWidth: number): void {
+  const vars = editorAnchor(box, windowWidth);
+  if (!vars) {
+    for (const name of Object.values(EDITOR_ANCHOR_VARS)) root.style.removeProperty(name);
+    return;
+  }
+  for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+}
+
+/** The slice of a window the tracking needs: a `ResizeObserver` and the width. */
+export interface AnchorWindow {
+  readonly innerWidth: number;
+  readonly ResizeObserver: new (callback: () => void) => { observe(target: unknown): void; disconnect(): void };
+}
+
+/**
+ * Publish the editor island's place on `root` now, and again whenever the
+ * island or one of the sides changes size (a side opening moves the island's
+ * left edge and resizes it, and a window resize resizes it too). Returns what
+ * stops the tracking.
+ */
+export function trackEditorAnchor(
+  root: AnchorRoot,
+  win: AnchorWindow,
+  main: { getBoundingClientRect(): EditorBox },
+  sides: readonly object[],
+): { dispose(): void } {
+  const publish = (): void => publishEditorAnchor(root, main.getBoundingClientRect(), win.innerWidth);
   const observer = new win.ResizeObserver(publish);
   for (const element of [main, ...sides]) observer.observe(element);
   publish();
+  return { dispose: () => observer.disconnect() };
 }

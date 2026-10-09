@@ -87,19 +87,18 @@ export const RIGHT_PANEL = {
  * It floats over the editor island: centred on it, 118px from the window's
  * top (the island's tab strip and breadcrumbs, and one gap, below the
  * title bar: where the demo's first line of code starts), 580px wide as the
- * kit's. A row is Lumen's 38px, which is between two grid steps: the owner's
- * plan names it, so it is the one value here the 4px grid does not hold (the
- * kit's own palette row is 36). spexr.css repeats these numbers, and
- * patches/@theia__monaco-editor-core@1.108.201.patch gives Monaco's list its
- * row heights from the same three; palette-style.test.ts holds all three together.
+ * kit's. A row is the kit's 36px (Lumen's is 38). spexr.css repeats these
+ * numbers and patches/@theia__monaco-editor-core@1.108.201.patch gives Monaco's
+ * list its row heights from the same three; palette-style.test.ts holds them
+ * together.
  */
 export const PALETTE = {
   /** The widget's width: the kit's and Lumen's. */
   width: 580,
   /** The widget's top edge, from the window's top: the title bar, the editor's tab strip and breadcrumbs, and one island gap. */
   top: WORKBENCH.titleBar + WORKBENCH.tabStrip + WORKBENCH.breadcrumbs + ISLAND_GAP,
-  /** An entry's row: Lumen's 38 (the kit's 36). */
-  row: 38,
+  /** An entry's row: the kit's 36 (Lumen 38). */
+  row: 36,
   /** An entry with a detail line under its label: two lines in a 4px grid step more than a row. */
   detailRow: 48,
   /** A group's heading row (Monaco's separator): Lumen's 27.75 on the grid. */

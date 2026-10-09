@@ -13,19 +13,20 @@ import type { Page } from "@playwright/test";
 export type Rects = Array<{ x: number; y: number; w: number; h: number }>;
 export type Regions = Record<string, Rects>;
 
-const PALETTE = { width: 580, top: 118, row: 38, group: 28, head: 52, field: 32, key: 20, keyGap: 4 };
+const PALETTE = { width: 580, top: 118, row: 36, group: 28, head: 52, field: 32, key: 20, keyGap: 4 };
 const TOAST = { width: 360, inset: 8, offset: 48 };
 
 const near = (actual: number, want: number, tol: number): boolean => Math.abs(actual - want) <= tol;
 
 /**
  * The open command palette, against the editor island: centred on it, 580
- * wide and 118 from the window's top; at least three entry rows of 38px,
+ * wide and 118 from the window's top; at least three entry rows of 36px,
  * exactly one of them selected, a 52px head with a 32px field, and keycaps of
  * 20px, 4px apart.
  */
-export function checkPalette(regions: Regions, main: Rects | undefined, viewportWidth: number): string[] {
+export function checkPalette(regions: Regions, main: Rects | undefined, viewport: { width: number; height: number }): string[] {
   const problems: string[] = [];
+  const viewportWidth = viewport.width;
   const widget = regions["palette"]?.[0];
   if (!widget) return ["palette: the widget is not on screen"];
   const want = Math.min(PALETTE.width, viewportWidth - 16);
@@ -36,6 +37,7 @@ export function checkPalette(regions: Regions, main: Rects | undefined, viewport
   else if (!near(widget.x + widget.w / 2, island.x + island.w / 2, 1.5)) {
     problems.push(`palette: centre ${widget.x + widget.w / 2}, the editor island's ${island.x + island.w / 2}`);
   }
+  if (widget.y + widget.h > viewport.height) problems.push(`palette: ends at ${widget.y + widget.h}, past the window's ${viewport.height}`);
   const rows = regions["palette.row"] ?? [];
   if (rows.length < 3) problems.push(`palette: ${rows.length} entry rows, want at least 3 (the query must find several)`);
   for (const [i, row] of rows.entries()) if (!near(row.h, PALETTE.row, 0.5)) problems.push(`palette: row ${i} is ${row.h}px tall, want ${PALETTE.row}`);
@@ -119,5 +121,60 @@ export function checkLitRim(rim: LitRim): string[] {
   if (!rim.wash?.includes("radial-gradient")) problems.push(`lit rim: the tab strip has no wash (${rim.wash})`);
   if (!rim.tint?.includes("linear-gradient")) problems.push(`lit rim: the breadcrumbs have no tint (${rim.tint})`);
   if (!rim.drop || rim.drop === "none" || !rim.drop.includes("inset")) problems.push(`lit rim: no drop on the handle under the main island (${rim.drop})`);
+  return problems;
+}
+
+type Rgb = [number, number, number];
+
+/**
+ * The colours of a saved screenshot at CSS points (x, y), read in the page:
+ * the PNG is decoded with createImageBitmap, as scenes.ts does for its
+ * comparison, and sampled at the page's device pixel ratio.
+ */
+export async function samplePixels(page: Page, file: string, points: ReadonlyArray<{ x: number; y: number }>): Promise<Rgb[]> {
+  const png = (await import("fs")).readFileSync(file).toString("base64");
+  return page.evaluate(
+    async ({ png, points }) => {
+      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) throw new Error("no 2d context");
+      ctx.drawImage(bitmap, 0, 0);
+      const dpr = window.devicePixelRatio;
+      return points.map(({ x, y }) => {
+        const d = ctx.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data;
+        return [d[0]!, d[1]!, d[2]!] as [number, number, number];
+      });
+    },
+    { png, points: [...points] },
+  );
+}
+
+/** WCAG 2 contrast of two sRGB colours (0-255 channels). */
+function contrast(a: Rgb, b: Rgb): number {
+  const lum = (c: Rgb): number => {
+    const [r, g, bl] = c.map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4)) as Rgb;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [x, y] = [lum(a), lum(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+/** Where to sample an overlay's left edge: its 1px edge, the ground 6px outside it, its own fill 3px inside, at the middle of its left side. */
+export function edgePoints(box: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number }> {
+  const y = box.y + Math.min(box.h / 2, 24);
+  return [{ x: box.x - 1, y }, { x: box.x - 6, y }, { x: box.x + 3, y }];
+}
+
+/** The overlay's boundary, as painted: its edge at 3:1 against its own fill and against the ground behind it (the owner's rule for boundaries). */
+export function checkEdge(scene: string, samples: readonly Rgb[]): string[] {
+  const [edge, ground, fill] = samples;
+  if (!edge || !ground || !fill) return [`${scene}: no pixels sampled`];
+  const problems: string[] = [];
+  const onFill = contrast(edge, fill);
+  const onGround = contrast(edge, ground);
+  if (onFill < 3) problems.push(`${scene}: the edge ${edge} reads ${onFill.toFixed(2)}:1 on its fill ${fill}, want 3`);
+  if (onGround < 3) problems.push(`${scene}: the edge ${edge} reads ${onGround.toFixed(2)}:1 on the ground ${ground}, want 3`);
   return problems;
 }

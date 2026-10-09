@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import { TOAST, WORKBENCH } from "../shell/workbench-geometry.js";
 import { EDITOR_ANCHOR_VARS } from "../shell/editor-anchor.js";
-import { contrastRatio, over } from "./contrast-util.js";
+import { contrastRatio, fromOklch, over, toOklch } from "./contrast-util.js";
 
 const resolve = createRequire(import.meta.url).resolve;
 const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
@@ -71,7 +71,7 @@ describe("a toast", () => {
     expect(toast).toMatch(/background-color:\s*var\(--slc-raised\)/);
     expect(toast).toMatch(/border:\s*0;/);
     expect(toast).toMatch(new RegExp(`border-radius:\\s*${TOAST.radius}px`));
-    expect(toast).toMatch(/box-shadow:\s*var\(--slc-depth-cast\)/);
+    expect(toast).toMatch(/box-shadow:\s*0 0 0 1px var\(--slc-edge-control\), var\(--slc-depth-cast\)/);
     expect(kitFile("components.css")).toMatch(new RegExp(`\\.sl-toast \\{[^}]*border: 0;[^}]*border-radius: ${TOAST.radius}px;[^}]*box-shadow: var\\(--slc-depth-cast\\)`));
   });
 
@@ -178,6 +178,17 @@ describe("a toast with one action", () => {
   it("leaves a toast with no action, several, or a collapsed one to Theia's rows", () => {
     expect(INLINE).toContain(":not(.collapsed)");
     expect(INLINE).toContain("button:only-child");
+    // Two buttons: :only-child is false, so no rule above applies and the stacked rows stay.
+    for (const m of section.matchAll(/([^{}]*)\{[^{}]*grid-area/g)) expect(m[1], "every grid rule is scoped to one action").toContain("button:only-child");
+    expect(rule(`${NOT_HC} .theia-notification-list-item-content-bottom {`)).toMatch(/padding-top:\s*var\(--sl-space-2\)/);
+  });
+
+  it("lets a long message wrap, and a source sit under it, inside the 1fr column", () => {
+    expect(rule(`${INLINE} {`)).toMatch(/minmax\(0, 1fr\)/);
+    expect(rule(`${INLINE} .theia-notification-source {`)).toMatch(/grid-area:\s*2 \/ 2/);
+    // Only a collapsed toast clips its message to one line (Theia's rule); nothing here does.
+    for (const m of section.matchAll(/([^{}]*\.theia-notification-(?:message|source)[^{}]*)\{([^{}]*)\}/g)) expect(m[2], m[1]).not.toMatch(/white-space:\s*nowrap/);
+    expect(theia("@theia/messages/src/browser/style/notifications.css")).toMatch(/\.theia-notification-list-item-content\.collapsed \.theia-notification-message \{[^}]*white-space: nowrap/);
   });
 });
 
@@ -204,7 +215,7 @@ describe("the notification center", () => {
     expect(center).toMatch(/background-color:\s*var\(--slc-raised\)/);
     expect(center).toMatch(/border:\s*0;/);
     expect(center).toMatch(new RegExp(`border-radius:\\s*${TOAST.radius}px`));
-    expect(center).toMatch(/box-shadow:\s*var\(--slc-depth-cast\)/);
+    expect(center).toMatch(/box-shadow:\s*0 0 0 1px var\(--slc-edge-control\), var\(--slc-depth-cast\)/);
   });
 
   it("lists tile rows: a wash on hover, and the focused row a flat tile with the accent seam", () => {
@@ -241,6 +252,15 @@ describe.each(["dark", "light"] as const)("a toast's text on %s", (theme) => {
     }
     const muted = ink("text-muted");
     expect(contrastRatio(muted, over(`${muted}29`, raised)), "neutral").toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("finds the toast by its 1px edge, the one control edge, at 3:1 on its own fill and on every ground behind it", () => {
+    const k = kitFile("components.css");
+    const step = Number(/--slc-shade-step:\s*([\d.]+)/.exec(k)![1]);
+    const steps = Number(/--slc-edge-control-steps:\s*([\d.]+)/.exec(k)![1]);
+    const [L, C, h] = toOklch(neutrals[theme]["bg-surface"]!);
+    const edge = fromOklch([theme === "dark" ? L + step * steps : L - step * (steps + 0.5), C, h]);
+    for (const ground of ["bg-surface-raised", "bg-canvas", "bg-surface", "bg-tile"]) expect(contrastRatio(edge, neutrals[theme][ground]!), ground).toBeGreaterThanOrEqual(3);
   });
 
   it("reads the expand and clear glyphs (the secondary ink) at 4.5:1 on the raised rung", () => {

@@ -32,7 +32,7 @@ describe("the patch to Monaco's quick input list", () => {
     expect(heights).toMatch(new RegExp(`element\\.saneDetail \\? ${PALETTE.detailRow} : ${PALETTE.row};`));
   });
 
-  it("aligns the list's height to the row, not to Monaco's 44px pair of rows", () => {
-    expect(readFileSync(resolve(LIST), "utf8")).toContain(`Math.floor(maxHeight / ${PALETTE.row}) * ${PALETTE.row}`);
+  it("keeps Monaco's own 44px alignment of the list's height: 36 and 48px rows do not align to one step", () => {
+    expect(readFileSync(resolve(LIST), "utf8")).toContain("Math.floor(maxHeight / 44) * 44");
   });
 });

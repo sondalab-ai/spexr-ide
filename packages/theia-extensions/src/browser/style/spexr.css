@@ -537,7 +537,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    the history list is full-width), so the ring is drawn inside, and there is
    no cast to clip. The lit line goes: on light it is white on the white tile.
    The seam sits 1-2px inside, clear of the text.
-   The palette's rows are r8 and 38px (THE COMMAND PALETTE, below). */
+   The palette's rows are r8 and 36px (THE COMMAND PALETTE, below). */
 :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
   border-radius: var(--sl-radius-sm);
   background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
@@ -1683,7 +1683,7 @@ body .theia-notifications-container.theia-notification-toasts {
   background-color: var(--slc-raised);
   border: 0;
   border-radius: 12px;
-  box-shadow: var(--slc-depth-cast);
+  box-shadow: 0 0 0 1px var(--slc-edge-control), var(--slc-depth-cast);
   transition:
     opacity var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease)),
     translate var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease));
@@ -1704,6 +1704,7 @@ body .theia-notifications-container.theia-notification-toasts {
   right: 50%;
   height: 1px;
   background-image: linear-gradient(90deg, var(--spexr-tone), transparent);
+  /* The kit's glow: 50% of the tone, and nothing where --slc-glow is 0 (min(1, glow * 1000) is 1 for any glow above 0). */
   box-shadow: 0 0 10px color-mix(in srgb, var(--spexr-tone) calc(50% * min(1, var(--slc-glow) * 1000)), transparent);
   pointer-events: none;
 }
@@ -1845,7 +1846,7 @@ body .theia-notifications-container.theia-notification-toasts {
   background-color: var(--slc-raised);
   border: 0;
   border-radius: 12px;
-  box-shadow: var(--slc-depth-cast);
+  box-shadow: 0 0 0 1px var(--slc-edge-control), var(--slc-depth-cast);
 }
 
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header {
@@ -1924,38 +1925,22 @@ body .theia-notifications-container.theia-notification-toasts {
 
 /* ══ THE COMMAND PALETTE (kit 0.34, .sl-palette; Lumen's, S5f) ══════════════
    Theia's quick input (Monaco's widget) takes the kit's palette look on its
-   own DOM; nothing is re-rendered. PALETTE (shell/workbench-geometry.ts)
-   holds the numbers and palette-style.test.ts holds the two together.
-   - Where. Floating over the editor island, not the window: centred on it
-     (the shell publishes its place as --spexr-editor-start / -width,
-     shell/editor-anchor.ts), 118px from the window's top, 580px wide (never
-     wider than the window less 8px each side, nor off its edges). Monaco
-     writes width, left and top inline from the window's size, and Theia puts
-     the container at the main panel's top, so they are overridden here with
-     !important. Layout, so in every theme. A consequence: the widget is
-     not draggable.
-   - The surface (light and dark; high contrast keeps Theia's own). No border,
-     the cast, r14, the raised rung at 94% under a blur where the backdrop
-     can blur, opaque where it cannot (reduced transparency, power saving),
-     and the kit's seam on its top edge: a 1px line from 16px in, gone 40%
-     before the end, glowing at 55%. Monaco writes the border and the shadow
-     inline.
-   - The head is 52px over a hairline, 16px in; the field is the kit's, 32px,
-     transparent, in the one control edge, its flush ring over the border.
-   - The list is 4px in at the top and 8 elsewhere; a row is Lumen's 38px
-     (a patch to Monaco's list delegate, patches/@theia__monaco-editor-core*),
-     r8, 12px in; its entry's text is 14px, its meta 12px in the muted ink
-     (the secondary on the selected row), pushed to the right; a group's
-     name is the kit's mono label. Monaco draws a group's name (a separator
-     without buttons) inline at the end of the group's first row, under a
-     hairline, and only a separator with buttons as a 28px row of its own
-     (the patch gives it that height): both are styled. A match is the
-     primary ink, heavier, underlined in the accent, never the accent alone.
-   - The selected row keeps THE SEAM (above): the tile, its ring and the seam.
-   - Keycaps: one cap per key, 4px apart (the caps' margins), the "+" Linux
-     and Windows write between them kept in the accessible name, out of sight.
-   Not built, as Theia's palette has none: Lumen's footer of key hints, the
-   scope chip in the field and a glyph on a command. */
+   own DOM. The numbers are PALETTE's (shell/workbench-geometry.ts), held to
+   this file by palette-style.test.ts.
+   - It floats over the editor island, centred on it (the shell publishes the
+     island's place, shell/editor-anchor.ts). Monaco writes width, left and
+     top inline and Theia sets the container's top, so they are overridden
+     with !important, for every quick input: none can be dragged, and all
+     open 118px down. Layout, so in every theme.
+   - The look is for light and dark; high contrast keeps Theia's own. A
+     translucent raised rung under a blur where the backdrop can blur (opaque
+     under reduced transparency and power saving), the cast, the one control
+     edge as a 1px boundary, and the kit's seam on its top edge.
+   - The selected row keeps THE SEAM (above). A group's name is Monaco's
+     inline label (a separator without buttons) or, with buttons, a row of
+     its own. Keycaps: one cap per key, the "+" kept in the accessible name.
+   Not built, as Theia's palette has none: Lumen's footer, the scope chip and
+   a glyph on a command. */
 :root {
   --spexr-editor-start: 0px;
   --spexr-editor-end: 0px;
@@ -1983,7 +1968,7 @@ body .theia-notifications-container.theia-notification-toasts {
   background-color: var(--slc-raised) !important;
   border: 0 !important;
   border-radius: var(--sl-radius-lg);
-  box-shadow: var(--slc-depth-cast) !important;
+  box-shadow: 0 0 0 1px var(--slc-edge-control), var(--slc-depth-cast) !important;
 }
 
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -2058,7 +2043,10 @@ body .theia-notifications-container.theia-notification-toasts {
 }
 
 :root:not([data-sl-theme="high-contrast"]) .quick-input-widget:not(.hidden-input) .quick-input-list {
+  box-sizing: border-box;
+  max-height: calc(100vh - 118px - 52px - 8px);
   padding-top: 4px;
+  overflow: hidden;
 }
 
 :root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list {
@@ -2074,7 +2062,7 @@ body .theia-notifications-container.theia-notification-toasts {
   border-radius: var(--sl-radius-md);
 }
 
-/* The entry fills its row, so its words are centred in the row's 38px and
+/* The entry fills its row, so its words are centred in the row's 36px and
    not set at the top of it (Monaco's rows were as tall as their line). */
 :root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry {
   height: 100%;

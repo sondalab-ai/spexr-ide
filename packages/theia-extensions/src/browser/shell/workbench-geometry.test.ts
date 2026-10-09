@@ -62,11 +62,11 @@ describe("the palette's and the toast's tables", () => {
     expect(PALETTE.width).toBe(580);
   });
 
-  // The row is the owner's Lumen 38; the top is the frame's 6px island gap (44 + 36 + 32 + 6); the radius is shape, as the table's own note says.
-  it("keeps every palette length on the grid except Lumen's 38px row, its 118px top and its 14px radius", () => {
+  // The top is the frame's 6px island gap (44 + 36 + 32 + 6); the radius is shape, as the table's own note says.
+  it("keeps every palette length on the grid except its 118px top and its 14px radius", () => {
     const offGrid = Object.entries(PALETTE).filter(([, v]) => v % 4 !== 0).map(([k]) => k);
-    expect(offGrid).toEqual(["top", "row", "radius"]);
-    expect(PALETTE.row).toBe(38);
+    expect(offGrid).toEqual(["top", "radius"]);
+    expect(PALETTE.row).toBe(36);
     expect(PALETTE.detailRow).toBeGreaterThan(PALETTE.row);
   });
 

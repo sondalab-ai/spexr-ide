@@ -24,7 +24,7 @@ function rule(selector: string): string {
   return css.slice(css.indexOf("{", start), css.indexOf("}", start));
 }
 
-/** A length of a declaration as px (`38px`, or `1rem` at the kit's 16px to the rem). */
+/** A length of a declaration as px (`36px`, or `1rem` at the kit's 16px to the rem). */
 function px(body: string, name: string): number {
   const m = new RegExp(`(?:^|[\\s;{])${name}:\\s*([\\d.]+)(px|rem)`).exec(body);
   expect(m, `${name} in ${body.slice(0, 160)}`).not.toBeNull();
@@ -75,11 +75,11 @@ describe("where the palette floats", () => {
 });
 
 describe("the palette's surface", () => {
-  it("is the kit's: the raised rung, no border, the cast and r14", () => {
+  it("is the kit's: the raised rung, no border, the cast with a 1px control edge, and r14", () => {
     const widget = rule(`${NOT_HC} .quick-input-widget {`);
     expect(widget).toMatch(/background-color:\s*var\(--slc-raised\) !important/);
     expect(widget).toMatch(/border:\s*0 !important/);
-    expect(widget).toMatch(/box-shadow:\s*var\(--slc-depth-cast\) !important/);
+    expect(widget).toMatch(/box-shadow:\s*0 0 0 1px var\(--slc-edge-control\), var\(--slc-depth-cast\) !important/);
     expect(widget).toMatch(/border-radius:\s*var\(--sl-radius-lg\)/);
     expect(kitFile("tokens.css")).toMatch(new RegExp(`--sl-radius-lg:\\s*${PALETTE.radius}px`));
   });
@@ -115,6 +115,23 @@ describe("the palette's surface", () => {
       ".quick-input-list .monaco-keybinding > .monaco-keybinding-key-separator",
     ]);
     for (const m of reaching.slice(1, 4)) expect(m[2], m[1]).not.toMatch(/box-shadow|border-radius|background|color|backdrop-filter/);
+  });
+});
+
+describe("the palette's height", () => {
+  it("never runs past the window: the list is capped at the window less the top, the head and the bottom margin", () => {
+    const list = rule(`${NOT_HC} .quick-input-widget:not(.hidden-input) .quick-input-list {`);
+    expect(list).toContain(`max-height: calc(100vh - ${PALETTE.top}px - ${PALETTE.head}px - 8px);`);
+    expect(list).toMatch(/overflow:\s*hidden/);
+    expect(list).toMatch(/box-sizing:\s*border-box/);
+  });
+
+  it("is the same table in the capture's checks", () => {
+    const checks = readFileSync(fileURLToPath(new URL("../../../../../tests/visual/checks.ts", import.meta.url)), "utf8");
+    const copy = /const PALETTE = \{([^}]*)\}/.exec(checks)![1]!;
+    for (const [key, value] of [["width", PALETTE.width], ["top", PALETTE.top], ["row", PALETTE.row], ["group", PALETTE.group], ["head", PALETTE.head], ["field", PALETTE.field], ["keyGap", PALETTE.keyGap]] as const) {
+      expect(copy, key).toMatch(new RegExp(`\\b${key}: ${value}\\b`));
+    }
   });
 });
 
@@ -154,13 +171,13 @@ describe("the palette's list", () => {
     // The selected row's tile rule weighs (0,5,0): the radius is repeated at its weight, later in the file.
     expect(rule(`${LIST} .monaco-list-row,`)).toMatch(/border-radius:\s*var\(--sl-radius-md\)/);
     expect(css).toContain(`${LIST} .monaco-list-row.focused {\n  border-radius: var(--sl-radius-md);`);
-    expect(css.indexOf(`${LIST} .monaco-list-row.focused {\n  border-radius: var(--sl-radius-md);`)).toBeGreaterThan(css.indexOf("The palette's rows are r8 and 38px"));
+    expect(css.indexOf(`${LIST} .monaco-list-row.focused {\n  border-radius: var(--sl-radius-md);`)).toBeGreaterThan(css.indexOf("The palette's rows are r8 and 36px"));
     const entry = rule(`${LIST} .quick-input-list-entry {`);
     expect(entry).toMatch(new RegExp(`padding:\\s*0 ${PALETTE.rowInline}px`));
     expect(entry).toMatch(/height:\s*100%/);
     expect(rule(`${LIST} .quick-input-list-entry .quick-input-list-entry-keybinding {`)).toMatch(new RegExp(`margin-left:\\s*${PALETTE.rowGap}px`));
     expect(rule(".quick-input-list .quick-input-list-rows {")).toMatch(/justify-content:\s*center/);
-    // Monaco's own 22px line sits centred in the 38px row: the label, its icon and the keys keep Monaco's sizes.
+    // Monaco's own 22px line sits centred in the 36px row: the label, its icon and the keys keep Monaco's sizes.
     expect(theia("@theia/monaco-editor-core/esm/vs/platform/quickinput/browser/media/quickInput.css")).toMatch(/\.quick-input-list \{\s*line-height: 22px;/);
   });
 
@@ -306,5 +323,11 @@ describe.each(THEMES)("the palette's colours on %s", (theme) => {
 
   it("finds the field by its edge, at 3:1 on the ground", () => {
     expect(contrastRatio(controlEdge(theme), ground)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("finds the palette by its 1px edge, the one control edge, at 3:1 on its own fill and on every ground behind it", () => {
+    for (const [name, bg] of [["translucent fill over ink", ground], ["raised", neutral(theme, "slc-raised")], ["surface", neutral(theme, "slc-surface")], ["canvas", neutral(theme, "slc-canvas")], ["tile", tile]] as const) {
+      expect(contrastRatio(controlEdge(theme), bg), name).toBeGreaterThanOrEqual(3);
+    }
   });
 });
