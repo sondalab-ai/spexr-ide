@@ -537,8 +537,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    the history list is full-width), so the ring is drawn inside, and there is
    no cast to clip. The lit line goes: on light it is white on the white tile.
    The seam sits 1-2px inside, clear of the text.
-   Kit 0.34's palette (580px, no border, the cast, translucent, a 52px head,
-   36px rows, its own seam) is S5f's. */
+   The palette's rows are r8 and 38px (THE COMMAND PALETTE, below). */
 :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
   border-radius: var(--sl-radius-sm);
   background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
@@ -1870,6 +1869,254 @@ body .theia-notifications-container {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* ══ THE COMMAND PALETTE (kit 0.34, .sl-palette; Lumen's, S5f) ══════════════
+   Theia's quick input (Monaco's widget) takes the kit's palette look on its
+   own DOM; nothing is re-rendered. PALETTE (shell/workbench-geometry.ts)
+   holds the numbers and palette-style.test.ts holds the two together.
+   - Where. Floating over the editor island, not the window: centred on it
+     (the shell publishes its place as --spexr-editor-start / -width,
+     shell/editor-anchor.ts), 118px from the window's top, 580px wide (never
+     wider than the window less 8px each side, nor off its edges). Monaco
+     writes width, left and top inline from the window's size, and Theia puts
+     the container at the main panel's top, so they are overridden here with
+     !important. Layout, so in every theme. A consequence: the widget is
+     not draggable.
+   - The surface (light and dark; high contrast keeps Theia's own). No border,
+     the cast, r14, the raised rung at 94% under a blur where the backdrop
+     can blur, opaque where it cannot (reduced transparency, power saving),
+     and the kit's seam on its top edge: a 1px line from 16px in, gone 40%
+     before the end, glowing at 55%. Monaco writes the border and the shadow
+     inline.
+   - The head is 52px over a hairline, 16px in; the field is the kit's, 32px,
+     transparent, in the one control edge, its flush ring over the border.
+   - The list is 4px in at the top and 8 elsewhere; a row is Lumen's 38px
+     (a patch to Monaco's list delegate, patches/@theia__monaco-editor-core*),
+     r8, 12px in; its entry's text is 14px, its meta 12px in the muted ink
+     (the secondary on the selected row), pushed to the right; a group's
+     heading is the kit's mono label. A match is the primary ink, heavier,
+     underlined in the accent, never the accent alone.
+   - The selected row keeps THE SEAM (above): the tile, its ring and the seam.
+   - Keycaps: one cap per key, 4px apart (the caps' margins), the "+" Linux
+     and Windows write between them kept in the accessible name, out of sight.
+   Not built, as Theia's palette has none: Lumen's footer of key hints, the
+   scope chip in the field and a glyph on a command. */
+:root {
+  --spexr-editor-start: 0px;
+  --spexr-editor-end: 0px;
+  --spexr-editor-width: 100vw;
+  --spexr-palette-width: min(580px, calc(100vw - 16px));
+}
+
+#quick-input-container {
+  top: 0 !important;
+  left: 0 !important;
+}
+
+.quick-input-widget {
+  top: 118px !important;
+  left: clamp(8px, calc(var(--spexr-editor-start) + (var(--spexr-editor-width) - var(--spexr-palette-width)) / 2), calc(100vw - var(--spexr-palette-width) - 8px)) !important;
+  width: var(--spexr-palette-width) !important;
+}
+
+/* A row's content is centred in its height, whatever the height is. */
+.quick-input-list .quick-input-list-rows {
+  justify-content: center;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+  background-color: var(--slc-raised) !important;
+  border: 0 !important;
+  border-radius: var(--sl-radius-lg);
+  box-shadow: var(--slc-depth-cast) !important;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+    background-color: color-mix(in srgb, var(--slc-raised) 94%, transparent) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.3);
+    backdrop-filter: blur(24px) saturate(1.3);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    :root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+      background-color: var(--slc-raised) !important;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
+  :root[data-spexr-power-save]:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+    background-color: var(--slc-raised) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 40%;
+  z-index: 1;
+  height: 1px;
+  background-image: linear-gradient(90deg, var(--slc-seam), transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--slc-seam) calc(55% * min(1, var(--slc-glow) * 1000)), transparent);
+  pointer-events: none;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget:not(.hidden-input) .quick-input-header {
+  box-sizing: border-box;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--slc-border-subtle);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox {
+  box-sizing: border-box;
+  height: 32px;
+  background-color: transparent !important;
+  border: 1px solid var(--slc-edge-control) !important;
+  border-radius: var(--sl-radius-md);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox:focus-within {
+  border-color: var(--slc-focus) !important;
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox > .ibwrapper > .input {
+  min-height: 0;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  background-color: transparent !important;
+  border-radius: calc(var(--sl-radius-md) - 1px);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox > .ibwrapper > .input:focus-visible {
+  outline: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget:not(.hidden-input) .quick-input-list {
+  padding-top: 4px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list {
+  padding-bottom: 8px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-scrollable-element {
+  padding: 0 8px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row {
+  border-radius: var(--sl-radius-md);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry {
+  padding: 0 12px;
+}
+
+/* An entry's words: 14px in the primary ink, its meta (Theia's description)
+   12px in the muted ink, taking the free width to the right of the label
+   (Monaco's own 70% opacity goes: the ink is what reads). */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-label-container {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-label-container .monaco-icon-name-container .label-name {
+  font-size: var(--sl-text-sm) !important;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-description-container {
+  flex: none;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-description-container .label-description {
+  margin-left: 0;
+  font-size: var(--sl-text-xs) !important;
+  color: var(--slc-text-muted) !important;
+  opacity: 1;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row.focused .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-description-container .label-description {
+  color: var(--slc-text-secondary) !important;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-label-meta {
+  opacity: 1;
+  color: var(--slc-text-muted);
+}
+
+/* A match: the primary ink, heavier, underlined in the accent. Monaco and
+   Theia colour it with !important, and again on the focused row. */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list .monaco-list-row .monaco-highlighted-label .highlight,
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list .monaco-list-row.focused .monaco-highlighted-label .highlight {
+  color: inherit !important;
+  font-weight: 600;
+  text-decoration-line: underline;
+  text-decoration-color: var(--slc-accent-text);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+/* A group's heading is its own row: the kit's mono label, 28px, no rule
+   above it. */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-border {
+  border-top: 0 !important;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-as-item {
+  padding: 8px 12px 4px;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-as-item .label-name,
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-as-item .label-description {
+  font-family: inherit;
+  font-size: inherit !important;
+  font-weight: inherit;
+  color: var(--slc-text-muted) !important;
+}
+
+/* The "+" between keys, in the accessible name and out of sight; the caps'
+   own margins (2px each) are the 4px between them. */
+.quick-input-list .monaco-keybinding > .monaco-keybinding-key-separator {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+
+  :root:not([data-sl-theme="high-contrast"]) .quick-input-widget::before {
+    forced-color-adjust: none;
+    background: Highlight;
+    box-shadow: none;
+  }
 }
 
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every

@@ -19,7 +19,7 @@ function rule(selector: string): string {
 const section = (() => {
   const start = css.indexOf("/* ══ TOASTS AND THE NOTIFICATION CENTER");
   expect(start).toBeGreaterThanOrEqual(0);
-  return css.slice(start, css.indexOf("/* Resource meter hover", start)).replace(/\/\*[\s\S]*?\*\//g, "");
+  return css.slice(start, css.indexOf("/* ══ THE COMMAND PALETTE", start)).replace(/\/\*[\s\S]*?\*\//g, "");
 })();
 
 const ITEM = `${NOT_HC} .theia-notification-list-item`;
