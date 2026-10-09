@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, isAbsolute, relative } from "node:path";
 import { isGenuinePrompt } from "./transcript-parser.js";
 import {
   PANE_DIFF_LINES,
@@ -21,6 +21,8 @@ export interface PaneEntry {
   type?: string;
   timestamp?: string;
   isMeta?: boolean;
+  /** The working directory the entry was written in. */
+  cwd?: string;
   /** A subagent's entry: its calls and words are not the session's own. */
   isSidechain?: boolean;
   /** The summary Claude writes at a compaction: a user entry the user did not type. */
@@ -50,8 +52,12 @@ const PLAN_TOOLS = new Set(["TodoWrite", "TaskCreate", "TaskUpdate", "ExitPlanMo
 
 /** The longest prompt kept: the goal is cut there too (parseTranscript). */
 const MAX_PROMPT_CHARS = 2000;
-/** A response faster than this is a measurement error, not a model. */
-const MAX_PLAUSIBLE_TOK_PER_SEC = 2000;
+/**
+ * A response faster than this is a measurement error, not a model: replayed
+ * over real transcripts the median is about 70 tok/s and no honest one passes
+ * a few hundred.
+ */
+const MAX_PLAUSIBLE_TOK_PER_SEC = 500;
 
 const VERBS: Record<string, string> = {
   Read: "Read",
@@ -87,6 +93,8 @@ interface Call {
   at?: number;
   /** Index of the entry holding the call, in the whole transcript. */
   index: number;
+  /** The directory the call was made in. */
+  cwd?: string;
   result?: { at?: number; isError: boolean; text: string; extra: unknown; index: number };
 }
 
@@ -102,7 +110,7 @@ function pairCalls(entries: readonly PaneEntry[]): Call[] {
         const id = asString(b["id"]);
         const name = asString(b["name"]);
         if (b["type"] !== "tool_use" || !id || !name || byId.has(id)) continue;
-        const call: Call = { id, name, input: asRecord(b["input"]) ?? {}, index, ...(timeOf(e) !== undefined ? { at: timeOf(e)! } : {}) };
+        const call: Call = { id, name, input: asRecord(b["input"]) ?? {}, index, ...(e.cwd ? { cwd: e.cwd } : {}), ...(timeOf(e) !== undefined ? { at: timeOf(e)! } : {}) };
         byId.set(id, call);
         calls.push(call);
       }
@@ -166,12 +174,23 @@ function changeLines(call: Call): string[] {
 
 const countOf = (lines: readonly string[], sign: "+" | "-"): number => lines.filter((l) => l.startsWith(sign)).length;
 
+/** A file's path as the user knows it: relative to the call's directory when inside it, else as written. */
+function pathOf(call: Call): string | undefined {
+  const file = asString(call.input["file_path"]) ?? asString(call.input["notebook_path"]);
+  if (!file) return undefined;
+  if (!call.cwd || !isAbsolute(file)) return file;
+  const rel = relative(call.cwd, file);
+  return rel && !rel.startsWith("..") && !isAbsolute(rel) ? rel : file;
+}
+
 function toolOf(call: Call, interrupted: boolean): PaneTool {
   const verb = VERBS[call.name] ?? call.name;
   const target = targetOf(call);
+  const path = pathOf(call);
   const state = call.result ? (call.result.isError ? "error" : "done") : interrupted ? "error" : "run";
   const tool: PaneTool = { id: call.id, name: call.name, verb, state };
   if (target) tool.target = target;
+  if (path && path !== target) tool.path = path;
   if (call.at !== undefined && call.result?.at !== undefined && call.result.at >= call.at) tool.durationMs = call.result.at - call.at;
   if (call.name === "Edit" || call.name === "MultiEdit" || call.name === "Write") {
     const lines = changeLines(call);
