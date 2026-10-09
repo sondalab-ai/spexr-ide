@@ -105,8 +105,7 @@ test.describe("the default layout's island sizes", () => {
   test("the left island's width is each view's own: a drag on the Explorer stays with it", async ({ page }) => {
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
-    // The right and bottom islands keep their sizes through every view switch below.
-    const right = await rightIslandWidth(page);
+    // The bottom island keeps its size, and the right its 352px, through every view switch below.
     const bottom = (await island(page, "bottom"))?.h;
     await dragLeftSash(page, 60);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
@@ -114,7 +113,7 @@ test.describe("the default layout's island sizes", () => {
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
-    expect(await rightIslandWidth(page)).toBeCloseTo(right ?? 352, 0);
+    expect(await rightIslandWidth(page)).toBeCloseTo(352, 0);
     expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom ?? 204, 0);
   });
 
