@@ -178,3 +178,47 @@ export function checkEdge(scene: string, samples: readonly Rgb[]): string[] {
   if (onGround < 3) problems.push(`${scene}: the edge ${edge} reads ${onGround.toFixed(2)}:1 on the ground ${ground}, want 3`);
   return problems;
 }
+
+// ── S6b: the left island ─────────────────────────────────────────────────
+// Lumen's Explorer island is 264px with the Explorer in front (the base
+// scene), and the Explorer holds no Smart Search: it lives in the Search view
+// (D6). Geometry: WORKBENCH / EXPLORER_ISLAND in workbench-geometry.ts.
+
+const EXPLORER_ISLAND = 264;
+
+/** What {@link probeLeftIsland} read. */
+export interface LeftIsland {
+  /** The left island's width, null when it is not laid out. */
+  readonly width: number | null;
+  /** The Explorer container is on screen. */
+  readonly explorerShown: boolean;
+  /** Smart Search widgets (id `spexr.view.smart-search`) inside the Explorer container. */
+  readonly smartSearchInExplorer: number;
+  /** Section header texts of the Explorer, in order. */
+  readonly sectionHeads: string[];
+}
+
+/** Read the left island's width and what the Explorer container holds. */
+export async function probeLeftIsland(page: Page): Promise<LeftIsland> {
+  return page.evaluate(() => {
+    const r = document.querySelector<HTMLElement>('.spexr-island[data-island="left"]')?.getBoundingClientRect();
+    const explorer = document.getElementById("explorer-view-container");
+    const shown = !!explorer && explorer.getBoundingClientRect().width > 0;
+    return {
+      width: r && r.width > 0 ? r.width : null,
+      explorerShown: shown,
+      smartSearchInExplorer: explorer ? explorer.querySelectorAll('[id$="spexr.view.smart-search"], [id="spexr.view.smart-search"]').length : 0,
+      sectionHeads: explorer ? [...explorer.querySelectorAll<HTMLElement>(".theia-view-container-part-header .label")].map((el) => el.textContent?.trim() ?? "") : [],
+    };
+  });
+}
+
+/** The Explorer in front: the island is 264 (1px either way), and no Smart Search sits in the Explorer. */
+export function checkLeftIsland(island: LeftIsland): string[] {
+  const problems: string[] = [];
+  if (!island.explorerShown) problems.push("left island: the Explorer is not in front in the base scene");
+  if (island.width === null) problems.push("left island: not laid out");
+  else if (!near(island.width, EXPLORER_ISLAND, 1)) problems.push(`left island: ${island.width}px wide, want ${EXPLORER_ISLAND} (the Explorer in front)`);
+  if (island.smartSearchInExplorer !== 0) problems.push(`left island: ${island.smartSearchInExplorer} Smart Search widget(s) inside the Explorer, want none (it is in the Search view)`);
+  return problems;
+}

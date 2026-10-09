@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { checkEdge, checkLitRim, checkPalette, checkToast, edgePoints, probeLitRim, samplePixels } from "./checks";
+import { checkEdge, checkLeftIsland, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
 import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureStable,
@@ -143,6 +143,9 @@ for (const theme of THEMES) {
       meta.editorIsland = (await probeRegions(page, EDITOR_REGIONS))["main"];
       meta.litRim = await probeLitRim(page);
       check("lit rim", checkLitRim(meta.litRim));
+      // S6b: the Explorer in front is 264 wide and holds no Smart Search.
+      meta.leftIsland = await probeLeftIsland(page);
+      check("left island", checkLeftIsland(meta.leftIsland));
       writeMeta();
 
       // palette: the command palette open on a query that finds several
