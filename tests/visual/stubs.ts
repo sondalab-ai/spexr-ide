@@ -7,9 +7,12 @@ import type { PreparedRun } from "./prepare";
 export interface LiveStubs {
   readonly pids: readonly number[];
   readonly dirs: readonly string[];
-  /** SIGTERM to every stub; safe to call twice. */
+  /** SIGTERM to every stub; safe to call twice. Also runs when the runner exits. */
   stop(): void;
 }
+
+/** How long a stub sleeps: past any capture (the job's limit is 45 minutes), and short enough to end on its own. */
+const STUB_LIFETIME_S = 1800;
 
 /** The first `sleep` on PATH, resolved: the stub is a link to it. */
 function findSleep(): string {
@@ -43,25 +46,31 @@ export function startLiveStubs(run: PreparedRun, dirs: readonly string[]): LiveS
   fs.rmSync(link, { force: true });
   fs.symlinkSync(findSleep(), link);
   const pids: number[] = [];
-  for (const cwd of dirs) {
-    const child = spawn(link, ["86400"], { cwd, argv0: "claude", detached: true, stdio: "ignore" });
-    child.unref();
-    if (child.pid === undefined) throw new Error(`the claude stub did not start in ${cwd}`);
-    pids.push(child.pid);
-  }
-  return {
-    pids,
-    dirs,
-    stop: () => {
-      for (const pid of pids) {
-        try {
-          process.kill(pid, "SIGTERM");
-        } catch {
-          /* already gone */
-        }
+  const stop = (): void => {
+    for (const pid of pids.splice(0)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        /* already gone */
       }
-    },
+    }
   };
+  try {
+    for (const cwd of dirs) {
+      const child = spawn(link, [String(STUB_LIFETIME_S)], { cwd, argv0: "claude", detached: true, stdio: "ignore" });
+      child.on("error", () => undefined);
+      child.unref();
+      if (child.pid === undefined) throw new Error(`the claude stub did not start in ${cwd}`);
+      pids.push(child.pid);
+    }
+  } catch (err) {
+    stop();
+    throw err;
+  }
+  const started = [...pids];
+  // The runner can die with a stub running; a detached child would outlive it.
+  process.once("exit", stop);
+  return { pids: started, dirs, stop };
 }
 
 /** What the scanner would see of the stubs on this machine: `ps -Ao pid,comm` lines for `claude`, and each one's cwd. */

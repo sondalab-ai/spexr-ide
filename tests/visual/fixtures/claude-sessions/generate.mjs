@@ -147,8 +147,10 @@ function edit(s, file, oldString, newString, hunk, ms) {
   }) };
 }
 
+/** Claude Code's TodoWrite items: `status` is `pending`, `in_progress` or `completed`. */
+const ACTIVE = { "Await the write": "Awaiting the write", "Re-run the probe suite": "Re-running the probe suite", "Fix the R finding": "Fixing the R finding" };
 function todos(items) {
-  return items.map(([content, status]) => ({ content, status, activeForm: content.replace(/^(\w+)/, (w) => `${w}ing`) }));
+  return items.map(([content, status]) => ({ content, status, activeForm: ACTIVE[content] }));
 }
 
 /* ── 1. Refactor the audit: live, 14 tools, the last one unresolved ─────────── */
@@ -229,14 +231,14 @@ function todos(items) {
     resolveEdit.call.block,
   ], { outputTokens: 640, gaps: [700, 40] });
   resolveEdit.finish();
-  todo(plan("done", "in_progress", "pending"), 500);
+  todo(plan("completed", "in_progress", "pending"), 500);
 
   const test = s.use("Bash", { command: "pnpm test probe", description: "Run the probe tests" });
   s.respond([test.block], { outputTokens: 118, gaps: [520] });
   s.result(test, "✓ resolve › returns the cached answer (3 ms)\n✓ resolve › re-runs a stale probe and keeps evidence (41 ms)\n✓ cache › write is awaited before return (2 ms)\nTests  14 passed, 14 total", 2400, {
     toolUseResult: { stdout: "Tests  14 passed, 14 total", stderr: "", interrupted: false, isImage: false, noOutputExpected: false },
   });
-  todo(plan("done", "done", "pending"), 450);
+  todo(plan("completed", "completed", "in_progress"), 450);
 
   // The last response: prose, then the audit, which has not answered yet. Its
   // 1,260 output tokens over the 1.05 s since the previous result make ~1.2k tok/s.

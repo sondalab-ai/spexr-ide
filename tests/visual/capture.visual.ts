@@ -155,6 +155,13 @@ for (const theme of THEMES) {
         await page.waitForTimeout(2_000);
         fixtureState = await probeFixtureState(page);
       }
+      if (fixtureState.agentsPill !== "2 agents running") {
+        const ps = probeProcesses((cmd, args) => execFileSync(cmd, args, { encoding: "utf8", timeout: 10_000 }), stubs[stubs.length - 1]!.pids);
+        throw new Error(
+          `fixture: the title pill still reads ${JSON.stringify(fixtureState.agentsPill)} after ${Math.round((Date.now() - waited) / 1000)} s, want "2 agents running"; ` +
+            `ps comm=claude: ${JSON.stringify(ps.psClaude)}, stub cwds: ${JSON.stringify(ps.cwd)}`,
+        );
+      }
       await shoot("base", baseAck);
       fixtureState = await probeFixtureState(page);
       const execText = (cmd: string, args: string[]): string => execFileSync(cmd, args, { encoding: "utf8", timeout: 10_000 });
