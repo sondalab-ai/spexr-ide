@@ -10,7 +10,7 @@ function handlerShowing(id: string | undefined) {
   return { handler, state };
 }
 
-const SELF_TITLED = new Set(["spexr.view.memory", "spexr.view.experts"]);
+const SELF_TITLED = new Set(["spexr.view.memory", "spexr.view.experts", "spexr.view.todo"]);
 
 describe("syncPanelTitle", () => {
   it("hides the title row for a view with its own heading", () => {
@@ -19,8 +19,15 @@ describe("syncPanelTitle", () => {
     expect(state.hidden).toBe(true);
   });
 
-  it("keeps the title row for a view without one", () => {
+  it("hides TODO's title row too, and leaves the view and its tab where they are", () => {
     const { handler, state } = handlerShowing("spexr.view.todo");
+    syncPanelTitle(handler, SELF_TITLED);
+    expect(state.hidden).toBe(true);
+    expect(handler.tabBar.currentTitle?.owner.id).toBe("spexr.view.todo");
+  });
+
+  it("keeps the title row for a view without one", () => {
+    const { handler, state } = handlerShowing("spexr.view.spec");
     syncPanelTitle(handler, SELF_TITLED);
     expect(state.hidden).toBe(false);
   });

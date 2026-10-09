@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 
-export const SCENES = ["base", "palette", "toast", "focus-tree", "late-font"] as const;
+export const SCENES = ["base", "palette", "toast", "focus-tree", "right-panel", "right-experts", "right-memory", "late-font"] as const;
 export type Scene = (typeof SCENES)[number];
 
 export interface SceneResult {

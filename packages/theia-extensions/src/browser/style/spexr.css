@@ -101,19 +101,19 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
    something the kit does not ship yet (density, accent eyebrow):
    https://github.com/sondalab-ai/sondalab-ui/issues/33
-   Density: a wider button, and a small one in the 14px face. Since kit 0.32
-   the primary's foot is a background layer, so this padding gives every
-   variant the kit's rows -- 1 + 8 + 14 + 8 + 1 = 32px, and 1 + 4 + 14 + 4 + 1
-   = 24px small -- opaque, on a glass pane, under high contrast and with the
-   effects off. The danger tone is the kit's (.sl-btn--danger,
-   .sl-icon-btn--danger), with its band-safe ink and its own focus ring. */
+   Density: a wider button. Since kit 0.32 the primary's foot is a background
+   layer, so this padding gives every variant the kit's rows -- 1 + 8 + 14 + 8
+   + 1 = 32px, and 1 + 4 + 14 + 4 + 1 = 24px small -- opaque, on a glass pane,
+   under high contrast and with the effects off. A small button's type is the
+   kit's 12.5px (0.36), not set here. The danger tone is the kit's
+   (.sl-btn--danger, .sl-icon-btn--danger), with its band-safe ink and its own
+   focus ring. */
 .sl-btn {
   padding: var(--sl-space-2) var(--sl-space-4);
 }
 
 .sl-btn--sm {
   padding: var(--sl-space-1) var(--sl-space-3);
-  font-size: var(--sl-text-sm);
 }
 
 /* A panel is narrower than a page: the kit's empty-state padding would push
@@ -145,9 +145,6 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 :root[data-sl-theme] :is(#theia-main-content-panel, body) :is(
   .spexr-darkfactory,
   .spexr-spec-widget,
-  .spexr-memory-widget,
-  .spexr-experts-widget,
-  .spexr-todo-widget,
   .spexr-spec-lint-widget,
   .spexr-spec-resources-widget
 ) {
@@ -2002,16 +1999,56 @@ body .theia-notifications-container {
   background: var(--sl-bg-surface);
 }
 
-.spexr-spec-panel,
-.spexr-memory-panel {
+.spexr-spec-panel {
   padding: var(--sl-space-5);
 }
 
-.spexr-spec-panel__header h2,
-.spexr-memory-panel__header h2,
-.spexr-experts-panel__header h2 {
+.spexr-spec-panel__header h2 {
   margin: 0 0 var(--sl-space-2);
   font-weight: 600;
+}
+
+/* The right island's views (Memory, Experts, TODO), as Lumen's agent pane
+   (S5e): a head of a micro-label over a 16px/600 title with a hairline under
+   it, then a 16px body. The numbers are RIGHT_PANEL in
+   shell/workbench-geometry.ts (right-panel-style.test.ts holds them). Lumen's
+   13.6 / 15.2 / 3.2 / 23.2 are 12 / 16 / 4 / 24 on the kit's grid. */
+.spexr-panel-head {
+  padding-block: 12px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--sl-border-subtle);
+}
+
+.spexr-panel-head__eyebrow {
+  margin: 0 0 4px;
+  line-height: 16px;
+}
+
+.spexr-panel-head__title {
+  margin: 0;
+  font-family: var(--sl-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: -0.025em;
+  color: var(--slc-text);
+}
+
+.spexr-panel-body {
+  padding: 16px;
+}
+
+/* A card of rows: Lumen's tool list, on the raised ground at r8. Its outline
+   is the kit's one control edge, a boundary that reads 3:1 (the demo's ring is
+   fainter; owner, S5e). The rows are apart by one faint structural hairline
+   each (--sl-border-subtle, a waiver the owner accepted), never by a gap. */
+.spexr-memory-list,
+.spexr-experts-list,
+.spexr-todo__file {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  background: var(--slc-raised);
+  overflow: hidden;
 }
 
 .spexr-spec-panel__hint,
@@ -2036,7 +2073,6 @@ body .theia-notifications-container {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sl-space-2);
   container-type: inline-size;
 }
 
@@ -2045,9 +2081,13 @@ body .theia-notifications-container {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--sl-space-3);
-  padding: var(--sl-space-3);
-  background: var(--sl-bg-surface-raised);
-  border-radius: var(--sl-radius-sm);
+  min-height: 32px;
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+
+.spexr-memory-list__item + .spexr-memory-list__item {
+  border-top: 1px solid var(--sl-border-subtle);
 }
 
 .spexr-memory-list__meta {
@@ -2066,7 +2106,11 @@ body .theia-notifications-container {
 }
 
 .spexr-memory-list__name {
-  font-weight: 600;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--slc-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2851,7 +2895,10 @@ code {
   letter-spacing: -0.01em;
 }
 
+/* The press knob (kit 0.36): 1 stands the 97% sink down, so the dismiss stays
+   still under the pointer, whatever glass or press class it wears. */
 .spexr-whats-new__dismiss {
+  --slfx-pane-swell: 1;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -3211,8 +3258,7 @@ code {
   vertical-align: middle;
 }
 
-.spexr-experts-panel {
-  padding: var(--sl-space-5);
+.spexr-experts-panel > .spexr-panel-body {
   display: flex;
   flex-direction: column;
   gap: var(--sl-space-4);
@@ -3221,7 +3267,7 @@ code {
 .spexr-experts-panel__hint {
   color: var(--sl-text-secondary);
   font-size: var(--sl-text-sm);
-  margin: var(--sl-space-1) 0 0;
+  margin: 0;
 }
 
 .spexr-experts-panel__section {
@@ -3247,24 +3293,40 @@ code {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sl-space-2);
 }
 
+/* A kit list row (the seam and the tile of a current one), not a button: it
+   keeps the row's recipe and drops its pointer. The active expert is the
+   current row (aria-current); its seam is the accent whether or not focus is
+   inside, since the state is the app's, not the keyboard's. */
 .spexr-experts-list__item {
+  --sl-seam-focus: 1;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--sl-space-2);
-  padding: var(--sl-space-3);
-  border: 1px solid var(--sl-border-subtle);
-  border-radius: var(--sl-radius-sm);
+  min-height: 32px;
+  padding-block: 8px;
+  padding-inline: 12px;
+  border-radius: 0;
+  cursor: default;
 }
 
-.spexr-experts-list__item--active {
-  border-width: 2px;
+.spexr-experts-list__item + .spexr-experts-list__item {
+  border-top: 1px solid var(--sl-border-subtle);
+}
+
+.spexr-experts-list__item:hover:not([aria-current]) {
+  background-color: transparent;
 }
 
 .spexr-experts-list__icon {
   flex: 0 0 auto;
+  color: var(--slc-text-muted);
+}
+
+.spexr-experts-list__item[aria-current] .spexr-experts-list__icon {
+  color: var(--slc-accent-text);
 }
 
 .spexr-experts-list__meta {
@@ -3278,7 +3340,11 @@ code {
   display: inline-flex;
   align-items: center;
   gap: var(--sl-space-2);
-  font-weight: 600;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--slc-text);
 }
 
 .spexr-experts-list__desc {
@@ -4771,18 +4837,20 @@ code {
   first, done ones folded; an item's extra lines (a pasted log) unfold on
   demand. Labels follow the structural-label recipe.
 */
-.spexr-todo { display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
-/* Each project is a darker card, so the gap between projects outweighs the rules between items. */
-.spexr-todo__file {
-  padding: var(--sl-space-3);
-  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
-  background: color-mix(in srgb, #000 22%, transparent);
-}
-.spexr-todo__file .spexr-todo__item:last-child { border-bottom: none; padding-bottom: 0; }
-.spexr-todo__file .spexr-todo__empty { padding: 0; }
+.spexr-todo > .spexr-panel-body { display: flex; flex-direction: column; gap: var(--sl-space-4); }
+/* Each project is a card of rows on the raised ground (the shared card rule
+   above), so its text reads on a kit ground in both themes; an empty card
+   was muted ink on a black wash, 4.0:1 on paper. The gap between projects
+   outweighs the hairlines between items. */
+.spexr-todo__file .spexr-todo__item { padding-inline: 12px; }
+.spexr-todo__file .spexr-todo__item:last-child { border-bottom: none; }
+.spexr-todo__file .spexr-todo__empty { padding: 8px 12px; }
 /* A folder's own name: data, so mono as written, not upper-cased. */
 .spexr-todo__folder {
-  margin: 0 0 var(--sl-space-2);
+  margin: 0;
+  padding-block: 8px;
+  padding-inline: 12px;
+  border-bottom: 1px solid var(--sl-border-subtle);
   font-family: var(--sl-font-mono); font-size: var(--sl-text-xs); font-weight: 600;
   color: var(--sl-text-muted);
 }
@@ -4790,7 +4858,7 @@ code {
 .spexr-todo__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .spexr-todo__item {
   display: grid; grid-template-columns: auto 1fr; column-gap: var(--sl-space-2); row-gap: var(--sl-space-1);
-  align-items: start; padding: var(--sl-space-2) 0;
+  align-items: start; padding-block: 8px;
   border-bottom: 1px solid var(--sl-border-subtle);
 }
 .spexr-todo__check { margin-top: 3px; }
