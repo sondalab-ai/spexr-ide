@@ -5,6 +5,7 @@ import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { GitCommands } from "./git-commands-contribution.js";
 import { formatBranchEntry } from "./git-status-bar-format.js";
 import type { GitStatusDto } from "../../common/git-protocol.js";
+import { STATUS_DATA } from "../shell/status-dock.js";
 
 const ENTRY_ID = "spexr-git-branch";
 
@@ -45,6 +46,7 @@ export class GitStatusBarContribution implements FrontendApplicationContribution
     }
     void this.statusBar.setElement(ENTRY_ID, {
       text: formatBranchEntry(s),
+      className: STATUS_DATA,
       alignment: StatusBarAlignment.LEFT,
       priority: 200,
       tooltip: s.mergeInProgress

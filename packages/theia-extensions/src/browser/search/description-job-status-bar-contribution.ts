@@ -4,6 +4,8 @@ import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-ba
 import { SpexrSearchClientDispatcher } from "./smart-search-client.js";
 import { SmartSearchCommands } from "./smart-search-contribution.js";
 import type { DescriptionJobStatus } from "../../common/search-protocol.js";
+import { descriptionJobStatusText } from "./description-job-status-text.js";
+import { statusClass } from "../shell/status-dock.js";
 
 const ENTRY_ID = "spexr-description-job";
 
@@ -18,16 +20,14 @@ export class DescriptionJobStatusBarContribution implements FrontendApplicationC
   }
 
   private render(s: DescriptionJobStatus): void {
-    if (s.state === "idle" || s.state === "complete") {
+    const entry = descriptionJobStatusText(s);
+    if (!entry) {
       this.statusBar.removeElement(ENTRY_ID);
       return;
     }
-    const text =
-      s.state === "running" ? `$(sparkle) Understanding ${s.done}/${s.total}`
-      : s.state === "paused" ? `$(debug-pause) Understanding paused ${s.done}/${s.total}`
-      : `$(error) Understanding failed`;
     void this.statusBar.setElement(ENTRY_ID, {
-      text,
+      text: entry.text,
+      className: statusClass({ live: entry.live }),
       alignment: StatusBarAlignment.LEFT,
       priority: 100,
       tooltip:

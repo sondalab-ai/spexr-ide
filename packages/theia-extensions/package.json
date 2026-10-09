@@ -21,6 +21,9 @@
       "frontend": "lib/browser/index",
       "electronMain": "lib/electron-main/index",
       "backend": "lib/node/index"
+    },
+    {
+      "frontendElectron": "lib/electron-browser/index"
     }
   ],
   "dependencies": {
@@ -31,6 +34,7 @@
     "@spexr/spec": "workspace:*",
     "@spexr/ui-kit": "workspace:*",
     "@theia/core": "^1.75.0",
+    "@theia/debug": "1.75.0",
     "@theia/editor": "^1.75.0",
     "@theia/electron": "^1.75.0",
     "@theia/file-search": "^1.75.0",

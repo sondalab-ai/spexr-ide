@@ -1,0 +1,98 @@
+import path from "path";
+import type { Readiness, ThemeState, WindowSizeOutcome } from "./app";
+import type { LateFontResult } from "./late-font";
+import type { NativeShot } from "./native";
+import type { Os, Theme } from "./prepare";
+import type { FixtureReport, FixtureState, LitRim } from "./checks";
+import type { LightsCheck } from "./lights";
+import type { EditorProbe, FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
+import type { SceneResult } from "./scenes";
+
+/** Artifacts: one folder per OS and theme, uploaded as `screenshots-<os>-<theme>-<attempt>`. */
+export const OUT_ROOT = process.env.VISUAL_OUT ?? path.join(__dirname, "out");
+
+/** Which commit and run a capture belongs to; on a pull request, the PR's head, not the merge commit. */
+export interface Provenance {
+  readonly sha: string;
+  readonly ref: string;
+  readonly event: string;
+  readonly runId: string;
+  readonly attempt: string;
+}
+
+/** What the fixture extension's `parity.probe` acknowledges. */
+export interface ProbeAck {
+  readonly vscodeApi?: string;
+  readonly extensions?: readonly string[];
+}
+
+/**
+ * `meta.json`, one per OS and theme: written by capture.visual.ts as the
+ * capture goes, read by summary.ts. Optional fields are absent when the
+ * capture failed before reaching them.
+ */
+export interface CaptureMeta {
+  os: Os;
+  theme: Theme;
+  content: { readonly width: number; readonly height: number };
+  provenance: Provenance;
+  scenes: SceneResult[];
+  webglAttempts?: Array<{ swiftshader: boolean; webgl2: boolean }>;
+  backendLog?: string;
+  run?: { workspace: string; ackDir: string; configDir: string };
+  readiness?: Readiness;
+  themeCheck?: ThemeState;
+  extensions?: ProbeAck;
+  /** True when the bottom panel started collapsed and the scene opened it. */
+  bottomPanelOpened?: boolean;
+  /**
+   * The bottom panel's top edge once shown, as spexr laid it out (S5c: never
+   * dragged); `held` is false when it was still moving at the read's timeout.
+   * Null when it is not showing.
+   */
+  bottomPanel?: { top: number; held: boolean } | null;
+  baseFirstVisibleLine?: number | null;
+  page?: PageProbes;
+  /** The editor's gutter, colours and tokens in the base scene, and its padding once scrolled to the top (S5d). */
+  editor?: EditorProbe & { paddingTop?: number | null };
+  /** The palette scene's widget, rows and keycaps, keyed like the demo's `palette.*` regions (S5f). */
+  paletteParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
+  /** The editor island in the base scene, which the palette and the toast are placed against (S5f). */
+  editorIsland?: Array<{ x: number; y: number; w: number; h: number }>;
+  /** What the lit main island wears in the base scene: the lit islands, the wash, the tint and the drop (S5f). */
+  litRim?: LitRim;
+  /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */
+  toastParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
+  /** The right-panel scenes' regions by view (`todo`, `experts`, `memory`), keyed `rp.*` (S5e). */
+  rightPanel?: Record<string, Record<string, Array<{ x: number; y: number; w: number; h: number }>>>;
+  main?: MainProbes;
+  native?: NativeShot[];
+  treeFocused?: boolean;
+  /** macOS only: the traffic lights in the base scene's native capture, checked against the bar (S5b-2). */
+  lights?: LightsCheck;
+  /** macOS only: the lights and the mark one zoom level out (S5b-2). */
+  zoom?: ZoomProbe;
+  /** macOS only: the bar through a full-screen round trip (S5b-2). */
+  fullScreen?: FullScreenProbe;
+  /** The code-font wait's capped path, forced by a held reload (late-font.ts). */
+  lateFont?: LateFontResult;
+  /** Whether the window reached the demo's 1440×900, and the display it is on (S6a). */
+  windowSize?: WindowSizeOutcome;
+  /** The parity fixture as the base scene loaded it: the pill, the bell, the stubs, the two commands, the file states (S6a). */
+  fixture?: { state?: FixtureState; report?: FixtureReport; waitedMs?: number; cleanup?: unknown };
+  /** The scene checks that failed (S5f), by scene; the capture throws after writing them. */
+  sceneProblems?: Record<string, string[]>;
+  error?: string;
+  close?: "closed" | "killed";
+  log?: LogProbes;
+}
+
+export function provenance(): Provenance {
+  return {
+    sha: process.env.VISUAL_HEAD_SHA || process.env.GITHUB_SHA || "unknown",
+    ref: process.env.VISUAL_REF || process.env.GITHUB_REF_NAME || "unknown",
+    event: process.env.GITHUB_EVENT_NAME ?? "unknown",
+    runId: process.env.GITHUB_RUN_ID ?? "unknown",
+    attempt: process.env.GITHUB_RUN_ATTEMPT ?? "unknown",
+  };
+}

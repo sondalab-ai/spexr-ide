@@ -50,10 +50,24 @@ import { SpexrWelcomeWidget } from "./views/welcome-widget.js";
 import { SpexrShellLayoutContribution } from "./shell/spexr-shell-layout-contribution.js";
 import { SpexrPanelTitleContribution } from "./shell/panel-title-contribution.js";
 import { SpexrRevealOnRestore } from "./shell/reveal-on-restore.js";
+import { SpexrApplicationShell } from "./shell/island-shell.js";
+import { ElectronMainMenuFactory } from "@theia/core/lib/electron-browser/menu/electron-main-menu-factory";
+import { SpexrElectronMainMenuFactory } from "./shell/menu-keycaps-factory.js";
+import { SpexrLitIslandContribution } from "./shell/lit-island-contribution.js";
+import { SpexrEditorAnchorContribution } from "./shell/editor-anchor-contribution.js";
+import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
+import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
+import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-contribution.js";
+import { SpexrMonacoThemeContribution } from "./theme/spexr-monaco-theme-contribution.js";
+import { MonacoEditorProvider } from "@theia/monaco/lib/browser/monaco-editor-provider";
+import { SpexrMonacoEditorProvider } from "./editor/spexr-monaco-editor-provider.js";
+import { SpexrGlyphLane } from "./editor/spexr-glyph-lane-service.js";
+import { SpexrGlyphLaneContribution } from "./editor/spexr-glyph-lane-contribution.js";
+import { SpexrToastAnnouncer } from "./messages/toast-announcer.js";
 import { ClaudeTerminalManager } from "./agent/claude-terminal-manager.js";
 import { SpexrLaunchProfilesService } from "./agent/launch-profiles-service.js";
 import {
@@ -63,6 +77,7 @@ import {
 import { SpexrPreferenceContribution } from "./preferences/spexr-preferences.js";
 import { SpexrAiSurfaceCurationContribution } from "./shell/ai-surface-curation-contribution.js";
 import { SpexrTerminalStyleContribution } from "./terminal/spexr-terminal-style-contribution.js";
+import { SpexrFontReadinessContribution } from "./fonts/font-readiness-contribution.js";
 import { SpexrProjectTerminalService } from "./terminal/project-terminal-service.js";
 import { PreferenceConfigurations } from "@theia/core/lib/common/preferences/preference-configurations";
 import { SpexrPreferenceConfigurations } from "./preferences/spexr-preference-configurations.js";
@@ -116,6 +131,7 @@ import {
   SpexrDarkfactoryClientDispatcher,
   SpexrDarkfactoryClientToken,
 } from "./darkfactory/darkfactory-client.js";
+import { AGENT_PANE_SERVICE_PATH, AgentPaneClientDispatcher, AgentPaneServiceProxy } from "./agent/agent-pane-client.js";
 import { SpexrScheduleClientDispatcher, SpexrScheduleServiceProxy } from "./darkfactory/schedule/schedule-client.js";
 import { SCHEDULE_SERVICE_PATH } from "../common/schedule/schedule-protocol.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory/darkfactory-terminal-manager.js";
@@ -125,7 +141,7 @@ import { SpexrDarkfactorySidebarVisibilityContribution } from "./darkfactory/dar
  * Frontend contributions for SPEXR. Theia handles DI via Inversify and
  * discovers contributions through these bindings.
  */
-export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
+export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bindViewContribution(bind, SpexrSpecViewContribution);
   bind(SpexrSpecWidget).toSelf();
   bind(WidgetFactory)
@@ -193,6 +209,24 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     }))
     .inSingletonScope();
 
+  // Lumen islands: the shell areas float as the kit's panes on the canvas, and
+  // the one that holds the focus is lit (see shell/islands.ts).
+  rebind(ApplicationShell).to(SpexrApplicationShell).inSingletonScope();
+  bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
+  // The editor island's place, for the palette and the toasts that float above it (S5f).
+  bind(SpexrEditorAnchorContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrEditorAnchorContribution);
+
+  // Lumen keycaps: a browser menu's shortcut is one kit keycap per key
+  // (shell/menu-keycaps-factory.ts). Electron only, where Theia binds the
+  // factory; BrowserMainMenuFactory resolves to it.
+  if (isBound(ElectronMainMenuFactory)) {
+    rebind(ElectronMainMenuFactory).to(SpexrElectronMainMenuFactory).inSingletonScope();
+  } else {
+    console.warn("spexr: Theia's Electron menu factory is not bound; browser menus keep their shortcuts as text.");
+  }
+
   bind(SpexrShellLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrShellLayoutContribution);
   bind(SpexrPanelTitleContribution).toSelf().inSingletonScope();
@@ -214,7 +248,22 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(FrontendApplicationContribution).to(SpexrBootstrapContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrThemeContribution).inSingletonScope();
   bind(FrontendApplicationContribution).to(SpexrTerminalStyleContribution).inSingletonScope();
+  // Holds start-up until Geist Mono is in, so editors and terminals measure it.
+  bind(FrontendApplicationContribution).to(SpexrFontReadinessContribution).inSingletonScope();
   bind(ColorContribution).to(SpexrColorContribution).inSingletonScope();
+  // Theia's theme data outranks those registry defaults for the light error
+  // and the remote status grounds; it gives them up (status-theme-data.ts).
+  bind(FrontendApplicationContribution).to(SpexrStatusThemeDataContribution).inSingletonScope();
+  // The spexr-dark / spexr-light Monaco and colour themes (the kit's syntax palette).
+  bind(FrontendApplicationContribution).to(SpexrMonacoThemeContribution).inSingletonScope();
+  // The editor's gutter, sized as the demo's: line numbers end at 38, text starts at 56.
+  rebind(MonacoEditorProvider).to(SpexrMonacoEditorProvider).inSingletonScope();
+  // The glyph lane is off, and shown where debugging needs it (breakpoints in a model, a running session).
+  bind(SpexrGlyphLane).toSelf().inSingletonScope();
+  bind(SpexrGlyphLaneContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrGlyphLaneContribution);
+  // Theia's toasts have no live region: two of the kit's, said once each.
+  bind(FrontendApplicationContribution).to(SpexrToastAnnouncer).inSingletonScope();
 
   bind(ClaudeTerminalManager).toSelf().inSingletonScope();
   bind(SpexrLaunchProfilesService).toSelf().inSingletonScope();
@@ -405,6 +454,13 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       return connection.createProxy(DARKFACTORY_SERVICE_PATH, client);
     })
     .inSingletonScope();
+  bind(AgentPaneClientDispatcher).toSelf().inSingletonScope();
+  bind(AgentPaneServiceProxy)
+    .toDynamicValue((ctx) => {
+      const connection = ctx.container.get(WebSocketConnectionProvider);
+      return connection.createProxy(AGENT_PANE_SERVICE_PATH, ctx.container.get(AgentPaneClientDispatcher));
+    })
+    .inSingletonScope();
   bind(SpexrScheduleClientDispatcher).toSelf().inSingletonScope();
   bind(SpexrScheduleServiceProxy)
     .toDynamicValue((ctx) => {
@@ -412,4 +468,11 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
       return connection.createProxy(SCHEDULE_SERVICE_PATH, ctx.container.get(SpexrScheduleClientDispatcher));
     })
     .inSingletonScope();
+
+  // Keep last: its onDidInitializeLayout reads the default sizes back and sets
+  // the layout's settled mark, so it must come after every contribution that
+  // touches the layout (Theia runs onDidInitializeLayout in binding order, one
+  // at a time). The shell layout injects it for Reset Layout.
+  bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
 });

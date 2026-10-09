@@ -1,6 +1,7 @@
 @import "@spexr/ui-kit/fonts.css";
 @import "@spexr/ui-kit/tokens.css";
 @import "@spexr/ui-kit/components.css";
+@import "@spexr/ui-kit/workbench.css";
 @import "@spexr/ui-kit/glass.css";
 @import "@spexr/ui-kit/effects.css";
 @import "@spexr/ui-kit/themes/light.css";
@@ -27,45 +28,92 @@ body {
   line-height: var(--sl-line-normal);
 }
 
-*:focus-visible {
-  outline: var(--sl-focus-ring-width) solid var(--sl-focus-ring);
-  outline-offset: var(--sl-focus-ring-offset);
-  border-radius: var(--sl-radius-sm);
+/* The ring for anything the kit's focus rule does not cover (Theia's own
+   elements, spexr's): the kit's width in the kit's focus colour, drawn
+   inside the element (offset minus its width), so a scroll container that
+   clips its children never cuts it, and it sits flush on the element's edge
+   or over its border, with no gap. It is drawn where the browser's
+   :focus-visible matches: a keyboard focus, and any focus of a text field.
+   A mouse focus elsewhere (a button, a tree, a row) draws nothing from
+   these rules; a rule of Theia's or Monaco's own that draws a ring on
+   :focus still draws it.
+   Theia's own `:focus:not(iframe)` (core index.css) weighs (0,1,1) and drew
+   a 1px ring inset on every focus, a mouse click included, over a bare
+   *:focus-visible (0,1,0). These two weigh (0,1,2): ahead of Theia's, and
+   behind any rule with a class of its own, so the kit's controls keep their
+   flush ring and halo ((0,2,0) and up), and so does any Theia or spexr rule
+   that draws or drops its own (cascade-weights.test.ts). No radius: an
+   outline follows the element's own corners, and a radius here snapped an
+   8px button to 6px under focus. */
+html :focus-visible:not(iframe) {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+html :focus:where(:not(:focus-visible)):not(iframe) {
+  outline: none;
+}
+
+/* Theia's and Monaco's own focus rules that set the ring's width or its
+   offset, but not both, outrank the pair above, so the two halves of the
+   ring came from two rule sets: Theia's 1px width at this file's offset
+   left the ring floating a pixel inside the edge (the settings' checkbox
+   and number fields, the SCM message box), and Monaco's +2px offset pushed
+   the kit's ring 2px off a button. Each takes both from the kit here, at a
+   weight above its own, !important where Monaco's is: inset and flush, like
+   the rest. The lists hold every such rule in the installed Theia and
+   Monaco, verbatim; cascade-weights.test.ts scans their stylesheets for
+   any it misses. */
+:root :is(
+  .ai-settings-row-gear:focus-visible,
+  .ai-configuration-filter-input-clear:focus-visible,
+  .ai-variant-action-button:focus-visible,
+  .ai-configuration-value-row-copy:focus-visible,
+  .monaco-dialog-box .dialog-message-row .dialog-message-container .dialog-message a:focus,
+  .theia-notebook-find-widget-expand:focus,
+  .theia-settings-container li.single-pref:focus,
+  .theia-settings-container .theia-input[type="checkbox"]:focus,
+  .theia-settings-container .theia-input[type="number"]:focus,
+  .theia-scm-input-message-container textarea:focus,
+  .window-zoom-button:focus-visible,
+  .monaco-editor .review-widget .body .comment-form .review-thread-reply-button:focus
+) {
+  outline-width: var(--sl-focus-ring-width);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+:root :is(
+  .monaco-text-button:focus,
+  .monaco-button-dropdown > .monaco-button:focus
+) {
+  outline-width: var(--sl-focus-ring-width) !important;
+  outline-offset: calc(-1 * var(--sl-focus-ring-width)) !important;
+}
+
+/* Theia's custom select draws its resting border as an outline (core
+   select-component.css): the mouse-focus rule above took it away on a
+   click. It keeps it; a keyboard focus draws the kit's ring over it. */
+html .theia-select-component:focus:where(:not(:focus-visible)) {
+  outline: var(--theia-dropdown-border) solid 1px;
+  outline-offset: -1px;
 }
 
 /* Kit components adapted to the IDE substrate. Each rule below stands in for
-   something the kit does not ship yet (density, danger, pressed segments,
-   accent eyebrow): https://github.com/sondalab-ai/sondalab-ui/issues/33 */
+   something the kit does not ship yet (density, accent eyebrow):
+   https://github.com/sondalab-ai/sondalab-ui/issues/33
+   Density: a wider button. Since kit 0.32 the primary's foot is a background
+   layer, so this padding gives every variant the kit's rows -- 1 + 8 + 14 + 8
+   + 1 = 32px, and 1 + 4 + 14 + 4 + 1 = 24px small -- opaque, on a glass pane,
+   under high contrast and with the effects off. A small button's type is the
+   kit's 12.5px (0.36), not set here. The danger tone is the kit's
+   (.sl-btn--danger, .sl-icon-btn--danger), with its band-safe ink and its own
+   focus ring. */
 .sl-btn {
   padding: var(--sl-space-2) var(--sl-space-4);
-  border-radius: var(--sl-radius-md);
 }
 
 .sl-btn--sm {
   padding: var(--sl-space-1) var(--sl-space-3);
-  font-size: var(--sl-text-sm);
-}
-
-.sl-btn--danger {
-  color: var(--slc-danger);
-  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
-}
-
-.sl-btn--danger:hover:not(:disabled) {
-  background: var(--slc-danger);
-  color: var(--slc-on-danger);
-  border-color: var(--slc-danger);
-}
-
-/* An icon button in the danger voice of .sl-btn. */
-.sl-icon-btn--danger {
-  color: var(--slc-danger);
-  background: color-mix(in srgb, var(--slc-danger) 14%, transparent);
-}
-.sl-icon-btn--danger:hover:not(:disabled) {
-  background: var(--slc-danger);
-  color: var(--slc-on-danger);
-  border-color: var(--slc-danger);
 }
 
 /* A panel is narrower than a page: the kit's empty-state padding would push
@@ -97,9 +145,6 @@ body {
 :root[data-sl-theme] :is(#theia-main-content-panel, body) :is(
   .spexr-darkfactory,
   .spexr-spec-widget,
-  .spexr-memory-widget,
-  .spexr-experts-widget,
-  .spexr-todo-widget,
   .spexr-spec-lint-widget,
   .spexr-spec-resources-widget
 ) {
@@ -156,10 +201,10 @@ body {
 
 /* Power saving (power-save-dom.ts): decorative loops stand still. Status
    animations (working LEDs, loading pulses, alerts) keep running because
-   they carry information. The kit's effects are stilled with its own
-   kill-switch list (effects.css) keyed on our flag instead of its
-   data-sl-fx="off", which would stop it dressing content that mounts
-   while saving. */
+   they carry information; the kit's status bar dot is the exception, below.
+   The kit's effects are stilled with its own kill-switch list (effects.css)
+   keyed on our flag instead of its data-sl-fx="off", which would stop it
+   dressing content that mounts while saving. */
 :root[data-spexr-power-save] :is(.sl-fx-glass, .sl-fx-glass__lit, .sl-fx-press, .sl-fx-aurora, .sl-fx-aurora__glow, .sl-fx-liquid, .sl-fx-liquid__skin, .sl-fx-goo, .sl-fx-goo__field, .sl-fx-glitch, .sl-fx-glitch__text, .sl-fx-glitch__shards, .sl-fx-glitch__shard) {
   animation: none !important;
   box-shadow: none !important;
@@ -168,6 +213,65 @@ body {
   border-image: none !important;
   backdrop-filter: none !important;
   --slfx-fill-a: 100% !important;
+}
+
+/* ...but not the kit's own selection, as the kit's kill switches give it
+   back (effects.css, 0.31): a selected tile is drawn in box-shadow, and a
+   current page, a chosen segment, a selected nav item or list row, or the
+   current tile tab that also wears an effect lost its only marker while
+   saving (in high contrast its accent ring). At (0,6,0), with the kit's own
+   lists. */
+:root[data-spexr-power-save] :is(.sl-pagination__item[aria-current]:not([aria-current="false"]), .sl-segmented__item:is([aria-selected="true"], [aria-pressed="true"]), .sl-nav__item[aria-current]:not([aria-current="false"]), .sl-list__row:is([aria-selected="true"], [aria-current]:not([aria-current="false"]))):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-tile) !important;
+}
+
+:root[data-spexr-power-save] :is(.sl-tabs--tile .sl-tabs__tab[aria-selected="true"]):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-flat) !important;
+}
+
+/* ...nor a control's own depth and focus halo, as the kit's kill switches
+   give them back (effects.css, 0.32; 0.33 adds the activity item and the
+   tree row, 0.34 the status item and the title bar's command field): a
+   control writes its resting shadow into --_sl-depth (a secondary's lit
+   line and cast, a selected tile, a checked box's foot) and its focus rule
+   adds --_sl-halo. They are the control's, not the effect's. The kill above
+   weighs (0,3,0), so these outrank it at (0,4,0) and (0,5,0), with the
+   kit's own lists. The halo stays off in high contrast, where --slc-glow
+   is 0. */
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--_sl-depth, 0 0 transparent) !important;
+}
+
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
+  box-shadow: var(--_sl-depth, 0 0 transparent), var(--_sl-halo, 0 0 transparent) !important;
+}
+
+/* ...nor a surface's own recipe (effects.css, 0.33): an island (a workbench
+   pane, a terminal block) and an overlay that floats (a toast, a palette)
+   wearing an effect keep their ring and cast, as the kit's kill switches
+   give them back, at (0,4,0) and with the kit's own lists. Since 0.34 a
+   toast and a palette have no border and sit on --slc-depth-cast, whose
+   ring is theirs, so that is what comes back for them. No spexr surface
+   wears an effect today (the shell's islands draw their recipe on ::after,
+   THE WORKBENCH); the mirror keeps power saving in step with the kit. */
+:root[data-spexr-power-save] :is(.sl-pane, .sl-term-block):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-island) !important;
+}
+
+:root[data-spexr-power-save] :is(.sl-toast, .sl-palette):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+  box-shadow: var(--slc-depth-cast) !important;
+}
+
+/* The status bar's live dot (workbench.css, 0.34) breathes on its own, not
+   as an effect. The kit stops it in a data-sl-fx="off" region and pauses it
+   under data-sl-fx-still (which spexr sets only while motion is paused);
+   power saving sets neither on the root, so it is stopped here, as the kit
+   stops it in an opt-out region. It is the one status mark that stands still while saving, because
+   the breath is decoration: the dot stays, and the words beside it say the
+   state. No spexr status item wears the kit's dot today (the dock draws its
+   own, still, THE STATUS DOCK); this keeps power saving in step with the kit. */
+:root[data-spexr-power-save] .sl-statusbar__dot {
+  animation: none !important;
 }
 
 :root[data-spexr-power-save] .sl-fx-goo__member {
@@ -344,6 +448,1740 @@ body {
   color: var(--sl-text-primary);
 }
 
+/* ══ THEIA'S CHROME IN LUMEN (kit 0.31 / 0.32) ═════════════════════════════
+   Theia's own widgets drawn with the kit's depth roles: selection is a tile,
+   shortcuts are keycaps, the editor's tabs are tile tabs. CSS on Theia's
+   existing elements only; the --theia-* colours they read are set in
+   theia-chrome-css.ts. Light and dark only: high contrast stays Theia's own
+   HC theme, as its neutrals do.
+
+   THE SEAM. A tile alone is found by its ring, 1.25-1.34:1 against spexr's
+   canvas, surface and raised rung since the kit's 0.35 hairlines (1.32-1.41
+   before), which is no state indicator (owner, 2026-10-04). Every selected
+   or current tile here carries the kit's seam: a 2px line, half the tile's
+   height, at its leading edge (a layer of its background, as on the kit's
+   current nav item). It is the accent (--slc-seam) where its container has
+   focus, the muted ink where it has not; both read at least 5.7:1 against
+   the tile on either theme. Containers set the ink; the tiles paint it. */
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container) {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-Tree, .quick-input-widget, .scm-history-graph-container):focus-within {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* An open dropdown is where the keyboard is, whichever element holds focus. */
+:root:not([data-sl-theme="high-contrast"]) .theia-select-component-dropdown {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* The tab strips: the focused group is Theia's .theia-tabBar-active. Theia
+   keeps that class on one tab bar per dock panel whatever holds the focus, so
+   the accent is also keyed to the lit island (THE WORKBENCH, below): with the
+   focus in another island the editor's current tab is muted, and the lit
+   pane's is the one accent seam on screen. */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* A selected tree row is a tile, inset from the pane's edges so its ring and
+   cast show: Theia's rows are full-width and the tree clips. The tile is a
+   layer under the row's content, never its box, so indentation and the
+   virtualised list keep their geometry. Unfocused, it is a flat tile (lit,
+   ringed, no cast) with the muted seam; in the focused tree it lifts (the
+   cast) and the seam is the accent. The seam sits 1px inside the tile, clear
+   of the expansion chevron. The row's text is the primary ink on the tile
+   (--theia-list-*SelectionForeground). Theia's 1px focus outline stays on a
+   focused row that is not selected. */
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  outline: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected::before {
+  content: "";
+  position: absolute;
+  inset: 1px 2px;
+  z-index: -1;
+  border-radius: var(--sl-radius-sm);
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: var(--slc-depth-flat);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected::before {
+  box-shadow: var(--slc-depth-tile);
+}
+
+/* The indent guides are positioned siblings drawn before the row; the
+   selected row's tile (an isolated, positioned layer) would cover them, so
+   they are lifted over it. They take no pointer events. */
+:root:not([data-sl-theme="high-contrast"]) .theia-tree-node-indent {
+  z-index: 1;
+}
+
+/* The quick pick's active row, a dropdown's highlighted option and a
+   selected SCM history row are tiles too. Their lists clip a ring drawn
+   outside (the quick pick has no room above its first row or below its last,
+   the history list is full-width), so the ring is drawn inside, and there is
+   no cast to clip. The lit line goes: on light it is white on the white tile.
+   The seam sits 1-2px inside, clear of the text.
+   The palette's rows are r8 and 36px (THE COMMAND PALETTE, below). */
+:root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected) {
+  border-radius: var(--sl-radius-sm);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 2px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-select-component-dropdown .theia-select-component-option.selected {
+  background-position: 1px 50%;
+}
+
+/* Monaco's own lists: the suggest widget and the code-action menu paint their
+   focused row from Monaco's colour variables, which Monaco declares on
+   .monaco-editor / .monaco-component (a root override does not reach them)
+   and which resolve to Theia's list selection (a white label on a light
+   grey on light, 1.23:1). The rows are painted directly instead: the tile in the
+   primary ink with the accent seam (the widget is where the keyboard is) and
+   a ring drawn inside. The suggest row outranks the list's own colours at
+   (0,7,0); the code-action row's fill is !important in Monaco's own CSS, so
+   only that one fill is here too, at (0,8,0). The suggest row's content steps
+   3px in so the seam stands clear of the completion icon. */
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
+  color: var(--slc-text);
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled) {
+  color: var(--slc-text);
+  background-color: var(--slc-tile) !important;
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
+  padding-left: 5px;
+}
+
+/* Other things Theia paints with the selection colour, now the tile: the
+   search view's match count, the file drag image and an SCM history base
+   ref. They are not states, so no seam; the one control edge is their
+   boundary (at least 3.5:1 on the kit's grounds). */
+:root:not([data-sl-theme="high-contrast"]) :is(.highlighted-count-container, .theia-file-tree-drag-image, .scm-history-ref-badge.base) {
+  box-shadow: inset 0 0 0 1px var(--slc-edge-control);
+}
+
+/* Shortcuts are keycaps, the kit's .sl-kbd (components.css, "Kbd — a keycap";
+   these declarations repeat its own and follow it by hand): Geist Mono 500,
+   at least 20px square, raised-to-surface, ringed, lit along the top, on a
+   base in its own fill in shade. Only the command palette and the code-action
+   menu: Monaco's inline-completion and inline-edit hints keep their own small
+   keys. Monaco writes a key's background, border and shadow inline, so those
+   are !important here, and so is the colour, over Theia's own !important
+   palette rule; where a key sits inside a highlighted label Theia's heavier
+   rule gives it the row's ink, which reads on the cap as well. */
+:root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list, .action-widget .monaco-list-row) .monaco-keybinding > .monaco-keybinding-key {
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.3125rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--slc-text-secondary) !important;
+  background-color: var(--slc-raised) !important;
+  background-image: linear-gradient(var(--slc-raised), var(--slc-surface)) !important;
+  border: 0 !important;
+  border-radius: 5px;
+  box-shadow: var(--slc-depth-key) !important;
+}
+
+/* A browser menu (Lumino; menus are native on macOS) lays its rows out as a
+   table, so a shortcut cell is as wide as the longest shortcut in the menu.
+   Its rows are flex rows here, the label taking the free space, so each
+   shortcut is a box of its own width and the shortcuts still line up at the
+   right; a separator row keeps its own 9px. A shortcut is one keycap per
+   key (shell/menu-keycaps-factory.ts gives every browser menu a renderer
+   that draws a kit .sl-kbd per key), 18px inside the 24px row, 3px apart, a
+   chord 6px from the next. The "+" and ", " between
+   them stay in the item's accessible name as text, out of sight, so it still
+   reads "Ctrl+Shift+P". A shortcut that arrives as text (a menu with a
+   renderer of its own) keeps one 18px cap behind the text. */
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-content {
+  display: flex;
+  flex-direction: column;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-item {
+  display: flex;
+  align-items: stretch;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-item[data-type="separator"] {
+  min-height: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu .lm-Menu-itemLabel {
+  flex: 1 1 auto;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu :is(.lm-Menu-itemIcon, .lm-Menu-itemShortcut, .lm-Menu-itemSubmenuIcon) {
+  flex: none;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty) {
+  position: relative;
+  isolation: isolate;
+  padding-inline: 0.3125rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--slc-text-secondary);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:not(:empty):not(:has(> .sl-kbd))::before {
+  content: "";
+  position: absolute;
+  inset: 3px 0;
+  z-index: -1;
+  border-radius: 5px;
+  background-color: var(--slc-raised);
+  background-image: linear-gradient(var(--slc-raised), var(--slc-surface));
+  box-shadow: var(--slc-depth-key);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-Menu-itemShortcut:has(> .sl-kbd) {
+  display: flex;
+  align-items: center;
+  padding-inline: 0;
+}
+
+/* The caps and their hidden separators hold in every theme: in high
+   contrast the menu keeps Theia's table and the kit's own high-contrast cap. */
+.lm-Menu-itemShortcut > .sl-kbd {
+  min-width: 18px;
+  height: 18px;
+}
+
+.lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep + .sl-kbd {
+  margin-inline-start: 3px;
+}
+
+/* A chord's separator is a key separator too, so it outweighs that rule. */
+.lm-Menu-itemShortcut > .sl-kbd + .spexr-key-sep.spexr-key-sep--chord + .sl-kbd {
+  margin-inline-start: 6px;
+}
+
+.lm-Menu-itemShortcut > .spexr-key-sep {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The editor's tabs, and the bottom island's (S4), are the kit's tile tabs
+   (.sl-tabs--tile): no rules between them, the others on the canvas in the
+   muted ink, hover a flat wash, the current tab a flat tile (lit, ringed, no
+   cast) in the primary ink with the seam 3px in from its leading edge: the
+   accent in the focused group, the muted ink in another, so the active group
+   is told apart (each area keys its seam ink: below, and THE WORKBENCH). A
+   28px tile centred in the 36px strip, 2px apart; the strip pads its ends
+   so the first and last ring are not clipped. Theia's tab participant writes
+   the editor's current tab at (1,3,0), and at (1,4,0) for an unfocused group,
+   and sidepanel.css the bottom's at up to (1,5,0), so these outrank both.
+   The tile's own shadow replaces Theia's 1px line on the bottom's current
+   tab (panelTitle.activeBorder).
+   Kit 0.34's tile tab (S5c): the editor's r7, 13px at 500, 12px in (Lumen's
+   11.2); the bottom island's r6 at 12.5px, 8px in (Lumen's 9.6), as Lumen
+   draws its panel tabs smaller. Lumen's panel tab is 26px; on the grid it is
+   the strip's 28, so it sits 4px in from the strip's edges as the editor's
+   does.
+   The strips (S5c): Theia's tab row is 36px (Lumen's 38) and the
+   breadcrumbs under the editor's 32px (Lumen's 30), so the code starts
+   where Lumen's does. Both are Theia's own variables, read by every
+   horizontal tab bar and toolbar (a side island's head sets its own 40px). */
+:root {
+  --theia-private-horizontal-tab-height: 36px;
+  --theia-breadcrumbs-height: 32px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-content {
+  gap: 2px;
+  padding-inline: 4px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab {
+  height: 28px;
+  line-height: 28px;
+  margin-top: round(down, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  margin-bottom: round(up, calc((var(--theia-horizontal-toolbar-height) - 28px) / 2), 1px);
+  padding-inline: 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--slc-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab:hover {
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  border: 0;
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 3px 50%;
+  box-shadow: var(--slc-depth-flat);
+  color: var(--slc-text);
+}
+
+/* The bottom island's tabs: Lumen's smaller panel tab. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab {
+  padding-inline: 8px;
+  border-radius: var(--sl-radius-sm);
+  font-size: 0.78125rem;
+}
+
+/* The breadcrumbs under the editor's tabs: Lumen's, 16px in at 12px. */
+#theia-main-content-panel .theia-breadcrumbs {
+  padding-inline: 16px;
+  font-size: var(--sl-text-xs);
+}
+
+/* In a group without focus the current tab's label steps down to the
+   secondary ink, so the focused group is told apart by lightness as well as
+   by its seam's hue (the two seams differ by 1.13:1 on light, 1.04 on dark). */
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+  color: var(--slc-text-secondary);
+}
+
+/* workbench.editor.highlightModifiedTabs draws a 2px top border on a dirty
+   tab, at up to (1,6,1); inside a tile it is a band above the lit line. The
+   tile tab marks unsaved work with its dot (Theia's ● in the close glyph, the
+   kit's __dot), so the band goes and the tab keeps its tile. */
+:root:not([data-sl-theme="high-contrast"]) body.theia-editor-highlightModifiedTabs #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-dirty.theia-mod-dirty {
+  border-top: 0;
+  padding-bottom: 0;
+}
+
+/* Forced colours (a Windows contrast theme) drop the fills, the gradients
+   and the shadows the tiles and seams are made of; an outline in Highlight
+   keeps the state, at each rule's own weight. */
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-TreeNode.theia-mod-selected,
+  :root:not([data-sl-theme="high-contrast"]) .theia-Tree:focus-within .theia-TreeNode.theia-mod-selected,
+  :root:not([data-sl-theme="high-contrast"]) :is(.quick-input-list .monaco-list-row.focused, .theia-select-component-dropdown .theia-select-component-option.selected, .scm-history-graph-row.selected, .scm-history-change-row.selected),
+  :root:not([data-sl-theme="high-contrast"]) :is(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused, .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled)) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  :root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab.lm-mod-current,
+  :root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar:not(.theia-tabBar-active) .lm-TabBar-tab.lm-mod-current {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* ══ THE WORKBENCH: ISLANDS AND THE LIT PANE (kit 0.33) ═════════════════════
+   Lumen (owner, 2026-10-02): the shell's left, main, bottom and right areas
+   are islands, the kit's .sl-pane (workbench.css), on the canvas 6px apart,
+   and the one that holds the focus is lit (data-lit: the raised rung, a seam
+   of the accent along its top edge and the seam's glow). SpexrApplicationShell
+   (shell/island-shell.ts) lays the gaps out as split spacing, so the sashes
+   fill them, and tags each area .spexr-island.sl-pane; SpexrLitIslandContribution
+   moves data-lit with the shell's active widget. Without the subclass none of
+   these classes exist and every rule here is inert. The island rules key on
+   .spexr-island, never on the shell: a maximised area is re-parented outside
+   it.
+
+   Theia's DOM asks for three adaptations of the kit's pane:
+   - The fill. Theia paints the main and bottom areas from id rules
+     (#theia-main-content-panel { background: var(--theia-editor-background) })
+     and each area's chrome from its own --theia-* surface, which the theme
+     layer pins on :root, so the kit's (0,1,0) fill loses to them. Each island
+     re-binds those surfaces to its own fill instead: --spexr-island-fill, the
+     kit's two rungs (the surface, the raised rung while lit), which reaches
+     every child by inheritance. Light and dark only: high contrast keeps
+     Theia's HC surfaces, and the island is its ring.
+   - The ring. Every Lumino layout item carries an inline contain: strict, the
+     island's parents included, so the kit's outward ring and glow are cut off
+     wherever an island's edge meets its parent's: three sides of four for
+     most islands. The island recipe is drawn inward instead, on an ::after
+     over the island's content (an opaque tab strip or editor would cover a
+     shadow of the island's own): the ring on the outermost pixel, the lit
+     line flush under it, and the lit pane's glow falling inward. It takes no
+     pointer.
+   - The order. Lumino stacks a dock panel's tab bars at z-index 1 and its
+     handles at 2-3, so the kit's seam (z-index 1, first in tree order) sat
+     under the tab strip. The seam is lifted over the ring, and the ring over
+     Theia's chrome; both stay under Theia's drop overlay (2000). */
+
+/* The frame (S5c): Lumen's 44 / 1fr / 28, the title bar, the islands and
+   the status bar, on the canvas. The islands touch both bars, as Lumen's do:
+   the gaps are between the islands and between an activity bar and its
+   island, never above or below them. The split panel takes no padding:
+   Theia reads a side panel's size from its handle's inline offset, and the
+   bottom panel's from the split's height. */
+#theia-app-shell.spexr-islands {
+  background: var(--slc-canvas);
+}
+
+/* The sash in a gap. Lumino and Theia give a split handle's hover paint
+   (::after, --theia-sash-hoverBorder: the accent) a minimum of 8px, so a
+   hover painted the whole 6px gap, and a pixel of each island beside it, in
+   the accent. It is a 2px line centred in the gap; the handle, the whole gap,
+   stays the grab target. */
+#theia-app-shell.spexr-islands > #theia-left-right-split-panel > .lm-SplitPanel-handle::after {
+  width: 2px;
+  min-width: 0;
+  border-radius: 1px;
+}
+
+#theia-app-shell.spexr-islands #theia-bottom-split-panel > .lm-SplitPanel-handle::after {
+  height: 2px;
+  min-height: 0;
+  border-radius: 1px;
+}
+
+/* The rules the islands replace: between an activity bar and its side
+   island, above the bottom panel's tab strip, above the status bar. The
+   island's ring is the edge now. Inside an island Theia's own rules stay
+   (between editor groups, between a view's sections), and so does
+   --theia-panel-border, which widgets draw their own edges with. */
+#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel) > .lm-Panel {
+  border: 0;
+}
+
+#theia-bottom-content-panel.spexr-island.sl-pane,
+#theia-bottom-content-panel.spexr-island .lm-TabBar {
+  border: 0;
+}
+
+#theia-app-shell.spexr-islands > #theia-statusBar {
+  border-top: 0;
+}
+
+/* The host keeps no shadow of its own: the recipe is the overlay below.
+   That also drops the kit's drop below a lit pane (0.34, --slc-lit-drop),
+   which the lit island's light wears inward on the bottom split panel's
+   handle (below). */
+.spexr-island.sl-pane,
+.spexr-island.sl-pane[data-lit] {
+  box-shadow: none;
+}
+
+/* The ring's pixel is the island's own: Lumino lays an island's children out
+   inside its padding, so a child that outlines its own edge (a focused tree,
+   Theia's 1px focus outline on a row) sits flush against the ring, never
+   under it. Theia zeroes a split child's padding at (0,2,0). Lengths
+   measured from the island's outer edge (a pane head's label, a tree's
+   tiles) take the ring off through --spexr-island-ring. */
+:root {
+  --spexr-island-ring: 1px;
+}
+
+.spexr-island.sl-pane.lm-Widget {
+  padding: var(--spexr-island-ring);
+}
+
+/* The fill, one variable through Theia's chrome. The tab strip and the
+   breadcrumbs take it too, so the light reaches them. */
+:root:not([data-sl-theme="high-contrast"]) .spexr-island {
+  --spexr-island-fill: var(--slc-surface);
+  --theia-editor-background: var(--spexr-island-fill);
+  --theia-editorGutter-background: var(--spexr-island-fill);
+  --theia-breadcrumb-background: var(--spexr-island-fill);
+  --theia-editorGroupHeader-tabsBackground: var(--spexr-island-fill);
+  --theia-panel-background: var(--spexr-island-fill);
+  --theia-panelSectionHeader-background: var(--spexr-island-fill);
+  --theia-sideBar-background: var(--spexr-island-fill);
+  --theia-sideBarSectionHeader-background: var(--spexr-island-fill);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .spexr-island[data-lit] {
+  --spexr-island-fill: var(--slc-raised);
+}
+
+/* Monaco declares its own colours on .monaco-editor at (0,1,0), from the
+   colour registry, where the theme's editor background is Theia's. An editor
+   (an EditorWidget, .theia-editor) and the Output view (.theia-output) paint
+   their body in the island's fill instead, lit too; the SCM message box and
+   other inputs built on Monaco keep their own. The minimap and xterm paint
+   into a canvas from the registry, which holds the island's surface for both
+   (spexr-color-contribution.ts): they match an island at rest, and stay the
+   surface in a lit one. */
+:root:not([data-sl-theme="high-contrast"]) .spexr-island :is(.theia-editor, .theia-output) .monaco-editor {
+  --vscode-editor-background: var(--spexr-island-fill);
+  --vscode-editorGutter-background: var(--spexr-island-fill);
+  --vscode-editorStickyScroll-background: var(--spexr-island-fill);
+  --vscode-editorStickyScrollGutter-background: var(--spexr-island-fill);
+}
+
+/* The island recipe, drawn inward (the kit's --slc-depth-island turned
+   in): the quieter ring on the outermost pixel and the lit line on the next,
+   flush under it. In high contrast the ring is the theme's line and there is
+   no lit line, as the kit's HC island is.
+   The islands give up the kit's aurora layer here. The kit keeps a pane's
+   ::after free for .sl-fx-aurora (workbench.css, "Paint layers") because its
+   pane draws the ring and glow as its own box-shadow, outward. Lumino's
+   contain: strict on every layout item clips that outward ring and glow at
+   the island's parents' edges, and the island's own shadow would sit under
+   its opaque children, so the recipe can only be drawn inward, over the
+   content, and only a pseudo-element can do that: the seam holds ::before,
+   the ring ::after. So no island may wear .sl-fx-aurora (nothing in spexr
+   does). The kit has no recipe for a pane whose parents clip it: asked of the
+   kit. */
+.spexr-island::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--slc-border-subtle), inset 0 2px 0 var(--slc-lit);
+  pointer-events: none;
+}
+
+:root[data-sl-theme="high-contrast"] .spexr-island::after {
+  box-shadow: inset 0 0 0 1px var(--slc-border);
+}
+
+/* The lit pane's light (kit 0.34, "the lit pane, as rendered"; S5f; the
+   owner's call is the demo's own rendering, with no accent rim round the
+   pane). The kit's 0.33 glow all round, which this drew inward, is gone. The
+   light is three pieces, each the kit's role, and each nothing in high
+   contrast and under forced colours (--slc-glow is 0 there, and the rules
+   are for light and dark only):
+   - the wash, --slc-lit-wash, along the top of the main island's tab row
+     (the kit sizes it by the box it is painted on, as Lumen's strip: Theia's
+     tab bar also holds the breadcrumbs, so it is the row of tabs, not the
+     bar, that wears it);
+   - the tint, --slc-lit-tint, down the breadcrumbs under it, over the row's
+     own fill;
+   - the drop, --slc-lit-drop, the glow that falls below the lit pane. The
+     host's own shadow is off (above) and Lumino clips what a pane casts
+     outward, so it is worn inward, as the kit says, by the element right
+     under the pane: the bottom split's handle, the gap between the main
+     island and the bottom island. It starts at the handle's top edge, the
+     same falloff from the same line. Where the bottom island is hidden there
+     is no gap, and no drop. */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar .theia-tabBar-tab-row {
+  background-image: var(--slc-lit-wash);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .theia-breadcrumbs {
+  background-image: var(--slc-lit-tint);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-split-panel:has(> #theia-main-content-panel.spexr-island[data-lit]) > .lm-SplitPanel-handle {
+  box-shadow: inset var(--slc-lit-drop);
+}
+
+/* The bottom island's tabs are the editor's tile tabs (THEIA'S CHROME IN
+   LUMEN). Their seam is the accent only on the active tab bar of the lit
+   bottom island, the muted ink otherwise (one lit seam). */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+/* Theia colours the bottom tab's label itself in a tab bar without the
+   focus, at up to (1,5,0); it takes the tab's ink. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-tab-icon-label.theia-tab-icon-label {
+  color: inherit;
+}
+
+/* The kit's seam (workbench.css, .sl-pane[data-lit]::before), over the tab
+   strip and over the ring. */
+.spexr-island.sl-pane[data-lit]::before {
+  z-index: 5;
+}
+
+/* A collapsed side keeps its island in the layout at no width: nothing of
+   it may show beside the activity bar. Its padding goes too, or Lumino would
+   size the side two pixels wider than Theia's collapsed maximum. */
+:is(#theia-left-content-panel, #theia-right-content-panel).theia-mod-collapsed > .spexr-island.sl-pane.lm-Widget {
+  padding: 0;
+}
+
+:is(#theia-left-content-panel, #theia-right-content-panel).theia-mod-collapsed > .spexr-island::after {
+  display: none;
+}
+
+/* A maximised area fills a fixed overlay painted in the frame's colour; it
+   stays an island, inset by the gap. Two classes outrank Theia's rule. */
+.spexr-island.theia-maximized {
+  top: var(--spexr-island-gap) !important;
+  left: var(--spexr-island-gap) !important;
+  width: calc(100% - 2 * var(--spexr-island-gap)) !important;
+  height: calc(100% - 2 * var(--spexr-island-gap)) !important;
+}
+
+/* The activity bars are the kit's .sl-activitybar (workbench.css): borderless
+   glyphs on the frame in the muted ink, hover a flat wash, the current view a
+   flat tile (lit and ringed, no cast) with the seam on its leading edge and
+   its glyph in the accent. The seam is the muted ink unless the bar holds the
+   focus, as on the kit's bar. Kit 0.34's geometry (S5c): a 52px bar, 36px
+   tiles at r9 with a 20px glyph, 8px apart (Lumen's 44px pitch), the first
+   4px from the top; Theia sizes each tab to its icon box, inline, so the box
+   is the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
+   codicon does. The count badge is the kit's, inside the tile's corner: the
+   tab clips. The bar's foot (the settings and accounts menus) takes the same
+   tiles.
+   The column is the bar and the 6px island gap to its island, padded on the
+   island's side, so Theia's measure of a side (the handle's offset) holds
+   the gap (shell/workbench-geometry.ts). A collapsed side has no island,
+   and its column drops the gap. This is layout, so it holds in high
+   contrast too; Theia's own CSS reads --theia-private-sidebar-tab-width for
+   the bar and for a collapsed side's width. */
+:root {
+  --theia-private-sidebar-tab-width: 52px;
+}
+
+#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel) > .theia-app-sidebar-container {
+  min-width: calc(var(--theia-private-sidebar-tab-width) + var(--spexr-island-gap));
+  max-width: calc(var(--theia-private-sidebar-tab-width) + var(--spexr-island-gap));
+}
+
+#theia-app-shell.spexr-islands #theia-left-content-panel > .theia-app-sidebar-container {
+  padding-right: var(--spexr-island-gap);
+}
+
+#theia-app-shell.spexr-islands #theia-right-content-panel > .theia-app-sidebar-container {
+  padding-left: var(--spexr-island-gap);
+}
+
+#theia-app-shell.spexr-islands :is(#theia-left-content-panel, #theia-right-content-panel).theia-mod-collapsed > .theia-app-sidebar-container {
+  min-width: var(--theia-private-sidebar-tab-width);
+  max-width: var(--theia-private-sidebar-tab-width);
+  padding-inline: 0;
+}
+
+#theia-app-shell .lm-TabBar.theia-app-sides .lm-TabBar-content {
+  row-gap: 8px;
+  padding-top: 4px;
+}
+
+#theia-app-shell .theia-app-sidebar-container > .theia-sidebar-menu:last-child {
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides {
+  --spexr-seam-ink: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides:focus-within {
+  --spexr-seam-ink: var(--slc-seam);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container {
+  --theia-private-sidebar-icon-size: 20px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab {
+  box-sizing: border-box;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  margin-inline: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: var(--slc-text-muted);
+  background-color: transparent;
+  box-shadow: none;
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon:not(.codicon) {
+  background-color: currentColor;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab:hover {
+  color: var(--slc-text);
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+}
+
+/* Theia gives every vertical tab a transparent top and bottom border, the
+   drag-over indicator (tabs.css, --theia-dragover-tab-border-width, 2px,
+   !important), and it stays. The tile paints under it, but a background
+   layer and an absolute child are placed in the padding box, 2px down: the
+   seam takes the border back to stay half the tile's height, and the badge
+   (below) to sit 4px from the tile's top. */
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {
+  color: var(--slc-text);
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
+  background-repeat: no-repeat;
+  background-size: 2px calc(50% + var(--theia-dragover-tab-border-width));
+  background-position: 3px 50%;
+  box-shadow: var(--slc-depth-flat);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current .lm-TabBar-tabIcon {
+  color: var(--slc-accent-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar {
+  top: calc(4px - var(--theia-dragover-tab-border-width));
+  right: 4px;
+  bottom: auto;
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 1rem;
+  padding: 0 4px;
+  font: 600 9px/1rem var(--sl-font-mono);
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--slc-canvas);
+}
+
+/* The bar's foot: Theia's settings and accounts menus, as the bar's tiles. */
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container .theia-sidebar-menu-item {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-inline: auto;
+  border-radius: 9px;
+  color: var(--slc-text-muted);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container .theia-sidebar-menu-item > i {
+  padding: 0;
+  color: inherit;
+  background-color: transparent;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container .theia-sidebar-menu-item:hover {
+  color: var(--slc-text);
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+}
+
+/* The tree, toward the kit's .sl-tree (workbench.css): the twisty in the
+   muted ink, turning on the kit's motion tokens (no turn under reduced
+   motion; never while it spins as busy). The guides are the theme layer's
+   (theia-chrome-css.ts); the selected row is S2's tile.
+   Kit 0.34's geometry (S5c), as layout in every theme:
+   - A file tree's row (the Explorer, a file dialog) is the kit's 24px
+     (Lumen's 26): Theia sizes a row, and its indent guides, from
+     --theia-content-line-height, so the file tree re-binds it.
+   - Each level is indented 16px, Lumen's (the `workbench.tree.indent`
+     default, apps/desktop/package.json; spexr's patch to Theia's tree makes
+     every level that step, where Theia stepped from depth 1 to 2 by twice
+     it).
+   - The twisty is Theia's codicon chevron in a 16px box with 4px after it,
+     Lumen's twisty and gap. Theia keeps 22px for a leaf's missing twisty,
+     so the twisty takes 2 + 16 + 2 and a 2px margin: a leaf's icon lines up
+     with its folder siblings' (it sat 2px to their right). A margin, not
+     padding: a collapsed twisty turns about its box's centre, which must
+     stay the glyph's. */
+.theia-FileTree {
+  --theia-content-line-height: 24px;
+}
+
+.theia-Tree .theia-ExpansionToggle {
+  margin-inline-end: 2px;
+}
+
+/* A file tree's tiles sit 8px in from the island's edges, as Lumen's rows
+   do (inside the island's ring): the selected row's tile, the hover's flat
+   wash and the focus ring, which all move off the full-width row onto an
+   inset tile. A selected row keeps its own tile under the pointer. The
+   seam stays 1px inside the tile, clear of a first-level twisty, which
+   starts at the tile's edge. A focused row that is not selected (Theia
+   moves the focus apart from the selection on Ctrl+arrow) draws the kit's
+   flush ring on that tile, not Theia's 1px outline on the whole row. */
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode {
+  position: relative;
+  isolation: isolate;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode:hover {
+  background: transparent;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode:hover:not(.theia-mod-selected)::before {
+  content: "";
+  position: absolute;
+  inset: 1px calc(8px - var(--spexr-island-ring));
+  z-index: -1;
+  border-radius: var(--sl-radius-sm);
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree .theia-TreeNode.theia-mod-selected::before {
+  inset: 1px calc(8px - var(--spexr-island-ring));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree:focus-within .theia-TreeNode.theia-mod-focus:not(.theia-mod-selected) {
+  outline: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-FileTree:focus-within .theia-TreeNode.theia-mod-focus:not(.theia-mod-selected)::before {
+  content: "";
+  position: absolute;
+  inset: 1px calc(8px - var(--spexr-island-ring));
+  z-index: -1;
+  border-radius: var(--sl-radius-sm);
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle {
+  color: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-Tree .theia-ExpansionToggle:not(.theia-mod-busy) {
+  transition: transform var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+/* A side island's head (S5c), Lumen's pane head: 40px, its label the view's
+   name as written ("Explorer", not Theia's EXPLORER), 13px at 600 in the
+   primary ink, 16px in from the island's outer edge.
+   Layout in every theme; the ink is light and dark only. */
+#theia-app-shell .theia-sidepanel-toolbar {
+  min-height: 40px;
+}
+
+#theia-app-shell .theia-sidepanel-toolbar .theia-sidepanel-title {
+  margin-left: calc(16px - var(--spexr-island-ring));
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-app-shell .theia-sidepanel-toolbar .theia-sidepanel-title {
+  color: var(--slc-text);
+}
+
+/* Forced colours drop the tile, the seam and the glyph's accent: the current
+   activity item gets the Highlight outline the S2 tiles have. The pane's own
+   outline and seam are the kit's (workbench.css). */
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* ══ THE TITLE BAR (kit 0.34, .sl-titlebar) ══════════════════════════════════
+   Lumen's title bar on every OS (owner, 2026-10-05): the kit's .sl-titlebar,
+   drawn by SpexrTitleBarWidget (titlebar/spexr-titlebar-widget.tsx) in
+   Theia's top panel, which SpexrElectronMenuContribution always shows. A
+   custom (frameless) window on Windows or Linux adds Theia's own window
+   controls (#window-controls) at the panel's end; Linux's escape hatch, a
+   native window, keeps the system's frame and menus above the bar. On macOS
+   the bar is the window's only title bar: the system's traffic lights sit
+   inside it, and the system menu bar keeps the menus.
+
+   - The panel is the bar's 44px on the canvas, with no rule under it:
+     Theia's height variable drives both its minimum and the controls.
+   - The drag region is the kit's: the bar drags, its buttons do not. Theia
+     makes every child of the panel no-drag, the widget's own node included;
+     the header inside it drags again, and the controls stay no-drag.
+   - The controls sit over the bar's end, so the right cluster gives up their
+     width as padding and the command field stays centred on the window. One
+     property sizes both. The cluster never shrinks below its content:
+     between the 1100px minimum window and about 1400px the kit's 1fr track
+     is narrower than the cluster and the controls, and an overflowing
+     cluster ran under the command field; the centre track gives way instead,
+     a little off centre.
+   - A popup from elsewhere that overlaps the bar (a menu, Quick Open, a
+     Monaco context view or hover, a dialog) is no-drag, or the bar's region,
+     hit-tested as a rectangle, would eat its clicks.
+   - The close button hovers in the kit's danger fill and its label, not
+     Theia's red literal; the others in the raised rung. All of them take
+     the keyboard, with the kit's ring drawn inside.
+   - macOS's traffic lights start on the bar's own padding, centred on it
+     (the main process places them: common/mac-title-bar.ts). An empty span
+     takes their room at the start of the left track, so the kit's gap puts
+     the mark after them and the command field stays centred on the window.
+     Its width and height, --spexr-traffic-lights and
+     --spexr-traffic-light-size, are the main process's: the lights differ
+     from macOS 26 on (14pt on a 23pt pitch, 12pt on 20pt before), and they
+     stay put in points while Theia's zoom scales the page, so the room is
+     their right edge over the zoom factor. The fallbacks are the lights
+     before macOS 26, at 100%, until the main process sets them. Nothing here declares either
+     property, which would shadow the main process's. The widget drops the
+     span in full screen, where macOS hides the lights.
+   - The bell replaces Theia's notification item in the status bar. */
+:root {
+  --theia-private-menubar-height: 44px;
+}
+
+#theia-top-panel {
+  --spexr-window-control: 48px;
+  color: var(--slc-text);
+  background: var(--slc-canvas);
+  border-bottom: 0;
+}
+
+#theia-top-panel > .spexr-titlebar-host {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#theia-top-panel > .spexr-titlebar-host > .sl-titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.spexr-titlebar-host .sl-titlebar__r {
+  min-width: max-content;
+}
+
+#theia-top-panel:has(> #window-controls) .sl-titlebar__r {
+  padding-inline-end: calc(3 * var(--spexr-window-control));
+}
+
+.spexr-titlebar-host .spexr-titlebar__lights {
+  flex: none;
+  width: var(--spexr-traffic-lights, 52px);
+  height: var(--spexr-traffic-light-size, 12px);
+}
+
+.spexr-titlebar-host .sl-titlebar__cmd > .codicon {
+  flex: none;
+}
+
+/* The menu button keeps its room while the window's style is not known
+   yet, and shows nothing: it must not flash in a native window. */
+.spexr-titlebar-host .spexr-titlebar__menu--pending {
+  visibility: hidden;
+}
+
+/* The avatar is an icon button in the avatar's box: the kit's ring, halo
+   and hover, its initials in the mono. .sl-avatar comes later in the kit
+   and draws its box in --slc-border, a step dimmer than the icon buttons
+   beside it, so its edge at rest is pinned to theirs; hover and focus keep
+   the icon button's own edge, so the flush ring still joins the border. */
+.spexr-titlebar-host .spexr-titlebar__avatar {
+  font-family: var(--sl-font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.spexr-titlebar-host .spexr-titlebar__avatar:not(:hover, :focus-visible) {
+  border-color: var(--slc-edge-control);
+}
+
+:is(.lm-Menu, .quick-input-widget, .context-view, .monaco-hover, .theia-hover, .dialogOverlay) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+#window-controls {
+  grid-template-columns: repeat(3, var(--spexr-window-control));
+  color: var(--slc-text-secondary);
+  background: var(--slc-canvas);
+}
+
+#window-controls .control-button:hover {
+  color: var(--slc-text);
+  background: var(--slc-raised);
+}
+
+#window-controls #close-button:hover {
+  color: var(--slc-on-danger);
+  background: var(--slc-danger);
+}
+
+#window-controls #close-button:hover::before {
+  color: var(--slc-on-danger);
+}
+
+/* The controls take the keyboard (SpexrElectronMenuContribution gives them
+   a role, a name and a tab stop). Their ring is the kit's, drawn inside:
+   they sit flush against the window's edge, which would clip it outside. */
+#window-controls .control-button:focus-visible {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+/* Hovered, the close button is the danger fill, which the focus colour
+   barely parts from (1.09:1 on ink, 1.68:1 on paper): the ring takes the
+   fill's label instead, as the glyph does. */
+#window-controls #close-button:hover:focus-visible {
+  outline-color: var(--slc-on-danger);
+}
+
+#theia-statusBar #status-bar-theia-notification-center {
+  display: none;
+}
+
+/* ══ THE STATUS DOCK (kit 0.34, .sl-statusbar) ═════════════════════════════
+   Theia's status bar takes the kit's status bar look on its own elements; it
+   is not re-implemented. It sits on the canvas, in the frame's strip below
+   the islands. Facts are the kit's sans at the small step, in the muted ink,
+   as written (no case change); a fact read as data -- a branch, a project,
+   a count, the caret's place, an encoding -- is the mono at the primary ink;
+   a live state (a job running, a download) carries a dot of the accent, and
+   the words say the state; a fact that does not fit ends in an ellipsis.
+   - Height (S5c). The kit's 28px bar (Lumen's 30 on the 4px grid), through
+     Theia's --theia-statusBar-height, which only the bar reads; the islands
+     sit right on it, with no rule between. Each item is the kit's 20px pill
+     at r6, centred, 4px from the bar's edges, so a hover is the kit's flat
+     wash with the small radius.
+   - Width (S5c). The kit's and Lumen's: 8px into each pill, pills side by
+     side, 4px into the bar at its start and 8 at its end. No hairlines
+     between groups: Lumen draws none, and the kit's are opt-in since 0.34.
+     The toasts sit 48px above the window's bottom (TOASTS, below).
+   - Hooks. Theia's entries are reached by their ids; spexr's own entries
+     carry STATUS_DATA / STATUS_LIVE as their className (shell/status-dock.ts).
+   - Grounds. An item with a ground of its own (an error, a warning, a
+     prominent fact, the offline bar) keeps it: its fill is its boundary and
+     its label is the kit's label on it (theia-chrome-css.ts and
+     spexr-color-contribution.ts). Its text keeps that label, never the data
+     ink. The bar stays Theia's in high contrast, in the kit's faces.
+   Theia's rules weigh up to (1,4,0) here, and (2,4,0) on a left item with a
+   ground: the :is(.left, .right) step, and .lm-Widget on the bar for an item
+   with a ground, put the dock's rules ahead of every one of Theia's that
+   sets the same property to something else (status-dock-style.test.ts). */
+:root {
+  --theia-statusBar-height: 28px;
+}
+
+#theia-statusBar {
+  font-family: var(--sl-font-sans);
+  font-size: var(--sl-text-xs);
+}
+
+#theia-statusBar.lm-Widget .area.left {
+  padding-left: 4px;
+}
+
+#theia-statusBar.lm-Widget .area.right {
+  padding-right: 8px;
+}
+
+/* Theia gives each area half the bar (flex: 1, a zero basis), so a busy
+   left half ran out of room while the right half had plenty. Each area
+   starts from its content and shares what is left; when the bar is full,
+   both shrink, and their items end in an ellipsis. */
+#theia-statusBar .area:is(.left, .right) {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0;
+  overflow-x: clip;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element {
+  position: relative;
+  flex: 0 1 auto;
+  align-self: center;
+  box-sizing: border-box;
+  height: 1.25rem;
+  margin-block: 0;
+  padding-inline: 0.5rem;
+  border-radius: var(--sl-radius-sm);
+  font-family: var(--sl-font-sans);
+  font-size: var(--sl-text-xs);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+/* The text is a flex item of its own (Theia's span), so it can end in an
+   ellipsis; the glyphs (codicons, and a plugin's Font Awesome glyphs) keep
+   the icon font and their size. An entry made of several runs between
+   glyphs (the problem counts) keeps its width: an ellipsis inside "0 errors
+   2 warnings" would say nothing. So does a live state, whose progress ends
+   its words ("Downloading kev-4b 33%"). */
+#theia-statusBar .area:is(.left, .right) > .element > span:not(.codicon, .fa) {
+  min-width: 0;
+  margin-inline: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element:has(> span:not(.codicon, .fa) ~ span:not(.codicon, .fa)),
+#theia-statusBar .area:is(.left, .right) > .element.spexr-status--live {
+  flex-shrink: 0;
+}
+
+/* Data: the caret's place, the encoding, the line ends, the problem count,
+   and spexr's branch, project and resource meter. Not on the offline bar or
+   on an item with a ground of its own, whose label stays theirs. The
+   notification count left with its item: the title bar's bell has it. */
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, .spexr-status--data):not(.has-background) > span:not(.codicon, .fa) {
+  font-family: var(--sl-font-mono);
+  font-weight: 500;
+  color: var(--slc-text);
+}
+
+/* Theia pulls a left item with a ground, and an entry it compacts onto its
+   left neighbour, 6px left, into the gap it had between items; the pills
+   sit side by side instead. */
+#theia-statusBar.lm-Widget .area:is(.left, .right) > .element.has-background:not(#session-preference-status),
+#theia-statusBar .area:is(.left, .right) > .element + .element.compact-right {
+  margin-left: 0;
+}
+
+/* A live state: the accent dot before its words (it is only the mark; the
+   words say the state). A flex item placed first, as the kit's __dot. */
+#theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
+  content: "";
+  order: -1;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-inline: 0 var(--sl-space-1);
+  border-radius: 50%;
+  background-color: var(--slc-accent-text);
+}
+
+/* The offline bar is the kit's warning (theia-chrome-css.ts): the accent dot
+   read 1.13:1 on it, so it takes the bar's label. */
+.theia-mod-offline #theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
+  background-color: currentColor;
+}
+
+@media (forced-colors: active) {
+  #theia-statusBar .area:is(.left, .right) > .element.spexr-status--live::after {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
+/* ══ TOASTS AND THE NOTIFICATION CENTER (kit 0.34, .sl-toast; Lumen's, S5f) ═
+   Theia's notifications (@theia/messages) take the kit's toast on their own
+   DOM; nothing is re-rendered. TOAST (shell/workbench-geometry.ts) holds the
+   numbers and toasts-style.test.ts holds the two together.
+   - A toast floats: the raised rung, no border, the cast (the ring is the
+     cast's), r12, newest last (nearest the corner), as in the kit's stack.
+   - It is 360px wide and ends 8px inside the editor island's right edge, not
+     the window's (the shell publishes the edge, shell/editor-anchor.ts);
+     its bottom is 48px above the window's.
+   - Its severity is a tone tick on its top edge (the kit's 0.34 measure: a
+     1px line from 16px in to the middle, fading, the tone's glow at 50%) and
+     its glyph's 16% wash; the words stay neutral. Theia knows info, warning,
+     error and progress, and marks them only with its glyph, so the tone is
+     read off the glyph: error is the kit's danger, and progress, which wears
+     the info glyph, the info tone. Theia has no success.
+   - It arrives as the kit's toast does: a 6px rise and a fade on the arrival
+     curve, transitions only, so reduced motion (which zeroes the tokens)
+     shows it at once. Only a toast: the center's rows never animate.
+   - The expand and clear glyphs are the kit's icon buttons, 32px at r8, in
+     the one control edge. Theia makes neither focusable; that is left as it is.
+   - ARIA: Theia gives a notification no role and no live region. The kit's
+     two regions, polite and alert, are spexr's (messages/toast-announcer.ts):
+     they exist from start, outside Theia's container, which is display: none
+     while closed, and a toast is said there when it appears on screen.
+   The center is the same surface, its rows tiles in a list: a flat wash on
+   hover, and the row that holds the focus a flat tile with the seam in the
+   accent (only a focused row is a tile, so the center holds the focus).
+   Light and dark only: high contrast keeps Theia's own.
+   Not built: Lumen's stack-back card behind the toast, its timer along the
+   foot and the Undo button's key hint: Theia's toast has none of them.
+   The stack sits 48px above the window's bottom (S5c), Lumen's toast offset:
+   20px clear of the 28px status bar, where Theia's literal 36px was sized
+   for its own 22px row. The notification center opens from the same
+   corner, so it moves with it, and is never wider than the editor island.
+   Layout, so in every theme. */
+body .theia-notifications-container {
+  right: calc(var(--spexr-editor-end) + 8px);
+  bottom: 48px;
+  max-width: calc(var(--spexr-editor-width) - 16px);
+}
+
+body .theia-notifications-container.theia-notification-toasts {
+  width: 360px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item {
+  --spexr-tone: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item:has(.theia-notification-icon.info) {
+  --spexr-tone: var(--slc-info-text, var(--slc-info));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item:has(.theia-notification-icon.warning) {
+  --spexr-tone: var(--slc-warning-text, var(--slc-warning));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item:has(.theia-notification-icon.error) {
+  --spexr-tone: var(--slc-danger-text, var(--slc-danger));
+}
+
+/* Theia's styling participant paints each item's container in the
+   registry's notification background, Theia's own grey: it would show at
+   the corners the toast rounds off. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-container {
+  border-radius: 12px;
+  background-color: transparent;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list {
+  flex-direction: column;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-container {
+  margin-top: var(--sl-space-2);
+  border-radius: 12px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item {
+  position: relative;
+  background-color: var(--slc-raised);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--slc-edge-control), var(--slc-depth-cast);
+  transition:
+    opacity var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease)),
+    translate var(--sl-motion-mid) var(--sl-motion-enter, var(--sl-motion-ease));
+}
+
+@starting-style {
+  :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--sl-space-4);
+  right: 50%;
+  height: 1px;
+  background-image: linear-gradient(90deg, var(--spexr-tone), transparent);
+  /* The kit's glow: 50% of the tone, and nothing where --slc-glow is 0 (min(1, glow * 1000) is 1 for any glow above 0). */
+  box-shadow: 0 0 10px color-mix(in srgb, var(--spexr-tone) calc(50% * min(1, var(--slc-glow) * 1000)), transparent);
+  pointer-events: none;
+}
+
+/* The kit's toast row: its padding, and the glyph, the words and the
+   buttons on one line, 12px apart. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content {
+  margin: 0;
+  padding: var(--sl-space-3) var(--sl-space-3) var(--sl-space-4) var(--sl-space-4);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content-main {
+  align-items: center;
+  gap: var(--sl-space-3);
+  padding: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-message {
+  margin-top: 0;
+  color: var(--slc-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-list-item-content-bottom {
+  padding-top: var(--sl-space-2);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-source {
+  padding: 0;
+  font-size: var(--sl-text-xs);
+  color: var(--slc-text-muted);
+}
+
+/* A toast with one action is one row, as Lumen's: the glyph, the words (the
+   source under them), the action, the dismiss, 12px apart. Theia puts the
+   buttons in a row of their own under the words, which made the toast 19px
+   taller than the demo's. The two rows of Theia's markup (the glyph, words
+   and dismiss; the source and the buttons) are laid out as one grid, which
+   changes no order a keyboard or a screen reader meets: only the buttons
+   are focusable. A toast with none or several actions keeps Theia's rows
+   (several would crowd the words), and so does a collapsed one. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--sl-space-3);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) :is(.theia-notification-list-item-content-main, .theia-notification-list-item-content-bottom) {
+  display: contents;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-icon {
+  grid-area: 1 / 1 / span 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-message {
+  grid-area: 1 / 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-source {
+  grid-area: 2 / 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-buttons {
+  grid-area: 1 / 3 / span 2;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item-content:not(.collapsed):has(.theia-notification-buttons > button:only-child) .theia-notification-actions {
+  grid-area: 1 / 4 / span 2;
+}
+
+/* The mark: the glyph in its tone on a 16% wash of itself (Lumen's; the
+   kit's badge is 12%), 24px round. Theia colours the glyph through its icon
+   variables, which the theme layer sets to the same tones. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  border-radius: 50%;
+  color: var(--spexr-tone);
+  background-color: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-icon::before {
+  font-size: 16px;
+}
+
+/* The expand and clear glyphs, and the center's own: the kit's icon button
+   (32px, r8), transparent in the one control edge, the glyph in the
+   secondary ink, hover bringing the surface rung up under it. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-actions {
+  align-items: center;
+  gap: var(--sl-space-1);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-actions > li {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  color: var(--slc-text-secondary);
+  border: 1px solid var(--slc-edge-control);
+  border-radius: var(--sl-radius-md);
+  transition:
+    color var(--sl-motion-fast) var(--sl-motion-ease),
+    background-color var(--sl-motion-fast) var(--sl-motion-ease),
+    border-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-actions > li:hover {
+  color: var(--slc-text);
+  background-color: var(--slc-surface);
+  border-color: var(--slc-edge-control-hover);
+}
+
+/* A progress bar keeps clear of the rounded corners. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-item-progress {
+  margin-inline: var(--sl-radius-lg);
+  overflow: hidden;
+}
+
+/* Theia's indeterminate sweep is an animation of its own, which the kit's
+   motion tokens do not reach: under reduced motion the bar stands still.
+   Theia's rule weighs (0,2,0); this one (0,3,0), whatever the sheet order. */
+@media (prefers-reduced-motion: reduce) {
+  :root .theia-notification-item-progressbar.indeterminate {
+    animation: none;
+  }
+}
+
+/* The center: the toast's surface. */
+:root:not([data-sl-theme="high-contrast"]) .theia-notifications-container.theia-notification-center {
+  background-color: var(--slc-raised);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--slc-edge-control), var(--slc-depth-cast);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header {
+  min-height: 2.25rem;
+  padding-inline: var(--sl-space-4) var(--sl-space-2);
+  color: var(--slc-text-secondary);
+  background-color: transparent;
+  border-bottom: 1px solid var(--slc-border-subtle);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header-title {
+  margin: 0;
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center-header-actions {
+  margin: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list {
+  gap: 2px;
+  padding: var(--sl-space-2);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item {
+  border: 0;
+  border-radius: var(--sl-radius-md);
+  background-color: transparent;
+  transition: background-color var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item:hover {
+  background-color: color-mix(in srgb, var(--slc-text) 5%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item:focus-within {
+  background-color: var(--slc-tile);
+  background-image: linear-gradient(var(--slc-seam), var(--slc-seam));
+  background-repeat: no-repeat;
+  background-size: 2px 50%;
+  background-position: 1px 50%;
+  box-shadow: var(--slc-depth-flat);
+}
+
+/* Forced colours drop the tick's fill and the focused row's tile: the tick
+   is drawn in the palette's ink, as the kit's is, and the row keeps a
+   Highlight outline, as S2's tiles do. */
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .theia-notification-toasts .theia-notification-list-item::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+    box-shadow: none;
+  }
+
+  :root:not([data-sl-theme="high-contrast"]) .theia-notification-center .theia-notification-list-item:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* Visually hidden, still read: the toast announcer's two live regions
+   (messages/toast-announcer.ts) and the title bar crumb's full path. Never
+   display: none, which would take a region out of the accessibility tree. */
+.spexr-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ══ THE COMMAND PALETTE (kit 0.34, .sl-palette; Lumen's, S5f) ══════════════
+   Theia's quick input (Monaco's widget) takes the kit's palette look on its
+   own DOM. The numbers are PALETTE's (shell/workbench-geometry.ts), held to
+   this file by palette-style.test.ts.
+   - It floats over the editor island, centred on it (the shell publishes the
+     island's place, shell/editor-anchor.ts). Monaco writes width, left and
+     top inline and Theia sets the container's top, so they are overridden
+     with !important, for every quick input: none can be dragged, and all
+     open 118px down. Layout, so in every theme.
+   - The look is for light and dark; high contrast keeps Theia's own. A
+     translucent raised rung under a blur where the backdrop can blur (opaque
+     under reduced transparency and power saving), the cast, the one control
+     edge as a 1px boundary, and the kit's seam on its top edge.
+   - The selected row keeps THE SEAM (above). A group's name is Monaco's
+     inline label (a separator without buttons) or, with buttons, a row of
+     its own. Keycaps: one cap per key, the "+" kept in the accessible name.
+   Not built, as Theia's palette has none: Lumen's footer, the scope chip and
+   a glyph on a command. */
+:root {
+  --spexr-editor-start: 0px;
+  --spexr-editor-end: 0px;
+  --spexr-editor-width: 100vw;
+  --spexr-palette-width: min(580px, calc(100vw - 16px));
+}
+
+#quick-input-container {
+  top: 0 !important;
+  left: 0 !important;
+}
+
+.quick-input-widget {
+  top: 118px !important;
+  left: clamp(8px, calc(var(--spexr-editor-start) + (var(--spexr-editor-width) - var(--spexr-palette-width)) / 2), calc(100vw - var(--spexr-palette-width) - 8px)) !important;
+  width: var(--spexr-palette-width) !important;
+}
+
+/* A row's content is centred in its height, whatever the height is. */
+.quick-input-list .quick-input-list-rows {
+  justify-content: center;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+  background-color: var(--slc-raised) !important;
+  border: 0 !important;
+  border-radius: var(--sl-radius-lg);
+  box-shadow: 0 0 0 1px var(--slc-edge-control), var(--slc-depth-cast) !important;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+    background-color: color-mix(in srgb, var(--slc-raised) 94%, transparent) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.3);
+    backdrop-filter: blur(24px) saturate(1.3);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    :root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+      background-color: var(--slc-raised) !important;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
+  :root[data-spexr-power-save]:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+    background-color: var(--slc-raised) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 40%;
+  z-index: 1;
+  height: 1px;
+  background-image: linear-gradient(90deg, var(--slc-seam), transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--slc-seam) calc(55% * min(1, var(--slc-glow) * 1000)), transparent);
+  pointer-events: none;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget:not(.hidden-input) .quick-input-header {
+  box-sizing: border-box;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--slc-border-subtle);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox {
+  box-sizing: border-box;
+  height: 32px;
+  background-color: transparent !important;
+  border: 1px solid var(--slc-edge-control) !important;
+  border-radius: var(--sl-radius-md);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox:focus-within {
+  border-color: var(--slc-focus) !important;
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox > .ibwrapper > .input {
+  min-height: 0;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  background-color: transparent !important;
+  border-radius: calc(var(--sl-radius-md) - 1px);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget .quick-input-box .monaco-inputbox > .ibwrapper > .input:focus-visible {
+  outline: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-widget:not(.hidden-input) .quick-input-list {
+  box-sizing: border-box;
+  max-height: calc(100vh - 118px - 52px - 8px);
+  padding-top: 4px;
+  overflow: hidden;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list {
+  padding-bottom: 8px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-scrollable-element {
+  padding: 0 8px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row,
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row.focused {
+  border-radius: var(--sl-radius-md);
+}
+
+/* The entry fills its row, so its words are centred in the row's 36px and
+   not set at the top of it (Monaco's rows were as tall as their line). */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry {
+  height: 100%;
+  padding: 0 12px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry .quick-input-list-entry-keybinding {
+  margin-left: 12px;
+}
+
+/* An entry's words: 14px in the primary ink, its meta (Theia's description)
+   12px in the muted ink, taking the free width to the right of the label
+   (Monaco's own 70% opacity goes: the ink is what reads). */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-label-container {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-label-container .monaco-icon-name-container .label-name {
+  font-size: var(--sl-text-sm) !important;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-description-container {
+  flex: none;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-description-container .label-description {
+  margin-left: 0;
+  font-size: var(--sl-text-xs) !important;
+  color: var(--slc-text-muted) !important;
+  opacity: 1;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row.focused .quick-input-list-rows .quick-input-list-row .monaco-icon-label .monaco-icon-description-container .label-description {
+  color: var(--slc-text-secondary) !important;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-label-meta {
+  opacity: 1;
+  color: var(--slc-text-muted);
+}
+
+/* A match: the primary ink, heavier, underlined in the accent. Monaco and
+   Theia colour it with !important, and again on the focused row. */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list .monaco-list-row .monaco-highlighted-label .highlight,
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list .monaco-list-row.focused .monaco-highlighted-label .highlight {
+  color: inherit !important;
+  font-weight: 600;
+  text-decoration-line: underline;
+  text-decoration-color: var(--slc-accent-text);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+/* A group's name: the kit's mono label, in the muted ink, at the end of the
+   group's first row (Monaco draws it there), under a hairline. The row it is
+   on keeps its own ink. */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry .quick-input-list-separator {
+  align-self: center;
+  padding-left: 12px;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slc-text-muted) !important;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-border {
+  border-top-color: var(--slc-border-subtle) !important;
+}
+
+/* A separator with buttons is a row of its own, 28px: the same label. */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-as-item {
+  padding: 8px 12px 4px;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slc-text-muted);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-as-item .label-name,
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-as-item .label-description {
+  font-family: inherit;
+  font-size: inherit !important;
+  font-weight: inherit;
+  color: var(--slc-text-muted) !important;
+}
+
+/* The "+" between keys, in the accessible name and out of sight; the caps'
+   own margins (2px each) are the 4px between them. */
+.quick-input-list .monaco-keybinding > .monaco-keybinding-key-separator {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .quick-input-widget {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+
+  :root:not([data-sl-theme="high-contrast"]) .quick-input-widget::before {
+    forced-color-adjust: none;
+    background: Highlight;
+    box-shadow: none;
+  }
+}
+
 /* Resource meter hover (resource-status-format.ts): a telemetry table. Every
    row shares one column template so figures line up without a <table>. */
 .spexr-telemetry {
@@ -471,16 +2309,56 @@ body {
   background: var(--sl-bg-surface);
 }
 
-.spexr-spec-panel,
-.spexr-memory-panel {
+.spexr-spec-panel {
   padding: var(--sl-space-5);
 }
 
-.spexr-spec-panel__header h2,
-.spexr-memory-panel__header h2,
-.spexr-experts-panel__header h2 {
+.spexr-spec-panel__header h2 {
   margin: 0 0 var(--sl-space-2);
   font-weight: 600;
+}
+
+/* The right island's views (Memory, Experts, TODO), as Lumen's agent pane
+   (S5e): a head of a micro-label over a 16px/600 title with a hairline under
+   it, then a 16px body. The numbers are RIGHT_PANEL in
+   shell/workbench-geometry.ts (right-panel-style.test.ts holds them). Lumen's
+   13.6 / 15.2 / 3.2 / 23.2 are 12 / 16 / 4 / 24 on the kit's grid. */
+.spexr-panel-head {
+  padding-block: 12px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--sl-border-subtle);
+}
+
+.spexr-panel-head__eyebrow {
+  margin: 0 0 4px;
+  line-height: 16px;
+}
+
+.spexr-panel-head__title {
+  margin: 0;
+  font-family: var(--sl-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: -0.025em;
+  color: var(--slc-text);
+}
+
+.spexr-panel-body {
+  padding: 16px;
+}
+
+/* A card of rows: Lumen's tool list, on the raised ground at r8. Its outline
+   is the kit's one control edge, a boundary that reads 3:1 (the demo's ring is
+   fainter; owner, S5e). The rows are apart by one faint structural hairline
+   each (--sl-border-subtle, a waiver the owner accepted), never by a gap. */
+.spexr-memory-list,
+.spexr-experts-list,
+.spexr-todo__file {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  background: var(--slc-raised);
+  overflow: hidden;
 }
 
 .spexr-spec-panel__hint,
@@ -505,7 +2383,6 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sl-space-2);
   container-type: inline-size;
 }
 
@@ -514,9 +2391,13 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--sl-space-3);
-  padding: var(--sl-space-3);
-  background: var(--sl-bg-surface-raised);
-  border-radius: var(--sl-radius-sm);
+  min-height: 32px;
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+
+.spexr-memory-list__item + .spexr-memory-list__item {
+  border-top: 1px solid var(--sl-border-subtle);
 }
 
 .spexr-memory-list__meta {
@@ -535,7 +2416,11 @@ body {
 }
 
 .spexr-memory-list__name {
-  font-weight: 600;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--slc-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1193,10 +3078,20 @@ code {
   line-height: var(--sl-line-relaxed);
 }
 
-.spexr-welcome-card__kbd {
+/* The card's shortcut: one keycap per key (the kit's .sl-kbd), 3px apart as
+   in the palette, a chord 6px from the next. Rendered only when a key is
+   bound to the card's command (welcome-widget.tsx). */
+.spexr-welcome-card__keys {
   position: absolute;
   top: var(--sl-space-3);
   right: var(--sl-space-3);
+  display: inline-flex;
+  gap: 6px;
+}
+
+.spexr-welcome-card__chord {
+  display: inline-flex;
+  gap: 3px;
 }
 
 .spexr-welcome__section-head {
@@ -1310,7 +3205,10 @@ code {
   letter-spacing: -0.01em;
 }
 
+/* The press knob (kit 0.36): 1 stands the 97% sink down, so the dismiss stays
+   still under the pointer, whatever glass or press class it wears. */
 .spexr-whats-new__dismiss {
+  --slfx-pane-swell: 1;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1569,10 +3467,12 @@ code {
   font-weight: 500;
 }
 
+/* A labelled accent fill: the product's registered fill and its label (the
+   canvas on the #5b6cff accent read 3.37:1 on light). */
 .spexr-stepper__item--done .spexr-stepper__num {
-  background: var(--sl-accent-default);
-  border-color: var(--sl-accent-default);
-  color: var(--sl-bg-canvas);
+  background: var(--slc-accent-fill, var(--slc-accent));
+  border-color: var(--slc-accent-fill, var(--slc-accent));
+  color: var(--slc-on-accent-fill);
 }
 
 /* The current step is the kit's primary button: its badge takes the button's
@@ -1668,8 +3568,7 @@ code {
   vertical-align: middle;
 }
 
-.spexr-experts-panel {
-  padding: var(--sl-space-5);
+.spexr-experts-panel > .spexr-panel-body {
   display: flex;
   flex-direction: column;
   gap: var(--sl-space-4);
@@ -1678,7 +3577,7 @@ code {
 .spexr-experts-panel__hint {
   color: var(--sl-text-secondary);
   font-size: var(--sl-text-sm);
-  margin: var(--sl-space-1) 0 0;
+  margin: 0;
 }
 
 .spexr-experts-panel__section {
@@ -1704,24 +3603,40 @@ code {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sl-space-2);
 }
 
+/* A kit list row (the seam and the tile of a current one), not a button: it
+   keeps the row's recipe and drops its pointer. The active expert is the
+   current row (aria-current); its seam is the accent whether or not focus is
+   inside, since the state is the app's, not the keyboard's. */
 .spexr-experts-list__item {
+  --sl-seam-focus: 1;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--sl-space-2);
-  padding: var(--sl-space-3);
-  border: 1px solid var(--sl-border-subtle);
-  border-radius: var(--sl-radius-sm);
+  min-height: 32px;
+  padding-block: 8px;
+  padding-inline: 12px;
+  border-radius: 0;
+  cursor: default;
 }
 
-.spexr-experts-list__item--active {
-  border-width: 2px;
+.spexr-experts-list__item + .spexr-experts-list__item {
+  border-top: 1px solid var(--sl-border-subtle);
+}
+
+.spexr-experts-list__item:hover:not([aria-current]) {
+  background-color: transparent;
 }
 
 .spexr-experts-list__icon {
   flex: 0 0 auto;
+  color: var(--slc-text-muted);
+}
+
+.spexr-experts-list__item[aria-current] .spexr-experts-list__icon {
+  color: var(--slc-accent-text);
 }
 
 .spexr-experts-list__meta {
@@ -1735,7 +3650,11 @@ code {
   display: inline-flex;
   align-items: center;
   gap: var(--sl-space-2);
-  font-weight: 600;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--slc-text);
 }
 
 .spexr-experts-list__desc {
@@ -2367,6 +4286,14 @@ code {
 }
 
 /* --- Darkfactory: agent monitoring wall --- */
+/* The Spec tab's body and the wall's body take the focus when their tab is activated (the shell needs that); Theia's global :focus rule would frame the whole body in a 1px ring, on a mouse and on a keyboard activation alike. Neither draws it. The focusable controls inside keep their own ring. (0,2,0): ahead of the global ring's (0,1,2). */
+.spexr-spec-widget:focus,
+.spexr-spec-widget:focus-visible,
+.spexr-darkfactory:focus,
+.spexr-darkfactory:focus-visible {
+  outline: none;
+}
+
 .spexr-darkfactory {
   /* Categorical wall — adopt the shared DS data-viz ramp (--sl-viz-0..7). */
   --sl-df-accent-0: var(--sl-viz-0);
@@ -2446,7 +4373,6 @@ code {
 .spexr-sched__error { color: var(--sl-status-danger); white-space: pre-line; overflow-wrap: anywhere; }
 .spexr-sched__editor { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
 .spexr-sched__editor-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sl-space-2); }
-.spexr-sched .sl-field[data-invalid="true"] .sl-field__input { border-color: var(--sl-status-danger); }
 .spexr-sched__prompt { min-height: 6rem; resize: vertical; font-family: var(--sl-font-mono); }
 .spexr-sched__problem { color: var(--sl-status-danger); }
 .spexr-sched__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -2821,11 +4747,20 @@ code {
 /* Only the first button takes the free space: several autos would spread them apart. */
 .spexr-df-pinned__actions .sl-btn:first-of-type { margin-left: auto; }
 
-/* The card's browser switch sits in a dense action row: a smaller track than the kit's. */
+/* The card's browser switch sits in a dense action row: a smaller track than
+   the kit's. The kit's track is border-box since 0.32, so the size includes
+   its 1px edge: 28 x 16 leaves 26 x 14 inside, a 10px knob 2px in from every
+   side, travelling 26 - 2 - 10 - 2 = 12px. Held, the knob stretches by a
+   tenth toward where it will go, as the kit's does. The kit's held rules
+   weigh (0,4,1) and (0,6,1), so they are repeated here under the switch's own
+   class, or the held knob would grow to the kit's 0.935rem and run past the
+   track. */
 .spexr-df-switch { gap: var(--sl-space-2); }
-.spexr-df-switch .sl-switch__track { width: 26px; height: 14px; }
+.spexr-df-switch .sl-switch__track { width: 28px; height: 16px; }
 .spexr-df-switch .sl-switch__track::after { width: 10px; height: 10px; }
 .spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(12px); }
+.spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__track::after { width: 11px; }
+.spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(11px); }
 .spexr-df-switch .sl-switch__label { display: inline-flex; align-items: center; gap: var(--sl-space-1); color: var(--sl-text-secondary); }
 
 /*
@@ -3212,18 +5147,20 @@ code {
   first, done ones folded; an item's extra lines (a pasted log) unfold on
   demand. Labels follow the structural-label recipe.
 */
-.spexr-todo { display: flex; flex-direction: column; gap: var(--sl-space-3); padding: var(--sl-space-3); }
-/* Each project is a darker card, so the gap between projects outweighs the rules between items. */
-.spexr-todo__file {
-  padding: var(--sl-space-3);
-  border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm, 6px);
-  background: color-mix(in srgb, #000 22%, transparent);
-}
-.spexr-todo__file .spexr-todo__item:last-child { border-bottom: none; padding-bottom: 0; }
-.spexr-todo__file .spexr-todo__empty { padding: 0; }
+.spexr-todo > .spexr-panel-body { display: flex; flex-direction: column; gap: var(--sl-space-4); }
+/* Each project is a card of rows on the raised ground (the shared card rule
+   above), so its text reads on a kit ground in both themes; an empty card
+   was muted ink on a black wash, 4.0:1 on paper. The gap between projects
+   outweighs the hairlines between items. */
+.spexr-todo__file .spexr-todo__item { padding-inline: 12px; }
+.spexr-todo__file .spexr-todo__item:last-child { border-bottom: none; }
+.spexr-todo__file .spexr-todo__empty { padding: 8px 12px; }
 /* A folder's own name: data, so mono as written, not upper-cased. */
 .spexr-todo__folder {
-  margin: 0 0 var(--sl-space-2);
+  margin: 0;
+  padding-block: 8px;
+  padding-inline: 12px;
+  border-bottom: 1px solid var(--sl-border-subtle);
   font-family: var(--sl-font-mono); font-size: var(--sl-text-xs); font-weight: 600;
   color: var(--sl-text-muted);
 }
@@ -3231,7 +5168,7 @@ code {
 .spexr-todo__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .spexr-todo__item {
   display: grid; grid-template-columns: auto 1fr; column-gap: var(--sl-space-2); row-gap: var(--sl-space-1);
-  align-items: start; padding: var(--sl-space-2) 0;
+  align-items: start; padding-block: 8px;
   border-bottom: 1px solid var(--sl-border-subtle);
 }
 .spexr-todo__check { margin-top: 3px; }

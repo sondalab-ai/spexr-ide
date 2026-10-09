@@ -3,6 +3,7 @@ import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-bar/status-bar";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
+import { statusClass } from "../shell/status-dock.js";
 
 const ENTRY_ID = "spexr-project";
 
@@ -34,6 +35,7 @@ export class SpexrProjectStatusBarContribution implements FrontendApplicationCon
     const path = root?.path.toString();
     void this.statusBar.setElement(ENTRY_ID, {
       text: path ? `$(folder) ${baseName(path)}` : "$(folder) No project",
+      className: statusClass({ data: !!path }),
       alignment: StatusBarAlignment.LEFT,
       priority: 300,
       tooltip: path ? `${path} — click to switch project` : "Click to open a project",

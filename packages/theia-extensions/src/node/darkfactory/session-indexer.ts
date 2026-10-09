@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { forEachConcurrent } from "./concurrency.js";
 import { buildSessionDoc, toolTargets } from "./session-doc.js";
 import { recentAssistantProse, sessionGoal, type TurnEntry } from "./turns.js";
+import { syncToolCounts, type ToolCounter } from "./tool-count.js";
 import { indexedText, type SessionIndex, type SessionRecord } from "./session-index.js";
 import type { HarnessId, ParsedTranscript } from "../../common/harness/harness-types.js";
 
@@ -37,6 +38,14 @@ export interface SessionIndexerDeps {
   save(index: SessionIndex): Promise<void>;
   onProgress?(done: number, total: number): void;
   now?(): number;
+  /**
+   * The tool-call counter. The crawl brings it up to date for every session it
+   * lists, indexed or not: the scan reads only what each transcript gained
+   * since the last one, so a quiet crawl costs a stat per file.
+   */
+  counter?: ToolCounter;
+  /** Called when the crawl changed any count, so the wall can be handed fresh tiles. */
+  onToolCounts?(): void;
 }
 
 /** Documents per embedding call — the encoder batches well, memory stays flat. */
@@ -92,6 +101,7 @@ export async function runSessionIndex(deps: SessionIndexerDeps): Promise<void> {
   const { index, embed, list, save, onProgress } = deps;
   const now = deps.now ?? Date.now;
   const sessions = await list();
+  if (deps.counter && (await syncToolCounts(deps.counter, sessions))) deps.onToolCounts?.();
 
   const live = new Set(sessions.map((s) => s.sessionId));
   for (const id of index.ids()) {

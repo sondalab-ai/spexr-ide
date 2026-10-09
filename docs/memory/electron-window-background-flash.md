@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-A flat colour filling the whole window for a few hundred milliseconds at startup, with the native title bar already drawn and no content in it, is **not** the page. It is the Electron window's own `backgroundColor`, painted from the moment the window is shown until the document's first paint.
+A flat colour filling the whole window for a few hundred milliseconds at startup, with no content in it (and, where the system draws one, the native title bar already there: on Linux's native escape hatch; on macOS only the traffic lights since S5b-2's `hiddenInset`), is **not** the page. It is the Electron window's own `backgroundColor`, painted from the moment the window is shown until the document's first paint.
 
 Three facts make it hard to find, and each one defeats an obvious fix:
 

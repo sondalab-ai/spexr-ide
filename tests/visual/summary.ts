@@ -1,0 +1,185 @@
+import fs from "fs";
+import path from "path";
+import { OUT_ROOT, type CaptureMeta } from "./meta";
+import { SCENES } from "./scenes";
+
+/**
+ * Playwright global teardown: summarise every `out/<os>-<theme>/meta.json`
+ * as one table of captures and one of environment probes, a column per run.
+ * Written to `$GITHUB_STEP_SUMMARY` and printed to the job log, whether the
+ * capture passed or not. Nothing here compares images or gates anything.
+ */
+export default async function summary(): Promise<void> {
+  const md = renderSummary(readRuns());
+  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
+  console.info(md);
+}
+
+interface Run {
+  readonly dir: string;
+  readonly meta: CaptureMeta;
+}
+
+function readRuns(): Run[] {
+  if (!fs.existsSync(OUT_ROOT)) return [];
+  return fs
+    .readdirSync(OUT_ROOT)
+    .filter((dir) => fs.existsSync(path.join(OUT_ROOT, dir, "meta.json")))
+    .sort()
+    .map((dir) => ({ dir, meta: JSON.parse(fs.readFileSync(path.join(OUT_ROOT, dir, "meta.json"), "utf8")) as CaptureMeta }));
+}
+
+function cell(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "—";
+  return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+function renderSummary(runs: Run[]): string {
+  if (runs.length === 0) return "## Screenshots\n\nNo capture produced a `meta.json`.\n";
+  const head = (title: string): string =>
+    `| ${title} | ${runs.map((r) => `\`${r.dir}\``).join(" | ")} |\n|---|${runs.map(() => "---").join("|")}|\n`;
+  const row = (label: string, pick: (m: CaptureMeta) => unknown): string =>
+    `| ${label} | ${runs.map((r) => cell(pick(r.meta))).join(" | ")} |\n`;
+  const base = (m: CaptureMeta) => m.scenes.find((s) => s.scene === "base")?.ack;
+
+  let md = "## Screenshots\n\nA viewing tool: nothing is compared or gated. Artifacts are `screenshots-<os>-<theme>-<attempt>`.\n\n";
+  md += head("Capture");
+  md += row("commit (PR head)", (m) => m.provenance.sha.slice(0, 12));
+  md += row("ref / event", (m) => `${m.provenance.ref} / ${m.provenance.event}`);
+  md += row("run / attempt", (m) => `${m.provenance.runId} / ${m.provenance.attempt}`);
+  for (const scene of SCENES) {
+    md += row(scene, (m) => {
+      const r = m.scenes.find((s) => s.scene === scene);
+      if (!r) return "missing";
+      return r.stable
+        ? `${r.file} (stable after ${r.attempts})`
+        : `${r.file} (unstable: ${r.lastDiff?.changed} px changing at ${r.lastDiff?.box})`;
+    });
+  }
+  md += row("error", (m) => (m.error ? m.error.split("\n")[0] : ""));
+
+  md += "\n" + head("Scripted by the capture");
+  md += row("bottom panel opened", (m) => m.bottomPanelOpened);
+  md += row("bottom panel top edge (demo 666)", (m) =>
+    m.bottomPanel ? `${m.bottomPanel.top}${m.bottomPanel.held ? "" : " (still moving when read)"}` : "not showing",
+  );
+  md += row("main tab strips aligned", (m) => m.scenes.map((s) => `${s.scene} ${s.alignedStrips}`).join(", "));
+  md += row("infinite animations paused", (m) => m.scenes.map((s) => `${s.scene} ${s.pausedLoops}`).join(", "));
+  for (const view of ["todo", "experts", "memory"]) {
+    md += row(`right panel (${view}): head h / eyebrow y / title y / card x,w / row h (demo 69.8 / 13.6 / 32 / 16,320 / 32.4)`, (m) => {
+      const rp = m.rightPanel?.[view];
+      const [pane, head, eyebrow, title, card, row] = ["rp.pane", "rp.head", "rp.eyebrow", "rp.title", "rp.card", "rp.row"].map((k) => rp?.[k]?.[0]);
+      if (!pane || !head || !eyebrow || !title) return "";
+      return [head.h, eyebrow.y - pane.y, title.y - pane.y, card ? `${card.x - pane.x},${card.w}` : "—", row?.h ?? "—"].join(" / ");
+    });
+  }
+  md += row("editor top line (base)", (m) => `${m.baseFirstVisibleLine} in the gutter; API ${base(m)?.scroll?.topLine} via ${base(m)?.scroll?.how}`);
+  md += row("bottom panel terminals", (m) => {
+    const t = base(m)?.terminal;
+    return t ? `${t.names.join(", ")}; shown: ${t.shown}` : "";
+  });
+
+  md += "\n" + head("Probe");
+  md += row("theme (sl / theia)", (m) => `${m.themeCheck?.slTheme} / ${m.themeCheck?.theiaBodyClass} ${m.themeCheck?.confirmed ? "✓" : "✗"}`);
+  md += row("deployed plugins (backend log)", (m) => m.log?.deployedPlugins);
+  md += row("missing plugin paths", (m) =>
+    `${(m.log?.missingPluginPaths ?? []).join(", ") || "none"} (plus ${m.log?.userPluginDirsMissing ?? 0} of Theia's per-user plugin folders, expected on a fresh profile)`,
+  );
+  md += row("extensions (API)", (m) => m.extensions?.extensions?.length);
+  md += row("WebGL2", (m) => (m.webglAttempts ?? []).map((a) => `${a.swiftshader ? "swiftshader" : "default"}: ${a.webgl2}`).join("; "));
+  md += row("xterm renderer", (m) => (m.page ? `${m.page.xtermRenderer} (${m.page.xtermDetail})` : ""));
+  md += row('fonts.check 13px "Geist Mono"', (m) => (m.readiness ? `${m.readiness.geistMonoCheck} after ${m.readiness.fontsMs ?? "timeout"} ms` : ""));
+  md += row("Geist Mono faces", (m) => (m.readiness?.geistMonoFaces ?? []).join("; ") || "none declared");
+  md += row("editor font", (m) => m.page?.editorFont);
+  md += row("Monaco char width", (m) => m.page?.monacoCharWidth);
+  md += row("editor gutter: numbers end / text starts (demo 38 / 56)", (m) => (m.editor ? `${m.editor.numbersRight} / ${m.editor.textLeft}` : ""));
+  md += row("editor padding-top (demo 12)", (m) => m.editor?.paddingTop);
+  md += row("editor line height / font size (demo 22 / 13)", (m) => (m.editor ? `${m.editor.lineHeight} / ${m.editor.fontSize}` : ""));
+  md += row("editor theme (body class) / minimap", (m) => (m.editor ? `${m.editor.bodyEditorTheme} / ${m.editor.minimap ? "shown" : "off"}` : ""));
+  md += row("editor current line / selection", (m) => (m.editor ? `${m.editor.currentLine?.background} / ${m.editor.selection?.background}` : ""));
+  md += row("editor tokens (computed colours)", (m) =>
+    m.editor ? Object.entries(m.editor.tokens).map(([k, v]) => `${k} ${v ? v.color : "none"}`).join("; ") : "",
+  );
+  md += row("code font wait (terminals re-measured)", (m) => (m.page ? `${m.page.codeFont ?? "no marker"} (${m.page.codeFontTerminals ?? "—"})` : ""));
+  md += row("terminal font", (m) => (m.page?.terminalFont ? `${m.page.terminalFont.size} ${m.page.terminalFont.family}` : ""));
+  md += row("late font: Geist Mono loads held; marker held → released", (m) =>
+    m.lateFont ? `${m.lateFont.heldLoads}; ${m.lateFont.heldMark} → ${m.lateFont.lateMark}` : "",
+  );
+  md += row("late font: re-measured at release → after showing hidden late-a", (m) =>
+    m.lateFont ? `${m.lateFont.remeasuredAtRelease} → ${m.lateFont.remeasuredAfterShow}` : "",
+  );
+  md += row("late font: opened terminals hidden at release; face already loaded", (m) =>
+    m.lateFont
+      ? `${m.lateFont.beforeRelease.filter((x) => !x.visible).map((x) => x.where).join(", ") || "none"}; ${m.lateFont.faceLoadedBeforeRelease}`
+      : "",
+  );
+  md += row("late font: late-a box / cell / screen ÷ cell", (m) => {
+    const t = m.lateFont?.shown;
+    if (!t) return "";
+    return `${t.box ? `${t.box.width}×${t.box.height}` : "—"} / ${t.cell ? `${t.cell.width}×${t.cell.height}` : "—"} / ${t.screenHeight ?? "—"} ÷ ${t.cell?.height ?? "—"} = ${t.rows ?? "—"}`;
+  });
+  md += row("late font: problems", (m) => (m.lateFont ? m.lateFont.problems.join("; ") || "none" : ""));
+  md += row("terminal box now / cell / screen ÷ cell", (m) => {
+    const t = m.page?.terminalFont;
+    if (!t) return "";
+    const box = t.box ? `${t.box.width}×${t.box.height}` : "—";
+    const c = t.cell ? `${t.cell.width}×${t.cell.height}` : "—";
+    return `${box} / ${c} / ${t.screenHeight ?? "—"} ÷ ${t.cell?.height ?? "—"} = ${t.rows ?? "—"}`;
+  });
+  md += row("devicePixelRatio", (m) => m.page?.devicePixelRatio);
+  md += row("viewport / content size", (m) => `${m.page?.innerSize} / ${m.main?.contentSize}`);
+  md += row("titleBarStyle", (m) =>
+    m.page
+      ? `top panel ${m.page.topPanelVisible ? "shown" : "hidden"}, window controls ${m.page.windowControls ? "in page" : "native"}, traffic lights' room ${m.page.trafficLights ? "kept" : "none"}`
+      : "",
+  );
+  md += row("traffic lights (mac)", (m) => {
+    const p = m.main?.windowButtonPosition;
+    return p ? `at ${p.x},${p.y}; window ${m.main?.bounds}` : "";
+  });
+  md += row("traffic lights found (mac)", (m) => {
+    const l = m.lights;
+    if (!l) return "";
+    const circles = l.circles.map((c) => `${c.colour} ${c.left}–${c.right} × ${c.top}–${c.bottom}`).join(", ");
+    return `${l.ok ? "✓" : `✗ ${l.problems.join("; ")}`} (${m.main?.systemVersion}, scale ${l.scale}): ${circles}; bar centre ${l.barCentre}`;
+  });
+  md += row("zoom −1 (mac)", (m) => {
+    const z = m.zoom;
+    if (!z) return "";
+    const p = z.windowButtonPosition;
+    const settle = z.settle ? `, frame ${z.settle.settled ? "settled" : "never settled"} after ${z.settle.attempts} capture(s)` : "";
+    return `${z.ok ? "✓" : `✗ ${z.problems.join("; ")}`}: room ${z.roomBefore} → ${z.roomAfter}, lights at ${p ? `${p.x},${p.y}` : "?"}, mark ${z.markLeftPt}pt, gap ${z.markGapPt}pt${settle}`;
+  });
+  md += row("full screen (mac)", (m) => {
+    const f = m.fullScreen;
+    if (!f) return "";
+    const step = (name: string, s?: { event: boolean; answeredMs: number | null; trafficLights: boolean; markX: number | null }): string =>
+      s ? `${name}: event ${s.event ? "✓" : "✗"}, bar ${s.answeredMs === null ? "never answered" : `answered in ${s.answeredMs} ms`}, room ${s.trafficLights ? "kept" : "dropped"}, mark x ${s.markX}` : "";
+    return [step("enter", f.enter), step("leave", f.leave), f.error ? `error ${f.error}` : ""].filter(Boolean).join("; ");
+  });
+  md += row("document.hasFocus", (m) => m.page?.hasFocus);
+  md += row("tree focused (focus-tree)", (m) => m.treeFocused);
+  md += row("TypeScript symbols (base)", (m) => {
+    const lang = base(m)?.language;
+    return lang ? `${lang.symbols} after ${lang.waitedMs} ms` : "";
+  });
+  md += row("layout ready", (m) => (m.readiness ? `${m.readiness.layoutMs} ms` : ""));
+  md += row("Electron / Chromium", (m) => (m.main ? `${m.main.electron} / ${m.main.chromium}` : ""));
+  md += row("platform", (m) => m.main?.platform);
+  md += row("native capture (mac)", (m) => (m.native ?? []).map((n) => `${n.mode}: ${n.ok ? n.size : `failed ${n.error ?? ""}`}`).join("; "));
+  md += row("window reached 1440×900 (S6a)", (m) => {
+    const w = m.windowSize;
+    return w ? `${w.reached ? "✓" : "✗"} page ${w.innerSize}; setContentSize → ${w.afterSetContentSize}, setBounds → ${w.afterSetBounds}; display ${w.display.bounds}, work area ${w.display.workArea} @${w.display.scaleFactor}x` : "";
+  });
+  md += row("fixture: pill / bell dot / toasts (S6a)", (m) => (m.fixture?.state ? `${m.fixture.state.agentsPill} / ${m.fixture.state.bellDot} / ${m.fixture.state.toasts} (waited ${m.fixture.waitedMs} ms)` : ""));
+  md += row("fixture: problems / unsaved / pnpm exits", (m) => {
+    const r = m.fixture?.report;
+    return r ? `${r.base?.problems} / ${(r.base?.dirty ?? []).join(", ")} / ${JSON.stringify(r.pnpm)}` : "";
+  });
+  md += row("fixture: ps comm=claude lines / stub cwds (S6a)", (m) => {
+    const p = m.fixture?.report?.processes;
+    return p ? `${p.psClaude.length} (${p.psClaude.join("; ")}) / ${JSON.stringify(p.cwd)}` : "";
+  });
+  md += row("close", (m) => m.close);
+  return md + "\n";
+}

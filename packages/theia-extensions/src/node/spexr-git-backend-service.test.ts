@@ -21,7 +21,9 @@ describe("SpexrGitBackendService", () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-test-"));
-    execSync("git init", { cwd: tmpDir });
+    // Pinned, not left to init.defaultBranch: the stash tests assert "On main: …",
+    // and git's own default is still `master` (Apple's git ships `main`).
+    execSync("git init --initial-branch=main", { cwd: tmpDir });
     execSync('git config user.email "test@test.com"', { cwd: tmpDir });
     execSync('git config user.name "Test"', { cwd: tmpDir });
     fs.writeFileSync(path.join(tmpDir, "README.md"), "init");
@@ -496,6 +498,64 @@ describe("SpexrGitBackendService", () => {
   it("getRemoteUrl: normalizes the origin remote", async () => {
     execSync("git remote add origin git@github.com:foo/bar.git", { cwd: tmpDir });
     expect(await service.getRemoteUrl(tmpDir)).toBe("https://github.com/foo/bar");
+  });
+
+  it("getUserName: reads the repository's user.name", async () => {
+    expect(await service.getUserName(tmpDir)).toBe("Test");
+  });
+
+  /** Run `body` with git's global config at a file of `home`, and no system config. */
+  async function withGlobalConfig(body: (home: string, config: string) => Promise<void>): Promise<void> {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "spexr-git-global-"));
+    const config = path.join(home, "gitconfig");
+    const saved = { global: process.env.GIT_CONFIG_GLOBAL, noSystem: process.env.GIT_CONFIG_NOSYSTEM };
+    process.env.GIT_CONFIG_GLOBAL = config;
+    process.env.GIT_CONFIG_NOSYSTEM = "1";
+    try {
+      await body(home, config);
+    } finally {
+      for (const [key, value] of [["GIT_CONFIG_GLOBAL", saved.global], ["GIT_CONFIG_NOSYSTEM", saved.noSystem]] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  it("getUserName: outside a repository reads the global user.name, and is undefined when none is set", async () => {
+    await withGlobalConfig(async (home, config) => {
+      fs.writeFileSync(config, "[user]\n\tname = Global Name\n");
+      expect(await service.getUserName(home)).toBe("Global Name");
+      expect(await service.getUserName(path.join(home, "missing"))).toBe("Global Name");
+      fs.writeFileSync(config, "");
+      expect(await new SpexrGitBackendService().getUserName(home)).toBeUndefined();
+    });
+  });
+
+  it("getUserName: a file given as the root reads the global config, not the file's folder", async () => {
+    await withGlobalConfig(async (home, config) => {
+      fs.writeFileSync(config, "[user]\n\tname = Global Name\n");
+      // The file sits in the repository, whose own user.name is "Test".
+      expect(await service.getUserName(path.join(tmpDir, "README.md"))).toBe("Global Name");
+    });
+  });
+
+  it("getUserName: is undefined when git fails", async () => {
+    await withGlobalConfig(async (home, config) => {
+      fs.writeFileSync(config, "[user\n\tname = broken\n");
+      expect(await service.getUserName(home)).toBeUndefined();
+    });
+  });
+
+  // A FIFO as the global config: git opens it and waits for a writer that never comes.
+  it("getUserName: gives up on a git that hangs, after its timeout", async () => {
+    await withGlobalConfig(async (home, config) => {
+      execSync(`mkfifo "${config}"`);
+      const quick = new SpexrGitBackendService({ userNameTimeoutMs: 300 });
+      const started = Date.now();
+      expect(await quick.getUserName(home)).toBeUndefined();
+      expect(Date.now() - started).toBeLessThan(5_000);
+    });
   });
 
   it("git(): returns the same instance for one root and serializes it", () => {

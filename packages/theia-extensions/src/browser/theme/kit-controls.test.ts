@@ -51,10 +51,66 @@ describe("controls on the kit", () => {
     expect(css).not.toMatch(/smart-search__(progress-(track|fill)|map-fill|filter-)|spexr-progress__(bar|fill)|df-card__chip/);
   });
 
+  it("stands the What's New dismiss's press down with the kit's knob", () => {
+    expect(rule(".spexr-whats-new__dismiss")).toMatch(/--slfx-pane-swell:\s*1;/);
+  });
+
   it.each([".spexr-df-row", ".spexr-whats-new__dismiss", ".spexr-todo__more, .spexr-todo__done-toggle"])(
     "%s leaves background and colour to the kit",
     (sel) => {
       expect(rule(sel)).not.toMatch(/(^|[\s;{])(background|color):/);
     },
   );
+});
+
+// The kit's switch track is border-box since 0.32: the compact track sized
+// for a content box left the knob 1px from the edges and 0px on the right
+// when on, and the kit's held rules, which outrank a plain knob rule, grew the
+// held knob past the track.
+describe("the compact switch", () => {
+  const px = (sel: string, prop: RegExp): number => {
+    const m = prop.exec(rule(sel));
+    expect(m, `${prop} in ${sel}`).not.toBeNull();
+    return Number(m![1]);
+  };
+  const HELD = ".spexr-df-switch.sl-switch:active:not(:has(:disabled))";
+  const EDGE = 1;
+  const INSET = 2; // the kit's knob sits 2px in from the left
+
+  it("keeps the knob 2px in from every side of the border-box track, off and on", () => {
+    const width = px(".spexr-df-switch .sl-switch__track", /width:\s*(\d+)px/);
+    const height = px(".spexr-df-switch .sl-switch__track", /height:\s*(\d+)px/);
+    const knob = px(".spexr-df-switch .sl-switch__track::after", /width:\s*(\d+)px/);
+    const travel = px(".spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after", /translateX\((\d+)px\)/);
+    expect((height - 2 * EDGE - knob) / 2).toBe(INSET);
+    expect(width - 2 * EDGE - (INSET + travel + knob)).toBe(INSET);
+  });
+
+  it("stretches the held knob inside the track, at the kit's held-rule weights", () => {
+    const width = px(".spexr-df-switch .sl-switch__track", /width:\s*(\d+)px/);
+    const knob = px(".spexr-df-switch .sl-switch__track::after", /width:\s*(\d+)px/);
+    const travel = px(".spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after", /translateX\((\d+)px\)/);
+    const held = px(`${HELD} .sl-switch__track::after`, /width:\s*(\d+)px/);
+    const heldTravel = px(`${HELD} .sl-switch__input:checked + .sl-switch__track::after`, /translateX\((\d+)px\)/);
+    expect(held).toBeGreaterThan(knob);
+    expect(INSET + held).toBeLessThanOrEqual(width - 2 * EDGE - INSET);
+    expect(INSET + heldTravel + held).toBe(INSET + travel + knob);
+  });
+});
+
+// A radius on the global focus rule snapped an 8px button's corners to 6px
+// under focus; since 0.32 the kit's halo made the jump visible. The ring is
+// the kit's width and colour, drawn inside the element so a scroll container
+// cannot clip it, flush on its edge; a mouse focus draws none.
+describe("the global focus ring", () => {
+  it("is the kit's ring, drawn inside and flush, with no radius", () => {
+    const ring = rule("html :focus-visible:not(iframe)");
+    expect(ring).toMatch(/outline:\s*var\(--sl-focus-ring-width\) solid var\(--slc-focus\)/);
+    expect(ring).toMatch(/outline-offset:\s*calc\(-1 \* var\(--sl-focus-ring-width\)\)/);
+    expect(ring).not.toMatch(/border-radius/);
+  });
+
+  it("draws nothing on a mouse focus", () => {
+    expect(rule("html :focus:where(:not(:focus-visible)):not(iframe)")).toMatch(/outline:\s*none/);
+  });
 });

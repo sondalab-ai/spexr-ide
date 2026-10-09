@@ -15,9 +15,9 @@ import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
  * so Theia's chrome and the SPEXR panels share one indigo-tinted ladder.
  */
 export interface SpexrNeutrals {
-  /** Deepest — activity bar, status bar, editor, terminal. */
+  /** Deepest — the frame behind the islands: activity bar, status bar. */
   canvas: string;
-  /** Sidebar, panels, active tab. */
+  /** An island at rest: sidebar, panels, editor (spexr.css re-binds them on each island), terminal, minimap. */
   surface: string;
   /** Menus, dropdowns, widgets, inputs. */
   raised: string;

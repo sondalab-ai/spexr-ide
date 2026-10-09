@@ -94,3 +94,47 @@ describe("power saving the ink hover", () => {
     expect(declarationsFor(":root[data-spexr-power-save] .sl-fx-ink")).toMatch(/display:\s*none/);
   });
 });
+
+// Saving killed every effect host's box-shadow, and with it a selected tile's
+// only marker, a glass control's own depth (a secondary's lit line and cast)
+// and its focus halo. The kit restores them after its own kill switches (the
+// selection 0.31, a control's depth and halo 0.32), and a surface's own
+// recipe, an island's ring or an overlay's cast (0.33; the cast, which
+// carries a toast's and a palette's ring, since 0.34); saving mirrors every
+// restore, list for list, under spexr's flag.
+describe("power saving keeps the selection, a control's depth and focus halo, and a surface's recipe", () => {
+  const kit = readFileSync(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.css"), "utf8");
+  const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
+  const restores = [
+    ...kit.matchAll(/:is\(\[data-sl-fx="off"\], \[data-sl-fx="off"\] \*\)(:is\([^{]*?)\s*\{\s*box-shadow:\s*(var\(--(?:_sl-depth|slc-depth-)[^;]*);/g),
+  ];
+
+  it("finds the kit's selection, depth, halo, island and cast restores", () => {
+    expect(restores.map(([, , shadow]) => shadow!.split(/[,)]/)[0])).toEqual([
+      "var(--slc-depth-tile",
+      "var(--slc-depth-flat",
+      "var(--_sl-depth",
+      "var(--_sl-depth",
+      "var(--slc-depth-island",
+      "var(--slc-depth-cast",
+    ]);
+  });
+
+  it.each(restores.map(([, rest, shadow]) => [rest!, shadow!]))("mirrors %s", (rest, shadow) => {
+    const at = css.indexOf(`:root[data-spexr-power-save] ${rest} {`);
+    expect(at, "the restore under data-spexr-power-save").toBeGreaterThanOrEqual(0);
+    expect(css.slice(at, css.indexOf("}", at))).toContain(`box-shadow: ${shadow};`);
+  });
+});
+
+// The status bar's live dot (kit 0.34) breathes on its own, not as an effect:
+// the kit stops it in a data-sl-fx="off" region and pauses it under
+// data-sl-fx-still, and power saving sets neither on the root, so a dot of
+// the kit's kept breathing while saving.
+describe("power saving the status bar's live dot", () => {
+  it("stops it as the kit stops it in an opt-out region", () => {
+    const kit = readFileSync(createRequire(import.meta.url).resolve("@sondalab/ui-kit/effects.css"), "utf8");
+    expect(kit).toMatch(/\[data-sl-fx="off"\] \.sl-statusbar__dot,[^{]*\{\s*animation:\s*none !important;\s*\}/);
+    expect(declarationsFor(":root[data-spexr-power-save] .sl-statusbar__dot")).toMatch(/animation:\s*none !important;/);
+  });
+});

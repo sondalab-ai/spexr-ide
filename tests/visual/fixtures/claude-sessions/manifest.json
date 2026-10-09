@@ -1,0 +1,6 @@
+[
+  { "file": "refactor-the-audit.jsonl", "project": "ws", "sessionId": "8f2a4c1e-3b7d-4e52-9a61-0c5d2e8b7f13", "name": "Refactor the audit", "ageMinutes": 0, "live": true, "tools": 14 },
+  { "file": "prism-light-theme.jsonl", "project": "ws", "sessionId": "c41d9e07-52aa-4b18-8e3f-7d60b2a14c95", "name": "Prism light theme", "ageMinutes": 60, "live": false, "tools": 212 },
+  { "file": "edge-in-shade.jsonl", "project": "ws", "sessionId": "e7b3a2f9-1d46-4c80-b5a7-93e1c0d82f64", "name": "Edge in shade", "ageMinutes": 180, "live": false, "tools": 58 },
+  { "file": "prism-site-rebuild.jsonl", "project": "site", "sessionId": "5a90f6d2-8c3e-4f17-a2b4-61d7e3c9b058", "name": "Marketing site rebuild", "ageMinutes": 0, "live": true, "tools": 198 }
+]

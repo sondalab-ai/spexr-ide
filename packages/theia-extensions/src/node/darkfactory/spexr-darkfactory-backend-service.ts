@@ -14,6 +14,7 @@ import {
 } from "./config-dirs.js";
 import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
+import { ToolCounter, countSessions, syncToolCounts } from "./tool-count.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
 import {
   claudeHarness,
@@ -182,6 +183,15 @@ interface UnifiedRef {
   claude?: TranscriptRef;
 }
 
+/**
+ * Where a name map (sessionId or projectPath → the name the user gave it) is
+ * kept. The service loads it once and saves the whole map after every change.
+ */
+export interface NameStore {
+  load(): Promise<Map<string, string>>;
+  save(names: Map<string, string>): Promise<void>;
+}
+
 /** Constructor seams so the service is unit-testable without a real home dir. */
 export interface DarkfactoryDeps {
   /** Fixed list, or a provider re-read on every scan (production discovers per scan). */
@@ -203,12 +213,22 @@ export interface DarkfactoryDeps {
   generator?: DescriptionGenerator;
   /** Sentence encoder for the session index; absent in tests that do not search. */
   embed?: (texts: string[]) => Promise<Float32Array[]>;
+  /** The tool counter, shared with the agent pane so a transcript is scanned once. */
+  toolCounter?: ToolCounter;
   /** Index location override, so tests never touch the real home directory. */
   sessionIndexPath?: string;
   /** Session-name store override, so tests never touch the real home directory. */
   sessionNamesPath?: string;
   /** Project-name store override, so tests never touch the real home directory. */
   projectNamesPath?: string;
+  /**
+   * Session-name store; default is the JSON file at {@link sessionNamesPath}.
+   * Tests that drive fake timers inject an in-memory one: a real read is I/O
+   * those timers cannot advance, so a scan would still be in flight at the next tick.
+   */
+  sessionNameStore?: NameStore;
+  /** Project-name store; default is the JSON file at {@link projectNamesPath}. See {@link sessionNameStore}. */
+  projectNameStore?: NameStore;
   /** Directory-existence seam used by the name sweep (default: a `stat` that must say "directory"). */
   dirExists?: (path: string) => Promise<boolean>;
   /** Resume-chain tracker; tests inject one with in-memory file seams. */
@@ -369,6 +389,16 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * as-is rather than re-parsed and re-classified with different inputs.
    */
   private readonly lastTiles = new Map<string, AgentTile>();
+  /**
+   * The newest completed scan, whole. `lastTiles` is refilled while a scan
+   * runs, so it is no snapshot; this is assigned once a scan is done, and
+   * only by a scan that started after the one it holds (see scanSeq).
+   */
+  private snapshot: AgentTile[] = [];
+  /** Numbers each listTiles as it starts; scans can overlap (a push, the wall's own refresh). */
+  private scanSeq = 0;
+  /** The number of the scan {@link snapshot} came from; 0 until one completes. */
+  private snapshotSeq = 0;
   /** Finds the transcripts a resume copied into a newer one (see {@link SessionLineage}). */
   private readonly lineage: SessionLineage;
   /** Groups sessions by project rather than by folder (see {@link ProjectGroups}). */
@@ -392,10 +422,12 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly harnessSessionMemos = new Map<string, () => Promise<HarnessSessionRef[]>>();
   private sessionIndex?: Promise<SessionIndex>;
   private indexing = false;
+  /** Tool-call counts by transcript, kept up to date by the index crawl and by each scan for live sessions. */
+  private readonly toolCounter: ToolCounter;
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
   private readonly sessionIndexPath: string | undefined;
-  private readonly sessionNamesPath: string | undefined;
-  private readonly projectNamesPath: string | undefined;
+  private readonly sessionNameStore: NameStore;
+  private readonly projectNameStore: NameStore;
   /** sessionId → the name the user gave it; loaded once, then kept in step with writes. */
   private sessionNames?: Promise<Map<string, string>>;
   /** The last queued names write; see {@link writeSessionNames}. */
@@ -453,17 +485,25 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
           installed.flatMap((h) => h.processNames()),
         );
       });
+    this.toolCounter = d.toolCounter ?? new ToolCounter();
     this.generator = d.generator;
     this.embed = d.embed;
     this.sessionIndexPath = d.sessionIndexPath;
-    this.sessionNamesPath = d.sessionNamesPath;
-    this.projectNamesPath = d.projectNamesPath;
+    // An unset path stays undefined, so the stores resolve their default (and
+    // its env override) on each call, as they did before the seam existed.
+    this.sessionNameStore = d.sessionNameStore ?? {
+      load: () => loadSessionNames(d.sessionNamesPath),
+      save: (names) => saveSessionNames(names, d.sessionNamesPath),
+    };
+    this.projectNameStore = d.projectNameStore ?? {
+      load: () => loadProjectNames(d.projectNamesPath),
+      save: (names) => saveProjectNames(names, d.projectNamesPath),
+    };
     this.dirExists = d.dirExists ?? defaultDirExists;
     this.lineage = d.lineage ?? new SessionLineage();
     this.projectGroups = d.projectGroups ?? new ProjectGroups(this.now);
-    if (this.embed) {
-      setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
-    }
+    // Without an encoder the crawl only counts tool calls, which every tile wants.
+    setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
   }
 
   /**
@@ -597,6 +637,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   }
 
   async listTiles(): Promise<AgentTile[]> {
+    const seq = ++this.scanSeq;
     const [allRefs, live, names, projectNames] = await Promise.all([
       this.listTranscripts(),
       this.cachedLiveDirs(),
@@ -658,6 +699,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYou,
         needsYouCertain,
         hashToIndex,
+        ...this.toolCountOf(u.claude?.transcriptPath),
         ...inheritedNameOf(names, ref.sessionId, ancestors.get(ref.sessionId)),
         ...projectNameOf(projectNames, group.path, cwd),
         ...(ancestors.has(ref.sessionId) ? { supersedes: ancestors.get(ref.sessionId)! } : {}),
@@ -665,6 +707,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       this.lastTiles.set(ref.sessionId, tile);
       tiles.push(tile);
     }
+    this.refreshLiveToolCounts(tiles);
     // Evict AI-summary entries for sessions that no longer exist on disk, so the
     // cache tracks live sessions instead of growing unbounded over the process life.
     for (const id of this.summaryCache.keys()) {
@@ -673,8 +716,25 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     // The names on disk get the same treatment, on a much longer clock. A failed
     // sweep must not fail the scan: the wall is what the user asked for.
     await this.pruneNames(allRefs).catch(() => {});
+    // An older scan that finishes after a newer one must not take the snapshot back.
+    if (seq > this.snapshotSeq) {
+      this.snapshot = tiles;
+      this.snapshotSeq = seq;
+    }
     this.scanned.fire(tiles);
     return tiles;
+  }
+
+  /**
+   * Before any scan has completed there is nothing to hand back, and nothing
+   * may be scanning: setClient only starts the 20s poll, and the folder
+   * watcher is inert on Linux. So the first read starts the shared
+   * single-flight push, unless one is already running, and its tiles reach
+   * the caller through onTilesChanged. The caller never scans.
+   */
+  async currentTiles(): Promise<AgentTile[]> {
+    if (this.snapshotSeq === 0 && !this.scanInFlight) void this.pushTiles();
+    return [...this.snapshot];
   }
 
   /**
@@ -804,7 +864,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const gone = staleProjectNames(projectNames, await this.projectDirState([...projectNames.keys()]));
     if (gone.length > 0) {
       for (const path of gone) projectNames.delete(path);
-      await saveProjectNames(projectNames, this.projectNamesPath);
+      await this.projectNameStore.save(projectNames);
     }
   }
 
@@ -848,7 +908,17 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * callable directly, which is how tests index without waiting for the timer.
    */
   async indexNow(): Promise<void> {
-    if (this.indexing || !this.embed) return;
+    if (this.indexing) return;
+    if (!this.embed) {
+      // No encoder (no model): nothing to index, but the tool counts are still due.
+      this.indexing = true;
+      try {
+        if (await syncToolCounts(this.toolCounter, await this.indexableSessions())) void this.pushTiles();
+      } finally {
+        this.indexing = false;
+      }
+      return;
+    }
     this.indexing = true;
     try {
       const index = await this.loadIndex();
@@ -858,6 +928,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         list: () => this.indexableSessions(),
         save: (i) => this.writeSessionIndex(i),
         onProgress: (done, total) => this.client?.onSessionIndexProgress(done, total),
+        counter: this.toolCounter,
+        onToolCounts: () => void this.pushTiles(),
       });
     } finally {
       this.indexing = false;
@@ -940,6 +1012,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYou,
             needsYouCertain,
             hashToIndex,
+            ...this.toolCountOf(u.claude?.transcriptPath),
             ...nameOf(names, sessionId),
             ...projectNameOf(projectNames, group.path, p.cwd),
           }),
@@ -961,6 +1034,25 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const value = await this.listTranscripts();
     this.enumCache = { at: now, value };
     return value;
+  }
+
+  /** `{ toolCount }` for a transcript the counter has scanned, else nothing: a tile never waits on a scan. */
+  private toolCountOf(transcriptPath: string | undefined): { toolCount?: number } {
+    const count = transcriptPath ? this.toolCounter.cached(transcriptPath) : undefined;
+    return count === undefined ? {} : { toolCount: count };
+  }
+
+  /**
+   * Keep the counts of sessions that are running current: they grow between
+   * crawls. Only reads what each file gained, and hands the wall fresh tiles
+   * when a count moved; the push scans again, finds nothing new and stops.
+   */
+  private refreshLiveToolCounts(tiles: readonly AgentTile[]): void {
+    const live = tiles.filter((t) => t.state === "working" && t.transcriptPath);
+    if (live.length === 0) return;
+    void countSessions(this.toolCounter, live)
+      .then((changed) => (changed ? this.pushTiles() : undefined))
+      .catch(() => undefined);
   }
 
   /** The enumerated sessions, flattened into what the crawl needs. */
@@ -988,18 +1080,18 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * A failed write does not block the ones queued after it.
    */
   private writeSessionNames(names: Map<string, string>): Promise<void> {
-    const next = this.sessionNamesWrite.then(() => saveSessionNames(names, this.sessionNamesPath));
+    const next = this.sessionNamesWrite.then(() => this.sessionNameStore.save(names));
     this.sessionNamesWrite = next.catch(() => undefined);
     return next;
   }
 
   private loadNames(): Promise<Map<string, string>> {
-    if (!this.sessionNames) this.sessionNames = loadSessionNames(this.sessionNamesPath);
+    if (!this.sessionNames) this.sessionNames = this.sessionNameStore.load();
     return this.sessionNames;
   }
 
   private loadProjectNames(): Promise<Map<string, string>> {
-    if (!this.projectNames) this.projectNames = loadProjectNames(this.projectNamesPath);
+    if (!this.projectNames) this.projectNames = this.projectNameStore.load();
     return this.projectNames;
   }
 
@@ -1052,7 +1144,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const trimmed = name.trim().slice(0, MAX_PROJECT_NAME_CHARS);
     if (trimmed) names.set(key, trimmed);
     else names.delete(key);
-    await saveProjectNames(names, this.projectNamesPath);
+    await this.projectNameStore.save(names);
 
     let changed = false;
     for (const [sessionId, tile] of this.lastTiles) {
