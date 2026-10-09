@@ -192,7 +192,14 @@ for (const theme of THEMES) {
       for (const [id, name, icon] of [["backend-architect", "backend-architect", "codicon-server"], ["reviewer", "reviewer", "codicon-eye"]] as const) {
         seed(`docs/agents/${id}.md`, `---\nid: ${id}\nname: ${name}\nicon: ${icon}\ncolor: #888888\n---\n\nYou are a ${name}.\n`);
       }
+      // The active expert is read without a folder while no agent runs, so
+      // the user's settings carry it (the folder's own file too).
       seed(".theia/settings.json", JSON.stringify({ "spexr.experts.activeId": "backend-architect" }, null, 2));
+      const userSettings = path.join(meta.run.configDir, "settings.json");
+      fs.writeFileSync(
+        userSettings,
+        JSON.stringify({ ...JSON.parse(fs.readFileSync(userSettings, "utf8")), "spexr.experts.activeId": "backend-architect" }, null, 2) + "\n",
+      );
       await showRightView("View: Toggle Experts", ".spexr-experts-panel", '.spexr-experts-list__item[aria-current="true"]', true);
       await page.locator("#theia-right-content-panel .spexr-experts-list__item").nth(1).waitFor({ state: "visible", timeout: 15_000 });
       await shoot("right-experts");
