@@ -140,9 +140,23 @@ export function tokenColors(theme: SpexrThemeKind): TokenRule[] {
 }
 
 /**
+ * Bracket pair colours (an editor feature, off by default in spexr): three of
+ * the kit's syntax hues in turn, and the number hue for a bracket with no
+ * partner, in place of the gold, orchid and blue of Theia's theme.
+ */
+function bracketColors(theme: SpexrThemeKind): Record<string, string> {
+  const c = codeRoles(theme);
+  const levels = [c.builtin, c.keyword, c.function, c.builtin, c.keyword, c.function];
+  return {
+    ...Object.fromEntries(levels.map((hue, i) => [`editorBracketHighlight.foreground${i + 1}`, hue])),
+    "editorBracketHighlight.unexpectedBracket.foreground": c.number,
+  };
+}
+
+/**
  * The editor's own colours for a theme: the surface and code ink, the current
  * line (the primary ink at 4.5%, with no border), the selection (the accent at
- * 18%, the same unfocused), the line numbers (muted, the current one in the
+ * 18%, the same unfocused; a matched bracket the same wash), the line numbers (muted, the current one in the
  * primary ink), the cursor in the accent and the indent guides in the kit's
  * hairlines. The ink and the accent are translucent washes, so they read over
  * whichever rung of the island the editor sits on.
@@ -165,6 +179,9 @@ export function editorColors(theme: SpexrThemeKind): Record<string, string> {
     "editorLineNumber.foreground": muted,
     "editorLineNumber.activeForeground": primary,
     "editorCursor.foreground": accent,
+    "editorBracketMatch.background": selection,
+    "editorBracketMatch.border": withAlpha(accent, 0),
+    ...bracketColors(theme),
     "editorIndentGuide.background": subtle,
     "editorIndentGuide.activeBackground": guide,
     "editorIndentGuide.background1": subtle,

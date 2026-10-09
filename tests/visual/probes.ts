@@ -288,7 +288,7 @@ export async function probeEditor(page: Page): Promise<EditorProbe> {
       number: find((t) => /^[\d_]+$/.test(t)),
       type: find((t) => /^(Probe|Answer|Cache|Promise|Evidence)$/.test(t)),
       comment: find((t) => t.startsWith("//")),
-      variable: find((t) => /^(hit|probe|answer|evidence|key|timeout)$/.test(t)),
+      variable: find((t) => /\b(hit|probe|answer|evidence)\b/.test(t) && !/^(import|const|await|return|if|export|new|from)\b/.test(t)),
     };
 
     const ecs = getComputedStyle(editor);
@@ -322,10 +322,11 @@ export async function probeEditor(page: Page): Promise<EditorProbe> {
 }
 
 /**
- * The editor's padding at the top: scrolled to the first line, how far the
- * first line's text sits below the editor's top edge (demo 12, the code
- * block's `padding-top`). Scrolls the editor by wheel, so the capture's scenes
- * are over; returns null when no editor shows or line 1 never came into view.
+ * The editor's padding at the top: with the cursor on line 1 and the editor
+ * scrolled to the top, how far line 1's number sits below the editor's top
+ * edge (demo 12, the code block's `padding-top`). Clicks into the editor and
+ * presses the go-to-start key, so the capture's scenes must be over; returns
+ * null when no editor shows or line 1 never came into view.
  */
 export async function probeEditorPadding(page: Page): Promise<{ paddingTop: number; firstLine: number } | null> {
   const box = await page.evaluate(() => {
@@ -336,9 +337,9 @@ export async function probeEditorPadding(page: Page): Promise<{ paddingTop: numb
     return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
   });
   if (!box) return null;
-  await page.mouse.move(box.x, box.y);
-  await page.mouse.wheel(0, -20_000);
-  await page.waitForTimeout(500);
+  await page.mouse.click(box.x, box.y);
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowUp" : "Control+Home");
+  await page.waitForTimeout(800);
   return page.evaluate(() => {
     const editor = [...document.querySelectorAll<HTMLElement>("#theia-main-content-panel .monaco-editor")].find(
       (e) => e.getBoundingClientRect().width > 0 && e.querySelector(".view-lines") && e.checkVisibility({ visibilityProperty: true }),

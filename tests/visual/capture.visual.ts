@@ -142,8 +142,8 @@ for (const theme of THEMES) {
       meta.treeFocused = await page.evaluate(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"));
       await shoot("focus-tree", treeAck);
 
-      // After every scene: the wheel scroll that reads the editor's padding
-      // moves the editor, so no capture follows it.
+      // After every scene: reading the editor's padding clicks into it and goes
+      // to line 1, so no capture follows it.
       meta.editor = { ...(meta.editor ?? (await probeEditor(page))), paddingTop: (await probeEditorPadding(page))?.paddingTop ?? null };
       writeMeta();
 

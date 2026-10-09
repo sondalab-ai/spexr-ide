@@ -112,6 +112,16 @@ describe("the Monaco theme's editor colours", () => {
     expect(colours["editor.background"]).toBe(r["bg-surface"]);
   });
 
+  it.each(themes)("%s: a bracket pair takes kit syntax hues, and a matched bracket the selection's wash with no border", (theme) => {
+    const colours = editorColors(theme);
+    const allowed = kitCode(theme);
+    const levels = Object.keys(colours).filter((id) => id.startsWith("editorBracketHighlight."));
+    expect(levels).toHaveLength(7);
+    for (const id of levels) expect(allowed.has(colours[id]!), `${id} ${colours[id]}`).toBe(true);
+    expect(colours["editorBracketMatch.background"]).toBe(colours["editor.selectionBackground"]);
+    expect(colours["editorBracketMatch.border"]).toBe(`${editorInks(theme).accent}00`);
+  });
+
   it("encodes the kit's rgba hairlines as #rrggbbaa", () => {
     expect(rgbaToHex8("rgba(20,22,27,0.08)")).toBe("#14161b14");
     expect(throws(() => rgbaToHex8("#14161b"))).toBe(true);

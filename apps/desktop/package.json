@@ -49,6 +49,7 @@
           "editor.padding.top": 12,
           "editor.glyphMargin": false,
           "editor.renderLineHighlight": "all",
+          "editor.bracketPairColorization.enabled": false,
           "workbench.tree.indent": 16,
           "workspace.preserveWindow": true
         }

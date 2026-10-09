@@ -29,6 +29,10 @@ describe("the editor's preference defaults", () => {
     expect(defaults()["editor.renderLineHighlight"]).toBe("all");
   });
 
+  it("draws no rainbow brackets (the demo's are the code ink)", () => {
+    expect(defaults()["editor.bracketPairColorization.enabled"]).toBe(false);
+  });
+
   it("keeps the preferences the app already defaulted", () => {
     expect(defaults()["editor.cursorStyle"]).toBe("block");
     expect(defaults()["editor.wordWrap"]).toBe("on");
@@ -37,7 +41,7 @@ describe("the editor's preference defaults", () => {
   // A default for an id Theia does not know is ignored: read the installed schema.
   it("names preferences that Theia's editor schema has, with the value types used", () => {
     const schema = readFileSync(require.resolve("@theia/editor/lib/common/editor-generated-preference-schema.js"), "utf8");
-    for (const id of ["editor.minimap.enabled", "editor.padding.top", "editor.glyphMargin", "editor.renderLineHighlight", "editor.folding"]) {
+    for (const id of ["editor.minimap.enabled", "editor.padding.top", "editor.glyphMargin", "editor.renderLineHighlight", "editor.folding", "editor.bracketPairColorization.enabled"]) {
       expect(schema, id).toContain(`"${id}": {`);
     }
     expect(/"editor\.padding\.top": \{\s+"type": "number"/.test(schema)).toBe(true);
