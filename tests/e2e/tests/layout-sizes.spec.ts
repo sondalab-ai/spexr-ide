@@ -111,13 +111,13 @@ test.describe("the default layout's island sizes", () => {
   test("switching the left view leaves the right and bottom islands where they are", async ({ page }) => {
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
-    const right = await rightIslandWidth(page);
+    await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
     const bottom = (await island(page, "bottom"))?.h;
     for (const view of [SEARCH, EXPLORER, SEARCH]) {
       await showLeftView(page, view);
       await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
     }
-    expect(await rightIslandWidth(page)).toBeCloseTo(right ?? 352, 0);
+    expect(await rightIslandWidth(page)).toBeCloseTo(352, 0);
     // The bottom panel can start hidden; only a panel that was showing is compared.
     if (bottom !== undefined) expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom, 0);
   });
