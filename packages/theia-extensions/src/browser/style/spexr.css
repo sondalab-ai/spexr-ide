@@ -2499,9 +2499,12 @@ body .theia-notifications-container.theia-notification-toasts {
   color: var(--slc-text-muted);
 }
 
+/* The name and target take what they need, up to the row, and are cut with an
+   ellipsis only when the row is full; the edit's size follows directly, and
+   the duration is pushed to the right edge. */
 .spexr-agent-tool__text {
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: 48px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2516,6 +2519,7 @@ body .theia-notifications-container.theia-notification-toasts {
 
 .spexr-agent-tool__meta {
   flex: none;
+  margin-inline-start: auto;
   font-family: var(--sl-font-mono);
   font-size: 10.5px;
   color: var(--slc-text-muted);
@@ -2541,6 +2545,7 @@ body .theia-notifications-container.theia-notification-toasts {
 
 .spexr-agent-stat {
   flex: none;
+  margin-inline-start: 8px;
   font-family: var(--sl-font-mono);
   font-size: var(--sl-text-xs);
 }

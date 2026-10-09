@@ -110,6 +110,11 @@ describe("the agent pane in spexr.css", () => {
     expect(px(rules(".spexr-agent-tools__list"), "max-height")).toBe(AGENT_PANE.toolListMaxHeight);
     expect(rules(".spexr-agent-tools__list")).toMatch(/overflow-y:\s*auto/);
     expect(rules(".spexr-agent-stat")).toMatch(/flex:\s*none/);
+    expect(px(rules(".spexr-agent-stat"), "margin-inline-start")).toBe(8);
+    // The name and target give way before the stat does, but never to nothing; the duration takes the right edge.
+    expect(rules(".spexr-agent-tool__text")).toMatch(/flex:\s*0 1 auto/);
+    expect(px(rules(".spexr-agent-tool__text"), "min-width")).toBeGreaterThanOrEqual(32);
+    expect(rules(".spexr-agent-tool__meta")).toMatch(/margin-inline-start:\s*auto/);
     expect(px(rules(".spexr-agent-tools__fold"), "min-height")).toBe(AGENT_PANE.foldMinHeight);
   });
 

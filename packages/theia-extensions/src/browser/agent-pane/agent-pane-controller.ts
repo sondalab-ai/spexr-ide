@@ -37,7 +37,10 @@ export class AgentPaneController {
   /** The tool card shows every row. */
   expanded = false;
 
-  private token = 0;
+  /** Orders the lookups of the session id: the latest bind's answer is the one acted on. */
+  private lookup = 0;
+  /** Changes with the session followed, and only then: an answer for an earlier session is dropped, one for the same session is kept. */
+  private session = 0;
   private pending: AgentPaneDelta[] = [];
 
   constructor(
@@ -50,11 +53,11 @@ export class AgentPaneController {
   ) {}
 
   async bind(): Promise<void> {
-    const token = ++this.token;
+    const lookup = ++this.lookup;
     const rootUri = this.terminal.agentRootUri();
     const running = this.terminal.currentSessionId();
     const sessionId = running ?? (rootUri ? await this.terminal.storedSessionId(rootUri).catch(() => undefined) : undefined);
-    if (token !== this.token) return;
+    if (lookup !== this.lookup) return;
     if (!rootUri || !sessionId) {
       const had = this.followed !== undefined;
       this.reset(undefined);
@@ -64,6 +67,7 @@ export class AgentPaneController {
     }
     if (sessionId === this.followed) return;
     this.reset(sessionId);
+    const session = this.session;
     this.changed();
     try {
       const first = await this.service.follow({
@@ -72,11 +76,11 @@ export class AgentPaneController {
         // An id from storage may be a session that ended: the backend then adopts a newer transcript only while a Claude runs there.
         ...(running ? {} : { fromStorage: true }),
       });
-      if (token !== this.token) return;
+      if (session !== this.session) return;
       if (first && !this.snapshot) this.accept(first);
     } catch (err) {
       // Forgotten, so the next bind follows it again.
-      if (token === this.token && this.followed === sessionId) this.followed = undefined;
+      if (session === this.session && this.followed === sessionId) this.followed = undefined;
       this.warn("the agent pane could not follow its session", err);
     }
   }
@@ -98,7 +102,6 @@ export class AgentPaneController {
 
   adopted(from: string, to: string): void {
     if (from !== this.followed) return;
-    this.token++;
     this.reset(to);
     const root = this.terminal.agentRootUri();
     if (root) this.terminal.adoptSessionId(root, to);
@@ -112,7 +115,8 @@ export class AgentPaneController {
 
   /** Let go: nothing more arrives, and a late answer is dropped. */
   dispose(): void {
-    this.token++;
+    this.session++;
+    this.lookup++;
     void this.service.stop().catch(() => undefined);
   }
 
@@ -125,6 +129,7 @@ export class AgentPaneController {
   }
 
   private reset(sessionId: string | undefined): void {
+    this.session++;
     this.followed = sessionId;
     this.snapshot = undefined;
     this.pending = [];

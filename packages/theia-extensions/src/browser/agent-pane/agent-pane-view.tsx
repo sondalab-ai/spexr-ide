@@ -64,7 +64,6 @@ const Prose: React.FC<{ readonly text: string }> = ({ text }) => (
 /** The head's title: the session's name, or a placeholder until it has one. */
 const titleOf = (s: AgentPaneSnapshot): string => s.title ?? nls.localize("spexr/agentPane/untitled", "New session");
 
-const TOOLS_LIST_ID = "spexr-agent-tools-list";
 
 export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void }> = ({ onReveal }) => (
   <section className="spexr-agent-pane spexr-agent-pane--empty" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
@@ -88,6 +87,7 @@ export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void }> = ({ on
  * the agent waits for them. Nothing here animates in.
  */
 export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded, onToggleExpanded, onReveal }) => {
+  const uid = React.useId();
   if (!snapshot) return <AgentPaneEmpty onReveal={onReveal} />;
   const turn = snapshot.turn;
   const family = modelFamily(snapshot.model);
@@ -96,6 +96,9 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
   const { shown } = visibleTools(tools, expanded);
   const foldable = tools.length - TOOL_ROWS_SHOWN;
   const diff = turn?.diff;
+  // Ids are per instance: two panes (or a test render beside a live one) never share one.
+  const toolsListId = `${uid}-tools`;
+  const planTitleId = `${uid}-plan`;
   return (
     <section className="spexr-agent-pane" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
       <PanelHead
@@ -115,7 +118,7 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
         ) : null}
         {turn?.prompt ? (
           <p className="spexr-agent-prompt" title={turn.prompt}>
-            {turn.prompt}
+            <Prose text={turn.prompt} />
           </p>
         ) : null}
         {prose ? (
@@ -126,11 +129,11 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
         {shown.length > 0 ? (
           <div className="spexr-agent-tools">
             {foldable > 0 ? (
-              <button type="button" className="spexr-agent-tools__fold" aria-expanded={expanded} aria-controls={TOOLS_LIST_ID} onClick={onToggleExpanded}>
+              <button type="button" className="spexr-agent-tools__fold" aria-expanded={expanded} aria-controls={toolsListId} onClick={onToggleExpanded}>
                 {nls.localize("spexr/agentPane/earlier", "{0} earlier", foldable)}
               </button>
             ) : null}
-            <ol id={TOOLS_LIST_ID} className="spexr-agent-tools__list" aria-label={nls.localize("spexr/agentPane/tools", "Tool calls")}>
+            <ol id={toolsListId} className="spexr-agent-tools__list" tabIndex={0} aria-label={nls.localize("spexr/agentPane/tools", "Tool calls")}>
               {shown.map((tool) => (
                 <ToolRow key={tool.id} tool={tool} />
               ))}
@@ -157,10 +160,10 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded
         ) : null}
         {snapshot.plan && snapshot.plan.length > 0 ? (
           <div className="spexr-agent-plan">
-            <span className="sl-eyebrow" id="spexr-agent-plan-title">
+            <span className="sl-eyebrow" id={planTitleId}>
               {nls.localize("spexr/agentPane/plan", "Plan")}
             </span>
-            <ul className="spexr-agent-plan__list" aria-labelledby="spexr-agent-plan-title">
+            <ul className="spexr-agent-plan__list" aria-labelledby={planTitleId}>
               {snapshot.plan.map((item, i) => (
                 <li key={i} className="spexr-agent-plan__item">
                   <label className="sl-check" onClick={(e) => e.preventDefault()}>

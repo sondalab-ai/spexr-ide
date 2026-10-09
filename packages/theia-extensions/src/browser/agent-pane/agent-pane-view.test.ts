@@ -84,7 +84,7 @@ describe("AgentPaneView", () => {
   it("gives the tool list and the plan accessible names, and the plan list semantics", () => {
     const html = render({ sessionId: SESSION, turn: { tools: tools(2) }, plan: [{ text: "One", done: true }, { text: "Two", done: false }] });
     expect(html).toContain('aria-label="Tool calls"');
-    expect(html).toMatch(/<ul[^>]*aria-labelledby="spexr-agent-plan-title"/);
+    expect(html).toMatch(/<ul[^>]*aria-labelledby="[^"]+"/);
     expect(html.match(/<li class="spexr-agent-plan__item">/g)).toHaveLength(2);
     expect(html).toContain('checked=""');
     expect(html).toContain('aria-readonly="true"');
@@ -99,5 +99,39 @@ describe("AgentPaneView", () => {
 
   it("holds the prompt's full text as its title", () => {
     expect(render({ sessionId: SESSION, turn: { prompt: "do the thing" } })).toContain('class="spexr-agent-prompt" title="do the thing"');
+  });
+
+  it("sets backtick spans in the prompt as inline code too, as the demo's prompt does", () => {
+    const html = render({ sessionId: SESSION, turn: { prompt: "Make `cache.write` awaited" } });
+    expect(html).toMatch(/class="spexr-agent-prompt"[^>]*>Make <code class="sl-code">cache\.write<\/code> awaited</);
+    expect(html).toContain('title="Make `cache.write` awaited"');
+  });
+
+  it("makes the tool list a keyboard-reachable scroll region", () => {
+    expect(render({ sessionId: SESSION, turn: { tools: tools(2) } })).toMatch(/<ol [^>]*tabindex="0"/);
+  });
+
+  it("derives its ids from the instance, not a fixed string", () => {
+    const html = render({ sessionId: SESSION, turn: { tools: tools(6) }, plan: [{ text: "One", done: false }] }, false);
+    expect(html).not.toContain('id="spexr-agent-tools-list"');
+    expect(html).not.toContain('id="spexr-agent-plan-title"');
+    const listId = /<ol id="([^"]+)"/.exec(html)![1]!;
+    expect(html).toContain(`aria-controls="${listId}"`);
+    const planId = /class="sl-eyebrow" id="([^"]+)"/.exec(html)![1]!;
+    expect(html).toContain(`aria-labelledby="${planId}"`);
+    expect(planId).not.toBe(listId);
+  });
+
+  it("makes Reveal a plain small kit button, which carries the kit's control edge", () => {
+    expect(render({ sessionId: SESSION, needsYou: true })).toMatch(/<button type="button" class="sl-btn sl-btn--sm">Reveal<\/button>/);
+  });
+});
+
+describe("the widget's show handler", () => {
+  it("binds again whenever the pane comes into view, which retries a follow that failed", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./agent-pane-widget.tsx", import.meta.url)), "utf8");
+    expect(src).toMatch(/protected override onAfterShow\(msg: Message\): void \{\s*super\.onAfterShow\(msg\);\s*void this\.controller\.bind\(\);\s*\}/);
   });
 });

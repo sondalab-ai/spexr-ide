@@ -219,6 +219,7 @@ for (const theme of THEMES) {
         const at = new Date(Date.now() - secondsAgo * 1000);
         fs.utimesSync(needsTranscript, at, at);
       };
+      // Known drift: with the audit's agent waiting, the title-bar pill reads "1 agent running", not the base scene's "2 agents running" (it counts working sessions, and this one is not).
       fs.appendFileSync(needsTranscript, modeRecord("default"));
       const needs = page.locator("#theia-right-content-panel .spexr-agent-needs");
       const needsDeadline = Date.now() + 60_000;
