@@ -34,9 +34,11 @@ describe("the Explorer's section headers in spexr.css (S6b)", () => {
   const header = rule(`${LEFT} .theia-view-container-part-header`);
 
   it("are the table's 28px, in Theia's variable and in the layout's static", () => {
-    const root = css.indexOf(":root {\n  --theia-view-container-title-height");
-    expect(root, "the :root rule for the section header's height").toBeGreaterThanOrEqual(0);
+    // Scoped to the left island: the right and bottom keep Theia's 24px.
+    const root = css.indexOf("\n#theia-left-content-panel {\n  --theia-view-container-title-height");
+    expect(root, "the left island's rule for the section header's height").toBeGreaterThanOrEqual(0);
     expect(px(css.slice(root, css.indexOf("}", root)), "--theia-view-container-title-height")).toBe(WORKBENCH.sectionHead);
+    expect(css).not.toMatch(/:root \{\s*--theia-view-container-title-height/);
     expect(header).toContain("height: var(--theia-view-container-title-height);");
     expect(own("../shell/section-header-height.ts")).toContain("HEADER_HEIGHT = WORKBENCH.sectionHead;");
     // Theia reads the static as a collapsed section's height, and the variable as the body's: both are the header's.
@@ -69,7 +71,7 @@ describe("the Explorer's section headers in spexr.css (S6b)", () => {
     const toggle = rule(`${LEFT} .theia-view-container-part-header .theia-ExpansionToggle`);
     expect(toggle).toMatch(/opacity:\s*0;/);
     expect(px(toggle, "width")).toBe(16);
-    const shown = css.indexOf(`${LEFT} .theia-view-container-part-header:is(:hover, :focus-visible) .theia-ExpansionToggle,`);
+    const shown = css.indexOf(`${LEFT} .theia-view-container-part-header:is(:hover, :focus-within) .theia-ExpansionToggle,`);
     expect(shown).toBeGreaterThan(0);
     expect(css.slice(shown, css.indexOf("}", shown))).toContain(`${LEFT} .part.collapsed .theia-view-container-part-header .theia-ExpansionToggle {`);
     expect(css.slice(shown, css.indexOf("}", shown))).toMatch(/opacity:\s*1;/);
@@ -103,7 +105,14 @@ describe("the Explorer's head in spexr.css (S6b)", () => {
     expect(rule(`${EXPLORER_HEAD} .lm-TabBar-toolbar .codicon-new-file::before`)).toContain('content: "\\ea60";');
     expect(readFileSync(resolve("@vscode/codicons/dist/codicon.css"), "utf8")).toContain('.codicon-add:before { content: "\\ea60" }');
     const hidden = rule(`${EXPLORER_HEAD}:not(:hover, :focus-within) .lm-TabBar-toolbar .item:has(> :is(.codicon-new-folder, .codicon-refresh, .codicon-collapse-all))`);
-    expect(hidden).toContain("display: none;");
+    // They keep their place: opacity and visibility, never display, so the plus and the dots stay put.
+    expect(hidden).toMatch(/opacity:\s*0;/);
+    expect(hidden).toContain("visibility: hidden;");
+    expect(hidden).not.toContain("display");
+    // Reached by the keyboard, a tool or a section header takes the kit's flush ring.
+    const ring = css.indexOf(`${LEFT} :is(.theia-sidepanel-toolbar .lm-TabBar-toolbar .item > div, .theia-view-container-part-header):focus-visible {`);
+    expect(ring).toBeGreaterThan(0);
+    expect(css.slice(ring, css.indexOf("}", ring))).toContain("outline-offset: calc(-1 * var(--sl-focus-ring-width));");
     // Theia's four tools, by the icons they are given, and "..." as the rest.
     const commands = readFileSync(resolve("@theia/navigator/lib/browser/file-navigator-commands.js"), "utf8");
     for (const icon of ["new-file", "new-folder", "refresh", "collapse-all"]) expect(commands).toContain(`(0, browser_1.codicon)('${icon}')`);

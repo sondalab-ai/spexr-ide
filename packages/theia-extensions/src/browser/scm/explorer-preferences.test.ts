@@ -27,7 +27,7 @@ describe("the problem marks' source (S6b, L7)", () => {
     expect(theia).toContain("bubble: true,");
     expect(theia.slice(theia.indexOf("provideDecorations(uri, token)"), theia.indexOf("exports.ProblemDecorationsProvider"))).not.toContain("problems.decorations.enabled");
     const own = read("./spexr-problem-decorations-provider.ts");
-    expect(own).toContain('this.problemPreferences["problems.decorations.enabled"] ? super.provideDecorations(uri, token) : undefined');
+    expect(own).toContain('gateProblemDecoration(this.problemPreferences["problems.decorations.enabled"], () => super.provideDecorations(uri, token))');
     expect(read("../spexr-frontend-module.ts")).toContain("rebind(ProblemDecorationsProvider).to(SpexrProblemDecorationsProvider)");
   });
 });

@@ -28,22 +28,33 @@ export class SpexrExplorerChromeContribution implements FrontendApplicationContr
   @inject(StorageService)
   private readonly storage!: StorageService;
 
-  private queue: Promise<void> = Promise.resolve();
+  private readonly attached = new WeakSet<ViewContainer>();
 
   async onDidInitializeLayout(): Promise<void> {
     try {
-      const container = await this.widgetManager.getOrCreateWidget<ViewContainer>(EXPLORER_VIEW_CONTAINER_ID);
-      const title = container.title;
-      const keepTitle = (): void => {
-        if (title.label !== EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS.label) title.label = EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS.label;
-      };
-      title.changed.connect(keepTitle);
-      keepTitle();
-      container.onDidChangeTrackableWidgets(() => this.migrate(container));
-      this.migrate(container);
+      // The container is made again by Reset Layout (the old one is closed),
+      // so the hooks follow every Explorer container Theia creates.
+      this.widgetManager.onDidCreateWidget(({ factoryId, widget }) => {
+        if (factoryId === EXPLORER_VIEW_CONTAINER_ID) this.attach(widget as ViewContainer);
+      });
+      this.attach(await this.widgetManager.getOrCreateWidget<ViewContainer>(EXPLORER_VIEW_CONTAINER_ID));
     } catch (err) {
       console.warn("[spexr] the Explorer's chrome could not be set", err);
     }
+  }
+
+  /** Keep the container's title and hide its default-hidden sections, once per container. */
+  private attach(container: ViewContainer): void {
+    if (this.attached.has(container)) return;
+    this.attached.add(container);
+    const title = container.title;
+    const keepTitle = (): void => {
+      if (title.label !== EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS.label) title.label = EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS.label;
+    };
+    title.changed.connect(keepTitle);
+    keepTitle();
+    container.onDidChangeTrackableWidgets(() => this.migrate(container));
+    this.migrate(container);
   }
 
   /** Hide the default-hidden sections now present, one run at a time. */
@@ -52,13 +63,9 @@ export class SpexrExplorerChromeContribution implements FrontendApplicationContr
       has: (id) => container.getParts().some((part) => part.wrapped.id === id),
       hide: (id) => container.getParts().find((part) => part.wrapped.id === id)?.setHidden(true),
     };
-    this.queue = this.queue
-      .then(async () => {
-        await hideSectionsOnce(
-          { load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) },
-          sections,
-        );
-      })
-      .catch((err: unknown) => console.warn("[spexr] the Explorer's sections could not be hidden", err));
+    hideSectionsOnce(
+      { load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) },
+      sections,
+    ).catch((err: unknown) => console.warn("[spexr] the Explorer's sections could not be hidden", err));
   }
 }

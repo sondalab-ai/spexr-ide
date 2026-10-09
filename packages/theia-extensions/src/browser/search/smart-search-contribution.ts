@@ -21,6 +21,8 @@ import { SpexrSearchServiceProxy } from "./smart-search-service.js";
 import { SmartSearchWidget } from "./smart-search-widget.js";
 import { debounce, isSpexrCacheLoss } from "./smart-search-format.js";
 import { applyPartShare } from "../shell/apply-part-share.js";
+import { StorageService } from "@theia/core/lib/browser/storage-service";
+import { SECTIONS_MIGRATION_KEY, SMART_SEARCH_EVICTION_ID, runMigrationOnce } from "../shell/explorer-sections.js";
 
 export const SmartSearchCommands = {
   REINDEX: { id: "spexr.search.reindex", label: "Smart Search: Reindex Workspace" } satisfies Command,
@@ -60,6 +62,7 @@ export class SpexrSmartSearchContribution
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
   @inject(FileService) private readonly fileService!: FileService;
   @inject(MessageService) private readonly messages!: MessageService;
+  @inject(StorageService) private readonly storage!: StorageService;
 
   private changed = new Set<string>();
   private removed = new Set<string>();
@@ -78,12 +81,21 @@ export class SpexrSmartSearchContribution
 
   async onDidInitializeLayout(): Promise<void> {
     const container = await this.widgetManager.getOrCreateWidget<ViewContainer>(SEARCH_VIEW_CONTAINER_ID);
-    // A layout stored before S6b holds Smart Search in the Explorer. Removing
-    // the part disposes the widget; a fresh one is made for the Search view.
     const explorer = this.widgetManager.tryGetWidget(EXPLORER_VIEW_CONTAINER_ID);
-    const stale = this.widgetManager.tryGetWidget(SmartSearchWidget.ID);
-    if (explorer instanceof ViewContainer && stale && explorer.getPartFor(stale)) explorer.removeWidget(stale);
+    // A layout stored before S6b holds Smart Search in the Explorer. Once (the
+    // same done-list as the Explorer's sections, cleared by Reset Layout), the
+    // part is removed, which disposes the widget; a fresh one is made for the
+    // Search view. A user who later drags it back into the Explorer keeps it there.
+    await runMigrationOnce(
+      { load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) },
+      SMART_SEARCH_EVICTION_ID,
+      () => {
+        const stale = this.widgetManager.tryGetWidget(SmartSearchWidget.ID);
+        if (explorer instanceof ViewContainer && stale && explorer.getPartFor(stale)) explorer.removeWidget(stale);
+      },
+    );
     const widget = await this.widgetManager.getOrCreateWidget<SmartSearchWidget>(SmartSearchWidget.ID);
+    if (explorer instanceof ViewContainer && explorer.getPartFor(widget)) return;
     container.addWidget(widget, {
       order: -1,
       canHide: true,

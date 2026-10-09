@@ -347,8 +347,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(FrontendApplicationContribution).toService(GitStatusBarContribution);
 
   // A changed file's colour is its letter's alone (S6b, L7).
-  if (isBound(ProblemDecorationsProvider)) rebind(ProblemDecorationsProvider).to(SpexrProblemDecorationsProvider).inSingletonScope();
-  if (isBound(FileTreeDecoratorAdapter)) rebind(FileTreeDecoratorAdapter).to(SpexrFileTreeDecoratorAdapter).inSingletonScope();
+  rebind(ProblemDecorationsProvider).to(SpexrProblemDecorationsProvider).inSingletonScope();
+  rebind(FileTreeDecoratorAdapter).to(SpexrFileTreeDecoratorAdapter).inSingletonScope();
   bind(GitIgnoredDecorationProvider).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitIgnoredDecorationProvider);
 

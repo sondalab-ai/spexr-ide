@@ -5,6 +5,7 @@ import type { TreeDecoration } from "@theia/core/lib/browser/tree/tree-decorator
 import { TopDownTreeIterator, type Tree } from "@theia/core/lib/browser";
 import { FileTreeDecoratorAdapter } from "@theia/filesystem/lib/browser/file-tree/file-tree-decorator-adapter";
 import { colorsName } from "./decoration-name-colour.js";
+import { MissingDecorations } from "./missing-decorations.js";
 
 /**
  * The file tree's decorations with Lumen's letters only (S6b, L7): Theia's
@@ -26,15 +27,35 @@ export class SpexrFileTreeDecoratorAdapter extends FileTreeDecoratorAdapter {
     return super.decorations(tree);
   }
 
+  private readonly missing = new MissingDecorations();
+  private learning = false;
+
   /** Take in the decorations of the tree's nodes that the service has and this adapter has not seen. */
   private learnMissing(tree: Tree): void {
     if (!tree.root) return;
-    const missing: string[] = [];
+    const keys: string[] = [];
     for (const node of new TopDownTreeIterator(tree.root)) {
       const key = this.getUriForNode(node);
-      if (key !== undefined && !this.decorationsByUri.has(key) && this.decorationsService.getDecoration(new URI(key), false).length > 0) missing.push(key);
+      if (key !== undefined) keys.push(key);
     }
-    if (missing.length > 0) this.updateDecorations(this.decorationsByUri.keys(), missing.values());
+    const found = this.missing.find(
+      keys,
+      (key) => this.decorationsByUri.has(key),
+      (key) => this.decorationsService.getDecoration(new URI(key), false).length > 0,
+    );
+    if (found.length === 0) return;
+    this.learning = true;
+    try {
+      this.updateDecorations(this.decorationsByUri.keys(), found.values());
+    } finally {
+      this.learning = false;
+    }
+  }
+
+  /** A change from the service: the nodes found plain may be decorated now. */
+  protected override updateDecorations(oldKeys: IterableIterator<string>, newKeys: IterableIterator<string>): void {
+    if (!this.learning) this.missing.forget();
+    super.updateDecorations(oldKeys, newKeys);
   }
 
   protected override toTheiaDecoration(decorations: Decoration[], bubble?: boolean): TreeDecoration.Data {

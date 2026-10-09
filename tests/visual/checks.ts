@@ -221,7 +221,7 @@ export interface LeftIsland {
   readonly explorerShown: boolean;
   /** Smart Search widgets (id `spexr.view.smart-search`) inside the Explorer container. */
   readonly smartSearchInExplorer: number;
-  /** Section header texts of the Explorer, in order. */
+  /** The Explorer's visible section headers' texts, in order (hidden sections left out). */
   readonly sectionHeads: string[];
 }
 
@@ -235,7 +235,9 @@ export async function probeLeftIsland(page: Page): Promise<LeftIsland> {
       width: r && r.width > 0 ? r.width : null,
       explorerShown: shown,
       smartSearchInExplorer: explorer ? explorer.querySelectorAll('[id$="spexr.view.smart-search"], [id="spexr.view.smart-search"]').length : 0,
-      sectionHeads: explorer ? [...explorer.querySelectorAll<HTMLElement>(".theia-view-container-part-header .label")].map((el) => el.textContent?.trim() ?? "") : [],
+      sectionHeads: explorer
+        ? [...explorer.querySelectorAll<HTMLElement>(".part:not(.lm-mod-hidden) > .theia-view-container-part-header .label")].filter((el) => el.getBoundingClientRect().height > 0).map((el) => el.textContent?.trim() ?? "")
+        : [],
     };
   });
 }
@@ -246,6 +248,57 @@ export function checkLeftIsland(island: LeftIsland): string[] {
   if (!island.explorerShown) problems.push("left island: the Explorer is not in front in the base scene");
   if (island.width === null) problems.push("left island: not laid out");
   else if (!near(island.width, EXPLORER_ISLAND, 1)) problems.push(`left island: ${island.width}px wide, want ${EXPLORER_ISLAND} (the Explorer in front)`);
+  if (island.sectionHeads.length !== 1 || island.sectionHeads[0] !== "probe-engine") problems.push(`left island: the Explorer's visible section headers are [${island.sectionHeads.join(", ")}], want [probe-engine]`);
   if (island.smartSearchInExplorer !== 0) problems.push(`left island: ${island.smartSearchInExplorer} Smart Search widget(s) inside the Explorer, want none (it is in the Search view)`);
+  return problems;
+}
+
+/** The left island's width in px (null when it is not laid out), the right island's and the bottom island's height. */
+export async function islandSizes(page: Page): Promise<{ left: number | null; right: number | null; bottom: number | null }> {
+  return page.evaluate(() => {
+    const rect = (area: string): DOMRect | undefined => document.querySelector<HTMLElement>(`.spexr-island[data-island="${area}"]`)?.getBoundingClientRect();
+    const size = (r: DOMRect | undefined, key: "width" | "height"): number | null => (r && r.width > 0 && r.height > 0 ? Math.round(r[key] * 10) / 10 : null);
+    return { left: size(rect("left"), "width"), right: size(rect("right"), "width"), bottom: size(rect("bottom"), "height") };
+  });
+}
+
+/**
+ * Bring a view to the front of the left island through its activity tile
+ * (`#shell-tab-<widget id>`), unless it already is (clicking the current tile
+ * collapses the island), and wait until the tile is the current one.
+ */
+export async function showLeftView(page: Page, widgetId: string): Promise<void> {
+  const tab = page.locator(`#shell-tab-${widgetId}`);
+  await tab.waitFor({ state: "visible", timeout: 15_000 });
+  if (!(await tab.evaluate((el) => el.classList.contains("lm-mod-current")))) await tab.click();
+  await page.waitForFunction((id) => document.getElementById(`shell-tab-${id}`)?.classList.contains("lm-mod-current") === true, widgetId, { timeout: 10_000 });
+}
+
+/** Wait until the left island is `want` px wide (1px either way), and report what it is. */
+export async function leftIslandIs(page: Page, want: number): Promise<number | null> {
+  await page
+    .waitForFunction(
+      (w) => {
+        const r = document.querySelector<HTMLElement>('.spexr-island[data-island="left"]')?.getBoundingClientRect();
+        return !!r && Math.abs(r.width - w) <= 1;
+      },
+      want,
+      { timeout: 10_000 },
+    )
+    .catch(() => undefined);
+  return (await islandSizes(page)).left;
+}
+
+/** The agent terminal in front is 432 and the Explorer 264, in both directions, and the right and bottom islands do not move. */
+export function checkLeftViews(steps: ReadonlyArray<{ step: string; left: number | null; want: number }>, before: { right: number | null; bottom: number | null }, after: { right: number | null; bottom: number | null }): string[] {
+  const problems: string[] = [];
+  for (const { step, left, want } of steps) {
+    if (left === null || !near(left, want, 1)) problems.push(`left views: ${step}: ${left ?? "not laid out"}px, want ${want}`);
+  }
+  for (const key of ["right", "bottom"] as const) {
+    const a = before[key];
+    const b = after[key];
+    if (a === null || b === null || !near(a, b, 1)) problems.push(`left views: the ${key} island moved with the left view (${a} then ${b})`);
+  }
   return problems;
 }

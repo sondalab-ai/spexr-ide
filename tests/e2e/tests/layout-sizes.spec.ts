@@ -12,9 +12,10 @@
  * remembered for that view. This suite runs without the agent CLI, so the
  * agent terminal never starts and the Explorer is the view in front: the
  * seeded 432px is taken to the Explorer's 264px once the layout has settled.
- * The agent terminal's 432px is measured by the visual capture, whose stub
- * CLI starts it (tests/visual, scene checks); the width policy itself by
- * left-island-width.test.ts.
+ * The agent terminal's 432px is not measured here. It is measured by the
+ * visual capture, whose stub CLI starts it (tests/visual/capture.visual.ts,
+ * the "agent-front" scene and `checkLeftViews`), and the width policy itself
+ * is tested by left-island-width.test.ts.
  *
  * The right island is read with a project tab in front: the Darkfactory
  * dashboard, which a launch can leave in front, collapses the right panel
@@ -104,12 +105,17 @@ test.describe("the default layout's island sizes", () => {
   test("the left island's width is each view's own: a drag on the Explorer stays with it", async ({ page }) => {
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
+    // The right and bottom islands keep their sizes through every view switch below.
+    const right = await rightIslandWidth(page);
+    const bottom = (await island(page, "bottom"))?.h;
     await dragLeftSash(page, 60);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
     await showLeftView(page, SEARCH);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
+    expect(await rightIslandWidth(page)).toBeCloseTo(right ?? 352, 0);
+    expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom ?? 204, 0);
   });
 
   test("a restored layout keeps its own widths", async ({ page }) => {

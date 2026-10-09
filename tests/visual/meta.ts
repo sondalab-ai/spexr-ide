@@ -62,6 +62,8 @@ export interface CaptureMeta {
   litRim?: LitRim;
   /** The left island in the base scene (S6b). */
   leftIsland?: LeftIsland;
+  /** The left island across views, and the other islands before and after (S6b). */
+  leftViews?: { steps: ReadonlyArray<{ step: string; left: number | null; want: number }>; before: { left: number | null; right: number | null; bottom: number | null }; after: { left: number | null; right: number | null; bottom: number | null } };
   /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */
   toastParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
   /** The right-panel scenes' regions by view (`todo`, `experts`, `memory`), keyed `rp.*` (S5e). */
