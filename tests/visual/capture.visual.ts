@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
+import { RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   QUICK_OPEN,
   captureStable,
@@ -23,6 +23,17 @@ const THEMES = (process.env.VISUAL_THEMES ?? "dark,light")
   .split(",")
   .map((t) => t.trim())
   .filter((t): t is Theme => t === "dark" || t === "light");
+/** The workspace's TODO.md in the right-panel scene: three open items and a done one. */
+const RIGHT_PANEL_TODO = [
+  "# TODO",
+  "",
+  "- [ ] Await the cache write in resolve.ts",
+  "- [ ] Re-run the probe suite",
+  "- [ ] Fix the R finding in components.css",
+  "- [x] Keep the p95 under 2 ms",
+  "",
+].join("\n");
+
 /**
  * Profiles, HOME and the fixture workspace: under the runner's temp
  * directory, which is outside the checkout and not under /tmp (spexr closes
@@ -145,6 +156,26 @@ for (const theme of THEMES) {
       // After every scene: reading the editor's padding clicks into it and goes
       // to line 1, so no capture follows it.
       meta.editor = { ...(meta.editor ?? (await probeEditor(page))), paddingTop: (await probeEditorPadding(page))?.paddingTop ?? null };
+      writeMeta();
+
+      // The right island with the TODO view in front (S5e). The toggle closes
+      // a view that is already in front, so it is run again if the first run
+      // left it hidden. A failure here is recorded, and does not stop the
+      // captures after it.
+      try {
+        // Written here, not kept in the fixture, so the Explorer's tree in the
+        // earlier scenes stays the demo's.
+        fs.writeFileSync(path.join(meta.run.workspace, "TODO.md"), RIGHT_PANEL_TODO);
+        const todo = page.locator("#theia-right-content-panel .spexr-todo");
+        await runCommand(page, "View: Toggle TODO");
+        if (!(await todo.isVisible().catch(() => false))) await runCommand(page, "View: Toggle TODO");
+        await todo.waitFor({ state: "visible", timeout: 15_000 });
+        await page.locator("#theia-right-content-panel .spexr-todo__item").first().waitFor({ state: "visible", timeout: 15_000 });
+        await shoot("right-panel");
+        meta.rightPanel = await probeRegions(page, RIGHT_PANEL_REGIONS);
+      } catch (err) {
+        meta.rightPanelError = err instanceof Error ? err.message : String(err);
+      }
       writeMeta();
 
       // macOS: the lights one zoom level out, then the bar's room through full

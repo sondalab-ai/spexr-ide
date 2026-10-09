@@ -82,6 +82,22 @@ export const SHELL_REGIONS: readonly ShellRegion[] = [
   { key: "status.item", selector: "#theia-statusBar .area .element" },
 ];
 
+/**
+ * The right-panel scene's regions (S5e), with the TODO view in front: the
+ * island, the head and its parts, a card and its first row and check box.
+ * The demo's counterparts are its agent pane's head, tool list and plan.
+ */
+export const RIGHT_PANEL_REGIONS: readonly ShellRegion[] = [
+  { key: "rp.pane", selector: '.spexr-island[data-island="right"]' },
+  { key: "rp.head", selector: "#theia-right-content-panel .spexr-panel-head" },
+  { key: "rp.eyebrow", selector: "#theia-right-content-panel .spexr-panel-head__eyebrow" },
+  { key: "rp.title", selector: "#theia-right-content-panel .spexr-panel-head__title" },
+  { key: "rp.body", selector: "#theia-right-content-panel .spexr-panel-body" },
+  { key: "rp.card", selector: "#theia-right-content-panel .spexr-todo__file" },
+  { key: "rp.row", selector: "#theia-right-content-panel .spexr-todo__item" },
+  { key: "rp.check", selector: "#theia-right-content-panel .spexr-todo__item .sl-check__box" },
+];
+
 /** The toast scene's regions: the toast and its stack. */
 export const TOAST_REGIONS: readonly ShellRegion[] = [
   { key: "toasts", selector: ".theia-notifications-container.theia-notification-toasts" },
