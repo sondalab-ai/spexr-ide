@@ -97,13 +97,14 @@ for (const theme of THEMES) {
         writeMeta();
       };
 
-      // A scene that is not what it is meant to show fails the run (S5f): the
-      // problems are kept in meta.json, then thrown.
-      const fail = (scene: string, problems: readonly string[]): void => {
+      // A scene that is not what it is meant to show fails the run (S5f). The
+      // problems are collected as the scenes go and thrown after the last
+      // capture, so one bad number does not hide every picture after it; a
+      // scene that cannot be set up at all throws where it stands.
+      const check = (scene: string, problems: readonly string[]): void => {
         if (problems.length === 0) return;
         (meta.sceneProblems ??= {})[scene] = [...problems];
         writeMeta();
-        throw new Error(`${scene} scene: ${problems.join("; ")}`);
       };
 
       // The demo shows the bottom panel; spexr can start with it collapsed.
@@ -138,7 +139,7 @@ for (const theme of THEMES) {
       // is the lit one: exactly one island lit, wearing the wash, the tint and
       // the drop.
       meta.litRim = await probeLitRim(page);
-      fail("lit rim", checkLitRim(meta.litRim));
+      check("lit rim", checkLitRim(meta.litRim));
       writeMeta();
 
       // palette: the command palette open on a query that finds several
@@ -151,7 +152,7 @@ for (const theme of THEMES) {
       await shoot("palette");
       meta.paletteParity = { ...(await probeRegions(page, PALETTE_REGIONS)), ...(await probeRegions(page, EDITOR_REGIONS)) };
       writeMeta();
-      fail("palette", checkPalette(meta.paletteParity, meta.paletteParity["main"], await page.evaluate(() => window.innerWidth)));
+      check("palette", checkPalette(meta.paletteParity, meta.paletteParity["main"], await page.evaluate(() => window.innerWidth)));
       await page.keyboard.press("Escape");
       await paletteInput.waitFor({ state: "hidden", timeout: 15_000 });
 
@@ -162,7 +163,7 @@ for (const theme of THEMES) {
       await shoot("toast", toastAck);
       meta.toastParity = { ...(await probeRegions(page, TOAST_REGIONS)), ...(await probeRegions(page, EDITOR_REGIONS)) };
       writeMeta();
-      fail("toast", checkToast(meta.toastParity, meta.toastParity["main"], await page.evaluate(() => window.innerHeight)));
+      check("toast", checkToast(meta.toastParity, meta.toastParity["main"], await page.evaluate(() => window.innerHeight)));
 
       // focus-tree: the Explorer focused, resolve.ts its selected row.
       await runCommand(page, "Parity: Focus tree scene");
@@ -242,7 +243,13 @@ for (const theme of THEMES) {
         writeMeta();
       }
 
-      // The one assertion of the capture (S5b-2's review): on macOS the
+      // The scenes' own checks (S5f): the lit rim, the palette and the toast
+      // against the geometry table.
+      if (meta.sceneProblems) {
+        throw new Error(`scene checks: ${Object.entries(meta.sceneProblems).map(([scene, problems]) => `${scene}: ${problems.join("; ")}`).join(" | ")}`);
+      }
+
+      // The other assertion of the capture (S5b-2's review): on macOS the
       // system's traffic lights sit in the bar's room and on its centre, at
       // 100% and one zoom level out. Everything else is for looking at.
       if (OS === "mac") {

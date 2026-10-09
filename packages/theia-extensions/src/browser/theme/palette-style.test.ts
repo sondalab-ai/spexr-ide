@@ -158,15 +158,32 @@ describe("the palette's list", () => {
     expect(theia("@theia/monaco-editor-core/esm/vs/platform/quickinput/browser/media/quickInput.css")).toMatch(/\.quick-input-list \{\s*line-height: 22px;/);
   });
 
-  it("is a 28px heading row in the kit's mono label, with no rule above it", () => {
+  // Monaco 1.108 draws a separator without buttons as a label inside the
+  // group's first row, and only a separator with buttons as a row of its own.
+  it("is told by Monaco as an inline label, and a row of its own only with buttons", () => {
+    const list = theia("@theia/monaco-editor-core/esm/vs/platform/quickinput/browser/quickInputList.js");
+    expect(list).toContain("// This separator will be rendered as a part of the list item");
+    expect(list).toMatch(/if \(!item\.buttons\) \{\s*\/\/ This separator will be rendered as a part of the list item\s*return result;/);
+  });
+
+  it("names a group in the kit's mono label at the end of its first row, under a hairline", () => {
+    const name = rule(`${LIST} .quick-input-list-entry .quick-input-list-separator {`);
+    expect(name).toMatch(/font-family:\s*var\(--sl-font-mono\)/);
+    expect(name).toMatch(/font-size:\s*var\(--sl-text-micro\)/);
+    expect(name).toMatch(/font-weight:\s*500/);
+    expect(name).toMatch(/letter-spacing:\s*0\.06em/);
+    expect(name).toMatch(/text-transform:\s*uppercase/);
+    expect(name).toMatch(/color:\s*var\(--slc-text-muted\) !important/);
+    expect(rule(`${LIST} .quick-input-list-entry.quick-input-list-separator-border {`)).toMatch(/border-top-color:\s*var\(--slc-border-subtle\) !important/);
+  });
+
+  it("is a 28px row in the same label where a separator has buttons", () => {
     const heading = rule(`${LIST} .quick-input-list-entry.quick-input-list-separator-as-item {`);
     expect(heading).toMatch(/padding:\s*8px 12px 4px/);
     expect(heading).toMatch(/font-family:\s*var\(--sl-font-mono\)/);
     expect(heading).toMatch(/font-size:\s*var\(--sl-text-micro\)/);
-    expect(heading).toMatch(/letter-spacing:\s*0\.06em/);
     expect(heading).toMatch(/text-transform:\s*uppercase/);
     expect(heading).toMatch(/color:\s*var\(--slc-text-muted\)/);
-    expect(rule(`${LIST} .quick-input-list-entry.quick-input-list-separator-border {`)).toMatch(/border-top:\s*0 !important/);
   });
 
   it("reads a row's meta in the muted ink at 12px, the secondary on the selected row, at full opacity", () => {
@@ -263,8 +280,9 @@ describe.each(THEMES)("the palette's colours on %s", (theme) => {
     for (const [name, bg] of [["ground", ground], ["tile", tile]] as const) expect(contrastRatio(neutral(theme, "slc-text"), bg), name).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("reads an unselected row's meta and a group's heading (the muted ink) at 4.5:1 on the ground", () => {
+  it("reads an unselected row's meta and a group's name (the muted ink) at 4.5:1 on the ground, and the name on the selected tile too", () => {
     expect(contrastRatio(neutral(theme, "slc-text-muted"), ground)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(neutral(theme, "slc-text-muted"), tile)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("reads the selected row's meta (the secondary ink) at 4.5:1 on the tile", () => {

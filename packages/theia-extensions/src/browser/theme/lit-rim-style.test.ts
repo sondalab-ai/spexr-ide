@@ -22,8 +22,12 @@ function rule(selector: string): string {
 
 // The lit island's light (S5f): the kit's three roles, worn on Theia's DOM.
 describe("the lit island's light in spexr.css", () => {
-  it("washes the main island's tab strip, and only while it is lit", () => {
-    expect(rule(`${NOT_HC} ${MAIN} .lm-TabBar {`)).toMatch(/background-image:\s*var\(--slc-lit-wash\);/);
+  it("washes the main island's row of tabs (not the whole bar, which holds the breadcrumbs too), and only while it is lit", () => {
+    expect(rule(`${NOT_HC} ${MAIN} .lm-TabBar .theia-tabBar-tab-row {`)).toMatch(/background-image:\s*var\(--slc-lit-wash\);/);
+    const bars = readFileSync(resolve("@theia/core/lib/browser/shell/tab-bars.js"), "utf8");
+    expect(bars).toContain("this.topRow.classList.add('theia-tabBar-tab-row');");
+    expect(bars).toContain("this.breadcrumbsContainer.classList.add('theia-tabBar-breadcrumb-row');");
+    expect(bars).toContain("this.node.appendChild(this.breadcrumbsContainer);");
   });
 
   it("tints the breadcrumbs under it, and only while the main island is lit", () => {
@@ -38,7 +42,7 @@ describe("the lit island's light in spexr.css", () => {
   it("paints no light on any other island: no rule wears the roles outside the main island's strip and rows", () => {
     const wearing = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*--slc-lit-(?:wash|tint|drop)[^{}]*)\}/g)].map((m) => m[1]!.trim().replace(/\s+/g, " "));
     expect(wearing).toEqual([
-      `${NOT_HC} ${MAIN} .lm-TabBar`,
+      `${NOT_HC} ${MAIN} .lm-TabBar .theia-tabBar-tab-row`,
       `${NOT_HC} ${MAIN} .theia-breadcrumbs`,
       `${NOT_HC} #theia-bottom-split-panel:has(> #theia-main-content-panel.spexr-island[data-lit]) > .lm-SplitPanel-handle`,
     ]);

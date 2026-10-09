@@ -992,8 +992,10 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    light is three pieces, each the kit's role, and each nothing in high
    contrast and under forced colours (--slc-glow is 0 there, and the rules
    are for light and dark only):
-   - the wash, --slc-lit-wash, along the top of the main island's tab strip
-     (the kit sizes it by the box it is painted on, as Lumen's strip);
+   - the wash, --slc-lit-wash, along the top of the main island's tab row
+     (the kit sizes it by the box it is painted on, as Lumen's strip: Theia's
+     tab bar also holds the breadcrumbs, so it is the row of tabs, not the
+     bar, that wears it);
    - the tint, --slc-lit-tint, down the breadcrumbs under it, over the row's
      own fill;
    - the drop, --slc-lit-drop, the glow that falls below the lit pane. The
@@ -1003,7 +1005,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      island and the bottom island. It starts at the handle's top edge, the
      same falloff from the same line. Where the bottom island is hidden there
      is no gap, and no drop. */
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar .theia-tabBar-tab-row {
   background-image: var(--slc-lit-wash);
 }
 
@@ -1905,8 +1907,11 @@ body .theia-notifications-container.theia-notification-toasts {
      (a patch to Monaco's list delegate, patches/@theia__monaco-editor-core*),
      r8, 12px in; its entry's text is 14px, its meta 12px in the muted ink
      (the secondary on the selected row), pushed to the right; a group's
-     heading is the kit's mono label. A match is the primary ink, heavier,
-     underlined in the accent, never the accent alone.
+     name is the kit's mono label. Monaco draws a group's name (a separator
+     without buttons) inline at the end of the group's first row, under a
+     hairline, and only a separator with buttons as a 28px row of its own
+     (the patch gives it that height): both are styled. A match is the
+     primary ink, heavier, underlined in the accent, never the accent alone.
    - The selected row keeps THE SEAM (above): the tile, its ring and the seam.
    - Keycaps: one cap per key, 4px apart (the caps' margins), the "+" Linux
      and Windows write between them kept in the accessible name, out of sight.
@@ -2080,12 +2085,24 @@ body .theia-notifications-container.theia-notification-toasts {
   text-underline-offset: 3px;
 }
 
-/* A group's heading is its own row: the kit's mono label, 28px, no rule
-   above it. */
-:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-border {
-  border-top: 0 !important;
+/* A group's name: the kit's mono label, in the muted ink, at the end of the
+   group's first row (Monaco draws it there), under a hairline. The row it is
+   on keeps its own ink. */
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry .quick-input-list-separator {
+  padding-left: 12px;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slc-text-muted) !important;
 }
 
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-border {
+  border-top-color: var(--slc-border-subtle) !important;
+}
+
+/* A separator with buttons is a row of its own, 28px: the same label. */
 :root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry.quick-input-list-separator-as-item {
   padding: 8px 12px 4px;
   font-family: var(--sl-font-mono);

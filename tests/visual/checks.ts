@@ -104,7 +104,7 @@ export async function probeLitRim(page: Page): Promise<LitRim> {
     const handle = document.querySelector<HTMLElement>("#theia-bottom-split-panel > .lm-SplitPanel-handle");
     return {
       lit,
-      wash: image("#theia-main-content-panel .lm-TabBar"),
+      wash: image("#theia-main-content-panel .lm-TabBar .theia-tabBar-tab-row"),
       tint: image("#theia-main-content-panel .theia-breadcrumbs"),
       drop: handle ? getComputedStyle(handle).boxShadow : null,
     };
