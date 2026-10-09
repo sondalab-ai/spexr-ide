@@ -1,9 +1,9 @@
 import path from "path";
-import type { Readiness, ThemeState } from "./app";
+import type { Readiness, ThemeState, WindowSizeOutcome } from "./app";
 import type { LateFontResult } from "./late-font";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
-import type { LitRim } from "./checks";
+import type { FixtureReport, FixtureState, LitRim } from "./checks";
 import type { LightsCheck } from "./lights";
 import type { EditorProbe, FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
 import type { SceneResult } from "./scenes";
@@ -76,6 +76,10 @@ export interface CaptureMeta {
   fullScreen?: FullScreenProbe;
   /** The code-font wait's capped path, forced by a held reload (late-font.ts). */
   lateFont?: LateFontResult;
+  /** Whether the window reached the demo's 1440×900, and the display it is on (S6a). */
+  windowSize?: WindowSizeOutcome;
+  /** The parity fixture as the base scene loaded it: the pill, the bell, the stubs, the two commands, the file states (S6a). */
+  fixture?: { state?: FixtureState; report?: FixtureReport; waitedMs?: number; cleanup?: unknown };
   /** The scene checks that failed (S5f), by scene; the capture throws after writing them. */
   sceneProblems?: Record<string, string[]>;
   error?: string;

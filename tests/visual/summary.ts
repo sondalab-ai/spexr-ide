@@ -167,6 +167,19 @@ function renderSummary(runs: Run[]): string {
   md += row("Electron / Chromium", (m) => (m.main ? `${m.main.electron} / ${m.main.chromium}` : ""));
   md += row("platform", (m) => m.main?.platform);
   md += row("native capture (mac)", (m) => (m.native ?? []).map((n) => `${n.mode}: ${n.ok ? n.size : `failed ${n.error ?? ""}`}`).join("; "));
+  md += row("window reached 1440×900 (S6a)", (m) => {
+    const w = m.windowSize;
+    return w ? `${w.reached ? "✓" : "✗"} page ${w.innerSize}; setContentSize → ${w.afterSetContentSize}, setBounds → ${w.afterSetBounds}; display ${w.display.bounds}, work area ${w.display.workArea} @${w.display.scaleFactor}x` : "";
+  });
+  md += row("fixture: pill / bell dot / toasts (S6a)", (m) => (m.fixture?.state ? `${m.fixture.state.agentsPill} / ${m.fixture.state.bellDot} / ${m.fixture.state.toasts} (waited ${m.fixture.waitedMs} ms)` : ""));
+  md += row("fixture: problems / unsaved / pnpm exits", (m) => {
+    const r = m.fixture?.report;
+    return r ? `${r.base?.problems} / ${(r.base?.dirty ?? []).join(", ")} / ${JSON.stringify(r.pnpm)}` : "";
+  });
+  md += row("fixture: ps comm=claude lines / stub cwds (S6a)", (m) => {
+    const p = m.fixture?.report?.processes;
+    return p ? `${p.psClaude.length} (${p.psClaude.join("; ")}) / ${JSON.stringify(p.cwd)}` : "";
+  });
   md += row("close", (m) => m.close);
   return md + "\n";
 }
