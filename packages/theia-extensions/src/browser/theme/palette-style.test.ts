@@ -151,8 +151,14 @@ describe("the palette's list", () => {
   });
 
   it("lays a row at the table's height, r8 and 12px in, its words centred", () => {
-    expect(rule(`${LIST} .monaco-list-row {`)).toMatch(/border-radius:\s*var\(--sl-radius-md\)/);
-    expect(rule(`${LIST} .quick-input-list-entry {`)).toMatch(new RegExp(`padding:\\s*0 ${PALETTE.rowInline}px`));
+    // The selected row's tile rule weighs (0,5,0): the radius is repeated at its weight, later in the file.
+    expect(rule(`${LIST} .monaco-list-row,`)).toMatch(/border-radius:\s*var\(--sl-radius-md\)/);
+    expect(css).toContain(`${LIST} .monaco-list-row.focused {\n  border-radius: var(--sl-radius-md);`);
+    expect(css.indexOf(`${LIST} .monaco-list-row.focused {\n  border-radius: var(--sl-radius-md);`)).toBeGreaterThan(css.indexOf("The palette's rows are r8 and 38px"));
+    const entry = rule(`${LIST} .quick-input-list-entry {`);
+    expect(entry).toMatch(new RegExp(`padding:\\s*0 ${PALETTE.rowInline}px`));
+    expect(entry).toMatch(/height:\s*100%/);
+    expect(rule(`${LIST} .quick-input-list-entry .quick-input-list-entry-keybinding {`)).toMatch(new RegExp(`margin-left:\\s*${PALETTE.rowGap}px`));
     expect(rule(".quick-input-list .quick-input-list-rows {")).toMatch(/justify-content:\s*center/);
     // Monaco's own 22px line sits centred in the 38px row: the label, its icon and the keys keep Monaco's sizes.
     expect(theia("@theia/monaco-editor-core/esm/vs/platform/quickinput/browser/media/quickInput.css")).toMatch(/\.quick-input-list \{\s*line-height: 22px;/);
@@ -168,6 +174,7 @@ describe("the palette's list", () => {
 
   it("names a group in the kit's mono label at the end of its first row, under a hairline", () => {
     const name = rule(`${LIST} .quick-input-list-entry .quick-input-list-separator {`);
+    expect(name).toMatch(/align-self:\s*center/);
     expect(name).toMatch(/font-family:\s*var\(--sl-font-mono\)/);
     expect(name).toMatch(/font-size:\s*var\(--sl-text-micro\)/);
     expect(name).toMatch(/font-weight:\s*500/);

@@ -2030,12 +2030,20 @@ body .theia-notifications-container.theia-notification-toasts {
   padding: 0 8px;
 }
 
-:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row {
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row,
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .monaco-list-row.focused {
   border-radius: var(--sl-radius-md);
 }
 
+/* The entry fills its row, so its words are centred in the row's 38px and
+   not set at the top of it (Monaco's rows were as tall as their line). */
 :root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry {
+  height: 100%;
   padding: 0 12px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry .quick-input-list-entry-keybinding {
+  margin-left: 12px;
 }
 
 /* An entry's words: 14px in the primary ink, its meta (Theia's description)
@@ -2089,6 +2097,7 @@ body .theia-notifications-container.theia-notification-toasts {
    group's first row (Monaco draws it there), under a hairline. The row it is
    on keeps its own ink. */
 :root:not([data-sl-theme="high-contrast"]) .quick-input-list .quick-input-list-entry .quick-input-list-separator {
+  align-self: center;
   padding-left: 12px;
   font-family: var(--sl-font-mono);
   font-size: var(--sl-text-micro);
