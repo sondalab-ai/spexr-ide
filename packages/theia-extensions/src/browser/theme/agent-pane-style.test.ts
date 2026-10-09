@@ -113,6 +113,10 @@ describe("the agent pane in spexr.css", () => {
   it("focuses the composer with one flush ring in the focus colour, in place of the edge, and the field draws none", () => {
     expect(rules(".spexr-agent-composer:focus-within")).toMatch(/box-shadow:\s*0 0 0 var\(--sl-focus-ring-width, 2px\) var\(--slc-focus\)/);
     expect(rules(".spexr-agent-composer__input")).toMatch(/outline:\s*none/);
+    // Theia's `textarea:focus` outline is out-ranked, so no second ring shows inside the composer's.
+    const focused = rules(".spexr-agent-composer .spexr-agent-composer__input:is(:focus, :focus-visible)");
+    expect(focused).toMatch(/outline:\s*none\s*!important/);
+    expect(focused).toMatch(/box-shadow:\s*none\s*!important/);
   });
 
   it("is the table's field: two rows of the prose's type, 2px by 4px of padding, no border, no fill, no resize", () => {
