@@ -11,6 +11,7 @@ import { SpexrCommands } from "../commands/spexr-commands-contribution.js";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import type { MemoryLinkStatus } from "../../common/agent-protocol.js";
 import { memoryDir } from "../workspace-paths.js";
+import { PanelHead } from "./panel-head.js";
 
 const MEMORY_TYPES = ["user", "feedback", "project", "reference"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
@@ -250,18 +251,17 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
   const unlinkDisabled = !hasWorkspace || isUnlinked || isBlocked;
   return (
   <section className="spexr-memory-panel" aria-label="Memory manager">
-    <header className="spexr-memory-panel__header">
-      <h2>Memory</h2>
-      <p className="spexr-memory-panel__hint">
-        Persistent notes the agent loads on every session so it remembers what matters without
-        you re-explaining it each time.
-      </p>
-    </header>
+    <PanelHead eyebrow="Agent · notes" title="Memory" />
+    <div className="spexr-panel-body">
+    <p className="spexr-memory-panel__hint">
+      Persistent notes the agent loads on every session so it remembers what matters without
+      you re-explaining it each time.
+    </p>
 
     <div className="spexr-memory-panel__actions">
       <button
         type="button"
-        className="sl-btn sl-btn--primary sl-fx-glass sl-fx-glass--pane sl-fx-press"
+        className="sl-btn sl-btn--primary"
         onClick={onAdd}
         disabled={!hasWorkspace}
       >
@@ -269,7 +269,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
       </button>
       <button
         type="button"
-        className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
+        className="sl-btn sl-btn--ghost"
         onClick={onRefresh}
         disabled={!hasWorkspace}
       >
@@ -299,7 +299,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
             <div className="spexr-memory-list__buttons">
               <button
                 type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
+                className="sl-btn sl-btn--ghost sl-btn--sm"
                 onClick={() => onOpen(entry.uri)}
                 aria-label={`Open ${entry.name}`}
               >
@@ -307,7 +307,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
               </button>
               <button
                 type="button"
-                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
+                className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
                 onClick={() => onDelete(entry.uri)}
                 aria-label={`Delete ${entry.name}`}
               >
@@ -355,7 +355,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
           <div className="spexr-memory-panel__actions">
             <button
               type="button"
-              className="sl-btn sl-btn--ghost sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
+              className="sl-btn sl-btn--ghost sl-btn--danger"
               onClick={onResolveConflict}
             >
               Resolve conflict…
@@ -371,7 +371,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
           <div className="spexr-memory-panel__actions">
             <button
               type="button"
-              className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press"
+              className="sl-btn sl-btn--ghost"
               onClick={onLink}
               disabled={linkDisabled}
             >
@@ -379,7 +379,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
             </button>
             <button
               type="button"
-              className="sl-btn sl-btn--ghost sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
+              className="sl-btn sl-btn--ghost sl-btn--danger"
               onClick={onUnlink}
               disabled={unlinkDisabled}
             >
@@ -437,6 +437,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
       start; promote a note from <strong>project</strong> to <strong>user</strong> when it
       stops being repo-specific.
     </p>
+    </div>
   </section>
   );
 };

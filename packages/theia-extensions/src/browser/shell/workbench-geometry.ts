@@ -46,6 +46,42 @@ export const WORKBENCH = {
   toastOffset: 48,
 } as const;
 
+/**
+ * The right island's views (Memory, Experts, TODO) as Lumen's agent pane at
+ * 1440x900 (S5e), on the same 4px grid: the demo's 13.6 / 15.2 / 3.2 / 23.2
+ * head and its 32.4px tool rows become whole steps. Radii and type sizes are
+ * shape, so Lumen's own are kept (card r8, 16px/600 title at -0.025em, 12px
+ * names in the mono). spexr.css repeats these numbers; right-panel-style.test.ts
+ * holds the two together.
+ */
+export const RIGHT_PANEL = {
+  /** The head's padding above the eyebrow and below the title (Lumen 13.6). */
+  headPaddingBlock: 12,
+  /** The head's, and the body's, padding at the sides (Lumen 16, the body's 14.4). */
+  inline: 16,
+  /** The eyebrow's line (Lumen 15.2). */
+  eyebrowLine: 16,
+  /** Between the eyebrow and the title (Lumen 3.2). */
+  eyebrowGap: 4,
+  /** The title's size, Lumen's 16 at weight 600. */
+  titleSize: 16,
+  /** The title's line (Lumen 23.2). */
+  titleLine: 24,
+  /** The body's padding: the panel's content starts 16px in (Lumen 14.4). */
+  bodyPadding: 16,
+  /** A card of rows, Lumen's tool list: r8. */
+  cardRadius: 8,
+  /** A row's height at least: its 8px padding round one 16px line (Lumen 32.4). */
+  rowMinHeight: 32,
+  /** A row's padding above and below its line (Lumen 6.4). */
+  rowPaddingBlock: 8,
+  /** A row's padding at the sides (Lumen 9.6). */
+  rowPaddingInline: 12,
+  /** A row's name, in the mono: 12px at weight 500, on a 16px line. */
+  nameSize: 12,
+  nameLine: 16,
+} as const;
+
 /** A shell area Theia can resize. */
 export type ShellArea = "left" | "right" | "bottom";
 
