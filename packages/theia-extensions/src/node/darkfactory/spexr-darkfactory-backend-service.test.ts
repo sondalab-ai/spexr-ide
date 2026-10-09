@@ -108,6 +108,46 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect(typeof tiles[0]!.accentId).toBe("number");
   });
 
+  it("gives a working session's tile its exact tool count: absent on the first scan, then pushed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-count-"));
+    const transcriptPath = join(dir, "s1.jsonl");
+    const use = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Bash","input":{}}]}}`;
+    await writeFile(transcriptPath, [use, use, use, ""].join("\n"));
+    try {
+      const pushed: AgentTile[][] = [];
+      const s = svc({
+        configDirs: [],
+        listTranscripts: async () => (await defaultTranscripts()).map((u) => ({ ...u, claude: { ...u.claude!, transcriptPath } })),
+      });
+      s.setClient({ ...fakeClient, onTilesChanged: (tiles) => pushed.push(tiles) });
+      expect((await s.listTiles())[0]!.toolCount).toBeUndefined();
+      await vi.waitFor(() => expect(pushed.some((tiles) => tiles[0]?.toolCount === 3)).toBe(true), { timeout: 2000 });
+      expect((await s.listTiles())[0]!.toolCount).toBe(3);
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("counts tool calls on a crawl with no encoder, so idle and done tiles carry their count", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-count-"));
+    const transcriptPath = join(dir, "s1.jsonl");
+    const use = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Bash","input":{}}]}}`;
+    await writeFile(transcriptPath, [use, use, ""].join("\n"));
+    try {
+      const s = svc({
+        configDirs: [],
+        liveProjectDirs: () => Promise.resolve(new Set<string>()),
+        listTranscripts: async () => (await defaultTranscripts()).map((u) => ({ ...u, claude: { ...u.claude!, transcriptPath } })),
+      });
+      await s.indexNow();
+      expect((await s.listTiles())[0]).toMatchObject({ state: "idle", toolCount: 2 });
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("currentTiles starts one push before the first scan, and no other while it runs", async () => {
     let scans = 0;
     let release!: () => void;
@@ -622,7 +662,7 @@ function fakeWatch(
   };
 }
 
-const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {} };
+const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {}, onSessionIndexProgress: () => {} };
 
 type NameStoreDeps = Required<Pick<DarkfactoryDeps, "sessionNameStore" | "projectNameStore">>;
 
