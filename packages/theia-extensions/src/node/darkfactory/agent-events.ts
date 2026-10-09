@@ -352,7 +352,8 @@ export function buildAgentPaneSnapshot(entries: readonly PaneEntry[], inputs: Pa
   let updatedAtMs: number | undefined;
   for (const e of entries) {
     if (e.message?.role === "assistant" && e.message.model) model = e.message.model;
-    if (e.type === "permission-mode" && typeof e.permissionMode === "string") permissionMode = e.permissionMode;
+    // The mode is a standalone record when it changes, and a field of every user entry.
+    if (typeof e.permissionMode === "string" && (e.type === "permission-mode" || e.message?.role === "user")) permissionMode = e.permissionMode;
     updatedAtMs = timeOf(e) ?? updatedAtMs;
   }
 
