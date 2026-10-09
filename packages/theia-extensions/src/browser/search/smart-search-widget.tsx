@@ -40,7 +40,7 @@ const INDEXING_MESSAGES = [
   "At this point we're basically best friends.",
 ];
 
-/** Search input + ranked results, shown above the file-tree navigator. */
+/** Search input + ranked results, shown at the top of the Search view. */
 @injectable()
 export class SmartSearchWidget extends ReactWidget {
   static readonly ID = "spexr.view.smart-search";

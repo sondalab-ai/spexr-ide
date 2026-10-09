@@ -23,7 +23,7 @@ export const LAYOUT_READY_ATTRIBUTE = "data-spexr-layout-ready";
  *   panel 352px; the bottom panel 204px.
  * - `onDidInitializeLayout` is bound last in spexr's frontend module, after
  *   every contribution that touches the layout (the shell layout's views, the
- *   bootstrap's agent terminal, the Explorer's Search section), so the
+ *   bootstrap's agent terminal, Smart Search in the Search view), so the
  *   settled mark comes after every panel and section has its size.
  * - Once the layout has settled, the left island's width starts following
  *   the view in front (left-island-width.ts, D2): 432px for the agent

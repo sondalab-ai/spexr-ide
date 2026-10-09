@@ -4048,7 +4048,7 @@ code {
   width: 18px; height: 18px; border-radius: var(--sl-radius-sm);
 }
 
-/* Smart Search (Explorer) */
+/* Smart Search (the Search view) */
 .spexr-smart-search__body { padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
 .spexr-smart-search__input { width: 100%; box-sizing: border-box; }
 .spexr-smart-search__status { font-size: 11px; opacity: 0.7; }

@@ -10,7 +10,7 @@ import {
   type FrontendApplicationContribution,
   WidgetManager,
 } from "@theia/core/lib/browser";
-import type { ViewContainer } from "@theia/core/lib/browser/view-container";
+import { ViewContainer } from "@theia/core/lib/browser/view-container";
 import { EXPLORER_VIEW_CONTAINER_ID } from "@theia/navigator/lib/browser/navigator-widget-factory";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
@@ -31,16 +31,25 @@ export const SmartSearchCommands = {
 } as const;
 
 /**
- * Most of the Explorer view container Smart Search may take. It sits above the
- * file tree, and past a quarter of the panel it leaves the tree — the view the
- * container is named for — with too little room to navigate in.
+ * The Search view container's id (`SEARCH_VIEW_CONTAINER_ID` in
+ * `@theia/search-in-workspace`, a dependency spexr takes through Theia's
+ * extensions rather than declares; search-style.test.ts pins the id to the
+ * installed package).
+ */
+export const SEARCH_VIEW_CONTAINER_ID = "search-view-container";
+
+/**
+ * Most of the Search view container Smart Search may take. It sits above the
+ * workspace search, and past a quarter of the panel it leaves that search —
+ * the view the container is named for — with too little room for its results.
  */
 const SEARCH_SHARE = 0.25;
 
 /**
- * Places {@link SmartSearchWidget} at the top of the Explorer view container,
- * kicks off the initial index, and forwards file changes to the backend for
- * incremental re-indexing.
+ * Places {@link SmartSearchWidget} at the top of the Search view container
+ * (S6b, D6: Lumen's Explorer is the file tree alone), kicks off the initial
+ * index, and forwards file changes to the backend for incremental
+ * re-indexing.
  */
 @injectable()
 export class SpexrSmartSearchContribution
@@ -68,9 +77,12 @@ export class SpexrSmartSearchContribution
   }
 
   async onDidInitializeLayout(): Promise<void> {
-    const container = (await this.widgetManager.getOrCreateWidget(
-      EXPLORER_VIEW_CONTAINER_ID,
-    )) as ViewContainer;
+    const container = await this.widgetManager.getOrCreateWidget<ViewContainer>(SEARCH_VIEW_CONTAINER_ID);
+    // A layout stored before S6b holds Smart Search in the Explorer. Removing
+    // the part disposes the widget; a fresh one is made for the Search view.
+    const explorer = this.widgetManager.tryGetWidget(EXPLORER_VIEW_CONTAINER_ID);
+    const stale = this.widgetManager.tryGetWidget(SmartSearchWidget.ID);
+    if (explorer instanceof ViewContainer && stale && explorer.getPartFor(stale)) explorer.removeWidget(stale);
     const widget = await this.widgetManager.getOrCreateWidget<SmartSearchWidget>(SmartSearchWidget.ID);
     container.addWidget(widget, {
       order: -1,

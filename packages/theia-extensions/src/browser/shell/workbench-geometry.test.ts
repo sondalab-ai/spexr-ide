@@ -277,7 +277,7 @@ describe("Theia's layout start, which the default layout relies on", () => {
     const contributions = [...module.matchAll(/bind\(FrontendApplicationContribution\)\.(?:to|toService)\((\w+)\)/g)];
     expect(contributions.length).toBeGreaterThan(20);
     expect(contributions.at(-1)![1]).toBe("SpexrDefaultLayoutContribution");
-    for (const name of ["SpexrShellLayoutContribution", "SpexrBootstrapContribution", "SpexrSmartSearchContribution", "SpexrDarkfactorySidebarVisibilityContribution"]) {
+    for (const name of ["SpexrShellLayoutContribution", "SpexrBootstrapContribution", "SpexrSmartSearchContribution", "SpexrExplorerChromeContribution", "SpexrDarkfactorySidebarVisibilityContribution"]) {
       const at = module.indexOf(`bind(FrontendApplicationContribution).toService(${name})`) >= 0
         ? module.indexOf(`bind(FrontendApplicationContribution).toService(${name})`)
         : module.indexOf(`bind(FrontendApplicationContribution).to(${name})`);
