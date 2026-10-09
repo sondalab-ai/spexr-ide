@@ -2851,7 +2851,10 @@ code {
   letter-spacing: -0.01em;
 }
 
+/* The press knob (kit 0.36): 1 stands the 97% sink down, so the dismiss stays
+   still under the pointer, whatever glass or press class it wears. */
 .spexr-whats-new__dismiss {
+  --slfx-pane-swell: 1;
   white-space: nowrap;
   flex-shrink: 0;
 }
