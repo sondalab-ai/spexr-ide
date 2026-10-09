@@ -10,7 +10,6 @@ import { refreshGlyphLanes, type LaneEditor } from "./spexr-glyph-lane.js";
 export class SpexrGlyphLaneContribution implements FrontendApplicationContribution {
   @inject(SpexrGlyphLane) private readonly lane!: SpexrGlyphLane;
   @inject(EditorManager) private readonly editors!: EditorManager;
-  private readonly held = new WeakMap<object, boolean>();
 
   onStart(): void {
     this.lane.onDidChange(() => this.refresh());
@@ -22,6 +21,6 @@ export class SpexrGlyphLaneContribution implements FrontendApplicationContributi
     for (const widget of this.editors.all) {
       if (widget.editor instanceof MonacoEditor) open.push(widget.editor);
     }
-    refreshGlyphLanes(open, this.lane, this.held);
+    refreshGlyphLanes(open, this.lane);
   }
 }

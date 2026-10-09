@@ -65,11 +65,18 @@ describe("what the glyph lane relies on in Theia", () => {
     expect(read(require.resolve("@theia/core/lib/common/preferences/preference-service.js"))).toMatch(/inspect\(preferenceName/);
   });
 
+  it("reads the value an editor holds from its control: getRawOptions exists and updateOptions merges into it", () => {
+    const widget = read(require.resolve("@theia/monaco-editor-core/esm/vs/editor/browser/widget/codeEditor/codeEditorWidget.js"));
+    expect(widget).toMatch(/getRawOptions\(\) \{\s+return this\._configuration\.getRawOptions\(\);/);
+    const configuration = read(require.resolve("@theia/monaco-editor-core/esm/vs/editor/browser/config/editorConfiguration.js"));
+    expect(configuration).toMatch(/EditorOptionsUtil\.applyUpdate\(this\._rawOptions, newOptions\)/);
+  });
+
   it("is wired: the provider asks for the option, the contribution updates open editors, the default stays off", () => {
     const provider = read(join(here, "spexr-monaco-editor-provider.ts"));
     expect(provider).toMatch(/\.\.\.this\.glyphLane\.optionFor\(model\.uri\)/);
     const contribution = read(join(here, "spexr-glyph-lane-contribution.ts"));
-    expect(contribution).toMatch(/refreshGlyphLanes\(open, this\.lane, this\.held\)/);
+    expect(contribution).toMatch(/refreshGlyphLanes\(open, this\.lane\)/);
     expect(contribution).toMatch(/instanceof MonacoEditor/);
     expect(contribution).toMatch(/skips diff editors on purpose/);
     expect(contribution).toMatch(/this\.lane\.onDidChange\(/);
@@ -109,7 +116,12 @@ describe("GlyphLaneModel and refreshGlyphLanes, with stub managers and editors",
       subscriptions: over.debug === false ? [] : [bp.subscribe, session.subscribe],
     });
     const calls: Array<[string, { glyphMargin: boolean }]> = [];
-    const editor = (uri: string): LaneEditor => ({ uri: { toString: () => uri }, getControl: () => ({ updateOptions: (o) => void calls.push([uri, o]) }) });
+    /** An editor holding `raw` as its glyphMargin; updateOptions records the call and merges, as Monaco's control does. */
+    const editor = (uri: string, raw: boolean | undefined = false): LaneEditor => {
+      const options: { glyphMargin?: boolean | undefined } = { glyphMargin: raw };
+      const control = { getRawOptions: () => options, updateOptions: (o: { glyphMargin: boolean }) => (calls.push([uri, o]), Object.assign(options, o), undefined) };
+      return { uri: { toString: () => uri }, getControl: () => control };
+    };
     return { model, breakpoints, state, bp, session, inspected, calls, editor };
   };
 
@@ -122,8 +134,7 @@ describe("GlyphLaneModel and refreshGlyphLanes, with stub managers and editors",
   it("calls updateOptions only on an editor whose lane decision changed", () => {
     const t = setup();
     const [a, b] = [t.editor("file:///a.ts"), t.editor("file:///b.ts")];
-    const held = new WeakMap<object, boolean>();
-    t.model.onDidChange(() => refreshGlyphLanes([a, b], t.model, held));
+    t.model.onDidChange(() => refreshGlyphLanes([a, b], t.model));
     t.breakpoints["file:///a.ts"] = 1;
     t.bp.fire();
     expect(t.calls).toEqual([["file:///a.ts", { glyphMargin: true }]]);
@@ -142,8 +153,7 @@ describe("GlyphLaneModel and refreshGlyphLanes, with stub managers and editors",
   it("leaves an editor alone when the user set the preference", () => {
     const t = setup({ user: { globalValue: false } });
     const a = t.editor("file:///a.ts");
-    const held = new WeakMap<object, boolean>();
-    t.model.onDidChange(() => refreshGlyphLanes([a], t.model, held));
+    t.model.onDidChange(() => refreshGlyphLanes([a], t.model));
     t.state.sessions = 1;
     t.session.fire();
     t.breakpoints["file:///a.ts"] = 2;
@@ -154,8 +164,28 @@ describe("GlyphLaneModel and refreshGlyphLanes, with stub managers and editors",
   it("does not throw, and keeps the lane off, without the debug managers", () => {
     const t = setup({ debug: false });
     expect(t.model.optionFor("file:///a.ts")).toEqual({ glyphMargin: false });
-    const held = new WeakMap<object, boolean>();
-    refreshGlyphLanes([t.editor("file:///a.ts")], t.model, held);
+    refreshGlyphLanes([t.editor("file:///a.ts")], t.model);
+    expect(t.calls).toEqual([]);
+  });
+
+  // An editor opened during a session is created with the lane on (the
+  // provider asks the model) and was never refreshed: the end of the session
+  // must still turn it off, which a remembered value would have missed.
+  it("turns the lane off in an editor that was created with it on, after the session ends", () => {
+    const t = setup();
+    t.state.sessions = 1;
+    const created = t.editor("file:///x.ts", t.model.optionFor("file:///x.ts")!.glyphMargin);
+    t.model.onDidChange(() => refreshGlyphLanes([created], t.model));
+    t.state.sessions = 0;
+    t.session.fire();
+    expect(t.calls).toEqual([["file:///x.ts", { glyphMargin: false }]]);
+    t.session.fire();
+    expect(t.calls).toHaveLength(1);
+  });
+
+  it("treats an editor with no glyphMargin option as off", () => {
+    const t = setup();
+    refreshGlyphLanes([t.editor("file:///x.ts", undefined)], t.model);
     expect(t.calls).toEqual([]);
   });
 });

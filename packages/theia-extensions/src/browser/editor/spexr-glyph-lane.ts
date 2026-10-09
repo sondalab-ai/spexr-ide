@@ -79,24 +79,24 @@ export class GlyphLaneModel {
   }
 }
 
-/** The slice of an editor the lane updates. */
+/** The slice of an editor the lane updates: its Monaco control, which reports the options it holds (`getRawOptions`, merged by every `updateOptions`). */
 export interface LaneEditor {
   readonly uri: { toString(): string };
-  getControl(): { updateOptions(options: { glyphMargin: boolean }): void };
+  getControl(): { getRawOptions(): { glyphMargin?: boolean | undefined }; updateOptions(options: { glyphMargin: boolean }): void };
 }
 
 /**
- * Updates the open editors after a change: only an editor whose decision
- * differs from what it last held gets `updateOptions`, and an editor whose
- * preference decides (no option) is never touched. `held` remembers each
- * editor's last value across calls; an editor not seen before holds the
- * default, off.
+ * Updates the open editors after a change: an editor gets `updateOptions` only
+ * when the decision differs from the value it actually holds (read from its
+ * control, so an editor created with the lane on during a session is turned
+ * off after it), and an editor whose preference decides (no option) is never
+ * touched.
  */
-export function refreshGlyphLanes(editors: Iterable<LaneEditor>, model: Pick<GlyphLaneModel, "optionFor">, held: WeakMap<object, boolean>): void {
+export function refreshGlyphLanes(editors: Iterable<LaneEditor>, model: Pick<GlyphLaneModel, "optionFor">): void {
   for (const editor of editors) {
     const option = model.optionFor(editor.uri.toString());
-    if (!option || option.glyphMargin === (held.get(editor) ?? false)) continue;
-    held.set(editor, option.glyphMargin);
-    editor.getControl().updateOptions(option);
+    const control = editor.getControl();
+    if (!option || option.glyphMargin === (control.getRawOptions().glyphMargin ?? false)) continue;
+    control.updateOptions(option);
   }
 }
