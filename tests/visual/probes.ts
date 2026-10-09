@@ -109,6 +109,27 @@ export const RIGHT_PANEL_REGIONS: readonly ShellRegion[] = [
   { key: "rp.name", selector: "#theia-right-content-panel :is(.spexr-memory-list__name, .spexr-experts-list__name)" },
 ];
 
+/**
+ * The palette scene's regions (S5f), with the command palette open on a query:
+ * the widget, its head and field, the list, the rows (a group's heading is not
+ * one), the selected row, the group headings and the keycaps. The demo's
+ * counterparts are `palette`, `palette.head`, `palette.input`, `palette.list`,
+ * `palette.row`, `palette.row.sel`, `palette.group` and `palette.kbd`.
+ */
+export const PALETTE_REGIONS: readonly ShellRegion[] = [
+  { key: "palette", selector: ".quick-input-widget" },
+  { key: "palette.head", selector: ".quick-input-widget .quick-input-header" },
+  { key: "palette.input", selector: ".quick-input-widget .quick-input-box .monaco-inputbox" },
+  { key: "palette.list", selector: ".quick-input-widget .quick-input-list" },
+  { key: "palette.row", selector: ".quick-input-list .monaco-list-row:not(:has(.quick-input-list-separator-as-item))" },
+  { key: "palette.row.sel", selector: ".quick-input-list .monaco-list-row.focused" },
+  { key: "palette.group", selector: ".quick-input-list .monaco-list-row:has(.quick-input-list-separator-as-item)" },
+  { key: "palette.kbd", selector: ".quick-input-list .monaco-keybinding > .monaco-keybinding-key" },
+];
+
+/** The editor island the palette and the toasts are placed against. */
+export const EDITOR_REGIONS: readonly ShellRegion[] = [{ key: "main", selector: '.spexr-island[data-island="main"]' }];
+
 /** The toast scene's regions: the toast and its stack. */
 export const TOAST_REGIONS: readonly ShellRegion[] = [
   { key: "toasts", selector: ".theia-notifications-container.theia-notification-toasts" },

@@ -119,13 +119,11 @@ describe("an island's ring", () => {
 
   it("is the theme's line in high contrast, with no lit line or glow", () => {
     expect(rule(':root[data-sl-theme="high-contrast"] .spexr-island::after')).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--slc-border\);/);
-    expect(rule(':root[data-sl-theme="high-contrast"] .spexr-island[data-lit]::after')).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--slc-border\);/);
   });
 
-  it("carries the lit pane's glow inward, at --slc-glow's strength", () => {
-    expect(rule(".spexr-island[data-lit]::after")).toMatch(
-      /inset 0 0 24px -6px color-mix\(in srgb, var\(--slc-seam\) calc\(var\(--slc-glow\) \* 40%\), transparent\)/,
-    );
+  it("has no glow of its own: a lit island's ring is every island's, and its light is the kit's three pieces (S5f)", () => {
+    expect(css).not.toContain(".spexr-island[data-lit]::after");
+    expect(css).not.toMatch(/inset 0 0 24px -6px/);
   });
 });
 

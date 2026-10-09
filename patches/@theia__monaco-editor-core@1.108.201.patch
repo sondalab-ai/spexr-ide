@@ -1,0 +1,22 @@
+diff --git a/esm/vs/platform/quickinput/browser/quickInputList.js b/esm/vs/platform/quickinput/browser/quickInputList.js
+index c08593a2c373e5d5230cf901f93fa58ae7e18508..b1bec651db0f2d68012fd44a845fc104b7bf915b 100644
+--- a/esm/vs/platform/quickinput/browser/quickInputList.js
++++ b/esm/vs/platform/quickinput/browser/quickInputList.js
+@@ -190,10 +190,15 @@ class QuickPickSeparatorElement extends BaseQuickPickItemElement {
+ }
+ class QuickInputItemDelegate {
+     getHeight(element) {
++        // SPEXR patch: Lumen's palette rows (S5f), on the 4px grid: 36px, 48px
++        // with a detail line, 28px for a heading (Monaco's 22 / 44 / 30). CSS
++        // cannot change them; PALETTE in shell/workbench-geometry.ts repeats
++        // them. layout() keeps Monaco's 44px alignment: mixed 36 / 48 rows do
++        // not align to one step.
+         if (element instanceof QuickPickSeparatorElement) {
+-            return 30;
++            return 28;
+         }
+-        return element.saneDetail ? 44 : 22;
++        return element.saneDetail ? 48 : 36;
+     }
+     getTemplateId(element) {
+         if (element instanceof QuickPickItemElement) {

@@ -6,12 +6,13 @@ import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { lateFontScene } from "./late-font";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
+import { checkEdge, checkLitRim, checkPalette, checkToast, edgePoints, probeLitRim, samplePixels } from "./checks";
+import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
-  QUICK_OPEN,
   captureStable,
   bottomPanelTop,
   firstVisibleLine,
+  openCommandPalette,
   parkPointer,
   runCommand,
   waitForAck,
@@ -97,6 +98,16 @@ for (const theme of THEMES) {
         writeMeta();
       };
 
+      // A scene that is not what it is meant to show fails the run (S5f). The
+      // problems are collected as the scenes go and thrown after the last
+      // capture, so one bad number does not hide every picture after it; a
+      // scene that cannot be set up at all throws where it stands.
+      const check = (scene: string, problems: readonly string[]): void => {
+        if (problems.length === 0) return;
+        (meta.sceneProblems ??= {})[scene] = [...problems];
+        writeMeta();
+      };
+
       // The demo shows the bottom panel; spexr can start with it collapsed.
       meta.bottomPanelOpened = await page.evaluate(() => {
         const panel = document.getElementById("theia-bottom-content-panel");
@@ -125,19 +136,31 @@ for (const theme of THEMES) {
       }
       writeMeta();
 
-      // palette: Quick Open with "probe" typed.
-      await page.keyboard.press("Escape");
-      await page.keyboard.press(QUICK_OPEN);
-      const input = page.locator(".quick-input-widget input.input");
-      await input.waitFor({ state: "visible", timeout: 15_000 });
-      await page.keyboard.type("probe");
-      await page
-        .locator(".quick-input-list .monaco-list-row", { hasText: "probe" })
-        .first()
-        .waitFor({ state: "visible", timeout: 30_000 });
+      // The lit island's light (S5f), in the base scene, where the main island
+      // is the lit one: exactly one island lit, wearing the wash, the tint and
+      // the drop.
+      // The editor island, measured here: with the palette open it is under
+      // the palette's centre, where probeRegions' hit test would drop it.
+      meta.editorIsland = (await probeRegions(page, EDITOR_REGIONS))["main"];
+      meta.litRim = await probeLitRim(page);
+      check("lit rim", checkLitRim(meta.litRim));
+      writeMeta();
+
+      // palette: the command palette open on a query that finds several
+      // commands, some with a shortcut, the first one selected. Placed against
+      // the editor island, which is measured with it (S5f).
+      const paletteInput = await openCommandPalette(page);
+      await paletteInput.fill(">toggle");
+      await page.locator(".quick-input-list .monaco-list-row.focused").first().waitFor({ state: "visible", timeout: 30_000 });
+      await page.locator(".quick-input-list .monaco-keybinding-key").first().waitFor({ state: "visible", timeout: 30_000 });
       await shoot("palette");
+      meta.paletteParity = await probeRegions(page, PALETTE_REGIONS);
+      writeMeta();
+      const paletteBox = meta.paletteParity["palette"]?.[0];
+      if (paletteBox) check("palette edge", checkEdge("palette", await samplePixels(page, path.join(out, "palette.png"), edgePoints(paletteBox))));
+      check("palette", checkPalette(meta.paletteParity, meta.editorIsland, await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }))));
       await page.keyboard.press("Escape");
-      await input.waitFor({ state: "hidden", timeout: 15_000 });
+      await paletteInput.waitFor({ state: "hidden", timeout: 15_000 });
 
       // toast: an info message with an Undo action.
       await runCommand(page, "Parity: Toast scene");
@@ -146,6 +169,9 @@ for (const theme of THEMES) {
       await shoot("toast", toastAck);
       meta.toastParity = await probeRegions(page, TOAST_REGIONS);
       writeMeta();
+      check("toast", checkToast(meta.toastParity, meta.editorIsland, await page.evaluate(() => window.innerHeight)));
+      const toastBox = meta.toastParity["toast"]?.[0];
+      if (toastBox) check("toast edge", checkEdge("toast", await samplePixels(page, path.join(out, "toast.png"), edgePoints(toastBox))));
 
       // focus-tree: the Explorer focused, resolve.ts its selected row.
       await runCommand(page, "Parity: Focus tree scene");
@@ -225,22 +251,25 @@ for (const theme of THEMES) {
         writeMeta();
       }
 
-      // The one assertion of the capture (S5b-2's review): on macOS the
-      // system's traffic lights sit in the bar's room and on its centre, at
-      // 100% and one zoom level out. Everything else is for looking at.
+      // The capture's assertions, thrown once with every problem (S5f): the
+      // scenes' checks against the geometry table, and (S5b-2's review) on
+      // macOS the system's traffic lights sitting in the bar's room and on
+      // its centre, at 100% and one zoom level out. Everything else is for
+      // looking at.
+      const problems = Object.entries(meta.sceneProblems ?? {}).map(([scene, found]) => `${scene}: ${found.join("; ")}`);
       if (OS === "mac") {
-        const problems = [
-          ...(meta.lights ? meta.lights.problems : ["no native capture to find the lights in"]),
-          ...(meta.zoom?.problems ?? []).map((p) => `zoom ${meta.zoom?.level}: ${p}`),
-        ];
-        if (problems.length) throw new Error(`macOS traffic lights: ${problems.join("; ")}`);
+        problems.push(
+          ...(meta.lights ? meta.lights.problems : ["no native capture to find the lights in"]).map((p) => `macOS traffic lights: ${p}`),
+          ...(meta.zoom?.problems ?? []).map((p) => `macOS traffic lights, zoom ${meta.zoom?.level}: ${p}`),
+        );
       }
-      // late-font: the code-font wait's capped path, end to end. Last, since it
-      // reloads the page; it fails the capture when that path misbehaves.
+      // late-font: the code-font wait's capped path, end to end. After every
+      // other scene, since it reloads the page; its problems join the one throw.
       meta.lateFont = await lateFontScene(page, ackDir, meta.page?.terminalFont?.cell ?? null);
       await sizeWindow(app);
       await shoot("late-font");
-      if (meta.lateFont.problems.length > 0) throw new Error(`late font path: ${meta.lateFont.problems.join("; ")}`);
+      problems.push(...meta.lateFont.problems.map((p) => `late font path: ${p}`));
+      if (problems.length) throw new Error(problems.join(" | "));
     } catch (err) {
       meta.error = String(err instanceof Error ? err.stack : err);
       if (launched) {
