@@ -90,8 +90,8 @@ const FOLLOW_PREFIX: Record<FollowEvent["kind"], string> = {
 };
 
 /** Render the read-only follow as distinct, terminal-styled lines (prompts, replies, commands, output). */
-export function FollowTranscript(props: { events: FollowEvent[] }): React.ReactElement {
-  const { events } = props;
+export function FollowTranscript(props: { events: FollowEvent[]; /** A clock time before each line that has one (the agent log). */ showTime?: boolean }): React.ReactElement {
+  const { events, showTime } = props;
   if (events.length === 0) {
     return <div className="spexr-df-term spexr-df-term--empty">Waiting for activity…</div>;
   }
@@ -99,6 +99,11 @@ export function FollowTranscript(props: { events: FollowEvent[] }): React.ReactE
     <div className="spexr-df-term">
       {events.map((e, i) => (
         <div key={i} className="spexr-df-term__line" data-kind={e.kind}>
+          {showTime && e.atMs !== undefined && (
+            <time className="spexr-df-term__time" dateTime={new Date(e.atMs).toISOString()}>
+              {formatClock(e.atMs)}
+            </time>
+          )}
           {FOLLOW_PREFIX[e.kind] && <span className="spexr-df-term__glyph">{FOLLOW_PREFIX[e.kind]}</span>}
           <span className="spexr-df-term__text">{e.text}</span>
         </div>
