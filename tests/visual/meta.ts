@@ -3,7 +3,7 @@ import type { Readiness, ThemeState } from "./app";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
 import type { LightsCheck } from "./lights";
-import type { FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
+import type { EditorProbe, FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
 import type { SceneResult } from "./scenes";
 
 /** Artifacts: one folder per OS and theme, uploaded as `screenshots-<os>-<theme>-<attempt>`. */
@@ -51,6 +51,8 @@ export interface CaptureMeta {
   bottomPanel?: { top: number; held: boolean } | null;
   baseFirstVisibleLine?: number | null;
   page?: PageProbes;
+  /** The editor's gutter, colours and tokens in the base scene, and its padding once scrolled to the top (S5d). */
+  editor?: EditorProbe & { paddingTop?: number | null };
   /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */
   toastParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
   main?: MainProbes;

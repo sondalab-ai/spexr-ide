@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { TOAST_REGIONS, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
+import { TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   QUICK_OPEN,
   captureStable,
@@ -103,6 +103,7 @@ for (const theme of THEMES) {
       await shoot("base", baseAck);
       meta.baseFirstVisibleLine = await firstVisibleLine(page);
       meta.page = await probePage(page);
+      meta.editor = await probeEditor(page);
       meta.main = await probeMain(app);
       if (OS === "mac") {
         meta.native = await nativeCapture(app, path.join(out, "native-base"));
@@ -140,6 +141,11 @@ for (const theme of THEMES) {
       await page.waitForFunction(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"), undefined, { timeout: 15_000 }).catch(() => undefined);
       meta.treeFocused = await page.evaluate(() => !!document.activeElement?.closest("#files, .theia-Files, .theia-FileTree"));
       await shoot("focus-tree", treeAck);
+
+      // After every scene: reading the editor's padding clicks into it and goes
+      // to line 1, so no capture follows it.
+      meta.editor = { ...(meta.editor ?? (await probeEditor(page))), paddingTop: (await probeEditorPadding(page))?.paddingTop ?? null };
+      writeMeta();
 
       // macOS: the lights one zoom level out, then the bar's room through full
       // screen. Full screen last, because it moves the window to a Space of

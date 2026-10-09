@@ -4,18 +4,7 @@ import { ThemeService } from "@theia/core/lib/browser/theming";
 import { mount as mountEffects } from "@spexr/ui-kit/effects";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
 import { theiaChromeCss } from "./theia-chrome-css.js";
-
-/** Maps a SPEXR theme id to the matching built-in Theia color theme. */
-const THEIA_THEME_BY_SPEXR: Record<string, string> = {
-  light: "light",
-  dark: "dark",
-  "high-contrast": "hc-theia",
-};
-
-/** The same pairing read the other way, for changes that start on Theia's side. */
-const SPEXR_THEME_BY_THEIA: Record<string, string> = Object.fromEntries(
-  Object.entries(THEIA_THEME_BY_SPEXR).map(([spexr, theia]) => [theia, spexr]),
-);
+import { SPEXR_THEME_BY_THEIA, THEIA_THEME_BY_SPEXR, resolveStartTheme } from "./spexr-theme-ids.js";
 
 /**
  * Keeps the design tokens and Theia's native chrome on the same theme.
@@ -24,6 +13,11 @@ const SPEXR_THEME_BY_THEIA: Record<string, string> = Object.fromEntries(
  * own color theme so tab bars, editor and terminal match. The two follow each
  * other in both directions: picking a theme in Theia's own picker moves the
  * tokens, and this contribution's resolution moves Theia's theme.
+ *
+ * The themes are `spexr-light` and `spexr-dark` (spexr-monaco-theme-contribution.ts).
+ * Theia's built-in `light` and `dark` stay registered as aliases: a profile
+ * that stored one of them resolves to the same kind, and applying it moves
+ * Theia to the spexr theme of that kind (and rewrites the stored id).
  *
  * Theia's restored theme is the source of truth when the user has expressed no
  * SPEXR-specific choice — it is the one thing that actually persists a decision.
@@ -37,7 +31,12 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
 
   onStart(): void {
     const stored = this.readStoredTheme();
-    const resolved = stored ?? this.theiaTheme() ?? this.systemPreference();
+    const resolved = resolveStartTheme({
+      stored,
+      storedTheiaId: this.readStoredTheiaThemeId(),
+      currentTheiaId: this.themeService.getCurrentTheme().id,
+      system: this.systemPreference(),
+    });
 
     // Register BEFORE applyTheme so we catch the initial onDidColorThemeChange too.
     // setTimeout(0): Theia may apply CSS vars asynchronously after firing this event;
@@ -63,9 +62,13 @@ export class SpexrThemeContribution implements FrontendApplicationContribution {
     }
   }
 
-  /** The SPEXR theme matching Theia's restored color theme, when it maps to one. */
-  private theiaTheme(): string | undefined {
-    return SPEXR_THEME_BY_THEIA[this.themeService.getCurrentTheme().id];
+  /** Theia's own stored theme id (localStorage `theme`), which the startup guard in preload.html reads too. */
+  private readStoredTheiaThemeId(): string | null {
+    try {
+      return globalThis.localStorage?.getItem("theme") ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /** Apply a SPEXR theme to both the design tokens and Theia's native chrome. */

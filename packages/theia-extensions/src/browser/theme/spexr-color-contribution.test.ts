@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ACCENT, ACCENT_FILL, accentText, accentTextActive, fillStep, labelOn } from "./spexr-accent.js";
 import { SPEXR_NEUTRALS } from "./spexr-neutrals.js";
+import { TERMINAL_ANSI_IDS, terminalColors } from "./spexr-terminal-palette.js";
 
 type Defaults = Record<string, string | undefined>;
 
@@ -86,6 +87,30 @@ describe("SpexrColorContribution", () => {
         hcLight: "editor.background",
       });
     }
+  });
+
+  // xterm paints from the registry, so the palette is registered as hex per
+  // theme, from the kit's roles; registering replaces all four defaults, so
+  // high contrast is handed Theia's own back.
+  it("registers the terminal's ink, cursor, selection and sixteen ANSI colours from the kit's roles", () => {
+    const dark = terminalColors("dark");
+    const light = terminalColors("light");
+    expect(Object.keys(dark)).toHaveLength(19);
+    for (const id of [...TERMINAL_ANSI_IDS, "terminal.foreground", "terminalCursor.foreground", "terminal.selectionBackground"]) {
+      expect(colors.get(id)?.dark, id).toBe(dark[id]);
+      expect(colors.get(id)?.light, id).toBe(light[id]);
+    }
+  });
+
+  it("hands high contrast Theia's own terminal colours back", () => {
+    const text = readFileSync(join(dirname(createRequire(import.meta.url).resolve("@theia/terminal/lib/common/terminal-preferences.js")), "terminal-preferences.js"), "utf8");
+    const hcDark = /'terminal\.ansiRed': \{[\s\S]*?hcDark: '(#[0-9A-Fa-f]{6})'/.exec(text)?.[1];
+    expect(hcDark, "Theia's hcDark red").toBeDefined();
+    expect(colors.get("terminal.ansiRed")?.hcDark).toBe(hcDark);
+    expect(colors.get("terminal.foreground")?.hcDark).toBe("foreground");
+    expect(colors.get("terminal.foreground")?.hcLight).toBe("foreground");
+    expect(colors.get("terminal.selectionBackground")?.hcDark).toBe("editor.selectionBackground");
+    expect(colors.get("terminalCursor.foreground")?.hcDark).toBeUndefined();
   });
 
   it("leaves the list selection and the main area's tab border to the CSS layer", () => {
