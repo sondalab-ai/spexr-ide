@@ -134,7 +134,7 @@ describe("the right island's view sources", () => {
   it.each(Object.entries(sources))("%s has a head, no glass on its buttons and no per-item colour", (name, file) => {
     const src = read(file);
     expect(src, name).toMatch(/<PanelHead eyebrow=\{\w+\} title=\{\w+\}/);
-    expect(src.match(/nls\.localize\("spexr\/\w+\/(eyebrow|title)"/g)!.length, `${name} localises its head`).toBeGreaterThanOrEqual(2);
+    expect((src.match(/nls\.localize\("spexr\/\w+\/(eyebrow|title)"/g) ?? []).length, `${name} localises its head`).toBeGreaterThanOrEqual(2);
     expect(src, name).not.toMatch(/aria-label="TODO"/);
     expect(src, name).not.toMatch(/sl-fx-glass/);
     expect(src, name).not.toMatch(/\be\.color\b|borderColor|style=\{\{\s*color/);

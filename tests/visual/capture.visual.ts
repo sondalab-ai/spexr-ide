@@ -190,7 +190,7 @@ for (const theme of THEMES) {
       // view follows), so the first and last rows of the card, the current
       // row's seam and its tile are all on screen.
       for (const [id, name, icon] of [["backend-architect", "backend-architect", "codicon-server"], ["reviewer", "reviewer", "codicon-eye"]] as const) {
-        seed(`docs/agents/${id}.md`, `---\nid: ${id}\nname: ${name}\nicon: ${icon}\ncolor: #888888\n---\n\nYou are a ${name}.\n`);
+        seed(`docs/agents/${id}.md`, `---\nid: ${id}\nname: ${name}\nicon: ${icon}\n---\n\nYou are a ${name}.\n`);
       }
       // The active expert is read without a folder while no agent runs, so
       // the user's settings carry it (the folder's own file too).
