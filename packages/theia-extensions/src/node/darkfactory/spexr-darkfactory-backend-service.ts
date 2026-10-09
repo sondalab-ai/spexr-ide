@@ -405,6 +405,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly harnessSessionMemos = new Map<string, () => Promise<HarnessSessionRef[]>>();
   private sessionIndex?: Promise<SessionIndex>;
   private indexing = false;
+  private crawlTimer: ReturnType<typeof setTimeout> | undefined;
   /** Tool-call counts by transcript, kept up to date by the index crawl and by each scan for live sessions. */
   private readonly toolCounter: ToolCounter;
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
@@ -478,7 +479,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.lineage = d.lineage ?? new SessionLineage();
     this.projectGroups = d.projectGroups ?? new ProjectGroups(this.now);
     // Without an encoder the crawl only counts tool calls, which every tile wants.
-    setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS).unref?.();
+    this.crawlTimer = setTimeout(() => void this.indexNow().catch(() => {}), FIRST_CRAWL_DELAY_MS);
+    this.crawlTimer.unref?.();
   }
 
   /**
@@ -1434,6 +1436,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     this.watching = false;
     if (this.loopMonitor) clearInterval(this.loopMonitor);
     this.scanHolds = 0;
+    if (this.crawlTimer) clearTimeout(this.crawlTimer);
+    this.crawlTimer = undefined;
     this.stopPolling();
     for (const w of this.wallWatchers) w.close();
     this.wallWatchers.length = 0;

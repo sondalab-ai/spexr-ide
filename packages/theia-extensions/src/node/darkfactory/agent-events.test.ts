@@ -83,9 +83,9 @@ describe("buildAgentPaneSnapshot on the parity fixture", () => {
     ]);
   });
 
-  it("reads about 1.2k tokens a second off the last response", () => {
-    expect(snap.tokPerSec).toBeGreaterThan(1150);
-    expect(snap.tokPerSec).toBeLessThan(1250);
+  it("reads about 86 tokens a second off the last response (a realistic rate, not the demo's 1.2k)", () => {
+    expect(snap.tokPerSec).toBeGreaterThan(80);
+    expect(snap.tokPerSec).toBeLessThan(92);
   });
 
   it("reads the permission mode from the standalone record", () => {
@@ -275,13 +275,15 @@ describe("review regressions", () => {
   it("keeps a response's rate sane when its blocks are apart (a parallel tool call, its results, another block)", () => {
     const entries = [user(0, "go"), msg("m", 1, [use("a")]), toolResult(1.001, "a"), msg("m", 1.002, [use("b")]), toolResult(1.003, "b")];
     const rate = tokPerSecOf(entries);
-    expect(rate === undefined || rate <= 2000).toBe(true);
+    expect(rate === undefined || rate <= 500).toBe(true);
     // The group is read across the gap: from the prompt to the response's last block.
     expect(tokPerSecOf([user(0, "go"), msg("m", 1, [use("a")]), toolResult(1.5, "a"), msg("m", 2, [use("b")], 400)])).toBe(200);
   });
 
-  it("drops a rate no model reaches", () => {
+  it("drops a rate no model reaches: over 500 tokens a second", () => {
     expect(tokPerSecOf([user(0, "go"), msg("m", 0.01, [{ type: "text", text: "x" }], 5000)])).toBeUndefined();
+    expect(tokPerSecOf([user(0, "go"), msg("m", 1, [{ type: "text", text: "x" }], 600)])).toBeUndefined();
+    expect(tokPerSecOf([user(0, "go"), msg("m", 1, [{ type: "text", text: "x" }], 400)])).toBe(400);
   });
 
   it("ignores a subagent's response when timing the session's", () => {

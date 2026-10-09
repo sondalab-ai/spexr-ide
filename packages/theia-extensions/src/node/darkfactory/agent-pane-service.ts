@@ -21,9 +21,8 @@ const MAX_ENTRIES = 6000;
 const DEBOUNCE_MS = 150;
 /** How often a transcript that does not exist yet is looked for. */
 const LOCATE_MS = 1500;
-/** The wait for a transcript that is not there backs off to this, and ends after {@link LOCATE_GIVE_UP_MS}. */
+/** The wait for a transcript that is not there backs off to this, and stays there while the follow lasts. */
 const LOCATE_MAX_MS = 15_000;
-const LOCATE_GIVE_UP_MS = 10 * 60_000;
 const LIVE_TTL_MS = 5000;
 /** The project folder is listed for a successor at most this often: it can hold thousands of transcripts. */
 const SUCCESSOR_EVERY_MS = 3000;
@@ -41,7 +40,7 @@ export interface AgentPaneDeps {
   configDirs?: () => string[];
   now?: () => number;
   /** Watch a path; returns a closer, or undefined when it cannot be watched. */
-  watch?: (path: string, onChange: () => void) => { close(): void } | undefined;
+  watch?: (path: string, onChange: (filename?: string) => void) => { close(): void } | undefined;
   liveDirs?: () => Promise<Set<string> | null>;
   /** The session names file; the pane's title is the name the user gave. */
   namesPath?: string;
@@ -52,9 +51,9 @@ export interface AgentPaneDeps {
   counter?: ToolCounter;
 }
 
-const defaultWatch = (path: string, onChange: () => void): { close(): void } | undefined => {
+const defaultWatch = (path: string, onChange: (filename?: string) => void): { close(): void } | undefined => {
   try {
-    const w: FSWatcher = watch(path, onChange);
+    const w: FSWatcher = watch(path, (_event, filename) => onChange(filename ? String(filename) : undefined));
     // A watcher that fails later throws out of the backend unless handled.
     w.on("error", () => w.close());
     return w;
@@ -163,7 +162,6 @@ export class AgentPaneBackendService implements AgentPaneService {
   /** The last scan saw transcripts newer than ours and chose none of them: look again soon. */
   private pendingCandidates = false;
   private maxOtherMtime = 0;
-  private locateStartedAt = 0;
   private locateDelay = LOCATE_MS;
 
   constructor(deps: AgentPaneDeps = {}) {
@@ -193,7 +191,6 @@ export class AgentPaneBackendService implements AgentPaneService {
     await this.stop();
     const epoch = ++this.epoch;
     this.binding = binding;
-    this.locateStartedAt = this.deps.now();
     this.locateDelay = LOCATE_MS;
     await this.locate();
     if (epoch !== this.epoch) return undefined;
@@ -258,9 +255,9 @@ export class AgentPaneBackendService implements AgentPaneService {
     }
   }
 
-  /** Poll for a transcript that is not there, slower each time, and give up after ten minutes. */
+  /** Poll for a transcript that is not there, slower each time up to 15 s, for as long as the follow lasts. */
   private scheduleLocate(): void {
-    if (this.locateTimer || this.deps.now() - this.locateStartedAt > LOCATE_GIVE_UP_MS) return;
+    if (this.locateTimer) return;
     const epoch = this.epoch;
     this.locateTimer = setTimeout(() => {
       this.locateTimer = undefined;
@@ -275,7 +272,9 @@ export class AgentPaneBackendService implements AgentPaneService {
 
   private armDirWatcher(dir: string): void {
     if (this.dirWatcher) return;
-    this.dirWatcher = this.deps.watch(dir, () => {
+    this.dirWatcher = this.deps.watch(dir, (filename) => {
+      // The followed transcript changes constantly and is read through its own watcher: only its neighbours are news.
+      if (filename !== undefined && filename === `${this.binding?.sessionId}.jsonl`) return;
       this.dirDirty = true;
       this.schedule();
     });
