@@ -168,11 +168,14 @@ for (const theme of THEMES) {
         fs.mkdirSync(path.dirname(path.join(ws, rel)), { recursive: true });
         fs.writeFileSync(path.join(ws, rel), text);
       };
-      const showRightView = async (toggle: string, root: string, ready: string): Promise<void> => {
+      const showRightView = async (toggle: string, root: string, ready: string, refresh = false): Promise<void> => {
         const view = page.locator(`#theia-right-content-panel ${root}`);
         await runCommand(page, toggle);
         if (!(await view.isVisible().catch(() => false))) await runCommand(page, toggle);
         await view.waitFor({ state: "visible", timeout: 15_000 });
+        // Experts and Memory read their folders on a Theia file operation, not
+        // on a write from outside, so the view is told to read what was seeded.
+        if (refresh) await view.getByRole("button", { name: "Refresh" }).click();
         await page.locator(`#theia-right-content-panel ${ready}`).first().waitFor({ state: "visible", timeout: 30_000 });
       };
       meta.rightPanel = {};
@@ -190,7 +193,7 @@ for (const theme of THEMES) {
         seed(`docs/agents/${id}.md`, `---\nid: ${id}\nname: ${name}\nicon: ${icon}\ncolor: #888888\n---\n\nYou are a ${name}.\n`);
       }
       seed(".theia/settings.json", JSON.stringify({ "spexr.experts.activeId": "backend-architect" }, null, 2));
-      await showRightView("View: Toggle Experts", ".spexr-experts-panel", '.spexr-experts-list__item[aria-current="true"]');
+      await showRightView("View: Toggle Experts", ".spexr-experts-panel", '.spexr-experts-list__item[aria-current="true"]', true);
       await page.locator("#theia-right-content-panel .spexr-experts-list__item").nth(1).waitFor({ state: "visible", timeout: 15_000 });
       await shoot("right-experts");
       meta.rightPanel["experts"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
@@ -199,7 +202,7 @@ for (const theme of THEMES) {
       for (const [file, name, type] of [["user_role.md", "senior-engineer", "user"], ["feedback_db.md", "no-mocks-for-the-db", "feedback"]] as const) {
         seed(`docs/memory/${file}`, `---\nname: ${name}\ndescription: A note the agent loads on every session.\ntype: ${type}\n---\n\nBody.\n`);
       }
-      await showRightView("View: Toggle Memory", ".spexr-memory-panel", ".spexr-memory-list__item");
+      await showRightView("View: Toggle Memory", ".spexr-memory-panel", ".spexr-memory-list__item", true);
       await shoot("right-memory");
       meta.rightPanel["memory"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
       writeMeta();
