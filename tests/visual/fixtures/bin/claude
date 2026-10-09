@@ -1,0 +1,29 @@
+#!/bin/sh
+# tests/visual fixture: not the Claude CLI. A one-shot call (-p) has no model to ask, so it ends.
+case "$1" in -p|--print) exit 0 ;; esac
+
+# The agent terminal starts Claude with --session-id <uuid>. Write the agent's
+# transcript (templates/agent.jsonl, the "Refactor the audit" session) under
+# that id, so the agent pane follows a session this terminal really started,
+# and give it its name. Then say where it is: <root>/agent-session.json.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+sid=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "--session-id" ] && sid="$a"
+  prev="$a"
+done
+tpl="$root/templates/agent.jsonl"
+if [ -n "$sid" ] && [ -f "$tpl" ] && [ -f "$root/templates/agent.env" ]; then
+  . "$root/templates/agent.env"
+  ws="$(pwd -P)"
+  dir="$HOME/.claude/projects/$(printf '%s' "$ws" | sed 's/[^a-zA-Z0-9]/-/g')"
+  mkdir -p "$dir"
+  sed -e "s#{{WS}}#$ws#g" -e "s#$TEMPLATE_SESSION#$sid#g" "$tpl" > "$dir/$sid.jsonl"
+  names="$HOME/.spexr/session-names.json"
+  sed -e "s/}\$/,\"$sid\":\"$AGENT_NAME\"}/" "$names" > "$names.tmp" && mv "$names.tmp" "$names"
+  printf '{"sessionId":"%s","path":"%s"}\n' "$sid" "$dir/$sid.jsonl" > "$root/agent-session.json.tmp" && mv "$root/agent-session.json.tmp" "$root/agent-session.json"
+fi
+
+printf 'claude (visual fixture stub)\n'
+while :; do sleep 3600; done
