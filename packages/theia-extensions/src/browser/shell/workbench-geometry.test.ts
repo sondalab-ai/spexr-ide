@@ -287,7 +287,9 @@ describe("Theia's layout start, which the default layout relies on", () => {
     const contribution = own("./default-layout-contribution.ts");
     // The adapter only delegates: the logic is DefaultLayout's, tested above.
     expect(contribution).toMatch(/async initializeLayout\(\): Promise<void> \{\s*await this\.workspace\.ready;\s*this\.layout\.seed\(this\.shell, this\.workspace\.opened\);/);
-    expect(contribution).toMatch(/onDidInitializeLayout\(\): Promise<void> \{\s*return this\.layout\.settle\(this\.shell\);/);
+    expect(contribution).toMatch(/async onDidInitializeLayout\(\): Promise<void> \{\s*await this\.layout\.settle\(this\.shell\);/);
+    // The left island follows the view in front only after the layout has settled (left-island-width.ts).
+    expect(contribution).toMatch(/await this\.layout\.settle\(this\.shell\);[\s\S]*?await widths\.attach\(\);/);
     expect(contribution).toMatch(/return this\.layout\.reset\(this\.shell, this\.shell\.getCurrentWidget\("left"\)\?\.id === CLAUDE_TERMINAL_ID\);/);
     expect(contribution).toMatch(/markSettled: \(\) => document\.body\.setAttribute\(LAYOUT_READY_ATTRIBUTE, "1"\)/);
     expect(contribution).toContain('export const LAYOUT_READY_ATTRIBUTE = "data-spexr-layout-ready";');

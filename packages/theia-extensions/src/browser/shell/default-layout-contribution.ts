@@ -1,9 +1,11 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
+import { StorageService } from "@theia/core/lib/browser/storage-service";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-id.js";
 import { DefaultLayout } from "./workbench-geometry.js";
+import { LEFT_WIDTHS_STORAGE_KEY, LeftIslandWidth, type LeftPanelLike } from "./left-island-width.js";
 
 /** The body attribute the E2E suite and the capture wait on: the layout has settled. */
 export const LAYOUT_READY_ATTRIBUTE = "data-spexr-layout-ready";
@@ -23,8 +25,12 @@ export const LAYOUT_READY_ATTRIBUTE = "data-spexr-layout-ready";
  *   every contribution that touches the layout (the shell layout's views, the
  *   bootstrap's agent terminal, the Explorer's Search section), so the
  *   settled mark comes after every panel and section has its size.
+ * - Once the layout has settled, the left island's width starts following
+ *   the view in front (left-island-width.ts, D2): 432px for the agent
+ *   terminal, 264px for the Explorer, each remembered per view.
  * - Reset Layout (SpexrShellLayoutContribution) applies the sizes again
- *   through `resetSizes`, the left island by the view then in front.
+ *   through `resetSizes`, the left island by the view then in front, and
+ *   forgets the remembered widths.
  */
 @injectable()
 export class SpexrDefaultLayoutContribution implements FrontendApplicationContribution {
@@ -33,6 +39,11 @@ export class SpexrDefaultLayoutContribution implements FrontendApplicationContri
 
   @inject(WorkspaceService)
   private readonly workspace!: WorkspaceService;
+
+  @inject(StorageService)
+  private readonly storage!: StorageService;
+
+  private leftWidth?: LeftIslandWidth;
 
   private readonly layout = new DefaultLayout({
     warn: (message, ...detail) => console.warn(message, ...detail),
@@ -44,12 +55,29 @@ export class SpexrDefaultLayoutContribution implements FrontendApplicationContri
     this.layout.seed(this.shell, this.workspace.opened);
   }
 
-  onDidInitializeLayout(): Promise<void> {
-    return this.layout.settle(this.shell);
+  async onDidInitializeLayout(): Promise<void> {
+    await this.layout.settle(this.shell);
+    const widths = this.leftWidths();
+    window.addEventListener("beforeunload", () => widths.flush());
+    await widths.attach();
   }
 
   /** Reset Layout's sizes: the default ones again, the left island the agent terminal's when it is in front. */
-  resetSizes(): Promise<void> {
+  async resetSizes(): Promise<void> {
+    await this.leftWidths().clear();
     return this.layout.reset(this.shell, this.shell.getCurrentWidget("left")?.id === CLAUDE_TERMINAL_ID);
+  }
+
+  /** The left island's width memory, made on first use (the shell and storage are injected by then). */
+  private leftWidths(): LeftIslandWidth {
+    this.leftWidth ??= new LeftIslandWidth(
+      this.shell.leftPanelHandler as unknown as LeftPanelLike,
+      {
+        load: () => this.storage.getData(LEFT_WIDTHS_STORAGE_KEY),
+        save: (widths) => this.storage.setData(LEFT_WIDTHS_STORAGE_KEY, widths),
+      },
+      (message, ...detail) => console.warn(message, ...detail),
+    );
+    return this.leftWidth;
   }
 }
