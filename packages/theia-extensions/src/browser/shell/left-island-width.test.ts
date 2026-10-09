@@ -200,6 +200,26 @@ describe("the left island's width controller", () => {
     expect(widths.remembered).toEqual({ [CLAUDE_TERMINAL_ID]: 532 });
   });
 
+  it("takes a view other than the agent terminal, left at the seeded 432, to its default when it attaches, and does not remember the 432", async () => {
+    const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 432);
+    const widths = new LeftIslandWidth(panel, memoryStore());
+    await widths.attach();
+    expect(panel.resizes).toEqual([ACTIVITY_COLUMN + 264]);
+    expect(widths.remembered).toEqual({});
+  });
+
+  it("leaves the agent terminal at 432, and a restored Explorer at its own width, when it attaches", async () => {
+    const agent = new FakePanel(CLAUDE_TERMINAL_ID, ACTIVITY_COLUMN + 432);
+    await new LeftIslandWidth(agent, memoryStore()).attach();
+    expect(agent.resizes).toEqual([]);
+    const explorer = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 300);
+    await new LeftIslandWidth(explorer, memoryStore()).attach();
+    expect(explorer.resizes).toEqual([]);
+    const remembered = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 432);
+    await new LeftIslandWidth(remembered, memoryStore({ [EXPLORER]: 432 })).attach();
+    expect(remembered.resizes).toEqual([]);
+  });
+
   it("records the view in front when the panel collapses, from the size Theia kept, and leaves the panel alone", async () => {
     const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 300);
     const widths = new LeftIslandWidth(panel, memoryStore());

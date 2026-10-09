@@ -87,7 +87,8 @@ type ChangedSlot = Parameters<LeftPanelLike["tabBar"]["currentChanged"]["connect
  *
  * - {@link attach} runs once the layout has settled (the default layout's
  *   mark): it loads the remembered widths, takes the view then in front as it
- *   is (its width is the restored or seeded one), and starts listening.
+ *   is (its width is the restored or seeded one, a non-agent view left at the
+ *   seeded 432px apart), and starts listening.
  *   Attached earlier it would remember the seeded 432px as the Explorer's,
  *   because startup reveals the Explorer before the agent terminal comes in front.
  * - A view change records the outgoing view's width, then sizes the panel for
@@ -139,8 +140,31 @@ export class LeftIslandWidth {
     } catch (err) {
       this.warn("[spexr] the left island's remembered widths could not be read", err);
     }
-    this.flush();
+    if (!(await this.alignSeeded())) this.flush();
     this.panel.tabBar.currentChanged.connect(this.onChanged);
+  }
+
+  /**
+   * A first launch is seeded for the agent terminal's island (432px) before
+   * it is known that the agent terminal will be in front. When another view
+   * is in front at exactly that width with nothing remembered for it (the
+   * agent CLI is not installed, so the Explorer stayed in front), take it to
+   * its own default. Returns whether it did; the width is then not recorded,
+   * because the panel has not laid out the new one yet.
+   */
+  private async alignSeeded(): Promise<boolean> {
+    const current = this.panel.tabBar.currentTitle?.owner.id;
+    const size = this.panel.getPanelSize();
+    if (!current || current === CLAUDE_TERMINAL_ID || this.widths[current] !== undefined || size === undefined) return false;
+    if (Math.abs(size - areaSize("left", AGENT_ISLAND)) > 1) return false;
+    try {
+      await this.panel.state.pendingUpdate;
+      this.panel.resize(leftPanelSizeFor(current, this.widths));
+      return true;
+    } catch (err) {
+      this.warn("[spexr] the left island's seeded width could not be set", err);
+      return false;
+    }
   }
 
   /** Stop following the panel. */
