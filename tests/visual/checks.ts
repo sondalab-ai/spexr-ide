@@ -319,8 +319,12 @@ export async function probeAgentPane(page: Page): Promise<AgentPaneState> {
   });
 }
 
-/** The agent pane's geometry as the demo's (S6h), on the 4px grid: AGENT_PANE and RIGHT_PANEL in workbench-geometry.ts. */
-const AGENT = { ring: 1, inline: 16, head: 69, headTol: 1.5, cardWidth: 318, row: 32, rowBorder: 1, check: 16, island: { x: 1030, w: 352 } };
+/**
+ * The agent pane's geometry as the demo's (S6h), on the 4px grid: AGENT_PANE
+ * and RIGHT_PANEL in workbench-geometry.ts. The check box is the kit's 18px
+ * (kit 0.36.2), not the demo's 16: a kit part is reused as it is.
+ */
+const AGENT = { ring: 1, inline: 16, head: 69, headTol: 1.5, cardWidth: 318, row: 32, rowBorder: 1, check: 18, island: { x: 1030, w: 352 } };
 
 /**
  * The agent pane against the demo's right pane (reference/demo-regions.json
