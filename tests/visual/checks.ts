@@ -378,6 +378,9 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
   if (!pane) return ["agent pane: the right island is not on screen"];
   if (state.empty) return ["agent pane: the pane is empty (no session was followed)"];
   const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  // Expanded, the log outgrows the island and scrolls: its scrollbar (up to 12px) narrows every card.
+  const cardWidth = expanded ? AGENT.cardWidth - 6 : AGENT.cardWidth;
+  const cardTol = expanded ? 7 : 1;
   if (!near(pane.x, AGENT.island.x, 1) || !near(pane.w, AGENT.island.w, 1)) problems.push(`agent pane: the island is at x ${pane.x}, ${pane.w} wide, want ${AGENT.island.x} (the demo's 1082 less the right activity bar) and ${AGENT.island.w}`);
 
   const head = regions["ap.head"]?.[0];
@@ -396,7 +399,7 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
 
   const prompt = regions["ap.prompt"]?.[0];
   if (!prompt) problems.push("agent pane: no prompt card");
-  else if (!near(prompt.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(prompt.w, AGENT.cardWidth, 1)) problems.push(`agent pane: prompt card at ${prompt.x - pane.x} in, ${prompt.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
+  else if (!near(prompt.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(prompt.w, cardWidth, cardTol)) problems.push(`agent pane: prompt card at ${prompt.x - pane.x} in, ${prompt.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
   if (!state.prompt?.startsWith("Make cache.write awaited")) problems.push(`agent pane: prompt ${JSON.stringify(state.prompt)}`);
 
   const want = expanded ? 11 : 4;
@@ -417,7 +420,7 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
 
   const card = regions["ap.tools"]?.[0];
   if (!card) problems.push("agent pane: no tool card");
-  else if (!near(card.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(card.w, AGENT.cardWidth, 1)) problems.push(`agent pane: tool card at ${card.x - pane.x} in, ${card.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
+  else if (!near(card.x - pane.x, AGENT.inline + AGENT.ring, 1) || !near(card.w, cardWidth, cardTol)) problems.push(`agent pane: tool card at ${card.x - pane.x} in, ${card.w} wide, want ${AGENT.inline + AGENT.ring} and ${AGENT.cardWidth}`);
   for (const [i, row] of (regions["ap.tool"] ?? []).entries()) {
     const h = i === 0 ? AGENT.row : AGENT.row + AGENT.rowBorder;
     if (!near(row.h, h, 1)) problems.push(`agent pane: tool row ${i} is ${row.h}px tall, want ${h}`);
@@ -430,7 +433,8 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
       problems.push(`agent pane: diff rows ${state.diff.rows.map((r) => r.kind).join(",")}, want 3 removed then 3 added`);
     }
     const dcard = regions["ap.diff"]?.[0];
-    if (!dcard || !near(dcard.w, AGENT.cardWidth, 1)) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
+    // Scrolled out of the island when expanded: its geometry is then not measured.
+    if (!(expanded && !dcard) && (!dcard || !near(dcard.w, cardWidth, cardTol))) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
   }
 
   if (state.plan.map((p) => p.checked).join() !== "true,true,false") problems.push(`agent pane: plan checks ${state.plan.map((p) => p.checked).join()}, want true,true,false`);
@@ -462,7 +466,10 @@ function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[numb
   const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
   if (!near(box.x - pane.x, 13, 1) || !near(box.w, 326, 1.5)) problems.push(`composer: at ${box.x - pane.x} in, ${box.w} wide, want 13 and 326 (the demo's 12 and 328, in the ring)`);
   if (!near(pane.y + pane.h - (box.y + box.h), 13, 1.5)) problems.push(`composer: ${pane.y + pane.h - (box.y + box.h)}px above the island's bottom edge, want 13`);
-  if (box.h < 90 || box.h > 104) problems.push(`composer: ${box.h}px tall, want about the demo's 100 (90 to 104)`);
+  // The demo's is 100.3. While the agent works a note line sits in it (S6i's security decision: Send is off, and says why): +24.
+  const noted = c.note !== null;
+  const [lo, hi] = noted ? [110, 128] : [90, 104];
+  if (box.h < lo || box.h > hi) problems.push(`composer: ${box.h}px tall, want about the demo's 100 (${lo} to ${hi}${noted ? ", with its note" : ""})`);
   const field = regions["ap.field"]?.[0];
   if (!field || !near(field.x - box.x, 8, 1) || !near(field.w, box.w - 16, 1.5)) problems.push(`composer: the field is at ${field ? field.x - box.x : "?"} in, ${field?.w} wide, want 8 and ${box.w - 16}`);
   if (field && (field.h < 44 || field.h > 50)) problems.push(`composer: the field is ${field.h}px tall, want about the demo's 46.9 (44 to 50)`);
