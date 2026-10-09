@@ -65,7 +65,7 @@
     "@radix-ui/react-tabs": "^1.1.21",
     "@radix-ui/react-toast": "^1.2.23",
     "@radix-ui/react-tooltip": "^1.2.16",
-    "@sondalab/ui-kit": "^0.35.0",
+    "@sondalab/ui-kit": "^0.36.2",
     "clsx": "^2.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
