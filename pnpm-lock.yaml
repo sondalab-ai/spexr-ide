@@ -37,6 +37,9 @@ patchedDependencies:
   '@theia/core@1.75.0':
     hash: tl7xvoswvowzyvycxmucukvnei
     path: patches/@theia__core@1.75.0.patch
+  '@theia/monaco-editor-core@1.108.201':
+    hash: s4zjvgaja7mwqqjupcoabaivoa
+    path: patches/@theia__monaco-editor-core@1.108.201.patch
 
 importers:
 
@@ -107,7 +110,7 @@ importers:
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco-editor-core':
         specifier: 1.108.201
-        version: 1.108.201
+        version: 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/navigator':
         specifier: ^1.75.0
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
@@ -335,7 +338,7 @@ importers:
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco-editor-core':
         specifier: 1.108.201
-        version: 1.108.201
+        version: 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/navigator':
         specifier: ^1.75.0
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
@@ -7024,7 +7027,7 @@ snapshots:
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/output': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/variable-resolver': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/workspace': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
@@ -7119,7 +7122,7 @@ snapshots:
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/workspace': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -7200,7 +7203,7 @@ snapshots:
       '@theia/core': 1.75.0(patch_hash=tl7xvoswvowzyvycxmucukvnei)(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       anser: 2.3.5
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -7305,7 +7308,7 @@ snapshots:
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/markers': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/output': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/process': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/task': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
@@ -7496,7 +7499,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@theia/monaco-editor-core@1.108.201':
+  '@theia/monaco-editor-core@1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)':
     dependencies:
       dompurify: 3.4.14
       marked: 14.0.0
@@ -7507,7 +7510,7 @@ snapshots:
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/markers': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/outline-view': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/workspace': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       fast-plist: 0.1.3
@@ -7559,7 +7562,7 @@ snapshots:
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/outline-view': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       advanced-mark.js: 2.7.1
       react-perfect-scrollbar: 1.5.8(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -7599,7 +7602,7 @@ snapshots:
       '@theia/core': 1.75.0(patch_hash=tl7xvoswvowzyvycxmucukvnei)(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       p-queue: 8.1.1
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -7631,7 +7634,7 @@ snapshots:
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/navigator': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/outline-view': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/plugin': 1.75.0
@@ -7678,7 +7681,7 @@ snapshots:
       '@theia/markers': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/messages': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/navigator': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/notebook': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/output': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
@@ -7743,7 +7746,7 @@ snapshots:
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/userstorage': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/workspace': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       async-mutex: 0.3.2
@@ -7794,7 +7797,7 @@ snapshots:
       '@theia/editor': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@types/diff': 5.2.3
       diff: 5.2.2
       p-debounce: 2.1.0
@@ -7850,7 +7853,7 @@ snapshots:
       '@theia/filesystem': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/markers': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/monaco': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      '@theia/monaco-editor-core': 1.108.201
+      '@theia/monaco-editor-core': 1.108.201(patch_hash=s4zjvgaja7mwqqjupcoabaivoa)
       '@theia/process': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@theia/terminal': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/userstorage': 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)

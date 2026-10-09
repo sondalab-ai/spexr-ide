@@ -1,0 +1,31 @@
+diff --git a/esm/vs/platform/quickinput/browser/quickInputList.js b/esm/vs/platform/quickinput/browser/quickInputList.js
+index c08593a2c373e5d5230cf901f93fa58ae7e18508..7dbf4deaae203c8dcc8d28e46aba17894668baaa 100644
+--- a/esm/vs/platform/quickinput/browser/quickInputList.js
++++ b/esm/vs/platform/quickinput/browser/quickInputList.js
+@@ -190,10 +190,14 @@ class QuickPickSeparatorElement extends BaseQuickPickItemElement {
+ }
+ class QuickInputItemDelegate {
+     getHeight(element) {
++        // SPEXR patch: Lumen's palette rows (S5f). A row is 38px, a row with a
++        // detail line 48, a group's heading 28 (Monaco's 22 / 44 / 30). The
++        // heights are laid out here, so CSS cannot change them; spexr.css
++        // repeats them (PALETTE in shell/workbench-geometry.ts).
+         if (element instanceof QuickPickSeparatorElement) {
+-            return 30;
++            return 28;
+         }
+-        return element.saneDetail ? 44 : 22;
++        return element.saneDetail ? 48 : 38;
+     }
+     getTemplateId(element) {
+         if (element instanceof QuickPickItemElement) {
+@@ -1154,7 +1158,8 @@ let QuickInputList = class QuickInputList extends Disposable {
+     layout(maxHeight) {
+         this._tree.getHTMLElement().style.maxHeight = maxHeight ? `${
+         // Make sure height aligns with list item heights
+-        Math.floor(maxHeight / 44) * 44
++        // SPEXR patch: the tree's rows are 38px (see getHeight above)
++        Math.floor(maxHeight / 38) * 38
+             // Add some extra height so that it's clear there's more to scroll
+             + 6}px` : '';
+         this._tree.layout();
