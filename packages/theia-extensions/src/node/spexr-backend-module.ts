@@ -16,6 +16,8 @@ import { DescriptionGeneratorToken, type DescriptionGenerator } from "./search/d
 import { WorkerDescriptionGenerator } from "./search/worker-description-generator.js";
 import { SpexrSearchBackendService } from "./search/spexr-search-backend-service.js";
 import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common/darkfactory-protocol.js";
+import { AGENT_PANE_SERVICE_PATH, type AgentPaneClient } from "../common/agent-pane-protocol.js";
+import { AgentPaneBackendService } from "./darkfactory/agent-pane-service.js";
 import { SpexrDarkfactoryBackendService } from "./darkfactory/spexr-darkfactory-backend-service.js";
 import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
 import { SpexrResourceBackendService } from "./resources/spexr-resource-backend-service.js";
@@ -93,6 +95,17 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     .toDynamicValue((ctx) => {
       const service = ctx.container.get(SpexrDarkfactoryBackendService);
       return new RpcConnectionHandler<SpexrDarkfactoryClient>(DARKFACTORY_SERVICE_PATH, (client) => {
+        service.setClient(client);
+        return service;
+      });
+    })
+    .inSingletonScope();
+
+  bind(AgentPaneBackendService).toDynamicValue(() => new AgentPaneBackendService()).inSingletonScope();
+  bind(ConnectionHandler)
+    .toDynamicValue((ctx) => {
+      const service = ctx.container.get(AgentPaneBackendService);
+      return new RpcConnectionHandler<AgentPaneClient>(AGENT_PANE_SERVICE_PATH, (client) => {
         service.setClient(client);
         return service;
       });

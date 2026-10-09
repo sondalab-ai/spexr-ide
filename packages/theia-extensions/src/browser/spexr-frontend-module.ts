@@ -130,6 +130,7 @@ import {
   SpexrDarkfactoryClientDispatcher,
   SpexrDarkfactoryClientToken,
 } from "./darkfactory/darkfactory-client.js";
+import { AGENT_PANE_SERVICE_PATH, AgentPaneClientDispatcher, AgentPaneServiceProxy } from "./agent/agent-pane-client.js";
 import { SpexrScheduleClientDispatcher, SpexrScheduleServiceProxy } from "./darkfactory/schedule/schedule-client.js";
 import { SCHEDULE_SERVICE_PATH } from "../common/schedule/schedule-protocol.js";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory/darkfactory-terminal-manager.js";
@@ -448,6 +449,13 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
       const connection = ctx.container.get(WebSocketConnectionProvider);
       const client = ctx.container.get(SpexrDarkfactoryClientDispatcher);
       return connection.createProxy(DARKFACTORY_SERVICE_PATH, client);
+    })
+    .inSingletonScope();
+  bind(AgentPaneClientDispatcher).toSelf().inSingletonScope();
+  bind(AgentPaneServiceProxy)
+    .toDynamicValue((ctx) => {
+      const connection = ctx.container.get(WebSocketConnectionProvider);
+      return connection.createProxy(AGENT_PANE_SERVICE_PATH, ctx.container.get(AgentPaneClientDispatcher));
     })
     .inSingletonScope();
   bind(SpexrScheduleClientDispatcher).toSelf().inSingletonScope();
