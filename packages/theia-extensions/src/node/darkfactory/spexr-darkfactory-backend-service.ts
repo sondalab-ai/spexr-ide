@@ -14,6 +14,7 @@ import {
 } from "./config-dirs.js";
 import type { ParsedTranscript } from "./transcript-parser.js";
 import { classifySession } from "./session-state.js";
+import { ToolCounter, countSessions, syncToolCounts } from "./tool-count.js";
 import { liveProjectDirs as defaultLiveProjectDirs } from "./process-scanner.js";
 import {
   claudeHarness,
@@ -402,6 +403,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
   private readonly harnessSessionMemos = new Map<string, () => Promise<HarnessSessionRef[]>>();
   private sessionIndex?: Promise<SessionIndex>;
   private indexing = false;
+  /** Tool-call counts by transcript, kept up to date by the index crawl and by each scan for live sessions. */
+  private readonly toolCounter = new ToolCounter();
   private readonly embed: ((texts: string[]) => Promise<Float32Array[]>) | undefined;
   private readonly sessionIndexPath: string | undefined;
   private readonly sessionNamesPath: string | undefined;
@@ -669,6 +672,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         needsYou,
         needsYouCertain,
         hashToIndex,
+        ...this.toolCountOf(u.claude?.transcriptPath),
         ...inheritedNameOf(names, ref.sessionId, ancestors.get(ref.sessionId)),
         ...projectNameOf(projectNames, group.path, cwd),
         ...(ancestors.has(ref.sessionId) ? { supersedes: ancestors.get(ref.sessionId)! } : {}),
@@ -676,6 +680,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
       this.lastTiles.set(ref.sessionId, tile);
       tiles.push(tile);
     }
+    this.refreshLiveToolCounts(tiles);
     // Evict AI-summary entries for sessions that no longer exist on disk, so the
     // cache tracks live sessions instead of growing unbounded over the process life.
     for (const id of this.summaryCache.keys()) {
@@ -876,7 +881,17 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
    * callable directly, which is how tests index without waiting for the timer.
    */
   async indexNow(): Promise<void> {
-    if (this.indexing || !this.embed) return;
+    if (this.indexing) return;
+    if (!this.embed) {
+      // No encoder (no model): nothing to index, but the tool counts are still due.
+      this.indexing = true;
+      try {
+        if (await syncToolCounts(this.toolCounter, await this.indexableSessions())) void this.pushTiles();
+      } finally {
+        this.indexing = false;
+      }
+      return;
+    }
     this.indexing = true;
     try {
       const index = await this.loadIndex();
@@ -886,6 +901,8 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
         list: () => this.indexableSessions(),
         save: (i) => this.writeSessionIndex(i),
         onProgress: (done, total) => this.client?.onSessionIndexProgress(done, total),
+        counter: this.toolCounter,
+        onToolCounts: () => void this.pushTiles(),
       });
     } finally {
       this.indexing = false;
@@ -968,6 +985,7 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
             needsYou,
             needsYouCertain,
             hashToIndex,
+            ...this.toolCountOf(u.claude?.transcriptPath),
             ...nameOf(names, sessionId),
             ...projectNameOf(projectNames, group.path, p.cwd),
           }),
@@ -989,6 +1007,25 @@ export class SpexrDarkfactoryBackendService implements SpexrDarkfactoryService {
     const value = await this.listTranscripts();
     this.enumCache = { at: now, value };
     return value;
+  }
+
+  /** `{ toolCount }` for a transcript the counter has scanned, else nothing: a tile never waits on a scan. */
+  private toolCountOf(transcriptPath: string | undefined): { toolCount?: number } {
+    const count = transcriptPath ? this.toolCounter.cached(transcriptPath) : undefined;
+    return count === undefined ? {} : { toolCount: count };
+  }
+
+  /**
+   * Keep the counts of sessions that are running current: they grow between
+   * crawls. Only reads what each file gained, and hands the wall fresh tiles
+   * when a count moved; the push scans again, finds nothing new and stops.
+   */
+  private refreshLiveToolCounts(tiles: readonly AgentTile[]): void {
+    const live = tiles.filter((t) => t.state === "working" && t.transcriptPath);
+    if (live.length === 0) return;
+    void countSessions(this.toolCounter, live)
+      .then((changed) => (changed ? this.pushTiles() : undefined))
+      .catch(() => undefined);
   }
 
   /** The enumerated sessions, flattened into what the crawl needs. */

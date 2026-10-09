@@ -106,6 +106,27 @@ describe("SpexrDarkfactoryBackendService v2", () => {
     expect(typeof tiles[0]!.accentId).toBe("number");
   });
 
+  it("gives a working session's tile its exact tool count: absent on the first scan, then pushed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-count-"));
+    const transcriptPath = join(dir, "s1.jsonl");
+    const use = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Bash","input":{}}]}}`;
+    await writeFile(transcriptPath, [use, use, use, ""].join("\n"));
+    try {
+      const pushed: AgentTile[][] = [];
+      const s = svc({
+        configDirs: [],
+        listTranscripts: async () => (await defaultTranscripts()).map((u) => ({ ...u, claude: { ...u.claude!, transcriptPath } })),
+      });
+      s.setClient({ ...fakeClient, onTilesChanged: (tiles) => pushed.push(tiles) });
+      expect((await s.listTiles())[0]!.toolCount).toBeUndefined();
+      await vi.waitFor(() => expect(pushed.some((tiles) => tiles[0]?.toolCount === 3)).toBe(true), { timeout: 2000 });
+      expect((await s.listTiles())[0]!.toolCount).toBe(3);
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("currentTiles starts one push before the first scan, and no other while it runs", async () => {
     let scans = 0;
     let release!: () => void;
@@ -620,7 +641,7 @@ function fakeWatch(
   };
 }
 
-const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {} };
+const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {}, onSessionIndexProgress: () => {} };
 
 describe("wall watcher", () => {
   it("watches the opencode data dir alongside the Claude config dirs when opencode is installed", async () => {
