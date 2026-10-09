@@ -51,3 +51,52 @@ export function glyphMarginOption(sources: GlyphLaneSources, uri: string): { gly
   });
   return lane === undefined ? undefined : { glyphMargin: lane };
 }
+
+/** What the lane model reads and listens to; every source of change is a function that takes a listener. */
+export interface GlyphLaneDeps extends GlyphLaneSources {
+  /** The user's `editor.glyphMargin` for the resource, so a folder value of a multi-root workspace counts. */
+  inspectFor(uri: string): InspectedValues | undefined;
+  /** Subscriptions to breakpoint changes and session starts and ends; empty when debugging is not installed. */
+  subscriptions: ReadonlyArray<(listener: () => void) => unknown>;
+}
+
+/** The lane decision for any editor, and a notice when it may have changed. Theia-free, so it is unit-tested. */
+export class GlyphLaneModel {
+  private readonly listeners: Array<() => void> = [];
+
+  constructor(private readonly deps: GlyphLaneDeps) {
+    for (const subscribe of deps.subscriptions) subscribe(() => this.listeners.forEach((l) => l()));
+  }
+
+  /** Calls `listener` when a breakpoint or a session changes. */
+  onDidChange(listener: () => void): void {
+    this.listeners.push(listener);
+  }
+
+  /** The `glyphMargin` option for an editor of `uri`, or undefined when the user's preference decides. */
+  optionFor(uri: string): { glyphMargin: boolean } | undefined {
+    return glyphMarginOption({ ...this.deps, inspect: () => this.deps.inspectFor(uri) }, uri);
+  }
+}
+
+/** The slice of an editor the lane updates. */
+export interface LaneEditor {
+  readonly uri: { toString(): string };
+  getControl(): { updateOptions(options: { glyphMargin: boolean }): void };
+}
+
+/**
+ * Updates the open editors after a change: only an editor whose decision
+ * differs from what it last held gets `updateOptions`, and an editor whose
+ * preference decides (no option) is never touched. `held` remembers each
+ * editor's last value across calls; an editor not seen before holds the
+ * default, off.
+ */
+export function refreshGlyphLanes(editors: Iterable<LaneEditor>, model: Pick<GlyphLaneModel, "optionFor">, held: WeakMap<object, boolean>): void {
+  for (const editor of editors) {
+    const option = model.optionFor(editor.uri.toString());
+    if (!option || option.glyphMargin === (held.get(editor) ?? false)) continue;
+    held.set(editor, option.glyphMargin);
+    editor.getControl().updateOptions(option);
+  }
+}

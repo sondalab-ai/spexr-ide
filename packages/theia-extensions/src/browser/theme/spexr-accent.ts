@@ -100,15 +100,29 @@ function towardPole([L, C, h]: [number, number, number], step: number, lighter: 
 }
 
 /**
- * The kit's danger and warning tones, per theme (themes/light.css and
- * themes/dark.css, --sl-status-danger / --sl-status-warning). A plugin's
- * error or warning status item is painted with a literal the colour registry
- * hands it, which no stylesheet reaches, so the registry needs them as hex.
- * contrast.test.ts pins them to the installed kit.
+ * The kit's four status tones, per theme (themes/light.css and dark.css,
+ * --sl-status-*), as hex. A Monaco theme and the colour registry are data a
+ * script hands to Monaco at registration, so they need JS values; a stylesheet
+ * import gives none, and the kit's `neutrals.json` carries the neutrals and
+ * the code palette but no status roles. The proper fix is upstream: status
+ * tones in the kit's `neutrals.json`, read like the rest, and this table gone.
+ * Until then spexr-status-tones.test.ts and contrast.test.ts pin every value
+ * to the installed kit. Outside an inversion band `--slc-<tone>-text` is the
+ * tone itself, so these are the text tones too.
+ */
+export const KIT_STATUS_TONES: Record<ThemeKind, { success: string; warning: string; danger: string; info: string }> = {
+  light: { success: "#4a6205", warning: "#795305", danger: "#a72b05", info: "#3853af" },
+  dark: { success: "#98b958", warning: "#db9e2e", danger: "#fe8263", info: "#87a7fd" },
+};
+
+/**
+ * The danger and warning tones as fills (a plugin's error or warning status
+ * item is painted with a literal the colour registry hands it, which no
+ * stylesheet reaches): the same values as {@link KIT_STATUS_TONES}.
  */
 export const KIT_STATUS_FILL: Record<ThemeKind, { danger: string; warning: string }> = {
-  light: { danger: "#a72b05", warning: "#795305" },
-  dark: { danger: "#fe8263", warning: "#db9e2e" },
+  light: { danger: KIT_STATUS_TONES.light.danger, warning: KIT_STATUS_TONES.light.warning },
+  dark: { danger: KIT_STATUS_TONES.dark.danger, warning: KIT_STATUS_TONES.dark.warning },
 };
 
 /**
@@ -145,17 +159,3 @@ export function accentTextActive(theme: ThemeKind): string {
   const [L, C, h] = toOklch(ACCENT[theme]);
   return fromOklch(towardPole([Math.min(L, KIT_ACCENT_TEXT_LMAX[theme]), C, h], KIT_SHADE_STEP, theme === "dark"));
 }
-
-/**
- * The kit's four status tones, per theme (themes/light.css and dark.css,
- * --sl-status-*). Monaco draws squiggles, ruler marks and change bars from
- * theme data, which no stylesheet reaches, and the kit's stylesheets are not
- * importable into the bundle, so the editor theme takes them as hex. Outside
- * an inversion band `--slc-<tone>-text` is the tone itself (the chrome CSS
- * falls back to it), so these are the text tones too. spexr-status-tones.test.ts
- * pins every value to the installed kit.
- */
-export const KIT_STATUS_TONES: Record<ThemeKind, { success: string; warning: string; danger: string; info: string }> = {
-  light: { success: "#4a6205", warning: "#795305", danger: "#a72b05", info: "#3853af" },
-  dark: { success: "#98b958", warning: "#db9e2e", danger: "#fe8263", info: "#87a7fd" },
-};
