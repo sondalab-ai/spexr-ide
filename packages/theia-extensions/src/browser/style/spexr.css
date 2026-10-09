@@ -904,7 +904,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* The host keeps no shadow of its own: the recipe is the overlay below.
    That also drops the kit's drop below a lit pane (0.34, --slc-lit-drop),
-   which S5f wears inward on the bottom split panel's handle. */
+   which the lit island's light wears inward on the bottom split panel's
+   handle (below). */
 .spexr-island.sl-pane,
 .spexr-island.sl-pane[data-lit] {
   box-shadow: none;
@@ -985,20 +986,33 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   box-shadow: inset 0 0 0 1px var(--slc-border);
 }
 
-/* The lit pane's glow (the kit's 0.33 glow, 0 0 24px -6px, at --slc-glow's
-   strength) falls inward, along every edge. --slc-glow is 0 in high
-   contrast. Kit 0.34 replaced that glow with a drop below the pane and a
-   wash and tint for the chrome inside it (--slc-lit-drop, --slc-lit-wash,
-   --slc-lit-tint); S5f takes them, and this glow goes then. */
-.spexr-island[data-lit]::after {
-  box-shadow:
-    inset 0 0 0 1px var(--slc-border-subtle),
-    inset 0 2px 0 var(--slc-lit),
-    inset 0 0 24px -6px color-mix(in srgb, var(--slc-seam) calc(var(--slc-glow) * 40%), transparent);
+/* The lit pane's light (kit 0.34, "the lit pane, as rendered"; S5f; the
+   owner's call is the demo's own rendering, with no accent rim round the
+   pane). The kit's 0.33 glow all round, which this drew inward, is gone. The
+   light is three pieces, each the kit's role, and each nothing in high
+   contrast and under forced colours (--slc-glow is 0 there, and the rules
+   are for light and dark only):
+   - the wash, --slc-lit-wash, along the top of the main island's tab strip
+     (the kit sizes it by the box it is painted on, as Lumen's strip);
+   - the tint, --slc-lit-tint, down the breadcrumbs under it, over the row's
+     own fill;
+   - the drop, --slc-lit-drop, the glow that falls below the lit pane. The
+     host's own shadow is off (above) and Lumino clips what a pane casts
+     outward, so it is worn inward, as the kit says, by the element right
+     under the pane: the bottom split's handle, the gap between the main
+     island and the bottom island. It starts at the handle's top edge, the
+     same falloff from the same line. Where the bottom island is hidden there
+     is no gap, and no drop. */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar {
+  background-image: var(--slc-lit-wash);
 }
 
-:root[data-sl-theme="high-contrast"] .spexr-island[data-lit]::after {
-  box-shadow: inset 0 0 0 1px var(--slc-border);
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .theia-breadcrumbs {
+  background-image: var(--slc-lit-tint);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-split-panel:has(> #theia-main-content-panel.spexr-island[data-lit]) > .lm-SplitPanel-handle {
+  box-shadow: inset var(--slc-lit-drop);
 }
 
 /* The bottom island's tabs are the editor's tile tabs (THEIA'S CHROME IN
