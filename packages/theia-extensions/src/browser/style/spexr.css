@@ -2688,7 +2688,8 @@ body .theia-notifications-container.theia-notification-toasts {
 
 /* Theia's own `textarea:focus` outline would draw a second ring inside the
    composer's: the field is never outlined, whatever focuses it. */
-.spexr-agent-composer .spexr-agent-composer__input:is(:focus, :focus-visible) {
+.spexr-agent-composer .spexr-agent-composer__input:focus,
+.spexr-agent-composer .spexr-agent-composer__input:focus-visible {
   outline: none !important;
   box-shadow: none !important;
   border: 0;

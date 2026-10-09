@@ -114,7 +114,7 @@ describe("the agent pane in spexr.css", () => {
     expect(rules(".spexr-agent-composer:focus-within")).toMatch(/box-shadow:\s*0 0 0 var\(--sl-focus-ring-width, 2px\) var\(--slc-focus\)/);
     expect(rules(".spexr-agent-composer__input")).toMatch(/outline:\s*none/);
     // Theia's `textarea:focus` outline is out-ranked, so no second ring shows inside the composer's.
-    const focused = rules(".spexr-agent-composer .spexr-agent-composer__input:is(:focus, :focus-visible)");
+    const focused = rules(".spexr-agent-composer .spexr-agent-composer__input:focus");
     expect(focused).toMatch(/outline:\s*none\s*!important/);
     expect(focused).toMatch(/box-shadow:\s*none\s*!important/);
   });
