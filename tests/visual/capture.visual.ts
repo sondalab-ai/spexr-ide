@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
+import { RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   QUICK_OPEN,
   captureStable,
@@ -23,6 +23,17 @@ const THEMES = (process.env.VISUAL_THEMES ?? "dark,light")
   .split(",")
   .map((t) => t.trim())
   .filter((t): t is Theme => t === "dark" || t === "light");
+/** The workspace's TODO.md in the right-panel scene: three open items and a done one. */
+const RIGHT_PANEL_TODO = [
+  "# TODO",
+  "",
+  "- [ ] Await the cache write in resolve.ts",
+  "- [ ] Re-run the probe suite",
+  "- [ ] Fix the R finding in components.css",
+  "- [x] Keep the p95 under 2 ms",
+  "",
+].join("\n");
+
 /**
  * Profiles, HOME and the fixture workspace: under the runner's temp
  * directory, which is outside the checkout and not under /tmp (spexr closes
@@ -145,6 +156,62 @@ for (const theme of THEMES) {
       // After every scene: reading the editor's padding clicks into it and goes
       // to line 1, so no capture follows it.
       meta.editor = { ...(meta.editor ?? (await probeEditor(page))), paddingTop: (await probeEditorPadding(page))?.paddingTop ?? null };
+      writeMeta();
+
+      // The right island with each of its three views in front (S5e). The
+      // files each view reads are written here, not kept in the fixture, so
+      // the Explorer's tree in the earlier scenes stays the demo's. A view's
+      // toggle closes it when it is already in front, so it is run again if
+      // the first run left it hidden. Any failure fails the capture.
+      const ws = meta.run.workspace;
+      const seed = (rel: string, text: string): void => {
+        fs.mkdirSync(path.dirname(path.join(ws, rel)), { recursive: true });
+        fs.writeFileSync(path.join(ws, rel), text);
+      };
+      const showRightView = async (toggle: string, root: string, ready: string, refresh = false): Promise<void> => {
+        const view = page.locator(`#theia-right-content-panel ${root}`);
+        await runCommand(page, toggle);
+        if (!(await view.isVisible().catch(() => false))) await runCommand(page, toggle);
+        await view.waitFor({ state: "visible", timeout: 15_000 });
+        // Experts and Memory read their folders on a Theia file operation, not
+        // on a write from outside, so the view is told to read what was seeded.
+        if (refresh) await view.getByRole("button", { name: "Refresh" }).click();
+        await page.locator(`#theia-right-content-panel ${ready}`).first().waitFor({ state: "visible", timeout: 30_000 });
+      };
+      meta.rightPanel = {};
+
+      seed("TODO.md", RIGHT_PANEL_TODO);
+      await showRightView("View: Toggle TODO", ".spexr-todo", ".spexr-todo__item");
+      await shoot("right-panel");
+      meta.rightPanel["todo"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
+      writeMeta();
+
+      // Two installed experts, the first active (a folder setting, which the
+      // view follows), so the first and last rows of the card, the current
+      // row's seam and its tile are all on screen.
+      for (const [id, name, icon] of [["backend-architect", "backend-architect", "codicon-server"], ["reviewer", "reviewer", "codicon-eye"]] as const) {
+        seed(`docs/agents/${id}.md`, `---\nid: ${id}\nname: ${name}\nicon: ${icon}\n---\n\nYou are a ${name}.\n`);
+      }
+      // The active expert is read without a folder while no agent runs, so
+      // the user's settings carry it (the folder's own file too).
+      seed(".theia/settings.json", JSON.stringify({ "spexr.experts.activeId": "backend-architect" }, null, 2));
+      const userSettings = path.join(meta.run.configDir, "settings.json");
+      fs.writeFileSync(
+        userSettings,
+        JSON.stringify({ ...JSON.parse(fs.readFileSync(userSettings, "utf8")), "spexr.experts.activeId": "backend-architect" }, null, 2) + "\n",
+      );
+      await showRightView("View: Toggle Experts", ".spexr-experts-panel", '.spexr-experts-list__item[aria-current="true"]', true);
+      await page.locator("#theia-right-content-panel .spexr-experts-list__item").nth(1).waitFor({ state: "visible", timeout: 15_000 });
+      await shoot("right-experts");
+      meta.rightPanel["experts"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
+      writeMeta();
+
+      for (const [file, name, type] of [["user_role.md", "senior-engineer", "user"], ["feedback_db.md", "no-mocks-for-the-db", "feedback"]] as const) {
+        seed(`docs/memory/${file}`, `---\nname: ${name}\ndescription: A note the agent loads on every session.\ntype: ${type}\n---\n\nBody.\n`);
+      }
+      await showRightView("View: Toggle Memory", ".spexr-memory-panel", ".spexr-memory-list__item", true);
+      await shoot("right-memory");
+      meta.rightPanel["memory"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
       writeMeta();
 
       // macOS: the lights one zoom level out, then the bar's room through full

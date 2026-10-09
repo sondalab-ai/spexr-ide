@@ -16,6 +16,7 @@ import { mergeInstalled, parseExpertFrontmatter, type InstalledExpert, type Inst
 import { SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE } from "../preferences/spexr-preferences.js";
 import { agentsDir } from "../workspace-paths.js";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
+import { PanelHead } from "./panel-head.js";
 
 interface ExpertsPanelProps {
   readonly hasWorkspace: boolean;
@@ -216,12 +217,17 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
   const installedIds = new Set(installed.map((e) => e.id));
   const available = marketplace.filter((e) => !installedIds.has(e.id));
   const dtoById = new Map(marketplace.map((e) => [e.id, e]));
+  const eyebrow = nls.localize("spexr/experts/eyebrow", "Agent · personas");
+  const title = nls.localize("spexr/experts/title", "Experts");
 
   if (!hasWorkspace) {
     return (
       <section className="spexr-experts-panel" aria-label="Expert agents">
-        <div className="sl-empty spexr-experts-panel__empty">
-          <p className="sl-empty__body">Open a workspace to manage expert agents.</p>
+        <PanelHead eyebrow={eyebrow} title={title} />
+        <div className="spexr-panel-body">
+          <div className="sl-empty spexr-experts-panel__empty">
+            <p className="sl-empty__body">Open a workspace to manage expert agents.</p>
+          </div>
         </div>
       </section>
     );
@@ -229,134 +235,134 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
 
   return (
     <section className="spexr-experts-panel" aria-label="Expert agents">
-      <header className="spexr-experts-panel__header">
-        <h2>{nls.localize("spexr/experts/title", "Experts")}</h2>
+      <PanelHead eyebrow={eyebrow} title={title} />
+      <div className="spexr-panel-body">
         <p className="spexr-experts-panel__hint">
           Add an expert persona to the project, then start a Claude session as that expert.
           One expert is active at a time.
         </p>
-      </header>
 
-      <div className="spexr-experts-panel__actions">
-        <button type="button" className="sl-btn sl-btn--ghost sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={onRefresh}>
-          Refresh
-        </button>
-      </div>
+        <div className="spexr-experts-panel__actions">
+          <button type="button" className="sl-btn sl-btn--ghost" onClick={onRefresh}>
+            Refresh
+          </button>
+        </div>
 
-      <div className="spexr-experts-panel__section">
-        <h3 className="spexr-experts-panel__subtitle">{nls.localize("spexr/experts/inProject", "In project")}</h3>
-        {installed.length === 0 ? (
-          <div className="sl-empty spexr-experts-panel__empty">
-            <p className="sl-empty__body">
-              No experts yet. Add one from the marketplace below.
-            </p>
-          </div>
-        ) : (
-          <ul className="spexr-experts-list" role="list">
-            {installed.map((e) => {
-              const isActive = e.id === activeId;
-              const dto = dtoById.get(e.id);
-              return (
-                <li
-                  key={e.id}
-                  className={`spexr-experts-list__item${isActive ? " spexr-experts-list__item--active" : ""}`}
-                  style={isActive ? { borderColor: e.color, background: `${e.color}1f` } : undefined}
-                >
-                  <span className={`codicon ${e.icon} spexr-experts-list__icon`} style={{ color: e.color }} />
-                  <span className="spexr-experts-list__meta">
-                    <span className="spexr-experts-list__name">
-                      {e.name}
-                      {isActive ? (
-                        <span
-                          className="spexr-experts-list__status"
-                          role="img"
-                          aria-label={nls.localize("spexr/experts/activeStatus", "Active: the agent runs as this expert")}
-                          title={nls.localize("spexr/experts/activeStatus", "Active: the agent runs as this expert")}
-                        />
+        <div className="spexr-experts-panel__section">
+          <h3 className="spexr-experts-panel__subtitle">{nls.localize("spexr/experts/inProject", "In project")}</h3>
+          {installed.length === 0 ? (
+            <div className="sl-empty spexr-experts-panel__empty">
+              <p className="sl-empty__body">
+                No experts yet. Add one from the marketplace below.
+              </p>
+            </div>
+          ) : (
+            <ul className="spexr-experts-list" role="list">
+              {installed.map((e) => {
+                const isActive = e.id === activeId;
+                const dto = dtoById.get(e.id);
+                return (
+                  <li
+                    key={e.id}
+                    className="sl-list__row spexr-experts-list__item"
+                    aria-current={isActive ? "true" : undefined}
+                  >
+                    <span className={`codicon ${e.icon} spexr-experts-list__icon`} />
+                    <span className="spexr-experts-list__meta">
+                      <span className="spexr-experts-list__name">
+                        {e.name}
+                        {isActive ? (
+                          <span
+                            className="spexr-experts-list__status"
+                            role="img"
+                            aria-label={nls.localize("spexr/experts/activeStatus", "Active: the agent runs as this expert")}
+                            title={nls.localize("spexr/experts/activeStatus", "Active: the agent runs as this expert")}
+                          />
+                        ) : null}
+                      </span>
+                      {dto?.description ? (
+                        <span className="spexr-experts-list__desc">{dto.description}</span>
+                      ) : null}
+                      {multiRoot ? (
+                        <span className="spexr-experts-list__desc">in {e.folders.join(", ")}</span>
                       ) : null}
                     </span>
-                    {dto?.description ? (
-                      <span className="spexr-experts-list__desc">{dto.description}</span>
-                    ) : null}
-                    {multiRoot ? (
-                      <span className="spexr-experts-list__desc">in {e.folders.join(", ")}</span>
-                    ) : null}
+                    <span className="spexr-experts-list__buttons">
+                      {dto && !isActive ? (
+                        <button
+                          type="button"
+                          className="sl-btn sl-btn--ghost sl-btn--sm"
+                          onClick={() => onStart(dto)}
+                        >
+                          {nls.localize("spexr/experts/start", "Start")}
+                        </button>
+                      ) : null}
+                      {isActive && dto?.kickoffPrompt ? (
+                        <button
+                          type="button"
+                          className="sl-btn sl-btn--ghost sl-btn--sm"
+                          onClick={() => onKickoff(dto)}
+                          title={nls.localize(
+                            "spexr/experts/kickoffHint",
+                            "Re-run this expert's kickoff prompt",
+                          )}
+                        >
+                          {nls.localize("spexr/experts/kickoff", "Run kickoff")}
+                        </button>
+                      ) : null}
+                      {isActive ? (
+                        <button
+                          type="button"
+                          className="sl-btn sl-btn--ghost sl-btn--sm"
+                          onClick={onDeactivate}
+                        >
+                          {nls.localize("spexr/experts/deactivate", "Deactivate")}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger"
+                        onClick={() => onRemove(e.id)}
+                      >
+                        {nls.localize("spexr/experts/remove", "Remove")}
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="spexr-experts-panel__section">
+          <h3 className="spexr-experts-panel__subtitle">Marketplace</h3>
+          {available.length === 0 ? (
+            <div className="sl-empty spexr-experts-panel__empty">
+              <p className="sl-empty__body">All marketplace experts are already in the project.</p>
+            </div>
+          ) : (
+            <ul className="spexr-experts-list" role="list">
+              {available.map((e) => (
+                <li key={e.id} className="sl-list__row spexr-experts-list__item">
+                  <span className={`codicon ${e.icon} spexr-experts-list__icon`} />
+                  <span className="spexr-experts-list__meta">
+                    <span className="spexr-experts-list__name">{e.name}</span>
+                    <span className="spexr-experts-list__desc">{e.description}</span>
                   </span>
                   <span className="spexr-experts-list__buttons">
-                    {dto && !isActive ? (
-                      <button
-                        type="button"
-                        className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
-                        onClick={() => onStart(dto)}
-                      >
-                        {nls.localize("spexr/experts/start", "Start")}
-                      </button>
-                    ) : null}
-                    {isActive && dto?.kickoffPrompt ? (
-                      <button
-                        type="button"
-                        className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
-                        onClick={() => onKickoff(dto)}
-                        title={nls.localize(
-                          "spexr/experts/kickoffHint",
-                          "Re-run this expert's kickoff prompt",
-                        )}
-                      >
-                        {nls.localize("spexr/experts/kickoff", "Run kickoff")}
-                      </button>
-                    ) : null}
-                    {isActive ? (
-                      <button
-                        type="button"
-                        className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
-                        onClick={onDeactivate}
-                      >
-                        {nls.localize("spexr/experts/deactivate", "Deactivate")}
-                      </button>
-                    ) : null}
                     <button
                       type="button"
-                      className="sl-btn sl-btn--ghost sl-btn--sm sl-btn--danger sl-fx-glass sl-fx-glass--pane sl-fx-press"
-                      onClick={() => onRemove(e.id)}
+                      className="sl-btn sl-btn--ghost sl-btn--sm"
+                      onClick={() => onAdd(e)}
                     >
-                      {nls.localize("spexr/experts/remove", "Remove")}
+                      {nls.localize("spexr/experts/add", "+ Add")}
                     </button>
                   </span>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      <div className="spexr-experts-panel__section">
-        <h3 className="spexr-experts-panel__subtitle">Marketplace</h3>
-        {available.length === 0 ? (
-          <div className="sl-empty spexr-experts-panel__empty">
-            <p className="sl-empty__body">All marketplace experts are already in the project.</p>
-          </div>
-        ) : (
-          <ul className="spexr-experts-list" role="list">
-            {available.map((e) => (
-              <li key={e.id} className="spexr-experts-list__item">
-                <span className={`codicon ${e.icon} spexr-experts-list__icon`} style={{ color: e.color }} />
-                <span className="spexr-experts-list__meta">
-                  <span className="spexr-experts-list__name">{e.name}</span>
-                  <span className="spexr-experts-list__desc">{e.description}</span>
-                </span>
-                <span className="spexr-experts-list__buttons">
-                  <button
-                    type="button"
-                    className="sl-btn sl-btn--ghost sl-btn--sm sl-fx-glass sl-fx-glass--pane sl-fx-press"
-                    onClick={() => onAdd(e)}
-                  >
-                    {nls.localize("spexr/experts/add", "+ Add")}
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </section>
   );

@@ -51,6 +51,10 @@ describe("controls on the kit", () => {
     expect(css).not.toMatch(/smart-search__(progress-(track|fill)|map-fill|filter-)|spexr-progress__(bar|fill)|df-card__chip/);
   });
 
+  it("stands the What's New dismiss's press down with the kit's knob", () => {
+    expect(rule(".spexr-whats-new__dismiss")).toMatch(/--slfx-pane-swell:\s*1;/);
+  });
+
   it.each([".spexr-df-row", ".spexr-whats-new__dismiss", ".spexr-todo__more, .spexr-todo__done-toggle"])(
     "%s leaves background and colour to the kit",
     (sel) => {
