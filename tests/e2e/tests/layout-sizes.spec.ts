@@ -86,7 +86,13 @@ async function dragLeftSash(page: Page, dx: number): Promise<void> {
 async function showLeftView(page: Page, widgetId: string): Promise<void> {
   const tab = page.locator(`#shell-tab-${widgetId}`);
   await tab.waitFor({ state: "visible", timeout: 15_000 });
-  if (!(await tab.evaluate((el) => el.classList.contains("lm-mod-current")))) await tab.click();
+  // A tab that a synthetic pointer event (activateTab) just touched can swallow
+  // the first click, so the click is tried again while the tile is not current.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await tab.evaluate((el) => el.classList.contains("lm-mod-current"))) break;
+    await tab.click();
+    await page.waitForTimeout(500);
+  }
   await expect(tab).toHaveClass(/lm-mod-current/, { timeout: 10_000 });
 }
 
