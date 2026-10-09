@@ -93,6 +93,16 @@ function svc(over: Partial<ServiceOptions> = {}) {
   });
 }
 
+/**
+ * Keep the first crawl (S6g: it runs without an encoder too, to count tool
+ * calls) out of a poll-counting test: it lists the transcripts once at
+ * FIRST_CRAWL_DELAY_MS, which the poll's own scan count must not include.
+ */
+function withoutCrawl<T extends SpexrDarkfactoryBackendService>(s: T): T {
+  vi.spyOn(s, "indexNow").mockResolvedValue(undefined);
+  return s;
+}
+
 describe("SpexrDarkfactoryBackendService v2", () => {
   it("listTiles builds a working tile with a distilled action", async () => {
     const tiles = await svc().listTiles();
@@ -856,7 +866,7 @@ describe("wall polling", () => {
     vi.useFakeTimers();
     try {
       let scans = 0;
-      const s = svc({
+      const s = withoutCrawl(svc({
         configDirs: [],
         detect: () => false,
         watchDir: fakeWatch([]),
@@ -865,7 +875,7 @@ describe("wall polling", () => {
           scans++;
           return [];
         },
-      });
+      }));
       s.setClient(fakeClient);
       expect(scans).toBe(0); // arming the watchers alone does not scan
       await vi.advanceTimersByTimeAsync(20_000); // POLL_INTERVAL_MS
@@ -884,7 +894,7 @@ describe("wall polling", () => {
 describe("requestScans (the plant schedule's shared scan ticker)", () => {
   const counting = () => {
     const c = { scans: 0, gate: undefined as Promise<void> | undefined };
-    const s = svc({
+    const s = withoutCrawl(svc({
       configDirs: [],
       detect: () => false,
       watchDir: fakeWatch([]),
@@ -894,7 +904,7 @@ describe("requestScans (the plant schedule's shared scan ticker)", () => {
         await c.gate;
         return [];
       },
-    });
+    }));
     return { s, c };
   };
 
@@ -982,7 +992,7 @@ describe("setPollingPaused", () => {
     vi.useFakeTimers();
     try {
       let scans = 0;
-      const s = svc({
+      const s = withoutCrawl(svc({
         configDirs: [],
         detect: () => false,
         watchDir: fakeWatch([]),
@@ -991,7 +1001,7 @@ describe("setPollingPaused", () => {
           scans++;
           return [];
         },
-      });
+      }));
       s.setClient(fakeClient);
       s.setPollingPaused(true);
       await vi.advanceTimersByTimeAsync(40_000);
