@@ -64,6 +64,8 @@ import { SpexrStatusThemeDataContribution } from "./theme/status-theme-data-cont
 import { SpexrMonacoThemeContribution } from "./theme/spexr-monaco-theme-contribution.js";
 import { MonacoEditorProvider } from "@theia/monaco/lib/browser/monaco-editor-provider";
 import { SpexrMonacoEditorProvider } from "./editor/spexr-monaco-editor-provider.js";
+import { SpexrGlyphLane } from "./editor/spexr-glyph-lane-service.js";
+import { SpexrGlyphLaneContribution } from "./editor/spexr-glyph-lane-contribution.js";
 import { SpexrToastAnnouncer } from "./messages/toast-announcer.js";
 import { ClaudeTerminalManager } from "./agent/claude-terminal-manager.js";
 import { SpexrLaunchProfilesService } from "./agent/launch-profiles-service.js";
@@ -248,6 +250,10 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(FrontendApplicationContribution).to(SpexrMonacoThemeContribution).inSingletonScope();
   // The editor's gutter, sized as the demo's: line numbers end at 38, text starts at 56.
   rebind(MonacoEditorProvider).to(SpexrMonacoEditorProvider).inSingletonScope();
+  // The glyph lane is off, and shown where debugging needs it (breakpoints in a model, a running session).
+  bind(SpexrGlyphLane).toSelf().inSingletonScope();
+  bind(SpexrGlyphLaneContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrGlyphLaneContribution);
   // Theia's toasts have no live region: two of the kit's, said once each.
   bind(FrontendApplicationContribution).to(SpexrToastAnnouncer).inSingletonScope();
 
