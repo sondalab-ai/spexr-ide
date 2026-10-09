@@ -55,9 +55,8 @@ export interface CaptureMeta {
   editor?: EditorProbe & { paddingTop?: number | null };
   /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */
   toastParity?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
-  /** The right-panel scene's regions, keyed `rp.*` (S5e); `rightPanelError` when the scene did not complete. */
-  rightPanel?: Record<string, Array<{ x: number; y: number; w: number; h: number }>>;
-  rightPanelError?: string;
+  /** The right-panel scenes' regions by view (`todo`, `experts`, `memory`), keyed `rp.*` (S5e). */
+  rightPanel?: Record<string, Record<string, Array<{ x: number; y: number; w: number; h: number }>>>;
   main?: MainProbes;
   native?: NativeShot[];
   treeFocused?: boolean;

@@ -65,12 +65,14 @@ function renderSummary(runs: Run[]): string {
   );
   md += row("main tab strips aligned", (m) => m.scenes.map((s) => `${s.scene} ${s.alignedStrips}`).join(", "));
   md += row("infinite animations paused", (m) => m.scenes.map((s) => `${s.scene} ${s.pausedLoops}`).join(", "));
-  md += row("right panel (TODO): head h / eyebrow y / title y / card x,w / row h / check box (demo 69.8 / 13.6 / 32 / 16,320 / 32.4 / 16)", (m) => {
-    const rp = m.rightPanel;
-    const [pane, head, eyebrow, title, card, row, box] = ["rp.pane", "rp.head", "rp.eyebrow", "rp.title", "rp.card", "rp.row", "rp.check"].map((k) => rp?.[k]?.[0]);
-    if (!pane || !head || !eyebrow || !title) return m.rightPanelError ?? "";
-    return [head.h, eyebrow.y - pane.y, title.y - pane.y, card ? `${card.x - pane.x},${card.w}` : "—", row?.h ?? "—", box ? box.w : "—"].join(" / ");
-  });
+  for (const view of ["todo", "experts", "memory"]) {
+    md += row(`right panel (${view}): head h / eyebrow y / title y / card x,w / row h (demo 69.8 / 13.6 / 32 / 16,320 / 32.4)`, (m) => {
+      const rp = m.rightPanel?.[view];
+      const [pane, head, eyebrow, title, card, row] = ["rp.pane", "rp.head", "rp.eyebrow", "rp.title", "rp.card", "rp.row"].map((k) => rp?.[k]?.[0]);
+      if (!pane || !head || !eyebrow || !title) return "";
+      return [head.h, eyebrow.y - pane.y, title.y - pane.y, card ? `${card.x - pane.x},${card.w}` : "—", row?.h ?? "—"].join(" / ");
+    });
+  }
   md += row("editor top line (base)", (m) => `${m.baseFirstVisibleLine} in the gutter; API ${base(m)?.scroll?.topLine} via ${base(m)?.scroll?.how}`);
   md += row("bottom panel terminals", (m) => {
     const t = base(m)?.terminal;

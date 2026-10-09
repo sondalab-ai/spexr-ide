@@ -83,7 +83,7 @@ export const SHELL_REGIONS: readonly ShellRegion[] = [
 ];
 
 /**
- * The right-panel scene's regions (S5e), with the TODO view in front: the
+ * The right-panel scenes' regions (S5e), with TODO, Experts or Memory in front: the
  * island, the head and its parts, a card and its first row and check box.
  * The demo's counterparts are its agent pane's head, tool list and plan.
  */
@@ -93,9 +93,11 @@ export const RIGHT_PANEL_REGIONS: readonly ShellRegion[] = [
   { key: "rp.eyebrow", selector: "#theia-right-content-panel .spexr-panel-head__eyebrow" },
   { key: "rp.title", selector: "#theia-right-content-panel .spexr-panel-head__title" },
   { key: "rp.body", selector: "#theia-right-content-panel .spexr-panel-body" },
-  { key: "rp.card", selector: "#theia-right-content-panel .spexr-todo__file" },
-  { key: "rp.row", selector: "#theia-right-content-panel .spexr-todo__item" },
+  { key: "rp.card", selector: "#theia-right-content-panel :is(.spexr-todo__file, .spexr-memory-list, .spexr-experts-list)" },
+  { key: "rp.row", selector: "#theia-right-content-panel :is(.spexr-todo__item, .spexr-memory-list__item, .spexr-experts-list__item)" },
+  { key: "rp.row.current", selector: '#theia-right-content-panel .spexr-experts-list__item[aria-current="true"]' },
   { key: "rp.check", selector: "#theia-right-content-panel .spexr-todo__item .sl-check__box" },
+  { key: "rp.name", selector: "#theia-right-content-panel :is(.spexr-memory-list__name, .spexr-experts-list__name)" },
 ];
 
 /** The toast scene's regions: the toast and its stack. */

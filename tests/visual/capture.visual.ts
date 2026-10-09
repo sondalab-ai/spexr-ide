@@ -158,24 +158,50 @@ for (const theme of THEMES) {
       meta.editor = { ...(meta.editor ?? (await probeEditor(page))), paddingTop: (await probeEditorPadding(page))?.paddingTop ?? null };
       writeMeta();
 
-      // The right island with the TODO view in front (S5e). The toggle closes
-      // a view that is already in front, so it is run again if the first run
-      // left it hidden. A failure here is recorded, and does not stop the
-      // captures after it.
-      try {
-        // Written here, not kept in the fixture, so the Explorer's tree in the
-        // earlier scenes stays the demo's.
-        fs.writeFileSync(path.join(meta.run.workspace, "TODO.md"), RIGHT_PANEL_TODO);
-        const todo = page.locator("#theia-right-content-panel .spexr-todo");
-        await runCommand(page, "View: Toggle TODO");
-        if (!(await todo.isVisible().catch(() => false))) await runCommand(page, "View: Toggle TODO");
-        await todo.waitFor({ state: "visible", timeout: 15_000 });
-        await page.locator("#theia-right-content-panel .spexr-todo__item").first().waitFor({ state: "visible", timeout: 15_000 });
-        await shoot("right-panel");
-        meta.rightPanel = await probeRegions(page, RIGHT_PANEL_REGIONS);
-      } catch (err) {
-        meta.rightPanelError = err instanceof Error ? err.message : String(err);
+      // The right island with each of its three views in front (S5e). The
+      // files each view reads are written here, not kept in the fixture, so
+      // the Explorer's tree in the earlier scenes stays the demo's. A view's
+      // toggle closes it when it is already in front, so it is run again if
+      // the first run left it hidden. Any failure fails the capture.
+      const ws = meta.run.workspace;
+      const seed = (rel: string, text: string): void => {
+        fs.mkdirSync(path.dirname(path.join(ws, rel)), { recursive: true });
+        fs.writeFileSync(path.join(ws, rel), text);
+      };
+      const showRightView = async (toggle: string, root: string, ready: string): Promise<void> => {
+        const view = page.locator(`#theia-right-content-panel ${root}`);
+        await runCommand(page, toggle);
+        if (!(await view.isVisible().catch(() => false))) await runCommand(page, toggle);
+        await view.waitFor({ state: "visible", timeout: 15_000 });
+        await page.locator(`#theia-right-content-panel ${ready}`).first().waitFor({ state: "visible", timeout: 30_000 });
+      };
+      meta.rightPanel = {};
+
+      seed("TODO.md", RIGHT_PANEL_TODO);
+      await showRightView("View: Toggle TODO", ".spexr-todo", ".spexr-todo__item");
+      await shoot("right-panel");
+      meta.rightPanel["todo"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
+      writeMeta();
+
+      // Two installed experts, the first active (a folder setting, which the
+      // view follows), so the first and last rows of the card, the current
+      // row's seam and its tile are all on screen.
+      for (const [id, name, icon] of [["backend-architect", "backend-architect", "codicon-server"], ["reviewer", "reviewer", "codicon-eye"]] as const) {
+        seed(`docs/agents/${id}.md`, `---\nid: ${id}\nname: ${name}\nicon: ${icon}\ncolor: #888888\n---\n\nYou are a ${name}.\n`);
       }
+      seed(".theia/settings.json", JSON.stringify({ "spexr.experts.activeId": "backend-architect" }, null, 2));
+      await showRightView("View: Toggle Experts", ".spexr-experts-panel", '.spexr-experts-list__item[aria-current="true"]');
+      await page.locator("#theia-right-content-panel .spexr-experts-list__item").nth(1).waitFor({ state: "visible", timeout: 15_000 });
+      await shoot("right-experts");
+      meta.rightPanel["experts"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
+      writeMeta();
+
+      for (const [file, name, type] of [["user_role.md", "senior-engineer", "user"], ["feedback_db.md", "no-mocks-for-the-db", "feedback"]] as const) {
+        seed(`docs/memory/${file}`, `---\nname: ${name}\ndescription: A note the agent loads on every session.\ntype: ${type}\n---\n\nBody.\n`);
+      }
+      await showRightView("View: Toggle Memory", ".spexr-memory-panel", ".spexr-memory-list__item");
+      await shoot("right-memory");
+      meta.rightPanel["memory"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
       writeMeta();
 
       // macOS: the lights one zoom level out, then the bar's room through full
