@@ -25,6 +25,11 @@ export const GEIST_MONO_ADVANCE_EM = 0.6;
 /** The two Monaco options the gutter is tuned with (not Theia preferences, so set when an editor is created). */
 export const SPEXR_GUTTER_OPTIONS = { lineNumbersMinChars: 5, lineDecorationsWidth: 1 } as const;
 
+/** Editor options with the gutter's laid over them: the same for an editor and for a diff editor's two sides. */
+export function withSpexrGutter<T extends object>(options: T): T & typeof SPEXR_GUTTER_OPTIONS {
+  return { ...options, ...SPEXR_GUTTER_OPTIONS };
+}
+
 /** The width Monaco adds to the decorations for the folding controls. */
 export const MONACO_FOLDING_WIDTH = 16;
 

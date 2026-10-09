@@ -1,5 +1,5 @@
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
-import { ACCENT } from "./spexr-accent.js";
+import { ACCENT, KIT_STATUS_TONES } from "./spexr-accent.js";
 import type { SpexrThemeKind } from "./spexr-theme-ids.js";
 import { STATUS_GROUND_COLORS } from "./status-theme-data.js";
 
@@ -49,25 +49,36 @@ export function editorInks(theme: SpexrThemeKind): { surface: string; raised: st
 }
 
 /**
- * The current line's wash is the primary ink at 4.5%, a selection the accent
- * at 18% (the demo's `color-mix` values). Monaco takes `#rrggbbaa`, whose
- * alpha is a byte, and a byte is cut down, never rounded up: 4.5% is 0x0b
- * (4.3%) and 18% is 0x2d (17.6%; the demo's 0x2e is 18.0%). A wash no heavier
- * than asked keeps the muted ink on a selection at 4.5:1 where it sits
- * closest: the dark comment on the lit island's raised rung reads 4.496 with
- * 0x2e and 4.56 with 0x2d. Monaco hands a colour to CSS with its alpha at two
- * decimals, so the current line is painted at 4.0%: one or two levels of 255
- * under the demo's 4.5% (measured, S5d).
+ * The washes, as the editor paints them. Monaco hands a colour to CSS with its
+ * alpha at two decimals (`+(a).toFixed(2)`, vscode `color.js` formatRGBA), so
+ * the alpha a wash paints at is its byte over 255 rounded to 0.01, not the
+ * byte's own fraction: 0x2d and 0x2e both paint at 0.18. These are the alphas
+ * painted, and {@link withAlpha} encodes the byte that paints them.
+ *
+ * - the current line is the primary ink at 4% (the demo's `color-mix` is 4.5%;
+ *   Monaco cannot paint half a percent, so it is a level or two lighter);
+ * - the selection is the accent at 17% (the demo's is 18%). The dark `comment`
+ *   on the lit island's raised rung under an 18% selection is 4.496:1, under
+ *   17% it is 4.62:1, so the selection is a point lighter than the demo's.
  */
-export const CURRENT_LINE_ALPHA = 0.045;
-export const SELECTION_ALPHA = 0.18;
-/** The other occurrences of the selected text, a lighter wash of the same accent. */
+export const CURRENT_LINE_ALPHA = 0.04;
+export const SELECTION_ALPHA = 0.17;
+/** The other occurrences of the selected text, and a word's occurrences: a lighter wash of the accent. */
 export const SELECTION_HIGHLIGHT_ALPHA = 0.1;
+/** A line or range the editor marks without a selection's weight (find range, a diff's inserted or removed line). */
+export const FAINT_ALPHA = 0.06;
+/** A diff's inserted or removed text: a tone at this alpha, under text that must still read at 4.5:1. */
+export const DIFF_TEXT_ALPHA = 0.1;
+
+/** The alpha CSS paints for a byte: Monaco's `toFixed(2)` of byte / 255. */
+export function paintedAlpha(byte: number): number {
+  return Math.round((byte / 255) * 100) / 100;
+}
 
 /** `#rrggbb` plus an alpha in 0-1, as `#rrggbbaa`. */
 export function withAlpha(hex: string, alpha: number): string {
   if (!/^#[0-9a-f]{6}$/i.test(hex)) throw new Error(`not a #rrggbb colour: ${hex}`);
-  return `${hex.toLowerCase()}${Math.floor(alpha * 255).toString(16).padStart(2, "0")}`;
+  return `${hex.toLowerCase()}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
 }
 
 /** The kit's translucent borders are `rgba(r,g,b,a)`; Monaco wants `#rrggbbaa`. */
@@ -156,36 +167,108 @@ function bracketColors(theme: SpexrThemeKind): Record<string, string> {
 }
 
 /**
- * The editor's severities, in syntax hues (the kit's status tones are not in
- * `neutrals.json`): errors the `number` hue, warnings the `builtin`, infos
- * the `function`. Monaco draws a squiggle from `editorError.foreground`
- * and its kin, and the overview ruler's marks and the gutter's change bars
- * from the other keys; every one is a text-grade hue, so at least 4.5:1 on
- * the editor's grounds. Added, modified and deleted lines are the string,
- * builtin and number hues.
+ * The editor's severities in the kit's status tones, as the chrome's CSS
+ * layer has them (`--slc-danger`, `--slc-warning`, `--slc-info`: from
+ * {@link KIT_STATUS_TONES}, pinned to the installed kit by a test, because the
+ * kit's stylesheets are not importable and a Monaco theme is data no
+ * stylesheet reaches). Monaco draws a squiggle from `editorError.foreground`
+ * and its kin, the overview ruler's marks and the gutter's change bars from
+ * their own keys: added is the success tone, modified the warning, deleted
+ * the danger.
  */
 function severityColors(theme: SpexrThemeKind): Record<string, string> {
-  const c = codeRoles(theme);
+  const t = KIT_STATUS_TONES[theme];
   return {
-    "editorError.foreground": c.number,
-    "editorWarning.foreground": c.builtin,
-    "editorInfo.foreground": c.function,
-    "editorOverviewRuler.errorForeground": c.number,
-    "editorOverviewRuler.warningForeground": c.builtin,
-    "editorOverviewRuler.infoForeground": c.function,
-    "editorGutter.addedBackground": c.string,
-    "editorGutter.modifiedBackground": c.builtin,
-    "editorGutter.deletedBackground": c.number,
+    "editorError.foreground": t.danger,
+    "editorWarning.foreground": t.warning,
+    "editorInfo.foreground": t.info,
+    "editorOverviewRuler.errorForeground": t.danger,
+    "editorOverviewRuler.warningForeground": t.warning,
+    "editorOverviewRuler.infoForeground": t.info,
+    "editorOverviewRuler.addedForeground": t.success,
+    "editorOverviewRuler.modifiedForeground": t.warning,
+    "editorOverviewRuler.deletedForeground": t.danger,
+    "editorGutter.addedBackground": t.success,
+    "editorGutter.modifiedBackground": t.warning,
+    "editorGutter.deletedBackground": t.danger,
   };
 }
 
 /**
+ * Find, word highlight, the peek view and the diff editor, from kit roles:
+ * the accent for what the editor looks at (find, a word's occurrences, the
+ * peek view's frame and selected result), the surface rungs for the peek
+ * view's grounds, the status tones for what a diff inserted and removed.
+ * Every wash is light enough for the code hues to read on it at 4.5:1 (tested).
+ */
+function surfaceColors(theme: SpexrThemeKind): Record<string, string> {
+  const { raised, primary, muted, accent } = editorInks(theme);
+  const t = KIT_STATUS_TONES[theme];
+  const selection = withAlpha(accent, SELECTION_ALPHA);
+  const faint = withAlpha(accent, FAINT_ALPHA);
+  const occurrence = withAlpha(accent, SELECTION_HIGHLIGHT_ALPHA);
+  return {
+    "editor.findMatchBackground": selection,
+    "editor.findMatchBorder": accent,
+    "editor.findMatchHighlightBackground": occurrence,
+    "editor.findRangeHighlightBackground": faint,
+    "editor.wordHighlightBackground": occurrence,
+    "editor.wordHighlightStrongBackground": selection,
+    "editorOverviewRuler.findMatchForeground": accent,
+    "editorOverviewRuler.selectionHighlightForeground": accent,
+    "editorOverviewRuler.wordHighlightForeground": accent,
+    "editorOverviewRuler.wordHighlightStrongForeground": accent,
+    "editorOverviewRuler.bracketMatchForeground": accent,
+    "peekView.border": accent,
+    "peekViewEditor.background": raised,
+    "peekViewEditorGutter.background": raised,
+    "peekViewEditor.matchHighlightBackground": selection,
+    "peekViewResult.background": raised,
+    "peekViewResult.selectionBackground": selection,
+    "peekViewResult.selectionForeground": primary,
+    "peekViewResult.matchHighlightBackground": selection,
+    "peekViewTitle.background": raised,
+    "peekViewTitleLabel.foreground": primary,
+    "peekViewTitleDescription.foreground": muted,
+    "diffEditor.insertedTextBackground": withAlpha(t.success, DIFF_TEXT_ALPHA),
+    "diffEditor.removedTextBackground": withAlpha(t.danger, DIFF_TEXT_ALPHA),
+    "diffEditor.insertedLineBackground": withAlpha(t.success, FAINT_ALPHA),
+    "diffEditor.removedLineBackground": withAlpha(t.danger, FAINT_ALPHA),
+    "diffEditorGutter.insertedLineBackground": withAlpha(t.success, DIFF_TEXT_ALPHA),
+    "diffEditorGutter.removedLineBackground": withAlpha(t.danger, DIFF_TEXT_ALPHA),
+    "diffEditorOverview.insertedForeground": t.success,
+    "diffEditorOverview.removedForeground": t.danger,
+  };
+}
+
+/**
+ * Keys of the editor's colours that spexr leaves to Theia's theme on purpose:
+ * a hover's highlight, whitespace marks, code lens and inlay hints, snippet
+ * tab stops, the merge editor's and the unfocused-selection rulers' colours,
+ * and the fold and link marks. None is in the demo; each is a quiet mark that
+ * a kit role would only make louder. A test pins that none is overridden here.
+ */
+export const INHERITED_ON_PURPOSE = [
+  "editor.hoverHighlightBackground",
+  "editorWhitespace.foreground",
+  "editorCodeLens.foreground",
+  "editorInlayHint.foreground",
+  "editor.snippetTabstopHighlightBackground",
+  "editor.foldBackground",
+  "editorRuler.foreground",
+  "editorOverviewRuler.currentContentForeground",
+  "editorOverviewRuler.incomingContentForeground",
+  "editorOverviewRuler.commonContentForeground",
+] as const;
+
+/**
  * The editor's own colours for a theme: the surface and code ink, the current
- * line (the primary ink at 4.5%, with no border), the selection (the accent at
- * 18%, the same unfocused; a matched bracket the same wash), the line numbers (muted, the current one in the
- * primary ink), the cursor in the accent and the indent guides in the kit's
- * hairlines. The ink and the accent are translucent washes, so they read over
- * whichever rung of the island the editor sits on.
+ * line (the primary ink at 4%, with no border), the selection (the accent at
+ * 17%, the same unfocused; a matched bracket the same wash), the line numbers
+ * (muted, the current one in the primary ink), the cursor in the accent, the
+ * indent guides in the kit's hairlines, then the severities, find, peek view
+ * and diff colours. The ink and the accent are translucent washes, so they
+ * read over whichever rung of the island the editor sits on.
  */
 export function editorColors(theme: SpexrThemeKind): Record<string, string> {
   const r = roles(theme);
@@ -206,6 +289,7 @@ export function editorColors(theme: SpexrThemeKind): Record<string, string> {
     "editorLineNumber.activeForeground": primary,
     "editorCursor.foreground": accent,
     ...severityColors(theme),
+    ...surfaceColors(theme),
     "editorBracketMatch.background": selection,
     "editorBracketMatch.border": withAlpha(accent, 0),
     ...bracketColors(theme),

@@ -41,7 +41,7 @@ describe("the terminal's colours", () => {
     expect(colours["terminal.ansiBrightBlack"]).toBe(r["text-muted"]);
     expect(colours["terminal.foreground"]).toBe(r["text-secondary"]);
     expect(colours["terminalCursor.foreground"]).toBe(ACCENT[theme]);
-    expect(colours["terminal.selectionBackground"]).toBe(`${ACCENT[theme]}2d`);
+    expect(colours["terminal.selectionBackground"]).toBe(`${ACCENT[theme]}2b`);
   });
 
   it("moves a bright hue 30% toward the primary ink", () => {

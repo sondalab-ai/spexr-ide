@@ -17,10 +17,14 @@ export function contrastRatio(a: string, b: string): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
-/** A `#rrggbbaa` painted over an opaque `#rrggbb`, per channel, as a browser composites it; the result is `#rrggbb`. */
+/**
+ * A `#rrggbbaa` painted over an opaque `#rrggbb`, per channel; the result is
+ * `#rrggbb`. The alpha is the one Monaco's CSS carries, the byte over 255
+ * rounded to two decimals (`+(a).toFixed(2)`), which is what is painted.
+ */
 export function over(wash: string, ground: string): string {
   if (!/^#[0-9a-f]{8}$/i.test(wash)) throw new Error(`not a #rrggbbaa colour: ${wash}`);
-  const alpha = parseInt(wash.slice(7, 9), 16) / 255;
+  const alpha = Math.round((parseInt(wash.slice(7, 9), 16) / 255) * 100) / 100;
   const top = channels(wash);
   const bottom = channels(ground);
   return `#${top.map((c, i) => Math.round(bottom[i]! + (c - bottom[i]!) * alpha).toString(16).padStart(2, "0")).join("")}`;

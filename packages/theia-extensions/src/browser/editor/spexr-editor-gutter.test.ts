@@ -10,6 +10,7 @@ import {
   MONACO_FOLDING_WIDTH,
   SPEXR_GUTTER_OPTIONS,
   gutterLayout,
+  withSpexrGutter,
 } from "./spexr-editor-gutter.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -73,13 +74,31 @@ describe("the provider that sets the gutter", () => {
     const ours = read(join(here, "spexr-monaco-editor-provider.ts"));
     expect(ours).toMatch(/extends MonacoEditorProvider/);
     expect(ours).toMatch(/protected override createMonacoEditorOptions\(model: MonacoEditorModel\)/);
-    expect(ours).toMatch(/\.\.\.super\.createMonacoEditorOptions\(model\), \.\.\.SPEXR_GUTTER_OPTIONS/);
+    expect(ours).toMatch(/withSpexrGutter\(super\.createMonacoEditorOptions\(model\)\)/);
+    // a diff editor builds its options in its own method, which is overridden the same way
+    expect(provider).toMatch(/createMonacoDiffEditorOptions\(original, modified\) \{/);
+    expect(provider).toMatch(/const options = this\.createMonacoDiffEditorOptions\(originalModel, modifiedModel\);/);
+    expect(ours).toMatch(/protected override createMonacoDiffEditorOptions\(original: MonacoEditorModel, modified: MonacoEditorModel\)/);
+    expect(ours).toMatch(/withSpexrGutter\(super\.createMonacoDiffEditorOptions\(original, modified\)\)/);
   });
 
   it("is bound over Theia's, in the module that loads after @theia/monaco's", () => {
     const module = read(join(here, "../spexr-frontend-module.ts"));
     expect(module).toMatch(/rebind\(MonacoEditorProvider\)\.to\(SpexrMonacoEditorProvider\)\.inSingletonScope\(\)/);
     expect(read(require.resolve("@theia/monaco/lib/browser/monaco-frontend-module.js"))).toMatch(/bind\(monaco_editor_provider_1\.MonacoEditorProvider\)\.toSelf\(\)/);
+  });
+
+  // Stands in for Theia's options (a model's lineNumbersMinChars is 3): both
+  // the editor's and the diff editor's come out with the gutter laid over.
+  it("lays the gutter over an editor's options and a diff editor's, over what Theia set", () => {
+    const editor = withSpexrGutter({ lineNumbersMinChars: 3, readOnly: false });
+    const diff = withSpexrGutter({ originalEditable: true, lineNumbersMinChars: 3 });
+    for (const options of [editor, diff]) {
+      expect(options.lineNumbersMinChars).toBe(5);
+      expect(options.lineDecorationsWidth).toBe(1);
+    }
+    expect(editor.readOnly).toBe(false);
+    expect(diff.originalEditable).toBe(true);
   });
 
   it("sets two options, both known to Monaco's editor options", () => {

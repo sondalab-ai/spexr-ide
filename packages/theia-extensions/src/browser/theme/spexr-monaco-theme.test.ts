@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
-import { ACCENT } from "./spexr-accent.js";
+import { ACCENT, KIT_STATUS_TONES } from "./spexr-accent.js";
 import { contrastRatio, over } from "./contrast-util.js";
 import {
   CURRENT_LINE_ALPHA,
+  DIFF_TEXT_ALPHA,
+  FAINT_ALPHA,
+  INHERITED_ON_PURPOSE,
   SELECTION_ALPHA,
+  SELECTION_HIGHLIGHT_ALPHA,
   codeRoles,
   editorColors,
   editorInks,
   monacoThemeJson,
+  paintedAlpha,
   rgbaToHex8,
   tokenColors,
   withAlpha,
@@ -20,6 +26,7 @@ import {
 import { STATUS_GROUND_COLORS } from "./status-theme-data.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const themes = ["dark", "light"] as const;
 const throws = (run: () => unknown): boolean => {
   try {
@@ -85,21 +92,33 @@ describe("the Monaco theme's token colours", () => {
 });
 
 describe("the Monaco theme's editor colours", () => {
-  it.each(themes)("%s: the current line is the primary ink at 4.5% and has no border", (theme) => {
+  it.each(themes)("%s: the current line is the primary ink painted at 4% and has no border", (theme) => {
     const colours = editorColors(theme);
     const { primary } = editorInks(theme);
-    expect(colours["editor.lineHighlightBackground"]).toBe(`${primary}0b`);
+    expect(colours["editor.lineHighlightBackground"]).toBe(`${primary}0a`);
     expect(colours["editor.lineHighlightBorder"]).toBe(`${primary}00`);
-    // 0x0b/255 is the byte a browser paints for the demo's color-mix(…, 4.5%)
-    expect(Math.floor(CURRENT_LINE_ALPHA * 255)).toBe(0x0b);
+    expect(paintedAlpha(0x0a)).toBe(CURRENT_LINE_ALPHA);
   });
 
-  it.each(themes)("%s: the selection is the accent at 18%, focused or not", (theme) => {
+  it.each(themes)("%s: the selection is the accent painted at 17%, focused or not", (theme) => {
     const colours = editorColors(theme);
-    expect(colours["editor.selectionBackground"]).toBe(`${ACCENT[theme]}2d`);
+    expect(colours["editor.selectionBackground"]).toBe(`${ACCENT[theme]}2b`);
     expect(colours["editor.inactiveSelectionBackground"]).toBe(colours["editor.selectionBackground"]);
-    // cut down from 45.9, so the wash is never heavier than 18% (the demo paints 0x2e)
-    expect(Math.floor(SELECTION_ALPHA * 255)).toBe(0x2d);
+    expect(paintedAlpha(0x2b)).toBe(SELECTION_ALPHA);
+  });
+
+  // Monaco writes CSS alpha as +(a).toFixed(2) (color.js formatRGBA), so a byte
+  // paints at its fraction rounded to two decimals: every wash must paint at
+  // the alpha it is named for, and the model is read from the installed Monaco.
+  it("pins the alpha each wash paints at to Monaco's two-decimal CSS alpha", () => {
+    const color = readFileSync(require.resolve("@theia/monaco-editor-core/esm/vs/base/common/color.js"), "utf8");
+    expect(color).toMatch(/\$\{\+\(color\.rgba\.a\)\.toFixed\(2\)\}/);
+    expect([0x2d, 0x2e].map(paintedAlpha)).toEqual([0.18, 0.18]);
+    expect([0x2b, 0x2c].map(paintedAlpha)).toEqual([0.17, 0.17]);
+    for (const [name, alpha] of Object.entries({ CURRENT_LINE_ALPHA, SELECTION_ALPHA, SELECTION_HIGHLIGHT_ALPHA, FAINT_ALPHA, DIFF_TEXT_ALPHA })) {
+      const byte = parseInt(withAlpha("#000000", alpha).slice(7), 16);
+      expect(paintedAlpha(byte), name).toBe(alpha);
+    }
   });
 
   it.each(themes)("%s: line numbers are muted and the current one is the primary ink; the cursor is the accent", (theme) => {
@@ -122,25 +141,46 @@ describe("the Monaco theme's editor colours", () => {
     expect(colours["editorBracketMatch.border"]).toBe(`${editorInks(theme).accent}00`);
   });
 
-  it.each(themes)("%s: the squiggles, ruler marks and gutter change bars are kit syntax hues, as the severity says", (theme) => {
+  it.each(themes)("%s: the squiggles, ruler marks and gutter change bars are the kit's status tones", (theme) => {
     const colours = editorColors(theme);
-    const roles = codeRoles(theme);
-    expect(colours["editorError.foreground"]).toBe(roles.number);
-    expect(colours["editorWarning.foreground"]).toBe(roles.builtin);
-    expect(colours["editorInfo.foreground"]).toBe(roles.function);
-    expect(colours["editorOverviewRuler.errorForeground"]).toBe(roles.number);
-    expect(colours["editorOverviewRuler.warningForeground"]).toBe(roles.builtin);
-    expect(colours["editorOverviewRuler.infoForeground"]).toBe(roles.function);
-    expect(colours["editorGutter.addedBackground"]).toBe(roles.string);
-    expect(colours["editorGutter.modifiedBackground"]).toBe(roles.builtin);
-    expect(colours["editorGutter.deletedBackground"]).toBe(roles.number);
+    const t = KIT_STATUS_TONES[theme];
+    expect(colours["editorError.foreground"]).toBe(t.danger);
+    expect(colours["editorWarning.foreground"]).toBe(t.warning);
+    expect(colours["editorInfo.foreground"]).toBe(t.info);
+    expect(colours["editorOverviewRuler.errorForeground"]).toBe(t.danger);
+    expect(colours["editorOverviewRuler.warningForeground"]).toBe(t.warning);
+    expect(colours["editorOverviewRuler.infoForeground"]).toBe(t.info);
+    expect(colours["editorOverviewRuler.addedForeground"]).toBe(t.success);
+    expect(colours["editorGutter.addedBackground"]).toBe(t.success);
+    expect(colours["editorGutter.modifiedBackground"]).toBe(t.warning);
+    expect(colours["editorGutter.deletedBackground"]).toBe(t.danger);
+  });
+
+  it.each(themes)("%s: find, word highlight, peek view and diff colours come from the accent, the surface rungs and the status tones", (theme) => {
+    const colours = editorColors(theme);
+    const { raised, accent } = editorInks(theme);
+    const t = KIT_STATUS_TONES[theme];
+    expect(colours["editor.findMatchBorder"]).toBe(accent);
+    expect(colours["peekView.border"]).toBe(accent);
+    for (const id of ["peekViewEditor.background", "peekViewResult.background", "peekViewTitle.background"]) expect(colours[id], id).toBe(raised);
+    expect(colours["editor.wordHighlightBackground"]).toBe(withAlpha(accent, SELECTION_HIGHLIGHT_ALPHA));
+    expect(colours["diffEditor.insertedTextBackground"]).toBe(withAlpha(t.success, DIFF_TEXT_ALPHA));
+    expect(colours["diffEditor.removedTextBackground"]).toBe(withAlpha(t.danger, DIFF_TEXT_ALPHA));
+  });
+
+  it("leaves the quiet editor marks to Theia's theme on purpose, and says which", () => {
+    expect(INHERITED_ON_PURPOSE.length).toBeGreaterThan(5);
+    for (const theme of themes) {
+      const colours = editorColors(theme);
+      for (const id of INHERITED_ON_PURPOSE) expect(id in colours, `${theme} ${id}`).toBe(false);
+    }
   });
 
   it("encodes the kit's rgba hairlines as #rrggbbaa", () => {
     expect(rgbaToHex8("rgba(20,22,27,0.08)")).toBe("#14161b14");
     expect(throws(() => rgbaToHex8("#14161b"))).toBe(true);
-    expect(withAlpha("#8B96FF", 0.18)).toBe("#8b96ff2d");
-    expect(throws(() => withAlpha("#8b96ff2e", 0.5))).toBe(true);
+    expect(withAlpha("#8B96FF", 0.17)).toBe("#8b96ff2b");
+    expect(throws(() => withAlpha("#8b96ff2b", 0.5))).toBe(true);
   });
 });
 
@@ -148,18 +188,16 @@ describe("contrast of the editor's text on its grounds", () => {
   /**
    * The grounds an editor sits on: the island at rest and a lit island's
    * raised rung, each bare, under the current line's wash and under the
-   * selection's. `stacked` adds the selection over the current line (a
-   * selected current line), which the kit's gate does not cover.
+   * selection's, as painted (alpha at two decimals). The selection never
+   * stacks on the current line in the content: Monaco paints that wash only
+   * with a single empty selection (currentLineHighlight `_shouldRenderInContent`).
    */
-  const grounds = (theme: "dark" | "light", stacked = false): Array<[string, string]> => {
+  const grounds = (theme: "dark" | "light"): Array<[string, string]> => {
     const { surface, raised } = editorInks(theme);
     const colours = editorColors(theme);
     const out: Array<[string, string]> = [];
     for (const [name, base] of [["surface", surface], ["raised", raised]] as const) {
-      const line = over(colours["editor.lineHighlightBackground"]!, base);
-      const selection = over(colours["editor.selectionBackground"]!, base);
-      out.push([name, base], [`${name} + current line`, line], [`${name} + selection`, selection]);
-      if (stacked) out.push([`${name} + current line + selection`, over(colours["editor.selectionBackground"]!, line)]);
+      out.push([name, base], [`${name} + current line`, over(colours["editor.lineHighlightBackground"]!, base)], [`${name} + selection`, over(colours["editor.selectionBackground"]!, base)]);
     }
     return out;
   };
@@ -183,8 +221,8 @@ describe("contrast of the editor's text on its grounds", () => {
   // floor; the hues are text-grade, so they clear it by a wide margin.
   it.each(themes)("%s: severity squiggles and change bars read at least 3:1 on every ground", (theme) => {
     const colours = editorColors(theme);
-    const ids = Object.keys(colours).filter((id) => /^(editor(Error|Warning|Info)\.foreground|editorOverviewRuler\.(error|warning|info)Foreground|editorGutter\.(added|modified|deleted)Background)$/.test(id));
-    expect(ids).toHaveLength(9);
+    const ids = Object.keys(colours).filter((id) => /^(editor(Error|Warning|Info)\.foreground|editorOverviewRuler\.(error|warning|info|added|modified|deleted)Foreground|editorGutter\.(added|modified|deleted)Background)$/.test(id));
+    expect(ids).toHaveLength(12);
     let min = Infinity;
     for (const id of ids) {
       for (const [ground, bg] of grounds(theme)) {
@@ -196,19 +234,23 @@ describe("contrast of the editor's text on its grounds", () => {
     if (process.env.VERBOSE) console.info(`  min severity contrast ${theme}: ${min.toFixed(2)}:1`);
   });
 
-  // The selection over the current line is two washes: the muted ink (the
-  // comment) is the tightest there, 4.3-4.5:1. Not gated at 4.5, as the kit's
-  // own gate is single-wash; held at 4.0 so it cannot drift lower unseen.
-  it.each(themes)("%s: a selected current line keeps every syntax hue at least 4.0:1", (theme) => {
+  // Find, word highlight, the peek view's selection and the diff washes sit
+  // under code text too: every code hue must still read on each.
+  it.each(themes)("%s: every syntax hue reads at least 4.5:1 under the find, word, peek and diff washes", (theme) => {
+    const colours = editorColors(theme);
+    const washes = ["editor.findMatchBackground", "editor.findMatchHighlightBackground", "editor.findRangeHighlightBackground", "editor.wordHighlightBackground", "editor.wordHighlightStrongBackground", "peekViewResult.selectionBackground", "diffEditor.insertedTextBackground", "diffEditor.removedTextBackground", "diffEditor.insertedLineBackground", "diffEditor.removedLineBackground", "editorBracketMatch.background"];
     let min = Infinity;
-    for (const [role, hex] of Object.entries(codeRoles(theme))) {
-      for (const [ground, bg] of grounds(theme, true)) {
-        const ratio = contrastRatio(hex, bg);
-        expect(ratio, `${theme} ${role} on ${ground}`).toBeGreaterThanOrEqual(4.0);
-        min = Math.min(min, ratio);
+    for (const id of washes) {
+      for (const base of [editorInks(theme).surface, editorInks(theme).raised]) {
+        const ground = over(colours[id]!, base);
+        for (const [role, hex] of Object.entries(codeRoles(theme))) {
+          const ratio = contrastRatio(hex, ground);
+          expect(ratio, `${theme} ${role} under ${id} on ${base}`).toBeGreaterThanOrEqual(4.5);
+          min = Math.min(min, ratio);
+        }
       }
     }
-    if (process.env.VERBOSE) console.info(`  min stacked contrast ${theme}: ${min.toFixed(2)}:1`);
+    if (process.env.VERBOSE) console.info(`  min under washes ${theme}: ${min.toFixed(2)}:1`);
   });
 
   // the gutter carries no selection, so the numbers sit on the bare ground and the current line's wash
@@ -220,7 +262,7 @@ describe("contrast of the editor's text on its grounds", () => {
     }
   });
 
-  it.each(themes)("%s: a selection stays visible against its ground (a wash the demo's own 18%% makes about 1.1-1.4:1)", (theme) => {
+  it.each(themes)("%s: a selection stays visible against its ground (a 17%% wash is about 1.1-1.4:1)", (theme) => {
     const colours = editorColors(theme);
     for (const base of [editorInks(theme).surface, editorInks(theme).raised]) {
       const ratio = contrastRatio(over(colours["editor.selectionBackground"]!, base), base);

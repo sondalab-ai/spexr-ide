@@ -53,4 +53,16 @@ describe("the editor's preference defaults", () => {
     const provider = readFileSync(require.resolve("@theia/monaco/lib/browser/monaco-editor-provider.js"), "utf8");
     expect(provider).toMatch(/names = optionName\.split\('\.'\)|doSetOption\(options, value, optionName\.split\('\.'\)\)/);
   });
+
+  // tests/visual/prepare.ts seeds the demo's 13/22 only because S5a's
+  // preferences are not in this branch. Once the product defaults them, the
+  // seed would hide a regression in those defaults: drop it then.
+  it("fails once the product defaults editor.fontSize while the capture still seeds it", () => {
+    const prepare = readFileSync(join(repo, "tests/visual/prepare.ts"), "utf8");
+    expect(prepare).toMatch(/"editor\.fontSize": 13,/);
+    expect(prepare).toMatch(/"editor\.lineHeight": 22,/);
+    const seeded = /"editor\.fontSize": \d+/.test(prepare);
+    const defaulted = "editor.fontSize" in defaults() || "editor.lineHeight" in defaults();
+    expect(seeded && defaulted, "drop the editor.fontSize / editor.lineHeight seed in tests/visual/prepare.ts: the product defaults them now").toBe(false);
+  });
 });

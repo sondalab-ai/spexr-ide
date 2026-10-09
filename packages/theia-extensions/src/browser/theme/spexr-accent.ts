@@ -145,3 +145,17 @@ export function accentTextActive(theme: ThemeKind): string {
   const [L, C, h] = toOklch(ACCENT[theme]);
   return fromOklch(towardPole([Math.min(L, KIT_ACCENT_TEXT_LMAX[theme]), C, h], KIT_SHADE_STEP, theme === "dark"));
 }
+
+/**
+ * The kit's four status tones, per theme (themes/light.css and dark.css,
+ * --sl-status-*). Monaco draws squiggles, ruler marks and change bars from
+ * theme data, which no stylesheet reaches, and the kit's stylesheets are not
+ * importable into the bundle, so the editor theme takes them as hex. Outside
+ * an inversion band `--slc-<tone>-text` is the tone itself (the chrome CSS
+ * falls back to it), so these are the text tones too. spexr-status-tones.test.ts
+ * pins every value to the installed kit.
+ */
+export const KIT_STATUS_TONES: Record<ThemeKind, { success: string; warning: string; danger: string; info: string }> = {
+  light: { success: "#4a6205", warning: "#795305", danger: "#a72b05", info: "#3853af" },
+  dark: { success: "#98b958", warning: "#db9e2e", danger: "#fe8263", info: "#87a7fd" },
+};

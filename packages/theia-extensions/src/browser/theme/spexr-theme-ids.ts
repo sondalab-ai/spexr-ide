@@ -48,6 +48,8 @@ export const SPEXR_THEME_BY_THEIA: Readonly<Record<string, string>> = {
  * read through the id maps, which is what the startup guard does), then the
  * Theia theme that is current when the contribution starts, then the OS.
  *
+ * Theia writes localStorage `theme` only at shutdown (`onStop` of its common
+ * contribution), so it is the theme the last run ended on, not a live value.
  * The stored id comes before the current theme because a profile that last ran
  * a spexr theme stores `spexr-dark`, which Theia cannot resolve at
  * construction (the themes register at initialize), so its current theme can

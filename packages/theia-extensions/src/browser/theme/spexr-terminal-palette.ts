@@ -23,7 +23,12 @@ export const TERMINAL_ANSI_IDS = [
   "terminal.ansiBrightWhite",
 ] as const;
 
-/** How far a bright colour moves from its hue toward the primary ink. */
+/**
+ * How far a bright colour moves from its hue toward the primary ink. On dark
+ * the primary ink is light, so a bright hue is lighter; on light it is dark, so
+ * a bright hue is darker (a deeper red, not a paler one). Either way its
+ * contrast only rises.
+ */
 export const BRIGHT_MIX = 0.3;
 
 /** `#rrggbb` mixed toward another by `t` (0-1), per sRGB channel. */
@@ -48,7 +53,7 @@ export function mixHex(from: string, toward: string, t: number): string {
  *   inverse text on a fill: the tile rung on dark, the primary ink on light,
  *   so it is not text and is not held to the text floor.
  * - The default foreground is the secondary ink, the demo's output colour;
- *   the cursor is the accent; a selection is the accent at 18%.
+ *   the cursor is the accent; a selection is the accent painted at 17%.
  */
 export function terminalColors(theme: SpexrThemeKind): Record<string, string> {
   const r = kitNeutrals.products.spexr[theme];
