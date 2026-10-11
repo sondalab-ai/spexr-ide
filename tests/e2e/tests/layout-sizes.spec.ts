@@ -137,7 +137,7 @@ test.describe("the default layout's island sizes", () => {
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
   });
 
-  test("a restored layout keeps its own widths", async ({ page }) => {
+  test("a restored layout keeps its own widths", async ({ page, workspace }) => {
     test.setTimeout(150_000);
     // The agent terminal may be in front on the full stack (432): the Explorer is put there first, as in the tests above.
     await showLeftView(page, EXPLORER);
@@ -145,26 +145,22 @@ test.describe("the default layout's island sizes", () => {
     await dragLeftSash(page, 100);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(364, 0);
     // The width is saved shortly after the drag (left-island-width.ts), not only at unload: wait for it in storage.
-    // Storage keys are per workspace (a prefix of the workspace URI) and the profile is shared by the tests, so
-    // the key of an earlier test's workspace may be there too: any key holding the dragged width will do.
     await expect
       .poll(
         () =>
-          page.evaluate((view) => {
-            const widths = Object.keys(window.localStorage)
-              .filter((k) => k.endsWith(":spexr.leftIsland.widths"))
-              .map((k) => {
-                try {
-                  return (JSON.parse(window.localStorage.getItem(k) ?? "null") as Record<string, number> | null)?.[view] ?? null;
-                } catch {
-                  return null;
-                }
-              });
-            return widths.includes(364);
-          }, EXPLORER),
+          page.evaluate(({ view, name }) => {
+            // The app's storage outlives the tests, each with its own workspace folder: the key is this workspace's.
+            const key = Object.keys(window.localStorage).find((k) => k.endsWith(":spexr.leftIsland.widths") && k.includes(name));
+            if (!key) return null;
+            try {
+              return (JSON.parse(window.localStorage.getItem(key) ?? "null") as Record<string, number> | null)?.[view] ?? null;
+            } catch {
+              return null;
+            }
+          }, { view: EXPLORER, name: workspace.split("/").pop() ?? "" }),
         { timeout: 10_000 },
       )
-      .toBe(true);
+      .toBe(364);
 
     // Theia stores the layout on unload and restores it on load.
     await page.reload();
