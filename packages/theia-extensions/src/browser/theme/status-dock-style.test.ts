@@ -122,6 +122,10 @@ describe("the status dock", () => {
     expect(data).toMatch(/color:\s*var\(--slc-text\)/);
   });
 
+  it("sets a pill's leading glyph at the pill's padding, as Lumen's items measure (S6d)", () => {
+    expect(rule("#theia-statusBar .area:is(.left, .right) > .element > .codicon:first-child:has(+ span) {")).toMatch(/margin-inline-start:\s*0/);
+  });
+
   it("draws the warning glyph in the kit's warning tone, on the problem count and the failed fetch only", () => {
     const warn = rule("#theia-statusBar .area:is(.left, .right) > :is(#status-bar-problem-marker-status, #status-bar-spexr-git-sync):not(.has-background) > .codicon-warning {");
     expect(warn).toMatch(/color:\s*var\(--sl-status-warning\)/);

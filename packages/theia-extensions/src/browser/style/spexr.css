@@ -1896,6 +1896,13 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > .spexr-s
   color: var(--slc-text);
 }
 
+/* A pill's leading glyph sits at the pill's padding, not 3px past it (Theia's
+   margin on a glyph that precedes text): Lumen's pills are 8px of padding
+   round their content, which put the left side's runs 3px apart per item. */
+#theia-statusBar .area:is(.left, .right) > .element > .codicon:first-child:has(+ span) {
+  margin-inline-start: 0;
+}
+
 /* The divergence ("↑2") is the pill after the branch's, as one fact with it:
    the branch's pill gives up its end padding and the divergence's text starts
    4px in (Lumen's "main ↑2" is one item). */
