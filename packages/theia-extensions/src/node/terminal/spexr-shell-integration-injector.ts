@@ -30,9 +30,14 @@ function scripts(): SpexrScripts {
 @injectable()
 export class SpexrShellIntegrationInjector extends ShellIntegrationInjector {
   override injectShellIntegration(options: ShellProcessOptions): ShellProcessOptions {
-    const injected = withSpexrBlocks(options, super.injectShellIntegration(options), scripts());
-    // One line per terminal in the backend log: whether the blocks' scripts went in, and for which shell.
-    console.info(`[spexr] shell integration for ${options.shell ?? "the default shell"}: ${injected === options ? "none" : "theia + spexr command blocks"}`);
+    const theia = super.injectShellIntegration(options);
+    const found = scripts();
+    const injected = withSpexrBlocks(options, theia, found);
+    // One line per terminal in the backend log: what went in and why not, for which shell.
+    console.info(
+      `[spexr] shell integration for ${options.shell ?? "the default shell"} args=${JSON.stringify(options.args ?? [])}: ` +
+        `${injected === options ? "none" : "theia + spexr command blocks"} (theia injected: ${theia !== options}, spexr scripts: bash ${found.bashRcfile ?? "missing"}, zsh ${found.zshDir ?? "missing"})`,
+    );
     return injected;
   }
 }
