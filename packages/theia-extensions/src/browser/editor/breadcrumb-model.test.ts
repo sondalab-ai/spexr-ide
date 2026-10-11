@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { breadcrumbMeta, crumbText, foldDiffStats, isCallableSymbol, isOutlineEllipsis, MINUS } from "./breadcrumb-model.js";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { breadcrumbMeta, visibleCrumbs, crumbText, foldDiffStats, isCallableSymbol, isOutlineEllipsis, MINUS } from "./breadcrumb-model.js";
 
 const span = (start: number, end: number) => ({ start, end });
 
@@ -71,5 +75,35 @@ describe("the breadcrumb meta (E7)", () => {
   it("uses the true minus sign, not a hyphen", () => {
     expect(breadcrumbMeta({ added: 0, removed: 2 }, false)).toBe("+0 −2");
     expect(MINUS).toBe("−");
+  });
+});
+
+describe("the trailing ellipsis (E6)", () => {
+  const OUTLINE = Symbol("outline");
+  const FILE = Symbol("file");
+  const crumb = (label: string, type: symbol) => ({ label, type });
+
+  it("is dropped after a symbol crumb", () => {
+    const row = [crumb("src", FILE), crumb("resolve.ts", FILE), crumb("resolve", OUTLINE), crumb("…", OUTLINE)];
+    expect(visibleCrumbs(row).map((c) => c.label)).toEqual(["src", "resolve.ts", "resolve"]);
+  });
+
+  it("stays when it is the only outline crumb, so the symbol picker is reachable from outside every symbol", () => {
+    const row = [crumb("src", FILE), crumb("resolve.ts", FILE), crumb("…", OUTLINE)];
+    expect(visibleCrumbs(row).map((c) => c.label)).toEqual(["src", "resolve.ts", "…"]);
+  });
+
+  it("is not confused by a file crumb that is named '…'", () => {
+    expect(visibleCrumbs([crumb("…", FILE), crumb("a.ts", FILE)]).map((c) => c.label)).toEqual(["…", "a.ts"]);
+  });
+
+  it("is wired in the row, and pins what Theia's outline contribution writes", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const row = readFileSync(join(here, "spexr-breadcrumbs-renderer.tsx"), "utf8");
+    expect(row).toContain("visibleCrumbs(this.breadcrumbs)");
+    const outline = readFileSync(createRequire(import.meta.url).resolve("@theia/outline-view/src/browser/outline-breadcrumbs-contribution.tsx"), "utf8");
+    // The ellipsis crumb's label, and the icon class the callable test reads.
+    expect(outline).toContain("'…',");
+    expect(outline).toContain("'symbol-icon-center codicon codicon-symbol-' + node.iconClass");
   });
 });

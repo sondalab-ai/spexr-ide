@@ -24,9 +24,19 @@ export function crumbText(label: string, iconClass?: string): string {
   return isCallableSymbol(iconClass) && !label.endsWith(")") ? `${label}()` : label;
 }
 
-/** Whether the crumb is the outline's trailing "…" (children, or the roots with no symbol selected). */
+/** Whether the crumb is the outline's "…" (a symbol's children, or the roots with no symbol selected). */
 export function isOutlineEllipsis(label: string): boolean {
   return label === OUTLINE_ELLIPSIS;
+}
+
+/**
+ * The crumbs as Lumen draws them: the outline's trailing "…" (after a symbol
+ * crumb, standing for its children) is dropped. A lone "…", which is what the
+ * outline gives with the cursor outside every symbol, stays, as the way into
+ * the symbol picker. "After" means a crumb of the same type earlier in the row.
+ */
+export function visibleCrumbs<T extends { readonly label: string; readonly type: unknown }>(crumbs: readonly T[]): T[] {
+  return crumbs.filter((crumb, i) => !(isOutlineEllipsis(crumb.label) && crumbs.slice(0, i).some((earlier) => earlier.type === crumb.type)));
 }
 
 /** A line range as the dirty diff reports it: `start` inclusive, `end` exclusive. */

@@ -387,6 +387,7 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   });
   bind(SpexrSplitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrSplitToolbarContribution);
+  bind(CommandContribution).toService(SpexrSplitToolbarContribution);
 
   bind(GitOriginalResourceResolver).toSelf().inSingletonScope();
   bind(ResourceResolver).toService(GitOriginalResourceResolver);

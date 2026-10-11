@@ -3,7 +3,7 @@ import { MonacoEditorProvider } from "@theia/monaco/lib/browser/monaco-editor-pr
 import type { MonacoEditorModel } from "@theia/monaco/lib/browser/monaco-editor-model";
 import type { MonacoEditor } from "@theia/monaco/lib/browser/monaco-editor";
 import type { MonacoDiffEditor } from "@theia/monaco/lib/browser/monaco-diff-editor";
-import { withSpexrGutter, withoutOverviewRuler } from "./spexr-editor-gutter.js";
+import { withSpexrGutter, withoutDiffOverviewRuler, withoutOverviewRuler } from "./spexr-editor-gutter.js";
 import { SpexrGlyphLane } from "./spexr-glyph-lane-service.js";
 
 /**
@@ -24,6 +24,6 @@ export class SpexrMonacoEditorProvider extends MonacoEditorProvider {
   }
 
   protected override createMonacoDiffEditorOptions(original: MonacoEditorModel, modified: MonacoEditorModel): MonacoDiffEditor.IOptions {
-    return withoutOverviewRuler(withSpexrGutter(super.createMonacoDiffEditorOptions(original, modified)));
+    return withoutDiffOverviewRuler(withSpexrGutter(super.createMonacoDiffEditorOptions(original, modified)));
   }
 }

@@ -23,7 +23,7 @@ function px(block: string, name: string): number {
   return Number(m![1]);
 }
 
-const MAIN = ":root:not([data-sl-theme=\"high-contrast\"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab";
+const MAIN = ":root:not([data-sl-theme=\"high-contrast\"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned)";
 
 describe("the editor strip's defaults (S6c, E3, E8)", () => {
   it("leaves problem marks off tabs, and the overview ruler's border off (its lanes go through the editor provider, spexr-editor-gutter.test.ts)", () => {
@@ -54,9 +54,18 @@ describe("the editor strip in spexr.css", () => {
   });
 
   it("shows the cross only on hover or focus, never at rest", () => {
-    const cross = rule(`${MAIN}.lm-mod-closable:is(:hover, :focus-within) > .lm-TabBar-tabCloseIcon::before`);
+    const cross = rule(`${MAIN}:is(:hover, :focus-within) > .lm-TabBar-tabCloseIcon::before`);
     expect(cross).toContain('content: "\\ea76"');
     expect(rule(`${MAIN} > .lm-TabBar-tabCloseIcon::before`)).toMatch(/content:\s*""/);
+  });
+
+  it("leaves a pinned tab's pin glyph alone: every slot rule excludes it, and the glyph is muted", () => {
+    const strip = css.slice(css.indexOf("/* THE EDITOR STRIP"), css.indexOf("#theia-main-content-panel .theia-tabBar-breadcrumb-row {\n  background-color")).replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const m of strip.matchAll(/([^{}]*tabCloseIcon[^{}]*)\{/g)) {
+      if (m[1]!.includes("theia-mod-pinned > .lm-TabBar-tabCloseIcon")) continue;
+      expect(m[1], m[1]!.trim()).toContain(":not(.theia-mod-pinned)");
+    }
+    expect(rule(":root:not([data-sl-theme=\"high-contrast\"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-pinned > .lm-TabBar-tabCloseIcon")).toContain("color: var(--slc-text-muted)");
   });
 
   it("is the table's 12px tab padding", () => {

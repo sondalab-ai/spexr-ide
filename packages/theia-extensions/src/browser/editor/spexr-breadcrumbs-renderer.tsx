@@ -2,6 +2,7 @@ import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { BreadcrumbsRenderer } from "@theia/core/lib/browser/breadcrumbs/breadcrumbs-renderer";
 import { SpexrBreadcrumbMetaService } from "./breadcrumb-meta-service.js";
+import { visibleCrumbs } from "./breadcrumb-model.js";
 
 /**
  * Theia's breadcrumb row plus Lumen's right-hand meta (S6c, E7): the file's
@@ -22,6 +23,11 @@ export class SpexrBreadcrumbsRenderer extends BreadcrumbsRenderer {
         if (this.uri?.toString() === changed) this.render();
       }),
     );
+  }
+
+  /** The row without the outline's trailing "…" (a lone one stays). */
+  protected override renderBreadcrumbs(): React.ReactNode {
+    return visibleCrumbs(this.breadcrumbs).map((breadcrumb) => this.breadcrumbRenderer.render(breadcrumb, this.togglePopup));
   }
 
   protected override doRender(): React.ReactNode {
