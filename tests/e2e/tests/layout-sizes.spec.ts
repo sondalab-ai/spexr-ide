@@ -137,7 +137,7 @@ test.describe("the default layout's island sizes", () => {
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(324, 0);
   });
 
-  test("a restored layout keeps its own widths", async ({ page }) => {
+  test("a restored layout keeps its own widths", async ({ page, workspace }) => {
     test.setTimeout(150_000);
     // The agent terminal may be in front on the full stack (432): the Explorer is put there first, as in the tests above.
     await showLeftView(page, EXPLORER);
@@ -148,15 +148,16 @@ test.describe("the default layout's island sizes", () => {
     await expect
       .poll(
         () =>
-          page.evaluate((view) => {
-            const key = Object.keys(window.localStorage).find((k) => k.endsWith(":spexr.leftIsland.widths"));
+          page.evaluate(({ view, name }) => {
+            // The app's storage outlives the tests, each with its own workspace folder: the key is this workspace's.
+            const key = Object.keys(window.localStorage).find((k) => k.endsWith(":spexr.leftIsland.widths") && k.includes(name));
             if (!key) return null;
             try {
               return (JSON.parse(window.localStorage.getItem(key) ?? "null") as Record<string, number> | null)?.[view] ?? null;
             } catch {
               return null;
             }
-          }, EXPLORER),
+          }, { view: EXPLORER, name: workspace.split("/").pop() ?? "" }),
         { timeout: 10_000 },
       )
       .toBe(364);
