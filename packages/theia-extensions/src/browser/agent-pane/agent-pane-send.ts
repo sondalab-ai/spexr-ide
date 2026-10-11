@@ -23,8 +23,14 @@ export interface SendPorts {
 }
 
 export type SendOutcome =
-  /** Pasted; the person presses Enter in the terminal. */
+  /** Pasted into a terminal that was already running; the person presses Enter in the terminal. */
   | "pasted"
+  /**
+   * Pasted into an agent this send started: its first screen (Claude's own
+   * folder-trust dialog, a login) may have taken the paste as keys or lost it,
+   * so the caller keeps the text where the person can paste it again.
+   */
+  | "pasted-after-start"
   /** The workspace is not trusted: nothing launched, nothing pasted. */
   | "untrusted"
   /** The agent could not be started (the launch says why): nothing pasted. */
@@ -38,14 +44,15 @@ export type SendOutcome =
  */
 export async function sendByPaste(prompt: string, ports: SendPorts): Promise<SendOutcome> {
   if (!(await ports.trusted())) return "untrusted";
-  if (!ports.running()) {
+  const fresh = !ports.running();
+  if (fresh) {
     await ports.start();
     if (!ports.running()) return "not-started";
     await ports.ready();
   }
   ports.paste(prompt);
   await ports.reveal();
-  return "pasted";
+  return fresh ? "pasted-after-start" : "pasted";
 }
 
 /**

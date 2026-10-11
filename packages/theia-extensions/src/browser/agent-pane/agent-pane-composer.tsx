@@ -13,10 +13,13 @@ export interface AgentPaneComposerProps {
   readonly planPressed: boolean;
   /** The agent's footer shows a mode that acts without asking (accept edits, auto, bypass). */
   readonly autoApprove: boolean;
+  /** The agent's footer shows no mode (the default draws none; a dialog can cover it): said on the Plan button, never claimed. */
+  readonly modeUnknown: boolean;
   /** What to do next, or what the text will do: shown under the field. */
   readonly hint?: string | undefined;
   readonly state: ComposerState;
-  readonly onSend: () => void;
+  /** `viaKeyboard`: sent with Enter in the field, so a second Enter may follow by reflex. */
+  readonly onSend: (viaKeyboard: boolean) => void;
   readonly onPlan: () => void;
   /** For a pane that follows another session: open it in a terminal. */
   readonly onOpenInTerminal: () => void;
@@ -51,7 +54,7 @@ export const AgentPaneComposer: React.FC<AgentPaneComposerProps> = (p) => {
       className="spexr-agent-composer"
       onSubmit={(e) => {
         e.preventDefault();
-        if (state.canSend) p.onSend();
+        if (state.canSend) p.onSend(false);
       }}
     >
       <label className="spexr-agent-composer__field">
@@ -66,7 +69,9 @@ export const AgentPaneComposer: React.FC<AgentPaneComposerProps> = (p) => {
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
             e.preventDefault();
-            if (state.canSend) p.onSend();
+            // A held key repeats Enter: only the first press sends.
+            if (e.repeat) return;
+            if (state.canSend) p.onSend(true);
           }}
         />
       </label>
@@ -91,7 +96,15 @@ export const AgentPaneComposer: React.FC<AgentPaneComposerProps> = (p) => {
           </button>
         ) : null}
         <span className="spexr-agent-composer__spacer" />
-        <button type="button" className="sl-btn sl-btn--ghost sl-btn--sm" aria-pressed={p.planPressed} disabled={!state.canPlan} onClick={p.onPlan}>
+        <button
+          type="button"
+          className="sl-btn sl-btn--ghost sl-btn--sm"
+          aria-pressed={p.planPressed}
+          disabled={!state.canPlan}
+          data-mode={p.modeUnknown ? "unknown" : undefined}
+          title={p.modeUnknown ? nls.localize("spexr/agentPane/modeUnknown", "Permission mode unknown: the terminal's footer shows none. Shift+Tab in the terminal switches it.") : nls.localize("spexr/agentPane/modeShown", "Shows the terminal; Shift+Tab there switches the permission mode.")}
+          onClick={p.onPlan}
+        >
           {nls.localize("spexr/agentPane/plan", "Plan")}
         </button>
         <button type="submit" className="sl-btn sl-btn--primary sl-btn--sm" disabled={!state.canSend}>
