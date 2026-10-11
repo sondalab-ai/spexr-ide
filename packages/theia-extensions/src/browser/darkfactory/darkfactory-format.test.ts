@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   relativeTime,
+  formatClock,
   stateLabel,
   sortTiles,
   permissionLabel,
@@ -495,5 +496,13 @@ describe("liveOf", () => {
   test("a working agent that waits on you or failed is not lit", () => {
     expect(liveOf(statusOf(tile({ needsYou: true })))).toEqual({});
     expect(liveOf(statusOf(tile({ lastFailed: true })))).toEqual({});
+  });
+});
+
+describe("formatClock", () => {
+  test("writes hours, minutes and seconds in the local zone, each as two digits", () => {
+    const at = new Date(2026, 9, 9, 4, 3, 7).getTime();
+    expect(formatClock(at)).toBe("04:03:07");
+    expect(formatClock(new Date(2026, 9, 9, 23, 59, 59).getTime())).toBe("23:59:59");
   });
 });

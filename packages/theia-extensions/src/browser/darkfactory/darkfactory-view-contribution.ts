@@ -3,6 +3,7 @@ import { AbstractViewContribution } from "@theia/core/lib/browser";
 import type { Command, CommandRegistry } from "@theia/core/lib/common/command";
 import type { SpexrDarkfactoryWidget } from "./darkfactory-wall-widget.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
+import { DARKFACTORY_OPEN_SESSION_COMMAND } from "./darkfactory-open-session.js";
 
 export { DARKFACTORY_VIEW_ID };
 
@@ -36,6 +37,13 @@ export class SpexrDarkfactoryViewContribution extends AbstractViewContribution<S
       // just to scan into a widget the user cannot see.
       isEnabled: () => !!this.tryGetWidget(),
       execute: () => this.tryGetWidget()?.refreshNow(),
+    });
+    commands.registerCommand(DARKFACTORY_OPEN_SESSION_COMMAND, {
+      execute: async (sessionId: unknown) => {
+        if (typeof sessionId !== "string") return;
+        const wall = await this.openView({ activate: true, reveal: true });
+        wall.openSession(sessionId);
+      },
     });
   }
 }

@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { STATUS_DATA, STATUS_LIVE, statusClass } from "./status-dock.js";
+import { STATUS_AGENTS, STATUS_DATA, STATUS_LIVE, statusClass } from "./status-dock.js";
 
 describe("statusClass", () => {
   it("joins the hooks an entry asks for", () => {
     expect(statusClass({ data: true })).toBe(STATUS_DATA);
     expect(statusClass({ live: true })).toBe(STATUS_LIVE);
     expect(statusClass({ data: true, live: true })).toBe(`${STATUS_DATA} ${STATUS_LIVE}`);
+    expect(statusClass({ live: true, agents: true })).toBe(`${STATUS_LIVE} ${STATUS_AGENTS}`);
   });
 
   // Theia appends a truthy className to the element's classes: the empty

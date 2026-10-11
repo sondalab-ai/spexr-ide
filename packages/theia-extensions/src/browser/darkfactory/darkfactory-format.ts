@@ -13,6 +13,13 @@ export function relativeTime(ms: number, now: number): string {
   return `${Math.round(h / 24)}d ago`;
 }
 
+/** A clock time, `14:03:27`, in the user's zone: the agent log's stamp before a line. */
+export function formatClock(ms: number): string {
+  const d = new Date(ms);
+  const two = (n: number): string => String(n).padStart(2, "0");
+  return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+}
+
 /** Human label for a session state. */
 export function stateLabel(state: AgentState): string {
   return state === "working" ? "Working" : state === "idle" ? "Idle" : "Done";

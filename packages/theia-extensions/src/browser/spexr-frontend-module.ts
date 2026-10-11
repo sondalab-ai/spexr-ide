@@ -62,6 +62,13 @@ import { SpexrEditorAnchorContribution } from "./shell/editor-anchor-contributio
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
+import { AgentFollowHub } from "./agent-pane/agent-follow-hub.js";
+import { AgentTilesFeed } from "./sessions/agent-tiles-feed.js";
+import { SessionsWidget, SESSIONS_VIEW_ID } from "./sessions/sessions-widget.js";
+import { SpexrSessionsContribution } from "./sessions/sessions-contribution.js";
+import { SpexrAgentsStatusContribution } from "./sessions/agents-status-contribution.js";
+import { AgentLogWidget, AGENT_LOG_VIEW_ID } from "./sessions/agent-log-widget.js";
+import { AgentLogViewContribution } from "./sessions/agent-log-contribution.js";
 import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
@@ -256,6 +263,30 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     .toDynamicValue((ctx) => ({
       id: AGENT_PANE_VIEW_ID,
       createWidget: () => ctx.container.get(AgentPaneWidget),
+    }))
+    .inSingletonScope();
+  // S6j: the Sessions part of the Explorer, the status bar's agents pill and
+  // model item, and the Agent log in the bottom panel; they share what the pane
+  // follows through AgentFollowHub and the scan through AgentTilesFeed.
+  bind(AgentFollowHub).toSelf().inSingletonScope();
+  bind(AgentTilesFeed).toSelf().inSingletonScope();
+  bind(SessionsWidget).toSelf();
+  bind(WidgetFactory)
+    .toDynamicValue((ctx) => ({
+      id: SESSIONS_VIEW_ID,
+      createWidget: () => ctx.container.get(SessionsWidget),
+    }))
+    .inSingletonScope();
+  bind(SpexrSessionsContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrSessionsContribution);
+  bind(SpexrAgentsStatusContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrAgentsStatusContribution);
+  bindViewContribution(bind, AgentLogViewContribution);
+  bind(AgentLogWidget).toSelf();
+  bind(WidgetFactory)
+    .toDynamicValue((ctx) => ({
+      id: AGENT_LOG_VIEW_ID,
+      createWidget: () => ctx.container.get(AgentLogWidget),
     }))
     .inSingletonScope();
   rebind(OutlineViewContribution).to(SpexrOutlineViewContribution).inSingletonScope();

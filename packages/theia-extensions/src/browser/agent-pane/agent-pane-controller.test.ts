@@ -18,6 +18,12 @@ class FakeService implements AgentPaneService {
   async stop(): Promise<void> {
     this.stops++;
   }
+  async readPhase(): Promise<undefined> {
+    return undefined;
+  }
+  async readLog(): Promise<[]> {
+    return [];
+  }
 }
 
 class FakeTerminal implements PaneTerminal {
@@ -240,5 +246,59 @@ describe("AgentPaneController.adopted", () => {
     terminal.running = B;
     await c.bind();
     expect(c.expanded).toBe(false);
+  });
+});
+
+describe("AgentPaneController.view", () => {
+  it("follows another session read-only, and back to the agent's own with undefined", async () => {
+    const { service, terminal, c } = make();
+    terminal.running = A;
+    await c.bind();
+    await c.view(B);
+    expect(c.viewing).toBe(B);
+    expect(c.followed).toBe(B);
+    expect(service.follows[1]).toEqual({ sessionId: B, workspacePath: "/w/proj", readOnly: true });
+    await c.view(undefined);
+    expect(c.viewing).toBeUndefined();
+    expect(c.followed).toBe(A);
+    expect(service.follows[2]).toEqual({ sessionId: A, workspacePath: "/w/proj" });
+  });
+
+  it("takes the agent's own session as no override and does not mark it read-only", async () => {
+    const { service, terminal, c } = make();
+    terminal.running = A;
+    await c.view(A);
+    expect(c.viewing).toBeUndefined();
+    expect(service.follows).toEqual([{ sessionId: A, workspacePath: "/w/proj" }]);
+  });
+
+  it("drops the pushes of the session it left, and starts the new one folded with an empty snapshot", async () => {
+    const { terminal, c } = make();
+    terminal.running = A;
+    await c.bind();
+    c.snapshotPushed({ sessionId: A, title: "agent" });
+    c.toggleExpanded();
+    await c.view(B);
+    expect(c.snapshot?.sessionId).toBe(B);
+    expect(c.expanded).toBe(false);
+    c.snapshotPushed({ sessionId: A, title: "late" });
+    expect(c.snapshot?.sessionId).toBe(B);
+  });
+
+  it("does not adopt a successor of a session it only looks at", async () => {
+    const { terminal, c } = make();
+    terminal.running = A;
+    await c.view(B);
+    c.adopted(B, "cccccccc-0000-4000-8000-000000000003");
+    expect(c.followed).toBe(B);
+    expect(terminal.adoptions).toEqual([]);
+  });
+
+  it("can look at a session when no agent has a session at all", async () => {
+    const { service, c } = make();
+    await c.view(B);
+    expect(service.follows).toEqual([{ sessionId: B, workspacePath: "/w/proj", readOnly: true }]);
+    await c.view(undefined);
+    expect(c.followed).toBeUndefined();
   });
 });

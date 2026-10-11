@@ -12,6 +12,9 @@ import { classifySession } from "./session-state.js";
 import { liveProjectDirs } from "./process-scanner.js";
 import { ToolCounter } from "./tool-count.js";
 import { parseTranscript } from "./transcript-parser.js";
+import { buildFollowEvents, type TurnEntry } from "./turns.js";
+import type { FollowEvent } from "../../common/darkfactory-protocol.js";
+import { PANE_LOG_EVENTS } from "../../common/agent-pane-protocol.js";
 import type { AgentPaneBinding, AgentPaneCheckpoint, AgentPaneClient, AgentPaneService, AgentPaneSnapshot, PanePlanItem } from "../../common/agent-pane-protocol.js";
 
 /** How much of a transcript's end the first read takes: a turn's head can be far back in a long one. */
@@ -234,6 +237,14 @@ export class AgentPaneBackendService implements AgentPaneService {
     };
   }
 
+  async readLog(): Promise<FollowEvent[]> {
+    if (!this.binding || !this.transcript) return [];
+    await this.refresh();
+    // A subagent's calls and words are not the session's own.
+    const own = this.entries.filter((e) => !e.isSidechain) as TurnEntry[];
+    return buildFollowEvents(own, PANE_LOG_EVENTS);
+  }
+
   /** Stop, and let go of the client: the connection this service served has closed. */
   dispose(): void {
     void this.stop();
@@ -365,7 +376,8 @@ export class AgentPaneBackendService implements AgentPaneService {
       this.raw.splice(0, this.raw.length - MAX_ENTRIES);
     }
 
-    const scan = await this.scanFolder(file);
+    // A read-only look never moves on: the folder is not scanned for a successor.
+    const scan = b.readOnly ? undefined : await this.scanFolder(file);
     const next = await this.snapshot(b, file, epoch);
     const successor = scan ? await this.findSuccessor(b, file, scan) : undefined;
     if (epoch !== this.epoch) return;

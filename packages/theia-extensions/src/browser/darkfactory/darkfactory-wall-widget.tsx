@@ -208,6 +208,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * landed: the backend can only follow a session it has scanned.
    */
   private pendingRestore: StoredPin[] | undefined;
+  /** A session asked to be opened (the Sessions part) before the wall had its tile: opened when the scan brings it. */
+  private pendingOpen: string | undefined;
 
   /**
    * Sessions started from the launcher, still keyed by a placeholder: a new
@@ -365,6 +367,21 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         /* ignore */
       })
       .then(() => this.savePins());
+  }
+
+  /**
+   * Open a session as an expanded card, as a click on its tile does; nothing
+   * when its card is already open. A session the wall has no tile for yet is
+   * opened when the next scan brings it.
+   */
+  openSession(sessionId: string): void {
+    const tile = this.tiles.find((t) => t.sessionId === sessionId);
+    if (!tile) {
+      this.pendingOpen = sessionId;
+      return;
+    }
+    this.pendingOpen = undefined;
+    if (!this.pinned.includes(sessionId)) this.pin(tile);
   }
 
   private async openPinned(tile: AgentTile): Promise<void> {
@@ -991,6 +1008,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     }
     this.adoptLaunched(tiles);
     this.adoptForks(tiles);
+    if (this.pendingOpen) this.openSession(this.pendingOpen);
     this.savePins();
     const restore = this.pendingRestore;
     this.pendingRestore = undefined;

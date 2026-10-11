@@ -1,6 +1,7 @@
 import * as React from "react";
 import { injectable, inject, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget, type Message } from "@theia/core/lib/browser";
+import { CommandService } from "@theia/core/lib/common/command";
 import { StorageService } from "@theia/core/lib/browser/storage-service";
 import { MessageService } from "@theia/core/lib/common/message-service";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
@@ -12,6 +13,8 @@ import { AgentPaneClientDispatcher, AgentPaneServiceProxy } from "../agent/agent
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import { AGENT_PANE_VIEW_ID } from "./agent-pane-view-contribution.js";
 import { AgentPaneController } from "./agent-pane-controller.js";
+import { AgentFollowHub } from "./agent-follow-hub.js";
+import { DARKFACTORY_OPEN_SESSION_COMMAND } from "../darkfactory/darkfactory-open-session.js";
 import { AgentPaneView } from "./agent-pane-view.js";
 import { AgentPaneComposer } from "./agent-pane-composer.js";
 import { assemblePrompt, composerState } from "./agent-pane-composer-model.js";
@@ -41,6 +44,8 @@ export class AgentPaneWidget extends ReactWidget {
   @inject(MessageService) private readonly messages!: MessageService;
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
   @inject(EditorManager) private readonly editors!: EditorManager;
+  @inject(AgentFollowHub) private readonly hub!: AgentFollowHub;
+  @inject(CommandService) private readonly commands!: CommandService;
 
   /** Which session the pane follows and what it holds of it: see AgentPaneController. */
   private controller!: AgentPaneController;
@@ -53,11 +58,6 @@ export class AgentPaneWidget extends ReactWidget {
   private sending = false;
   /** Theia's workspace trust; false until known, so nothing can be typed before it is. */
   private trusted = false;
-  /**
-   * False when the pane follows a session that is not the agent terminal's own
-   * (S6j's read-only follows set it): the composer then only offers to open it.
-   */
-  private ownSession = true;
 
   constructor() {
     super();
@@ -75,16 +75,21 @@ export class AgentPaneWidget extends ReactWidget {
       this.service,
       this.terminal,
       (rootUri) => new URI(rootUri).path.fsPath(),
-      () => this.update(),
+      () => {
+        this.update();
+        this.publish();
+      },
       (message, error) => console.warn(`[spexr] ${message}`, error),
     );
+    this.toDispose.push(this.hub.onViewRequest((id) => void this.controller.view(id)));
     this.toDispose.push(this.client.onSnapshot$((s) => this.controller.snapshotPushed(s)));
     this.toDispose.push(this.client.onDelta$((d) => this.controller.deltaPushed(d)));
     this.toDispose.push(this.client.onSessionAdopted$(({ from, to }) => this.controller.adopted(from, to)));
     this.toDispose.push(
       this.terminal.onDidChangeSession(() => {
         void this.loadDraft(this.terminal.agentRootUri());
-        void this.controller.bind();
+        // A new agent session is what the pane shows again, whatever it was looking at.
+        this.hub.requestView(undefined);
       }),
     );
     this.toDispose.push(this.editors.onCurrentEditorChanged(() => this.update()));
@@ -100,8 +105,35 @@ export class AgentPaneWidget extends ReactWidget {
       }),
     );
     void this.loadDraft(this.terminal.agentRootUri());
-    this.toDispose.push({ dispose: () => this.controller.dispose() });
-    void this.controller.bind();
+    this.toDispose.push({
+      dispose: () => {
+        this.controller.dispose();
+        this.hub.publish({ followed: undefined, viewing: false, snapshot: undefined });
+      },
+    });
+    // Opened by a click in the Sessions part: it follows that session from the start.
+    void this.controller.view(this.hub.pendingView);
+  }
+
+  /** Say what the pane follows, for the Sessions part, the Agent log and the status bar. */
+  private publish(): void {
+    this.hub.publish({ followed: this.controller.followed, viewing: this.controller.viewing !== undefined, snapshot: this.controller.snapshot });
+  }
+
+  /**
+   * The composer's "Open in terminal" for a session that is not the agent's:
+   * Dark Factory's own flow opens it (a resume in a card, or a read-only
+   * follow with Fork when it runs elsewhere). Nothing starts in a workspace
+   * that is not trusted.
+   */
+  private async openFollowedInTerminal(): Promise<void> {
+    const id = this.controller.followed;
+    if (!id) return;
+    if (!(await this.terminal.isTrusted())) {
+      this.messages.info(nls.localize("spexr/agentPane/trustResume", "Trust this workspace to open a session in a terminal."));
+      return;
+    }
+    await this.commands.executeCommand(DARKFACTORY_OPEN_SESSION_COMMAND.id, id);
   }
 
   /** The active editor's file: its name for the chip, its workspace-relative path for the message. */
@@ -218,7 +250,7 @@ export class AgentPaneWidget extends ReactWidget {
       running: this.terminal.isRunning(),
       phase: snapshot?.phase,
       trusted: this.trusted,
-      ownSession: this.ownSession,
+      ownSession: this.controller.viewing === undefined,
       sending: this.sending,
     });
     return (
@@ -235,15 +267,18 @@ export class AgentPaneWidget extends ReactWidget {
         state={state}
         onSend={() => void this.send()}
         onPlan={() => void this.plan()}
-        onOpenInTerminal={() => void this.terminal.reveal()}
+        onOpenInTerminal={() => void (this.controller.viewing === undefined ? this.terminal.reveal() : this.openFollowedInTerminal())}
       />
     );
   }
 
   protected render(): React.ReactNode {
+    const snapshot = this.controller.snapshot;
+    // "Waiting for you in the terminal" is about the agent's terminal: another session's wait is not asked of it.
+    const shown = snapshot && this.controller.viewing !== undefined && snapshot.needsYou ? { ...snapshot, needsYou: false } : snapshot;
     return (
       <AgentPaneView
-        snapshot={this.controller.snapshot}
+        snapshot={shown}
         expanded={this.controller.expanded}
         onToggleExpanded={() => this.controller.toggleExpanded()}
         onReveal={() => void this.terminal.reveal()}

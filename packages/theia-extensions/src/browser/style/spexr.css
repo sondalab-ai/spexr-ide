@@ -5572,3 +5572,121 @@ code {
   font-family: var(--sl-font-code); font-size: var(--sl-text-xs); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .spexr-todo__work { grid-column: 2; justify-self: start; }
+
+/* ══ SESSIONS, THE AGENTS PILL AND THE AGENT LOG (S6j) ═════════════════════
+   Lumen's `.ide-sessions` rows, status pill and model item, on the 4px grid.
+   The numbers are SESSIONS, AGENTS_PILL and AGENT_LOG in
+   shell/workbench-geometry.ts (sessions-style.test.ts holds them).
+   - A row is the kit's list row (the selected one is the raised tile with its
+     seam, the kit's own): a 13px sans name over an 11px mono meta, 48px high,
+     no gap between rows. Nothing animates in.
+   - The pill is the live item (the accent dot) on the sunken ground, ringed on
+     the control edge so its boundary reads at 3:1; its words are the primary
+     ink. The model item is the dock's data item.
+   - The log is the follow transcript's lines with a time column before each,
+     in the muted mono, on the panel's ground. */
+.spexr-sessions-widget {
+  background: var(--sl-bg-surface);
+}
+
+.spexr-sessions.sl-list {
+  gap: 0;
+  padding-inline: 8px;
+}
+
+.spexr-sessions__row.sl-list__row {
+  box-sizing: border-box;
+  min-height: 48px;
+  padding-block: 4px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  font-family: var(--sl-font-sans);
+  font-size: 13px;
+}
+
+.spexr-sessions__name {
+  display: block;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spexr-sessions__meta.sl-list__meta {
+  margin-top: 4px;
+  font-family: var(--sl-font-mono);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.spexr-sessions__row[data-state="running"] .spexr-sessions__meta {
+  color: var(--slc-accent-text);
+}
+
+.spexr-sessions__empty {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: var(--sl-text-xs);
+  line-height: 16px;
+  color: var(--slc-text-muted);
+}
+
+#theia-statusBar .area:is(.left, .right) > .element.spexr-status--agents {
+  background-color: var(--slc-sunken);
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  border-radius: 6px;
+}
+
+#theia-statusBar .area:is(.left, .right) > .element.spexr-status--agents > span:not(.codicon, .fa) {
+  color: var(--slc-text);
+}
+
+.spexr-agent-log-widget {
+  overflow: auto;
+  background: var(--sl-bg-surface);
+}
+
+.spexr-agent-log {
+  padding: 16px;
+}
+
+.spexr-agent-log .spexr-df-term {
+  --tile-accent: var(--slc-accent-text);
+  line-height: 20px;
+  color: var(--slc-text-secondary);
+}
+
+.spexr-agent-log .spexr-df-term__line {
+  gap: 12px;
+  padding: 0;
+}
+
+.spexr-agent-log .spexr-df-term__line[data-kind="prompt"],
+.spexr-agent-log .spexr-df-term__line[data-kind="assistant"] {
+  color: var(--slc-text);
+}
+
+.spexr-agent-log .spexr-df-term__line[data-kind="result"] {
+  color: var(--slc-text-muted);
+}
+
+/* A result has no glyph: its text lines up under the call's. */
+.spexr-agent-log .spexr-df-term__line[data-kind="result"] .spexr-df-term__text {
+  padding-left: calc(1ch + 12px);
+}
+
+.spexr-agent-log .spexr-df-term__line[data-kind="error"] {
+  color: var(--slc-danger-text, var(--slc-danger));
+}
+
+.spexr-agent-log .spexr-df-term--empty {
+  color: var(--slc-text-muted);
+}
+
+.spexr-df-term__time {
+  flex: none;
+  width: 8ch;
+  font-variant-numeric: tabular-nums;
+  color: var(--slc-text-muted);
+  user-select: none;
+}
