@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_BLOCKS, RELAY_MS, TerminalBlocks, type BlockHost, type XtermDecoration, type XtermLike, type XtermMarker } from "./command-blocks-controller.js";
+import { MAX_BLOCKS, MAX_PENDING, RELAY_MS, TerminalBlocks, type BlockHost, type XtermDecoration, type XtermLike, type XtermMarker } from "./command-blocks-controller.js";
 
 const N = "0123456789abcdef0123456789abcdef";
 const T0 = 1_791_739_000_000;
@@ -180,14 +180,45 @@ describe("TerminalBlocks", () => {
     expect(framed[0]!.options.marker).toBe(term.markers[0]);
   });
 
-  it("believes nothing before it has the nonce, and everything once it has it", () => {
+  it("holds the marks it meets before it has the nonce, draws nothing for them yet, and checks them when the nonce comes: the first command gets its block", () => {
     const { term, blocks } = setup(null);
+    // The shell's first prompt, and a first command typed at once, before the backend has answered.
     command(term, { ms: T0 }, 0, 2);
     expect(term.decos).toHaveLength(0);
-    expect(blocks.stats.rejected).toBeGreaterThan(0);
+    expect(blocks.stats).toMatchObject({ prompts: 0, finished: 0, rejected: 0 });
     blocks.setNonce(N);
-    command(term, { ms: T0 }, 0, 2);
-    expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(1);
+    expect(blocks.stats).toMatchObject({ prompts: 1, started: 1, finished: 1, rejected: 0, drawn: 1 });
+    const framed = term.decos.filter((d) => d.options.height! > 1);
+    expect(framed).toHaveLength(1);
+    // From the prompt line where the prompt mark was met, not where the cursor is now.
+    expect(framed[0]!.options.marker.line).toBe(0);
+    expect(framed[0]!.options.height).toBe(3);
+  });
+
+  it("refuses a held forged mark when the nonce comes, and holds no more than MAX_PENDING", () => {
+    const { term, blocks } = setup(null);
+    term.osc(`spexr_prompt;${"f".repeat(32)}`);
+    term.osc(started(T0, "f".repeat(32)));
+    for (let i = 0; i < MAX_PENDING + 10; i++) term.osc(prompt);
+    blocks.setNonce(N);
+    expect(blocks.stats.rejected).toBe(2);
+    expect(blocks.stats.prompts).toBe(MAX_PENDING - 2);
+  });
+
+  it("lets the held marks and their markers go when there turns out to be no nonce", () => {
+    const { term, blocks } = setup(null);
+    term.osc(prompt);
+    term.osc(prompt);
+    blocks.setNonce(undefined);
+    expect(term.markers.every((m) => m.isDisposed)).toBe(true);
+    expect(blocks.stats.prompts).toBe(0);
+  });
+
+  it("lets held markers go on dispose", () => {
+    const { term, blocks } = setup(null);
+    term.osc(prompt);
+    blocks.dispose();
+    expect(term.markers.every((m) => m.isDisposed)).toBe(true);
   });
 
   it("is not fooled by text a command prints: marks with another nonce draw no block, and a forged hello gives no nonce", () => {

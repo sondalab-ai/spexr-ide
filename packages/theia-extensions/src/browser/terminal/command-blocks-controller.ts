@@ -30,6 +30,18 @@ export interface XtermLike {
 
 /** The most blocks kept per terminal: the oldest is let go past it. */
 export const MAX_BLOCKS = 200;
+/** Marks met before the nonce arrived are held (their positions with them) up to this many: the shell prints its first prompt before the terminal has asked the backend. */
+export const MAX_PENDING = 32;
+
+interface Pending {
+  readonly payload: string;
+  /** The cursor's absolute line and column when the mark was met. */
+  readonly line: number;
+  readonly cursorX: number;
+  /** A prompt's marker, registered where it was met; the others have none. */
+  readonly marker: XtermMarker | undefined;
+}
+
 /** A resize is acted on after the width has held still this long: dragging a sash is many resizes. */
 export const RELAY_MS = 120;
 
@@ -91,6 +103,7 @@ export class TerminalBlocks {
   private idlePrompt: XtermMarker | undefined;
   private lastCols: number;
   private relayHandle: unknown;
+  private pending: Pending[] = [];
   /** How many of each mark were met, for a support question ("why no blocks?") and the visual run's diagnosis. */
   readonly stats: BlockStats = { prompts: 0, started: 0, finished: 0, rejected: 0, drawn: 0 };
 
@@ -112,9 +125,21 @@ export class TerminalBlocks {
     this.hook();
   }
 
-  /** The shell's nonce, from the backend (undefined: believe nothing). */
+  /**
+   * The shell's nonce, from the backend (undefined: believe nothing, and let the
+   * held marks go). The marks met before it arrived are then checked against it,
+   * in order, as if they had just come: a forged one is refused by it as any other.
+   */
   setNonce(nonce: string | undefined): void {
     this.tracker.setNonce(nonce);
+    const held = this.pending;
+    this.pending = [];
+    if (!this.tracker.hasNonce) {
+      for (const p of held) p.marker?.dispose();
+      return;
+    }
+    for (const p of held) this.handle(p.payload, p.line, p.cursorX, p.marker);
+    if (held.length > 0) this.onChange();
   }
 
   /** Register the OSC handler, in front of every one registered so far. */
@@ -126,6 +151,8 @@ export class TerminalBlocks {
   dispose(): void {
     if (this.relayHandle !== undefined) this.timers.clear(this.relayHandle);
     this.relayHandle = undefined;
+    for (const p of this.pending) p.marker?.dispose();
+    this.pending = [];
     this.handler?.dispose();
     this.resize.dispose();
     this.running?.dispose();
@@ -144,19 +171,34 @@ export class TerminalBlocks {
   private onMark(payload: string): boolean {
     // Theia's own marks pass: it needs them, and here they are unauthenticated, so they move no block.
     if (!isSpexrPayload(payload)) return false;
+    const { baseY, cursorY, cursorX } = this.term.buffer.active;
+    if (!this.tracker.hasNonce) {
+      // The shell prints its first prompt before the terminal has the nonce: held, and checked when it comes.
+      if (this.pending.length < MAX_PENDING) {
+        this.pending.push({ payload, line: baseY + cursorY, cursorX, marker: payload.startsWith("spexr_prompt") ? this.term.registerMarker(0) : undefined });
+      }
+      return true;
+    }
+    this.handle(payload, baseY + cursorY, cursorX, undefined);
+    this.onChange();
+    return true;
+  }
+
+  /** One mark, checked against the nonce and acted on. `marker` is a prompt's, when it was registered earlier. */
+  private handle(payload: string, line: number, cursorX: number, marker: XtermMarker | undefined): void {
     const mark = this.tracker.accept(payload);
     if (!mark) {
+      marker?.dispose();
       this.stats.rejected++;
-      this.onChange();
-      return true;
+      return;
     }
     if (mark.kind === "prompt") {
       this.stats.prompts++;
-      const marker = this.term.registerMarker(0);
-      if (marker) {
+      const m = marker ?? this.term.registerMarker(0);
+      if (m) {
         this.idlePrompt?.dispose();
-        this.idlePrompt = marker;
-        this.tracker.promptStarted(marker);
+        this.idlePrompt = m;
+        this.tracker.promptStarted(m);
       }
     } else if (mark.kind === "started") {
       this.stats.started++;
@@ -166,8 +208,7 @@ export class TerminalBlocks {
       if (run.prompt === this.idlePrompt) this.idlePrompt = undefined;
       this.drawRunning(run.prompt);
     } else {
-      const { baseY, cursorY, cursorX } = this.term.buffer.active;
-      const block = this.tracker.finish(mark, baseY + cursorY, cursorX);
+      const block = this.tracker.finish(mark, line, cursorX);
       if (block) {
         this.stats.finished++;
         this.drawFinished(block);
@@ -175,8 +216,6 @@ export class TerminalBlocks {
         this.stats.rejected++;
       }
     }
-    this.onChange();
-    return true;
   }
 
   /** A command that never reported its end (its mark was lost): its chip and marker are let go. */

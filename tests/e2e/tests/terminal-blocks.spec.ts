@@ -50,9 +50,9 @@ test.describe("TC-TERMINAL-BLOCKS: command blocks in a shell terminal", () => {
     // Theia's "new terminal": it takes the focus.
     await page.keyboard.press("Control+Shift+Backquote");
     await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest(".xterm")), { timeout: 15_000 }).toBe(true);
-    // The terminal learns the shell's nonce from the backend (a refused mark is the sign it has none yet), and the shell sources its rc files and the integration before its first prompt.
+    // The terminal learns the shell's nonce from the backend (the first prompt mark is held until it does), and the shell sources its rc files and the integration before its first prompt.
     try {
-      await expect.poll(async () => /prompts:[1-9]/.test(await marks(page)), { timeout: 30_000 }).toBe(true);
+      await expect.poll(async () => /nonce:set/.test(await marks(page)), { timeout: 30_000 }).toBe(true);
     } catch (err) {
       console.log(`terminal marks at the failure: ${await marks(page)}`);
       throw err;

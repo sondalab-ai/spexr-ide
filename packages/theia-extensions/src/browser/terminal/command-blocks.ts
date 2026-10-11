@@ -107,6 +107,11 @@ export class BlockTracker<M extends LineMarker> {
     return this.current;
   }
 
+  /** Whether the terminal has the shell's nonce yet. */
+  get hasNonce(): boolean {
+    return this.nonce !== undefined;
+  }
+
   /** The mark `payload` is, when it is exactly one of spexr's and carries this shell's nonce; undefined otherwise. */
   accept(payload: string): SpexrMark | undefined {
     if (this.nonce === undefined) return undefined;
