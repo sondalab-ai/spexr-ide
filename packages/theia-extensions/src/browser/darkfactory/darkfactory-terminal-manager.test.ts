@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+
+// The manager's inject token comes from a module that loads Lumino, which reads `document` at import; the tests set `trust` by hand.
+vi.mock("@theia/workspace/lib/browser/workspace-trust-service", () => ({ WorkspaceTrustService: class WorkspaceTrustService {} }));
 
 const UUID = "0f8f1a2b-3c4d-5e6f-9a0b-1c2d3e4f5a6b";
 const SES = "ses_abc123XYZ";
