@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
+import { checkActivityStatus, probeActivityStatus, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
 import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureCrop,
@@ -158,6 +158,19 @@ for (const theme of THEMES) {
           meta.scenes.push({ scene: "tabs-crumbs", file: path.basename(file), ...(await captureCrop(page, file, rows)) });
         }
         check("editor strip", checkEditorStrip(strip));
+        writeMeta();
+      }
+
+      // S6d: the activity tiles and the status entries, in order, and the
+      // status bar's crop for the side-by-side.
+      {
+        const read = await probeActivityStatus(page);
+        const bar = (await probeRegions(page, [{ key: "status", selector: "#theia-statusBar" }]))["status"]?.[0];
+        if (bar) {
+          const file = path.join(out, "status.png");
+          meta.scenes.push({ scene: "status", file: path.basename(file), ...(await captureCrop(page, file, [bar])) });
+        }
+        check("activity and status", checkActivityStatus(read));
         writeMeta();
       }
 
