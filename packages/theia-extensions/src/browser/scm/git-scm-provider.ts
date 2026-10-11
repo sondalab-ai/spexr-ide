@@ -1,4 +1,4 @@
-import { FetchCoordinator, type FetchOutcome } from "./fetch-state.js";
+import { FetchCoordinator, applyStatus, type FetchOutcome } from "./fetch-state.js";
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { Emitter, DisposableCollection } from "@theia/core";
 import type { Event } from "@theia/core";
@@ -284,11 +284,12 @@ export class SpexrGitScmProvider implements ScmProvider {
     if (!this.rootFsPath) return;
     try {
       const status = await this.gitService.getStatus(this.rootFsPath);
-      const switched = this._lastStatus !== undefined && this._lastStatus.branch !== status.branch;
-      if (sameStatus(this._lastStatus, status)) return;
-      this._lastStatus = status;
-      // Another branch's fetches say nothing about this one: the outcome is unknown again, once the status is the new branch's.
-      if (switched) this.fetches.reset();
+      // Another branch's fetches say nothing about this one: the outcome is unknown again, once the status is the new branch's (applyStatus).
+      const stored = applyStatus(this._lastStatus, status, sameStatus, {
+        store: (next) => void (this._lastStatus = next),
+        resetFetch: () => this.fetches.reset(),
+      });
+      if (!stored) return;
       this._onDidChangeStatusEmitter.fire(status);
       const root = this.rootFsPath;
 

@@ -61,7 +61,17 @@ export interface FetchDeps {
   /** The outcome changed. */
   changed(): void;
   timeouts?: { manual: number; background: number };
+  /** The clock, in ms; the system's by default. */
+  now?: () => number;
 }
+
+/**
+ * How long a manual success overrides the background fetches' failures: after
+ * this long, or this many failed background ticks, it is spent. Without an end,
+ * on a remote that needs credentials "synced" would outlive the network.
+ */
+export const MANUAL_SUCCESS_TTL_MS = 15 * 60_000;
+export const MANUAL_SUCCESS_TICKS = 5;
 
 /**
  * Fetching one repository (S6d, S3), free of Theia: a queue (a fetch by hand
@@ -78,6 +88,8 @@ export class FetchCoordinator {
   private readonly queue = new FetchQueue();
   private manualResult: "ok" | "failed" | undefined;
   private backgroundResult: "ok" | "failed" | undefined;
+  private manualOkAt = 0;
+  private failedTicksSinceManual = 0;
 
   constructor(private readonly deps: FetchDeps) {}
 
@@ -101,6 +113,8 @@ export class FetchCoordinator {
         throw err;
       }
       this.manualResult = "ok";
+      this.manualOkAt = (this.deps.now ?? Date.now)();
+      this.failedTicksSinceManual = 0;
       this.announce(before);
     });
   }
@@ -116,9 +130,17 @@ export class FetchCoordinator {
         this.backgroundResult = "ok";
       } catch {
         this.backgroundResult = "failed";
+        this.expireManualSuccess();
       }
       this.announce(before);
     });
+  }
+
+  /** A manual success that has outlasted its time or its failed ticks no longer overrides the background's failure. */
+  private expireManualSuccess(): void {
+    if (this.manualResult !== "ok") return;
+    this.failedTicksSinceManual++;
+    if (this.failedTicksSinceManual >= MANUAL_SUCCESS_TICKS || (this.deps.now ?? Date.now)() - this.manualOkAt >= MANUAL_SUCCESS_TTL_MS) this.manualResult = undefined;
   }
 
   /** A branch switch: the other branch's fetches say nothing about this one. */
@@ -132,4 +154,24 @@ export class FetchCoordinator {
   private announce(before: FetchOutcome): void {
     if (this.outcome !== before) this.deps.changed();
   }
+}
+
+/**
+ * A refreshed status arriving at a repository (S6d): when it is the same as
+ * the held one nothing happens; otherwise it is stored and then, if the branch
+ * changed, the fetch outcome is reset, in that order, so a listener that reads
+ * the status when the outcome changes sees the new branch's. Returns whether it
+ * was stored.
+ */
+export function applyStatus<S extends { branch: string }>(
+  current: S | undefined,
+  next: S,
+  same: (a: S | undefined, b: S) => boolean,
+  hooks: { store(status: S): void; resetFetch(): void },
+): boolean {
+  const switched = current !== undefined && current.branch !== next.branch;
+  if (same(current, next)) return false;
+  hooks.store(next);
+  if (switched) hooks.resetFetch();
+  return true;
 }
