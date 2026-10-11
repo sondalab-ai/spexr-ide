@@ -54,7 +54,10 @@ async function focusExplorer(page: Page): Promise<void> {
   }
   const box = await tree.boundingBox();
   if (!box) throw new Error("the Explorer's tree has no box");
-  await tree.click({ position: { x: Math.min(40, box.width / 2), y: Math.max(1, box.height - 8) } });
+  // The tree's box can run past its section into the one below (Sessions), which would take the click: stay inside the section.
+  const part = await tree.evaluate((el) => el.closest(".part")?.getBoundingClientRect().bottom ?? null);
+  const bottom = part === null ? box.height : Math.min(box.height, part - box.y);
+  await tree.click({ position: { x: Math.min(40, box.width / 2), y: Math.max(1, bottom - 8) } });
 }
 
 test.describe("Lumen islands", () => {
