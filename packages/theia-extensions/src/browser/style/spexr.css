@@ -5709,3 +5709,31 @@ code {
   color: var(--slc-text-muted);
   user-select: none;
 }
+
+/* ══ INLINE DIAGNOSTICS (S6k, D23) ═════════════════════════════════════════
+   A warning or error after its line, Lumen's `.ide-diag`: the kit's sans at
+   12px, the tone's text on a 12% wash of the tone, r4 (Lumen 5), 24px from
+   the code. INLINE_DIAGNOSTIC in shell/workbench-geometry.ts holds the
+   numbers (inline-diagnostics-style.test.ts). Monaco injects the text, so it
+   is only ever text. */
+.spexr-inline-diag {
+  margin-left: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-family: var(--sl-font-sans);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.spexr-inline-diag--warning {
+  color: var(--slc-warning-text, var(--slc-warning));
+  background: color-mix(in srgb, var(--slc-warning) 12%, transparent);
+}
+
+.spexr-inline-diag--error {
+  color: var(--slc-danger-text, var(--slc-danger));
+  background: color-mix(in srgb, var(--slc-danger) 12%, transparent);
+}

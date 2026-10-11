@@ -208,6 +208,26 @@ export const AGENT_LOG = {
 } as const;
 
 /**
+ * The editor's inline diagnostic chip (S6k) as Lumen's `.ide-diag` at 1440x900
+ * (tests/visual/reference/demo-regions.json "code.diag": 189.45 x 16 at 24px
+ * after the code, padding 0 8, Geist 12px, r5, the warning text on a 12% wash
+ * of the warning). On the grid the radius is 4 (Lumen 5); the rest is Lumen's
+ * own, already on it. spexr.css repeats the numbers; inline-diagnostics-style.test.ts
+ * holds them.
+ */
+export const INLINE_DIAGNOSTIC = {
+  /** Between the end of the code and the chip. */
+  marginLeft: 24,
+  paddingInline: 8,
+  radius: 4,
+  fontSize: 12,
+  /** The chip's own height: a 12px sans's box, as the demo's. */
+  height: 16,
+  /** The wash under the text, as a share of the tone. */
+  washPercent: 12,
+} as const;
+
+/**
  * The command palette (Theia's quick input) as Lumen's, at 1440x900 (S5f).
  * It floats over the editor island: centred on it, 118px from the window's
  * top (the island's tab strip and breadcrumbs, and one gap, below the

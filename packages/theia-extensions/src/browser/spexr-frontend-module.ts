@@ -69,6 +69,7 @@ import { SpexrSessionsContribution } from "./sessions/sessions-contribution.js";
 import { SpexrAgentsStatusContribution } from "./sessions/agents-status-contribution.js";
 import { AgentLogWidget, AGENT_LOG_VIEW_ID } from "./sessions/agent-log-widget.js";
 import { AgentLogViewContribution } from "./sessions/agent-log-contribution.js";
+import { SpexrInlineDiagnosticsContribution } from "./editor/inline-diagnostics-contribution.js";
 import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
@@ -518,6 +519,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   // the layout's settled mark, so it must come after every contribution that
   // touches the layout (Theia runs onDidInitializeLayout in binding order, one
   // at a time). The shell layout injects it for Reset Layout.
+  bind(SpexrInlineDiagnosticsContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrInlineDiagnosticsContribution);
   bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
 });

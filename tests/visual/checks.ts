@@ -651,3 +651,89 @@ export function checkAgentLog(state: AgentLogState, regions: Regions): string[] 
   if (xs.length && Math.max(...xs) - Math.min(...xs) > 0.5) problems.push(`agent log: the time column is not aligned (x ${Math.min(...xs)} to ${Math.max(...xs)})`);
   return problems;
 }
+
+/* ── S6k: the inline diagnostic ─────────────────────────────────────────── */
+
+/** The chips in the front editor, read from the page (computed styles, as drawn). */
+export interface InlineDiagState {
+  readonly chips: ReadonlyArray<{
+    readonly text: string;
+    readonly tone: "warning" | "error" | null;
+    readonly fontSize: string;
+    readonly fontFamily: string;
+    readonly borderRadius: string;
+    readonly paddingLeft: string;
+    readonly paddingRight: string;
+    readonly marginLeft: string;
+    readonly color: string;
+    readonly background: string;
+    readonly rect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+    /** The editor line (its number) the chip sits on, from the gutter row at the same height. */
+    readonly line: number | null;
+  }>;
+}
+
+/** Read the inline diagnostic chips of the visible editors. */
+export async function probeInlineDiagnostics(page: Page): Promise<InlineDiagState> {
+  return page.evaluate(() => {
+    const chips = [...document.querySelectorAll<HTMLElement>(".spexr-inline-diag")].filter((el) => el.getBoundingClientRect().width > 0);
+    return {
+      chips: chips.map((el) => {
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        const editor = el.closest(".monaco-editor");
+        const numbers = [...(editor?.querySelectorAll<HTMLElement>(".margin-view-overlays .line-numbers") ?? [])];
+        const mid = r.top + r.height / 2;
+        const row = numbers.find((n) => {
+          const b = n.getBoundingClientRect();
+          return mid >= b.top && mid <= b.bottom;
+        });
+        return {
+          text: (el.textContent ?? "").trim(),
+          tone: el.classList.contains("spexr-inline-diag--warning") ? ("warning" as const) : el.classList.contains("spexr-inline-diag--error") ? ("error" as const) : null,
+          fontSize: cs.fontSize,
+          fontFamily: cs.fontFamily,
+          borderRadius: cs.borderTopLeftRadius,
+          paddingLeft: cs.paddingLeft,
+          paddingRight: cs.paddingRight,
+          marginLeft: cs.marginLeft,
+          color: cs.color,
+          background: cs.backgroundColor,
+          rect: { x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 },
+          line: row ? Number(row.textContent?.trim()) || null : null,
+        };
+      }),
+    };
+  });
+}
+
+/** The fixture's line 46 warning (the demo's "Promise returned is not awaited"). */
+export const DEMO_DIAGNOSTIC = "Promise returned is not awaited";
+
+/**
+ * The inline diagnostic against the demo's `code.diag` (189.45 x 16, 24px after
+ * line 46's code, Geist 12px, r5, padding 0 8, the warning on a 12% wash): one
+ * chip, on line 46, in the warning tone, the sans at 12px with 8px of padding,
+ * r4 (the grid's, for the demo's 5), 24px of margin, 16px high within 2px. Its
+ * words are the demo's, or their start with an ellipsis: the first-launch
+ * editor is narrower than the demo's, so the message is cut to the room the
+ * line has left (inline-diagnostics.ts). The second warning (cache.ts) is in a
+ * tab that is not showing, so it is not drawn.
+ */
+export function checkInlineDiagnostics(state: InlineDiagState): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  if (state.chips.length !== 1) return [`inline diagnostics: ${state.chips.length} chips on screen, want exactly 1 (line 46)`];
+  const c = state.chips[0]!;
+  const cut = c.text.endsWith("\u2026") && DEMO_DIAGNOSTIC.startsWith(c.text.slice(0, -1)) && c.text.length > 8;
+  if (c.text !== DEMO_DIAGNOSTIC && !cut) problems.push(`inline diagnostics: the chip reads ${JSON.stringify(c.text)}, want ${JSON.stringify(DEMO_DIAGNOSTIC)} or its start with an ellipsis`);
+  if (c.tone !== "warning") problems.push(`inline diagnostics: tone ${c.tone}, want warning`);
+  if (c.line !== 46) problems.push(`inline diagnostics: the chip is on line ${c.line}, want 46`);
+  if (c.fontSize !== "12px" || !/Geist|sans|system-ui/i.test(c.fontFamily)) problems.push(`inline diagnostics: font ${c.fontSize} ${c.fontFamily}, want the sans at 12px`);
+  if (c.borderRadius !== "4px") problems.push(`inline diagnostics: radius ${c.borderRadius}, want 4px (the demo's 5 on the grid)`);
+  if (c.paddingLeft !== "8px" || c.paddingRight !== "8px") problems.push(`inline diagnostics: padding ${c.paddingLeft} / ${c.paddingRight}, want 8px`);
+  if (c.marginLeft !== "24px") problems.push(`inline diagnostics: margin ${c.marginLeft}, want 24px`);
+  if (!near(c.rect.h, 16, 2)) problems.push(`inline diagnostics: the chip is ${c.rect.h}px tall, want 16 (the demo's)`);
+  if (c.background === "rgba(0, 0, 0, 0)" || c.background === "transparent") problems.push("inline diagnostics: the chip has no wash");
+  return problems;
+}
