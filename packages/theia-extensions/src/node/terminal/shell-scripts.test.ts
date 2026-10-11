@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { theiaInjection, withSpexrBlocks, type ShellLaunch } from "./shell-integration-options.js";
+
+// Each case spawns a real shell on a pty and lets it settle for a second; a loaded runner needs more than the default 5s.
+vi.setConfig({ testTimeout: 30_000 });
 
 /**
  * The shell scripts, run for real: bash and zsh on a pty with a temporary HOME,
