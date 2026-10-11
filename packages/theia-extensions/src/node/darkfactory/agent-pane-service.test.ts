@@ -192,6 +192,52 @@ describe("AgentPaneBackendService", () => {
     await s.svc.stop();
   });
 
+  it("a read-only follow stays on its session when a newer transcript appears", async () => {
+    write(s.projects, IDS.A, head(IDS.A) + promptLine(IDS.A, s.ws, 1, "first") + useLine(IDS.A, s.ws, 2, "t1", "make"), 1_800_000_000);
+    await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws, readOnly: true });
+    await settle(s.svc);
+    s.events.length = 0;
+    write(s.projects, IDS.B, head(IDS.B) + promptLine(IDS.B, s.ws, 100, "the agent's own session"), 1_800_000_100);
+    s.now.t += 5000;
+    await s.svc.refresh();
+    expect(s.events.filter((e) => e[0] === "adopted")).toEqual([]);
+    expect(s.events.filter((e) => e[0] === "snapshot")).toEqual([]);
+    await s.svc.stop();
+  });
+
+  it("a read-only follow still knows it is not the project's newest session: a sibling written after it makes it not live, though it is under ten minutes old and a Claude runs in the folder", async () => {
+    // A is young (its mtime is "now") and a Claude process runs in the folder.
+    write(s.projects, IDS.A, head(IDS.A) + promptLine(IDS.A, s.ws, 1, "viewed") + useLine(IDS.A, s.ws, 2, "t1", "make"), s.now.t / 1000 - 60);
+    s.live.dirs = new Set([s.ws]);
+    const first = await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws, readOnly: true });
+    expect(first?.state).toBe("working");
+    await settle(s.svc);
+    s.events.length = 0;
+    // The agent's own, newer session appears in the same folder.
+    write(s.projects, IDS.B, head(IDS.B) + promptLine(IDS.B, s.ws, 100, "the agent's session"), s.now.t / 1000 - 10);
+    s.now.t += 5000;
+    await s.svc.refresh();
+    const states = s.events.flatMap((e) => (e[0] === "delta" ? [e[1].state] : e[0] === "snapshot" ? [e[1].state] : [])).filter((x) => x !== undefined);
+    // A delta arrived, and it says the session is no longer working: the sibling is newer, so it is not the project's live one.
+    expect(states.length).toBeGreaterThan(0);
+    expect(states[states.length - 1]).toBe("idle");
+    expect(s.events.filter((e) => e[0] === "adopted")).toEqual([]);
+    await s.svc.stop();
+  });
+
+  it("reads the log of the followed session with each event's time, and nothing for another session or when none is followed", async () => {
+    expect(await s.svc.readLog(IDS.A)).toEqual([]);
+    write(s.projects, IDS.A, head(IDS.A) + promptLine(IDS.A, s.ws, 1, "make it so") + useLine(IDS.A, s.ws, 2, "t1", "pnpm test") + resultLine(IDS.A, s.ws, 3, "t1"), 1_800_000_000);
+    await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws });
+    const log = await s.svc.readLog(IDS.A);
+    expect(log.map((e) => e.kind)).toEqual(["prompt", "tool", "result"]);
+    expect(log.map((e) => e.atMs)).toEqual([Date.parse(stamp(1)), Date.parse(stamp(2)), Date.parse(stamp(3))]);
+    // The follow moved to another session while a read for A was on its way: A's lines are not B's.
+    expect(await s.svc.readLog(IDS.B)).toEqual([]);
+    await s.svc.stop();
+    expect(await s.svc.readLog(IDS.A)).toEqual([]);
+  });
+
   it("stops: nothing is pushed afterwards", async () => {
     const path = write(s.projects, IDS.A, head(IDS.A) + promptLine(IDS.A, s.ws, 1, "first"), 1_800_000_000);
     await s.svc.follow({ sessionId: IDS.A, workspacePath: s.ws });

@@ -730,6 +730,32 @@ export function probeLog(logFile: string, configDir: string): LogProbes {
  * `agent.msg.user`, `agent.tools`, `agent.tool`, `agent.tool.run`,
  * `agent.diffcard`, `agent.plan` and `agent.check.box`.
  */
+/**
+ * S6j: the Explorer's Sessions part against the demo's `sessions`,
+ * `sessions.row` and `sessions.sel`, the status bar's agents pill and model
+ * item against `status.agents` and `status.model`, and the Agent log in the
+ * bottom panel. The status items' ids are Theia's `status-bar-<entry id>`.
+ */
+export const SESSIONS_REGIONS: readonly ShellRegion[] = [
+  { key: "sess.part", selector: ".spexr-sessions-widget" },
+  { key: "sess.list", selector: ".spexr-sessions" },
+  { key: "sess.row", selector: ".spexr-sessions__row" },
+  { key: "sess.row.sel", selector: '.spexr-sessions__row[aria-selected="true"]' },
+  { key: "sess.name", selector: ".spexr-sessions__name" },
+  { key: "sess.meta", selector: ".spexr-sessions__meta" },
+  { key: "status.bar", selector: "#theia-statusBar" },
+  { key: "status.pill", selector: "#status-bar-spexr-agents-pill" },
+  { key: "status.model", selector: "#status-bar-spexr-agent-model" },
+];
+
+/** The Agent log (S6j): the panel, its scroller (the log: the gutter is its padding) and its lines. */
+export const AGENT_LOG_REGIONS: readonly ShellRegion[] = [
+  { key: "log.panel", selector: "#theia-bottom-content-panel" },
+  { key: "log.body", selector: ".spexr-agent-log" },
+  { key: "log.line", selector: ".spexr-agent-log .spexr-df-term__line" },
+  { key: "log.time", selector: ".spexr-agent-log .spexr-df-term__time" },
+];
+
 export const AGENT_PANE_REGIONS: readonly ShellRegion[] = [
   { key: "ap.pane", selector: '.spexr-island[data-island="right"]' },
   { key: "ap.head", selector: "#theia-right-content-panel .spexr-agent-pane .spexr-panel-head" },

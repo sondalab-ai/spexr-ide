@@ -836,3 +836,256 @@ export function checkBottomPanel(panel: BottomPanel): string[] {
   if (!panel.close) problems.push("bottom panel: no close button");
   return problems;
 }
+
+/* ── S6j: sessions, the status items and the Agent log ──────────────────── */
+
+/** What the Sessions part and the status bar's two agent items say, read from the page. */
+export interface SessionsState {
+  readonly rows: ReadonlyArray<{ readonly name: string; readonly meta: string; readonly selected: boolean; readonly tabStop: boolean }>;
+  /** The pill's words; null when it is not drawn. */
+  readonly pill: string | null;
+  /** The model item's words; null when it is not drawn. */
+  readonly model: string | null;
+}
+
+/** Read the Sessions rows, the agents pill and the model item. */
+export async function probeSessions(page: Page): Promise<SessionsState> {
+  return page.evaluate(() => {
+    const words = (el: Element | null): string | null => (el ? (el.textContent ?? "").replace(/\s+/g, " ").trim() : null);
+    return {
+      rows: [...document.querySelectorAll<HTMLElement>(".spexr-sessions__row")].map((r) => ({
+        name: words(r.querySelector(".spexr-sessions__name")) ?? "",
+        meta: words(r.querySelector(".spexr-sessions__meta")) ?? "",
+        selected: r.getAttribute("aria-selected") === "true",
+        tabStop: r.tabIndex === 0,
+      })),
+      pill: words(document.getElementById("status-bar-spexr-agents-pill")),
+      model: words(document.getElementById("status-bar-spexr-agent-model")),
+    };
+  });
+}
+
+/** The demo's three session rows (showcase/screens.js), as the fixture's sessions produce them. */
+export const DEMO_SESSION_ROWS = [
+  ["Refactor the audit", "running · 14 tools"],
+  ["Prism light theme", "done · 1h · 212 tools"],
+  ["Edge in shade", "done · 3h · 58 tools"],
+] as const;
+
+/** The demo's pill words: 14 + 198 tool calls over the two live agents. */
+export const DEMO_AGENTS_PILL = "2 agents · 212 tools";
+
+/**
+ * The left island's Sessions part and the status bar's agent items against the
+ * demo (reference/demo-regions.json `sessions.*`, `status.agents`,
+ * `status.model`), on the 4px grid (SESSIONS, AGENTS_PILL in workbench-geometry.ts):
+ * the three rows by their words, "Refactor the audit" selected, one tab stop; a
+ * row 48px high (the demo's 46.38) and 48 apart (48.37), inset 8px in the part;
+ * the pill reading 2 agents · 212 tools at the kit's 20px (the demo's 22), and the
+ * model item reading Opus and a rate within the 500 tok/s cap (the demo's 1.2k is
+ * not what Claude streams: the fixture says about 86), the two centred in the bar.
+ */
+export function checkSessions(state: SessionsState, regions: Regions): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  const got = state.rows.map((r) => [r.name, r.meta]);
+  if (JSON.stringify(got) !== JSON.stringify(DEMO_SESSION_ROWS)) problems.push(`sessions: rows ${JSON.stringify(got)}, want ${JSON.stringify(DEMO_SESSION_ROWS)}`);
+  const selected = state.rows.filter((r) => r.selected);
+  if (selected.length !== 1 || selected[0]!.name !== "Refactor the audit") problems.push(`sessions: selected ${JSON.stringify(selected.map((r) => r.name))}, want only "Refactor the audit"`);
+  if (state.rows.filter((r) => r.tabStop).length !== 1) problems.push("sessions: the list must have exactly one tab stop");
+
+  const part = regions["sess.part"]?.[0];
+  const rows = regions["sess.row"] ?? [];
+  if (!part || rows.length !== state.rows.length) problems.push(`sessions: ${rows.length} of ${state.rows.length} rows are on screen (the part must show all three)`);
+  else {
+    for (const [i, r] of rows.entries()) {
+      if (!near(r.h, 48, 2)) problems.push(`sessions: row ${i} is ${r.h}px tall, want 48 (the demo's 46.38)`);
+      if (!near(r.x - part.x, 8, 1)) problems.push(`sessions: row ${i} is ${r.x - part.x}px in from the part, want 8 (the demo's 7.2)`);
+      if (i > 0 && !near(r.y - rows[i - 1]!.y, 48, 1)) problems.push(`sessions: rows ${i - 1} and ${i} are ${r.y - rows[i - 1]!.y}px apart, want 48 (the demo's 48.37)`);
+    }
+    const names = regions["sess.name"] ?? [];
+    const metas = regions["sess.meta"] ?? [];
+    if (names[0] && metas[0] && !near(metas[0].y - names[0].y, 24, 1)) problems.push(`sessions: the meta sits ${metas[0].y - names[0].y}px under the name's top, want 24 (a 20px line and 4)`);
+    if (metas[0] && !near(metas[0].h, 16, 1)) problems.push(`sessions: the meta line is ${metas[0].h}px, want 16`);
+  }
+
+  if (state.pill !== DEMO_AGENTS_PILL) problems.push(`status: the agents pill reads ${JSON.stringify(state.pill)}, want ${JSON.stringify(DEMO_AGENTS_PILL)}`);
+  if (!/^Opus · \d{1,3} tok\/s$/.test(state.model ?? "")) problems.push(`status: the model item reads ${JSON.stringify(state.model)}, want "Opus · <n> tok/s"`);
+  else if (Number(/\d+/.exec(state.model!)![0]) > 500) problems.push(`status: the model item reads ${state.model}, above the 500 tok/s cap`);
+  const bar = regions["status.bar"]?.[0];
+  for (const key of ["status.pill", "status.model"]) {
+    const box = regions[key]?.[0];
+    if (!box || !bar) {
+      problems.push(`status: no ${key} box on screen`);
+      continue;
+    }
+    if (!near(box.h, 20, 1)) problems.push(`status: ${key} is ${box.h}px tall, want 20 (the demo's 22)`);
+    if (!near(box.y + box.h / 2, bar.y + bar.h / 2, 1.5)) problems.push(`status: ${key} is centred ${box.y + box.h / 2 - (bar.y + bar.h / 2)}px off the bar's middle`);
+  }
+  const pill = regions["status.pill"]?.[0];
+  const model = regions["status.model"]?.[0];
+  if (pill && model && pill.x + pill.w > model.x) problems.push("status: the pill and the model item overlap, or the model item is not to the right of the pill");
+  return problems;
+}
+
+/** What the Agent log shows. */
+export interface AgentLogState {
+  /** The log's tab in the bottom panel is the current one. */
+  readonly current: boolean;
+  readonly lines: ReadonlyArray<{ readonly kind: string; readonly time: string | null; readonly text: string }>;
+  /** The scroller's metrics: the log follows its end, so the last line is in view. */
+  readonly scroller: { readonly overflowY: string; readonly scrollTop: number; readonly scrollHeight: number; readonly clientHeight: number; readonly lastLineInView: boolean } | null;
+}
+
+/** Read the Agent log's lines. */
+export async function probeAgentLog(page: Page): Promise<AgentLogState> {
+  return page.evaluate(() => ({
+    scroller: (() => {
+      const el = document.querySelector<HTMLElement>(".spexr-agent-log");
+      if (!el) return null;
+      const box = el.getBoundingClientRect();
+      const last = [...el.querySelectorAll<HTMLElement>(".spexr-df-term__line")].pop()?.getBoundingClientRect();
+      return {
+        overflowY: getComputedStyle(el).overflowY,
+        scrollTop: Math.round(el.scrollTop),
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        lastLineInView: !!last && last.bottom <= box.bottom + 1 && last.top >= box.top - 1,
+      };
+    })(),
+    current: !!document.querySelector(".spexr-agent-log") && document.querySelector<HTMLElement>(".spexr-agent-log-widget")?.classList.contains("lm-mod-hidden") === false,
+    lines: [...document.querySelectorAll<HTMLElement>(".spexr-agent-log .spexr-df-term__line")].map((l) => ({
+      kind: l.getAttribute("data-kind") ?? "",
+      time: (l.querySelector(".spexr-df-term__time")?.textContent ?? "").trim() || null,
+      text: (l.querySelector(".spexr-df-term__text")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+    })),
+  }));
+}
+
+/**
+ * The Agent log of "Refactor the audit" (the fixture's agent): its events
+ * with a clock time before each (the zone is the machine's, so the shape is
+ * checked, not the hour), the prompt first, the running `pnpm sl-audit` call
+ * among them; a 16px gutter, 20px lines at least, and the time column aligned.
+ */
+export function checkAgentLog(state: AgentLogState, regions: Regions): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  if (!state.current) problems.push("agent log: its tab is not the one in front");
+  if (state.lines.length < 10) problems.push(`agent log: ${state.lines.length} lines, want 10 at least (the audit's calls and replies)`);
+  const untimed = state.lines.filter((l) => !l.time || !/^\d{2}:\d{2}:\d{2}$/.test(l.time));
+  if (untimed.length) problems.push(`agent log: ${untimed.length} line(s) without a clock time, the first: ${JSON.stringify(untimed[0])}`);
+  const first = state.lines[0];
+  if (first?.kind !== "prompt" || !first.text.startsWith("Make cache.write awaited")) problems.push(`agent log: the first line is ${JSON.stringify(first)}, want the prompt "Make cache.write awaited…"`);
+  if (!state.lines.some((l) => l.kind === "tool" && /pnpm sl-audit/.test(l.text))) problems.push("agent log: no call line for pnpm sl-audit");
+  for (const kind of ["prompt", "assistant", "tool", "result"]) {
+    if (!state.lines.some((l) => l.kind === kind)) problems.push(`agent log: no ${kind} line`);
+  }
+  if (!state.scroller) problems.push("agent log: no scroller");
+  else {
+    if (state.scroller.overflowY !== "auto") problems.push(`agent log: the scroller's overflow-y is ${state.scroller.overflowY}, want auto`);
+    if (!state.scroller.lastLineInView) problems.push(`agent log: the last line is not in view: ${JSON.stringify(state.scroller)} (the log follows its end)`);
+  }
+  const panel = regions["log.panel"]?.[0];
+  const body = regions["log.body"]?.[0];
+  const lines = regions["log.line"] ?? [];
+  if (!panel || !body) problems.push("agent log: the log is not on screen");
+  else {
+    if (lines[0] && !near(lines[0].x - body.x, 16, 1)) problems.push(`agent log: the lines start ${lines[0].x - body.x}px in, want 16`);
+    if (lines.some((l) => l.h < 19)) problems.push(`agent log: a line is ${Math.min(...lines.map((l) => l.h))}px tall, want 20 at least`);
+  }
+  const xs = (regions["log.time"] ?? []).map((t) => t.x);
+  if (xs.length && Math.max(...xs) - Math.min(...xs) > 0.5) problems.push(`agent log: the time column is not aligned (x ${Math.min(...xs)} to ${Math.max(...xs)})`);
+  return problems;
+}
+
+/* ── S6k: the inline diagnostic ─────────────────────────────────────────── */
+
+/** The chips in the front editor, read from the page (computed styles, as drawn). */
+export interface InlineDiagState {
+  readonly chips: ReadonlyArray<{
+    readonly text: string;
+    readonly tone: "warning" | "error" | null;
+    readonly fontSize: string;
+    readonly fontFamily: string;
+    readonly borderRadius: string;
+    readonly paddingLeft: string;
+    readonly paddingRight: string;
+    readonly marginLeft: string;
+    readonly color: string;
+    /** The colour of the code on the same line, which the chip must not wear. */
+    readonly editorColor: string;
+    readonly background: string;
+    readonly rect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+    /** The editor line (its number) the chip sits on, from the gutter row at the same height. */
+    readonly line: number | null;
+  }>;
+}
+
+/** Read the inline diagnostic chips of the visible editors. */
+export async function probeInlineDiagnostics(page: Page): Promise<InlineDiagState> {
+  return page.evaluate(() => {
+    const chips = [...document.querySelectorAll<HTMLElement>(".spexr-inline-diag")].filter((el) => el.getBoundingClientRect().width > 0);
+    return {
+      chips: chips.map((el) => {
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        const editor = el.closest(".monaco-editor");
+        const numbers = [...(editor?.querySelectorAll<HTMLElement>(".margin-view-overlays .line-numbers") ?? [])];
+        const mid = r.top + r.height / 2;
+        const row = numbers.find((n) => {
+          const b = n.getBoundingClientRect();
+          return mid >= b.top && mid <= b.bottom;
+        });
+        return {
+          text: (el.textContent ?? "").replace(/\u00a0/g, " ").trim(),
+          tone: el.classList.contains("spexr-inline-diag--warning") ? ("warning" as const) : el.classList.contains("spexr-inline-diag--error") ? ("error" as const) : null,
+          fontSize: cs.fontSize,
+          fontFamily: cs.fontFamily,
+          borderRadius: cs.borderTopLeftRadius,
+          paddingLeft: cs.paddingLeft,
+          paddingRight: cs.paddingRight,
+          marginLeft: cs.marginLeft,
+          color: cs.color,
+          editorColor: getComputedStyle(el.closest(".view-line") ?? document.body).color,
+          background: cs.backgroundColor,
+          rect: { x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 },
+          line: row ? Number(row.textContent?.trim()) || null : null,
+        };
+      }),
+    };
+  });
+}
+
+/** The fixture's line 46 warning (the demo's "Promise returned is not awaited"). */
+export const DEMO_DIAGNOSTIC = "Promise returned is not awaited";
+
+/**
+ * The inline diagnostic against the demo's `code.diag` (189.45 x 16, 24px after
+ * line 46's code, Geist 12px, r5, padding 0 8, the warning on a 12% wash): one
+ * chip, on line 46, in the warning tone, the sans at 12px with 8px of padding,
+ * r4 (the grid's, for the demo's 5), 24px of margin, 16px high within 2px. Its
+ * words are the demo's, or their start with an ellipsis: the first-launch
+ * editor is narrower than the demo's, so the message is cut to the room the
+ * line has left (inline-diagnostics.ts). The second warning (cache.ts) is in a
+ * tab that is not showing, so it is not drawn.
+ */
+export function checkInlineDiagnostics(state: InlineDiagState): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  if (state.chips.length !== 1) return [`inline diagnostics: ${state.chips.length} chips on screen, want exactly 1 (line 46)`];
+  const c = state.chips[0]!;
+  const cut = c.text.endsWith("\u2026") && DEMO_DIAGNOSTIC.startsWith(c.text.slice(0, -1)) && c.text.length > 8;
+  if (c.text !== DEMO_DIAGNOSTIC && !cut) problems.push(`inline diagnostics: the chip reads ${JSON.stringify(c.text)}, want ${JSON.stringify(DEMO_DIAGNOSTIC)} or its start with an ellipsis`);
+  if (c.tone !== "warning") problems.push(`inline diagnostics: tone ${c.tone}, want warning`);
+  if (c.line !== 46) problems.push(`inline diagnostics: the chip is on line ${c.line}, want 46`);
+  if (c.fontSize !== "12px" || !/Geist|sans|system-ui/i.test(c.fontFamily)) problems.push(`inline diagnostics: font ${c.fontSize} ${c.fontFamily}, want the sans at 12px`);
+  if (c.borderRadius !== "4px") problems.push(`inline diagnostics: radius ${c.borderRadius}, want 4px (the demo's 5 on the grid)`);
+  if (c.paddingLeft !== "8px" || c.paddingRight !== "8px") problems.push(`inline diagnostics: padding ${c.paddingLeft} / ${c.paddingRight}, want 8px`);
+  if (c.marginLeft !== "24px") problems.push(`inline diagnostics: margin ${c.marginLeft}, want 24px`);
+  if (!near(c.rect.h, 16, 2)) problems.push(`inline diagnostics: the chip is ${c.rect.h}px tall, want 16 (the demo's)`);
+  // Monaco's token colour sits on the same span: the chip's own text colour must win (the warning's, not the editor's).
+  if (c.color === c.editorColor) problems.push(`inline diagnostics: the chip's text is the editor's colour ${c.color}, not the tone's`);
+  if (c.background === "rgba(0, 0, 0, 0)" || c.background === "transparent") problems.push("inline diagnostics: the chip has no wash");
+  return problems;
+}

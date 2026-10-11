@@ -29,6 +29,10 @@ const MAX_PENDING_DELTAS = 64;
  *   `follow`) is held and applied on it.
  * - On adoption (`/clear`, `/resume`) it follows the successor, starts it
  *   folded, and remembers it as the agent's session.
+ * - {@link view} points it at another session of the workspace instead (the
+ *   Sessions part): a read-only follow, which never moves on to a successor
+ *   and never adopts. `view(undefined)`, or a new agent session, brings the
+ *   agent's own back.
  */
 export class AgentPaneController {
   snapshot: AgentPaneSnapshot | undefined;
@@ -36,6 +40,8 @@ export class AgentPaneController {
   followed: string | undefined;
   /** The tool card shows every row. */
   expanded = false;
+  /** A session the user chose to look at, when it is not the agent terminal's own. */
+  viewing: string | undefined;
 
   /** Orders the lookups of the session id: the latest bind's answer is the one acted on. */
   private lookup = 0;
@@ -52,12 +58,23 @@ export class AgentPaneController {
     private readonly warn: (message: string, error: unknown) => void = () => undefined,
   ) {}
 
+  /**
+   * Follow `sessionId` read-only, or the agent's own session again with
+   * undefined. Choosing the agent's own session is the same as undefined.
+   */
+  async view(sessionId: string | undefined): Promise<void> {
+    this.viewing = sessionId;
+    await this.bind();
+  }
+
   async bind(): Promise<void> {
     const lookup = ++this.lookup;
     const rootUri = this.terminal.agentRootUri();
     const running = this.terminal.currentSessionId();
-    const sessionId = running ?? (rootUri ? await this.terminal.storedSessionId(rootUri).catch(() => undefined) : undefined);
+    const own = running ?? (rootUri ? await this.terminal.storedSessionId(rootUri).catch(() => undefined) : undefined);
     if (lookup !== this.lookup) return;
+    if (this.viewing !== undefined && this.viewing === own) this.viewing = undefined;
+    const sessionId = this.viewing ?? own;
     if (!rootUri || !sessionId) {
       const had = this.followed !== undefined;
       this.reset(undefined);
@@ -73,8 +90,9 @@ export class AgentPaneController {
       const first = await this.service.follow({
         sessionId,
         workspacePath: this.toPath(rootUri),
+        // Another session is only looked at: it must not be left for a newer transcript, which is likelier the agent's own.
         // An id from storage may be a session that ended: the backend then adopts a newer transcript only while a Claude runs there.
-        ...(running ? {} : { fromStorage: true }),
+        ...(this.viewing !== undefined ? { readOnly: true } : running ? {} : { fromStorage: true }),
       });
       if (session !== this.session) return;
       if (first && !this.snapshot) this.accept(first);
@@ -101,7 +119,7 @@ export class AgentPaneController {
   }
 
   adopted(from: string, to: string): void {
-    if (from !== this.followed) return;
+    if (from !== this.followed || this.viewing !== undefined) return;
     this.reset(to);
     const root = this.terminal.agentRootUri();
     if (root) this.terminal.adoptSessionId(root, to);

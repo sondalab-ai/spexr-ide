@@ -62,6 +62,14 @@ import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shel
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
 import { SpexrTrustRevocationContribution } from "./darkfactory/trust-revocation-contribution.js";
+import { AgentFollowHub } from "./agent-pane/agent-follow-hub.js";
+import { AgentTilesFeed } from "./sessions/agent-tiles-feed.js";
+import { SessionsWidget, SESSIONS_VIEW_ID } from "./sessions/sessions-widget.js";
+import { SpexrSessionsContribution } from "./sessions/sessions-contribution.js";
+import { SpexrAgentsStatusContribution } from "./sessions/agents-status-contribution.js";
+import { AgentLogWidget, AGENT_LOG_VIEW_ID } from "./sessions/agent-log-widget.js";
+import { AgentLogViewContribution } from "./sessions/agent-log-contribution.js";
+import { SpexrInlineDiagnosticsContribution } from "./editor/inline-diagnostics-contribution.js";
 import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrExplorerChromeContribution } from "./shell/explorer-chrome-contribution.js";
 import { applySectionHeaderHeight } from "./shell/section-header-height.js";
@@ -285,6 +293,31 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     .toDynamicValue((ctx) => ({
       id: AGENT_PANE_VIEW_ID,
       createWidget: () => ctx.container.get(AgentPaneWidget),
+    }))
+    .inSingletonScope();
+  // S6j: the Sessions part of the Explorer, the status bar's agents pill and
+  // model item, and the Agent log in the bottom panel; they share what the pane
+  // follows through AgentFollowHub and the scan through AgentTilesFeed.
+  bind(AgentFollowHub).toSelf().inSingletonScope();
+  bind(AgentTilesFeed).toSelf().inSingletonScope();
+  bind(SessionsWidget).toSelf();
+  bind(WidgetFactory)
+    .toDynamicValue((ctx) => ({
+      id: SESSIONS_VIEW_ID,
+      createWidget: () => ctx.container.get(SessionsWidget),
+    }))
+    .inSingletonScope();
+  bind(SpexrSessionsContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrSessionsContribution);
+  bind(SpexrAgentsStatusContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrAgentsStatusContribution);
+  bindViewContribution(bind, AgentLogViewContribution);
+  bind(FrontendApplicationContribution).toService(AgentLogViewContribution);
+  bind(AgentLogWidget).toSelf();
+  bind(WidgetFactory)
+    .toDynamicValue((ctx) => ({
+      id: AGENT_LOG_VIEW_ID,
+      createWidget: () => ctx.container.get(AgentLogWidget),
     }))
     .inSingletonScope();
   rebind(OutlineViewContribution).to(SpexrOutlineViewContribution).inSingletonScope();
@@ -537,6 +570,9 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
       return connection.createProxy(SCHEDULE_SERVICE_PATH, ctx.container.get(SpexrScheduleClientDispatcher));
     })
     .inSingletonScope();
+
+  bind(SpexrInlineDiagnosticsContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrInlineDiagnosticsContribution);
 
   // Keep last: its onDidInitializeLayout reads the default sizes back and sets
   // the layout's settled mark, so it must come after every contribution that

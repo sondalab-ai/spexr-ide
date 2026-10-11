@@ -17,6 +17,9 @@ import {
   statusOf,
   liveOf,
   placeInGroup,
+  formatClock,
+  dayKey,
+  formatDay,
 } from "./darkfactory-format.js";
 import type { TileGroup, LaunchTarget, LaunchTargetKind } from "./darkfactory-format.js";
 import { cacheFreshness, expiryLabel, formatTokens } from "./cache-freshness.js";
@@ -90,19 +93,46 @@ const FOLLOW_PREFIX: Record<FollowEvent["kind"], string> = {
 };
 
 /** Render the read-only follow as distinct, terminal-styled lines (prompts, replies, commands, output). */
-export function FollowTranscript(props: { events: FollowEvent[] }): React.ReactElement {
-  const { events } = props;
+export function FollowTranscript(props: { events: FollowEvent[]; /** The agent log's clock: a time before each line, and a date line where the day changes. */ showTime?: boolean }): React.ReactElement {
+  const { events, showTime } = props;
   if (events.length === 0) {
     return <div className="spexr-df-term spexr-df-term--empty">Waiting for activity…</div>;
   }
+  let day: string | undefined;
   return (
     <div className="spexr-df-term">
-      {events.map((e, i) => (
-        <div key={i} className="spexr-df-term__line" data-kind={e.kind}>
-          {FOLLOW_PREFIX[e.kind] && <span className="spexr-df-term__glyph">{FOLLOW_PREFIX[e.kind]}</span>}
-          <span className="spexr-df-term__text">{e.text}</span>
-        </div>
-      ))}
+      {events.map((e, i) => {
+        let separator: React.ReactNode = null;
+        if (showTime && e.atMs !== undefined) {
+          const key = dayKey(e.atMs);
+          if (day !== undefined && key !== day) {
+            separator = (
+              <div className="spexr-df-term__day" role="separator">
+                {formatDay(e.atMs)}
+              </div>
+            );
+          }
+          day = key;
+        }
+        return (
+          <React.Fragment key={`${e.atMs ?? "-"}:${i}`}>
+            {separator}
+            <div className="spexr-df-term__line" data-kind={e.kind}>
+              {showTime &&
+                (e.atMs !== undefined ? (
+                  <time className="spexr-df-term__time" dateTime={new Date(e.atMs).toISOString()}>
+                    {formatClock(e.atMs)}
+                  </time>
+                ) : (
+                  // A line with no stamp keeps the column, so the lines stay aligned.
+                  <span className="spexr-df-term__time" aria-hidden="true" />
+                ))}
+              {FOLLOW_PREFIX[e.kind] && <span className="spexr-df-term__glyph">{FOLLOW_PREFIX[e.kind]}</span>}
+              <span className="spexr-df-term__text">{e.text}</span>
+            </div>
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }

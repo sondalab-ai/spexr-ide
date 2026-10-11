@@ -1,4 +1,4 @@
-import type { AgentState } from "./darkfactory-protocol.js";
+import type { AgentState, FollowEvent } from "./darkfactory-protocol.js";
 
 export const AGENT_PANE_SERVICE_PATH = "/services/spexr-agent-pane";
 
@@ -118,6 +118,8 @@ export interface AgentPaneDelta {
 
 /** The changed lines of a diff card. */
 export const PANE_DIFF_LINES = 6;
+/** The events the Agent log shows. */
+export const PANE_LOG_EVENTS = 400;
 /** The prose blocks of a turn kept in a snapshot. */
 export const PANE_PROSE_BLOCKS = 6;
 
@@ -134,6 +136,13 @@ export interface AgentPaneBinding {
    * successor only while a Claude process runs there.
    */
   fromStorage?: boolean;
+  /**
+   * A look at a session that is not the agent terminal's own (the Sessions
+   * part): its transcript is read and never left for a successor, because a
+   * newer transcript in its folder is more likely the agent's own than this
+   * session's continuation.
+   */
+  readOnly?: boolean;
 }
 
 export interface AgentPaneService {
@@ -145,6 +154,12 @@ export interface AgentPaneService {
   follow(binding: AgentPaneBinding): Promise<AgentPaneSnapshot | undefined>;
   /** Stop following. */
   stop(): Promise<void>;
+  /**
+   * `sessionId`'s last {@link PANE_LOG_EVENTS} events with their times, the
+   * Agent log's lines. Empty when that is not the session being followed (the
+   * follow moved on while the read was on its way) or nothing is followed.
+   */
+  readLog(sessionId: string): Promise<FollowEvent[]>;
 }
 
 export interface AgentPaneClient {

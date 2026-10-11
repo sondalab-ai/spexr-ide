@@ -12,6 +12,9 @@ import { classifySession } from "./session-state.js";
 import { liveProjectDirs } from "./process-scanner.js";
 import { ToolCounter } from "./tool-count.js";
 import { parseTranscript } from "./transcript-parser.js";
+import { buildFollowEvents, type TurnEntry } from "./turns.js";
+import type { FollowEvent } from "../../common/darkfactory-protocol.js";
+import { PANE_LOG_EVENTS } from "../../common/agent-pane-protocol.js";
 import type { AgentPaneBinding, AgentPaneClient, AgentPaneService, AgentPaneSnapshot, PanePlanItem } from "../../common/agent-pane-protocol.js";
 
 /** How much of a transcript's end the first read takes: a turn's head can be far back in a long one. */
@@ -219,6 +222,14 @@ export class AgentPaneBackendService implements AgentPaneService {
     this.maxOtherMtime = 0;
   }
 
+  async readLog(sessionId: string): Promise<FollowEvent[]> {
+    // Read from what the watcher keeps up to date: a read is not a reason to read the file again.
+    if (this.binding?.sessionId !== sessionId || !this.transcript) return [];
+    // A subagent's calls and words are not the session's own.
+    const own = this.entries.filter((e) => !e.isSidechain) as TurnEntry[];
+    return buildFollowEvents(own, PANE_LOG_EVENTS);
+  }
+
   /** Stop, and let go of the client: the connection this service served has closed. */
   dispose(): void {
     void this.stop();
@@ -350,9 +361,11 @@ export class AgentPaneBackendService implements AgentPaneService {
       this.raw.splice(0, this.raw.length - MAX_ENTRIES);
     }
 
-    const scan = await this.scanFolder(file);
+    // The folder is always scanned: whether this transcript is the project's newest decides whether it is live
+    // (classifySession). Only the move to a successor is a read-only look's to skip: it never leaves its session.
+    const scan = await this.scanFolder(file, b.readOnly === true);
     const next = await this.snapshot(b, file, epoch);
-    const successor = scan ? await this.findSuccessor(b, file, scan) : undefined;
+    const successor = scan && !b.readOnly ? await this.findSuccessor(b, file, scan) : undefined;
     if (epoch !== this.epoch) return;
     // Moving on: the old session's last picture (it is no longer the folder's newest) is not worth pushing.
     if (!successor) {
@@ -428,7 +441,7 @@ export class AgentPaneBackendService implements AgentPaneService {
    * left a newer transcript undecided. At most once per few seconds; a scan
    * wanted sooner is deferred to a timer that is cleared with the follow.
    */
-  private async scanFolder(file: string): Promise<FolderScan | undefined> {
+  private async scanFolder(file: string, readOnly = false): Promise<FolderScan | undefined> {
     const dir = join(file, "..");
     const dirMtime = await stat(dir).then((s) => s.mtimeMs, () => undefined);
     const changed = this.dirDirty || dirMtime !== this.dirMtime || this.pendingCandidates;
@@ -464,7 +477,8 @@ export class AgentPaneBackendService implements AgentPaneService {
       const path = join(dir, name);
       const mtimeMs = await stat(path).then((s) => s.mtimeMs, () => 0);
       maxOther = Math.max(maxOther, mtimeMs);
-      if (mtimeMs <= ownMtime) continue;
+      // A read-only look only needs how new its neighbours are, never who might continue it.
+      if (readOnly || mtimeMs <= ownMtime) continue;
       const root = await readRoot(path);
       newer.push({ sessionId, mtimeMs, file: path, ...(root?.atMs !== undefined ? { firstAtMs: root.atMs } : {}), ...(root ? { rootUuid: root.uuid } : {}) });
     }

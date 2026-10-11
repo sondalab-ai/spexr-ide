@@ -26,6 +26,7 @@ export class AgentsCount {
   private generation = 0;
   private reading: number | undefined;
   private last: readonly AgentTile[] = [];
+  private heldLive: readonly AgentTile[] = [];
 
   /** A pushed scan: the newest picture there is, so it is always taken. */
   push(tiles: readonly AgentTile[], now: number): AgentsView {
@@ -56,10 +57,19 @@ export class AgentsCount {
     return this.show(this.last, now);
   }
 
+  /**
+   * The tiles the count counts: the working ones after the hold, so a sum over
+   * them (the status bar's tool total) is for the same agents as the number.
+   */
+  live(): readonly AgentTile[] {
+    return this.heldLive;
+  }
+
   private show(tiles: readonly AgentTile[], now: number): AgentsView {
     this.last = tiles;
     const held = this.hold.apply(tiles, now);
     const count = runningAgents(held.tiles);
+    this.heldLive = held.tiles.filter((t) => t.state === "working");
     return held.nextExpiry === undefined ? { count } : { count, nextExpiry: held.nextExpiry };
   }
 }

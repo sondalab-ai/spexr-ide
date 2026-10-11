@@ -157,6 +157,8 @@ export interface FollowEvent {
    */
   kind: "prompt" | "assistant" | "tool" | "result" | "error";
   text: string;
+  /** When the transcript entry was written, epoch ms; absent when it carried no usable timestamp. The wall ignores it; the agent log shows it. */
+  atMs?: number;
 }
 
 /** One Claude config directory a new session can be started under. */

@@ -20,10 +20,13 @@ export const STATUS_DIVERGENCE = "spexr-status--divergence";
 /** A state that is live (a job running, a download in progress): a dot of the accent before it. */
 export const STATUS_LIVE = "spexr-status--live";
 
+/** The agents pill: the live dot, and a ground of its own with the control edge's ring (S6j). */
+export const STATUS_AGENTS = "spexr-status--agents";
+
 /**
  * The `className` for an entry: data, live, both or neither. Neither is the
  * empty string, which Theia's status bar skips (it appends a truthy className).
  */
-export function statusClass(flags: { data?: boolean; live?: boolean }): string {
-  return [flags.data ? STATUS_DATA : "", flags.live ? STATUS_LIVE : ""].filter(Boolean).join(" ");
+export function statusClass(flags: { data?: boolean; live?: boolean; agents?: boolean }): string {
+  return [flags.data ? STATUS_DATA : "", flags.live ? STATUS_LIVE : "", flags.agents ? STATUS_AGENTS : ""].filter(Boolean).join(" ");
 }

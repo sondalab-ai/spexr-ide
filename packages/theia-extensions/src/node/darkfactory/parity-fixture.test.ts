@@ -162,7 +162,9 @@ describe("the wall's own readers on the fixture", () => {
     for (const kind of ["prompt", "assistant", "tool", "result", "error"] as const) expect(kinds.has(kind)).toBe(true);
     expect(events[0]!.kind).toBe("prompt");
     expect(events[0]!.text).toContain("cache.write awaited");
-    expect(events[events.length - 1]).toEqual({ kind: "tool", text: "pnpm sl-audit" });
+    expect(events[events.length - 1]).toMatchObject({ kind: "tool", text: "pnpm sl-audit" });
+    // Every event carries the time its transcript entry was written (the Agent log shows it).
+    expect(events.every((e) => typeof e.atMs === "number")).toBe(true);
   });
 
   it("classify the two live sessions as working and the others as not working", () => {

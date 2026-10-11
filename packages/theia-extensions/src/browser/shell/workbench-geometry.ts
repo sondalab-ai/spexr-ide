@@ -187,6 +187,85 @@ export const AGENT_PANE = {
 } as const;
 
 /**
+ * The Sessions part of the Explorer (S6j) as Lumen's `.ide-sessions` at
+ * 1440x900 (tests/visual/reference/demo-regions.json: "sessions.row" 249.63 x
+ * 46.38 at r6, padding 4.8 / 9.6, a 13px name on 18.85 over an 11px mono meta
+ * on 15.95, rows 48.37 apart; the list's own padding 7.2). On the 4px grid a
+ * row is 48 (padding 4, a 20px name line, 4 between, a 16px meta line) with
+ * no gap, so the pitch is 48 against Lumen's 48.37 and a row is 1.6px
+ * shorter. Radii and type sizes are shape, so Lumen's are kept. spexr.css
+ * repeats the numbers; sessions-style.test.ts holds them.
+ */
+export const SESSIONS = {
+  /** A row's height: 4 + 20 + 4 + 16 + 4 (Lumen 46.38). */
+  rowHeight: 48,
+  rowPaddingBlock: 4,
+  /** A row's padding at the sides (Lumen 9.6). */
+  rowPaddingInline: 8,
+  /** The list's padding at the sides (Lumen 7.2). */
+  listPaddingInline: 8,
+  /** Between two rows: none, the rows are 48 apart as Lumen's are 48.37. */
+  rowGap: 0,
+  rowRadius: 6,
+  nameSize: 13,
+  nameLine: 20,
+  /** The meta line, in the mono (Lumen 11 on 15.95). */
+  metaSize: 11,
+  metaLine: 16,
+  metaGap: 4,
+  /** The part's most share of the Explorer container: three rows and a head are about a fifth of a 900px window. */
+  share: 0.3,
+} as const;
+
+/**
+ * The status bar's agents pill and model item (S6j) as Lumen's
+ * `.ide-status__agents` and `.ide-status__model` (22px high at r6, 8px of
+ * padding, a 6px accent dot 8px in; the kit's item is 20, {@link WORKBENCH.statusItem}).
+ * The pill is ringed on the control edge, which Lumen's ring (a 11% white
+ * shadow) is not: the owner's boundary rule is 3:1.
+ */
+export const AGENTS_PILL = {
+  /** The pill's dot: Lumen's 6. */
+  dot: 6,
+  /** The pill's radius. */
+  radius: 6,
+} as const;
+
+/**
+ * The Agent log, the bottom panel's view of the followed session's events
+ * (S6j). Lumen draws only its tab, so the body is spexr's: the follow
+ * transcript's mono at the small step on a 20px line, a 16px gutter, and the
+ * time in a fixed column before each line so the lines align. The panel's own
+ * head and tab strip are {@link WORKBENCH.tabStrip}. agent-log-style.test.ts
+ * holds the numbers.
+ */
+export const AGENT_LOG = {
+  padding: 16,
+  line: 20,
+  /** The time column: `14:03:27` is eight characters of the mono. */
+  timeChars: 8,
+  gap: 12,
+} as const;
+
+/**
+ * The editor's inline diagnostic chip (S6k) as Lumen's `.ide-diag` at 1440x900
+ * (tests/visual/reference/demo-regions.json "code.diag": 189.45 x 16 at 24px
+ * after the code, padding 0 8, Geist 12px, r5, the warning text on a 12% wash
+ * of the warning). On the grid the radius is 4 (Lumen 5); the rest is Lumen's
+ * own, already on it. spexr.css repeats the numbers; inline-diagnostics-style.test.ts
+ * holds them.
+ */
+export const INLINE_DIAGNOSTIC = {
+  /** Between the end of the code and the chip. */
+  marginLeft: 24,
+  paddingInline: 8,
+  radius: 4,
+  fontSize: 12,
+  /** The wash under the text, as a share of the tone. */
+  washPercent: 12,
+} as const;
+
+/**
  * The command palette (Theia's quick input) as Lumen's, at 1440x900 (S5f).
  * It floats over the editor island: centred on it, 118px from the window's
  * top (the island's tab strip and breadcrumbs, and one gap, below the

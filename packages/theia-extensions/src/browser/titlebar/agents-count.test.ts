@@ -62,3 +62,15 @@ describe("AgentsCount", () => {
     expect(agents.finishRead(token, [idle("a")], 1_000)).toEqual({ count: 1, nextExpiry: WORKING_HOLD_MS });
   });
 });
+
+describe("AgentsCount.live", () => {
+  it("is the working tiles, so a sum over them is for the agents the count counts", () => {
+    const agents = new AgentsCount();
+    agents.push([tile("a", { toolCount: 14 }), idle("b", { toolCount: 212 }), tile("c", { toolCount: 198 })], 0);
+    expect(agents.live().map((t) => [t.sessionId, t.toolCount])).toEqual([["a", 14], ["c", 198]]);
+  });
+
+  it("is empty before any tiles", () => {
+    expect(new AgentsCount().live()).toEqual([]);
+  });
+});

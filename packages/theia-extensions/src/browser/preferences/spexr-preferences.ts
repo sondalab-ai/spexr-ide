@@ -61,6 +61,12 @@ export const SPEXR_CLAUDE_LAUNCH_PROFILES_DETECTED_PREFERENCE =
 export const SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE = "spexr.experts.activeId";
 
 /**
+ * Key for the editor's inline diagnostics: each warning and error of an open
+ * file as a small chip after its line (editor/inline-diagnostics.ts).
+ */
+export const SPEXR_EDITOR_INLINE_DIAGNOSTICS_PREFERENCE = "spexr.editor.inlineDiagnostics";
+
+/**
  * Toggle for locally-generated AI file descriptions in search results.
  * On by default. Off shows heuristic descriptions only and skips the local model.
  */
@@ -377,6 +383,11 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "Internal: set once the user has been asked whether to add `.spexr/` to their " +
         "global git ignore, so the consent prompt is shown only once.",
+    },
+    [SPEXR_EDITOR_INLINE_DIAGNOSTICS_PREFERENCE]: {
+      type: "boolean",
+      default: true,
+      description: "Show each warning and error of an open file as a chip after its line.",
     },
     [SPEXR_SEARCH_AI_DESCRIPTIONS_PREFERENCE]: {
       type: "boolean",
