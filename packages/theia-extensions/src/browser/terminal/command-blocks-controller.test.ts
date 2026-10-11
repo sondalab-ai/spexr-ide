@@ -195,14 +195,29 @@ describe("TerminalBlocks", () => {
     expect(framed[0]!.options.height).toBe(3);
   });
 
-  it("refuses a held forged mark when the nonce comes, and holds no more than MAX_PENDING", () => {
+  it("refuses a held forged mark when the nonce comes, and keeps the most recent MAX_PENDING: output printed early cannot push the real marks out", () => {
     const { term, blocks } = setup(null);
-    term.osc(`spexr_prompt;${"f".repeat(32)}`);
-    term.osc(started(T0, "f".repeat(32)));
-    for (let i = 0; i < MAX_PENDING + 10; i++) term.osc(prompt);
+    const other = "f".repeat(32);
+    term.osc(`spexr_prompt;${other}`);
+    term.osc(started(T0, other));
     blocks.setNonce(N);
     expect(blocks.stats.rejected).toBe(2);
-    expect(blocks.stats.prompts).toBe(MAX_PENDING - 2);
+    const second = setup(null);
+    for (let i = 0; i < MAX_PENDING + 10; i++) second.term.osc(`spexr_prompt;${other}`);
+    second.term.osc(prompt);
+    second.blocks.setNonce(N);
+    // The last 32 were kept (31 forged and the real one), the earlier ones are gone.
+    expect(second.blocks.stats.rejected).toBe(MAX_PENDING - 1);
+    expect(second.blocks.stats.prompts).toBe(1);
+  });
+
+  it("holds only what parses: junk that begins spexr_ takes no room, and no marker", () => {
+    const { term, blocks } = setup(null);
+    for (let i = 0; i < 100; i++) term.osc("spexr_junk;" + i);
+    term.osc(prompt);
+    blocks.setNonce(N);
+    expect(blocks.stats.prompts).toBe(1);
+    expect(term.markers.filter((m) => !m.isDisposed)).toHaveLength(1);
   });
 
   it("lets the held marks and their markers go when there turns out to be no nonce", () => {

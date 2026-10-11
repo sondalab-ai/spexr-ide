@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -43,7 +43,9 @@ function run(shell: "bash" | "zsh", files: Record<string, string>, inputs: strin
   const original: ShellLaunch = { shell, args: shell === "bash" ? ["-l"] : [], env: { ...(opts.env ?? {}) } };
   const injected = withSpexrBlocks(original, theiaInjection(original, shell, theiaDir!, undefined), scripts, opts.nonce === null ? undefined : (opts.nonce ?? NONCE));
   const args = Array.isArray(injected.args) ? injected.args : [];
-  const cmd = shell === "bash" ? ["bash", ...args, "-i"] : ["zsh", "-i"];
+  // By absolute path: a test may take PATH away from the shell, and the pty driver finds the shell by it.
+  const exe = execFileSync("sh", ["-c", `command -v ${shell}`], { encoding: "utf8" }).trim();
+  const cmd = shell === "bash" ? [exe, ...args, "-i"] : [exe, "-i"];
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(injected.env ?? {})) if (typeof v === "string") env[k] = v;
   const out = execFileSync("python3", [join(here, "pty-run.py")], { input: JSON.stringify({ cmd, env, files, inputs, settle: 1.0 }), encoding: "utf8", timeout: 60_000 });
@@ -102,6 +104,18 @@ describe.each(["bash", "zsh"] as const)("%s integration", (shell) => {
     // The terminal sees the printed bytes (nothing can stop that); the point is that the shell's own marks carry the real nonce.
     expect(finished(r).filter(([n]) => n === NONCE).length).toBe(1);
     expect(forged.length).toBe(1);
+  });
+});
+
+describe("bash preexec wrapper", () => {
+  const it_ = CAN && have("bash") ? it : it.skip;
+
+  it_("renames Theia's preexec in pure bash (no sed or other fork), and the wrapped one still runs: a started mark goes out and Theia's command_started still does", () => {
+    const script = readFileSync(join(SPEXR, "bash", "spexr-bash-integration.bash"), "utf8").split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+    expect(script).not.toMatch(/\bsed\b/);
+    const r = run("bash", { ".bashrc": "" }, ["true"]);
+    expect(kinds(r)).toContain("spexr_started");
+    expect(r.marks.some((m) => m.startsWith("command_started"))).toBe(true);
   });
 });
 

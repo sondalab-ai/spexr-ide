@@ -43,7 +43,8 @@ __spexr_now_ms() {
 __spexr_running=""
 
 # Runs first in PROMPT_COMMAND, so $? is still the command's exit status.
-# It never returns non-zero: a shell with `set -e` would exit on it.
+# It never returns non-zero under `set -e` (the shell would exit on it); the cost is that hooks
+# after this one read 0 for $? there, not the command's status.
 __spexr_precmd() {
   builtin local __spexr_rc=$?
   if [[ -n "$__spexr_running" ]]; then
@@ -61,7 +62,10 @@ __spexr_precmd() {
 # Wrap Theia's preexec (called from its DEBUG trap) so a started mark goes out
 # first. Without Theia's function there is nothing to wrap and no blocks.
 if builtin declare -F __theia_command_preexec > /dev/null 2>&1; then
-  builtin eval "$(builtin declare -f __theia_command_preexec | builtin command sed '1s/__theia_command_preexec/__spexr_theia_preexec/')"
+  # Rename it in pure bash (no sed fork, no PATH): `declare -f` prints "name () ..." and only the name changes.
+  __spexr_body="$(builtin declare -f __theia_command_preexec)"
+  builtin eval "__spexr_theia_preexec${__spexr_body#__theia_command_preexec}"
+  builtin unset __spexr_body
   __theia_command_preexec() {
     __spexr_running="1"
     builtin printf '\e]133;spexr_started;%s;%s\a' "$__spexr_nonce" "$(__spexr_now_ms)"

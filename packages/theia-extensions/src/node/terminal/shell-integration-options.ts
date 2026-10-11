@@ -3,8 +3,9 @@
  * Theia so it runs in plain node. Theia's injector starts bash with
  * `--rcfile <its script>` and zsh with a ZDOTDIR of its own and THEIA_ZSH_DIR;
  * spexr puts its own script in front of each, which chains Theia's (so the
- * user's rc files are still sourced, by Theia's own code) and adds the
- * `spexr_finished` mark after each command.
+ * user's rc files are still sourced, by Theia's own code) and adds its marks
+ * (`spexr_prompt`, `spexr_started`, `spexr_finished`), each carrying a nonce
+ * the backend made for that shell.
  */
 
 export interface ShellLaunch {

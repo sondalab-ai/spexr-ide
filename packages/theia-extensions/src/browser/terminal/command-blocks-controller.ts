@@ -1,4 +1,4 @@
-import { BlockTracker, OSC_COMMAND_MARKS, RUNNING_META, buildBlockElement, finishedMeta, isSpexrPayload, type DomElement, type FinishedBlock, type LineMarker } from "./command-blocks.js";
+import { BlockTracker, OSC_COMMAND_MARKS, RUNNING_META, buildBlockElement, finishedMeta, isSpexrPayload, parseSpexrMark, type DomElement, type FinishedBlock, type LineMarker } from "./command-blocks.js";
 
 /** The slice of xterm's marker the blocks use. */
 export interface XtermMarker extends LineMarker {
@@ -174,9 +174,13 @@ export class TerminalBlocks {
     const { baseY, cursorY, cursorX } = this.term.buffer.active;
     if (!this.tracker.hasNonce) {
       // The shell prints its first prompt before the terminal has the nonce: held, and checked when it comes.
-      if (this.pending.length < MAX_PENDING) {
-        this.pending.push({ payload, line: baseY + cursorY, cursorX, marker: payload.startsWith("spexr_prompt") ? this.term.registerMarker(0) : undefined });
+      // Only what parses is held, and the most recent MAX_PENDING: what a rc file prints cannot push the shell's real first marks out.
+      if (!parseSpexrMark(payload)) {
+        this.stats.rejected++;
+        return true;
       }
+      this.pending.push({ payload, line: baseY + cursorY, cursorX, marker: payload.startsWith("spexr_prompt") ? this.term.registerMarker(0) : undefined });
+      if (this.pending.length > MAX_PENDING) this.pending.shift()?.marker?.dispose();
       return true;
     }
     this.handle(payload, baseY + cursorY, cursorX, undefined);
