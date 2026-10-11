@@ -463,6 +463,8 @@ export interface BottomPanel {
   readonly strip: Rect | null;
   /** The Problems chip's box and computed radius, when it has a count. */
   readonly chip: { box: Rect; radius: string; severity: string | null } | null;
+  /** The current tab's id: the "+" belongs to a terminal's toolbar only. */
+  readonly current: string | null;
   /** Whether the toolbar holds a "+" and a close ×. */
   readonly plus: boolean;
   readonly close: boolean;
@@ -484,6 +486,7 @@ export async function probeBottomPanel(page: Page): Promise<BottomPanel> {
     const chipEl = problems?.querySelector<HTMLElement>(".theia-badge-decorator-horizontal") ?? null;
     return {
       tabs,
+      current: bar?.querySelector(".lm-TabBar-tab.lm-mod-current")?.id.replace(/^shell-tab-/, "") ?? null,
       strip: box(bar?.querySelector(".theia-tabBar-tab-row") ?? bar ?? null),
       chip: chipEl ? { box: box(chipEl)!, radius: getComputedStyle(chipEl).borderTopLeftRadius, severity: problems?.getAttribute("data-severity") ?? null } : null,
       plus: !!bar?.querySelector(".lm-TabBar-toolbar .codicon-add"),
@@ -517,7 +520,7 @@ export function checkBottomPanel(panel: BottomPanel): string[] {
     if (panel.chip.radius !== "6px") problems.push(`bottom panel: the Problems chip's radius is ${panel.chip.radius}, want 6px`);
     if (!panel.chip.severity) problems.push("bottom panel: the Problems tab carries no severity mark");
   }
-  if (!panel.plus) problems.push("bottom panel: no + button");
+  if (panel.current?.startsWith("terminal-") && !panel.plus) problems.push("bottom panel: a terminal is in front and there is no + button");
   if (!panel.close) problems.push("bottom panel: no close button");
   return problems;
 }
