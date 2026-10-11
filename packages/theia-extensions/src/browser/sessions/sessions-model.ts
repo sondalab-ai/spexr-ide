@@ -65,7 +65,7 @@ export function sessionRows(
   now: number,
   ownSessionId?: string,
   /** The name the agent pane's head gives the session it follows: it reads the names file afresh, which a scan may not have yet. */
-  followedTitle?: { readonly sessionId: string; readonly title?: string },
+  followedTitle?: { readonly sessionId: string; readonly title?: string | undefined },
 ): SessionRow[] {
   if (!workspacePath) return [];
   const here = normalizeProjectPath(workspacePath);
