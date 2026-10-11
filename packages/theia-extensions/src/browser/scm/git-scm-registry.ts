@@ -80,6 +80,10 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
    */
   readonly onDidChangeStatus: Event<void> = this.onDidChangeStatusEmitter.event;
 
+  private readonly onDidChangeFetchStateEmitter = new Emitter<void>();
+  /** Any repository's last fetch changed its outcome (the "synced" item reads it; the status listeners do not). */
+  readonly onDidChangeFetchState: Event<void> = this.onDidChangeFetchStateEmitter.event;
+
   /** The repository the SCM panel is showing changed. */
   get onDidChangeActive(): Event<unknown> {
     return this.scmService.onDidChangeSelectedRepository;
@@ -177,6 +181,7 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
       const provider = this.createProvider();
       const toDispose = new DisposableCollection(
         provider.onDidChangeStatus(() => this.onDidChangeStatusEmitter.fire()),
+        provider.onDidChangeFetchState(() => this.onDidChangeFetchStateEmitter.fire()),
       );
       this.providers.set(repoRoot, { provider, toDispose });
       try {
@@ -251,5 +256,6 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
     this.toDispose.dispose();
     this.onDidChangeProvidersEmitter.dispose();
     this.onDidChangeStatusEmitter.dispose();
+    this.onDidChangeFetchStateEmitter.dispose();
   }
 }

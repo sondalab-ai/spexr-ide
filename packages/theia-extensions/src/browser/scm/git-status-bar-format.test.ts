@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatBranchEntry, formatDivergenceEntry, formatSyncEntry } from "./git-status-bar-format.js";
+import { applyGitEntries, formatBranchEntry, formatDivergenceEntry, formatSyncEntry, planGitEntries } from "./git-status-bar-format.js";
 
 describe("formatBranchEntry", () => {
   it("is the branch glyph and the name", () => {
@@ -8,17 +8,64 @@ describe("formatBranchEntry", () => {
 });
 
 describe("formatDivergenceEntry", () => {
-  it("is nothing when in sync", () => {
-    expect(formatDivergenceEntry({ ahead: 0, behind: 0 })).toBeUndefined();
+  it("is nothing when nothing is ahead", () => {
+    expect(formatDivergenceEntry({ ahead: 0 })).toBeUndefined();
   });
-  it("shows ahead only, behind only, or both, ahead first", () => {
-    expect(formatDivergenceEntry({ ahead: 2, behind: 0 })).toBe("↑2");
-    expect(formatDivergenceEntry({ ahead: 0, behind: 3 })).toBe("↓3");
-    expect(formatDivergenceEntry({ ahead: 2, behind: 3 })).toBe("↑2↓3");
+  it("shows the commits ahead, with a name for a screen reader", () => {
+    expect(formatDivergenceEntry({ ahead: 2 })).toEqual({ text: "↑2", label: "2 commits ahead" });
+    expect(formatDivergenceEntry({ ahead: 1 })).toEqual({ text: "↑1", label: "1 commit ahead" });
+  });
+  it("leaves the commits behind to the sync item, which says them once", () => {
+    expect(formatDivergenceEntry({ ahead: 0, ...({ behind: 3 } as object) })).toBeUndefined();
   });
   it("marks an open merge, which is otherwise invisible once resolved", () => {
-    expect(formatDivergenceEntry({ ahead: 0, behind: 0, mergeInProgress: true })).toBe("(merging)");
-    expect(formatDivergenceEntry({ ahead: 2, behind: 0, mergeInProgress: true })).toBe("↑2 (merging)");
+    expect(formatDivergenceEntry({ ahead: 0, mergeInProgress: true })).toEqual({ text: "(merging)", label: "merge in progress" });
+    expect(formatDivergenceEntry({ ahead: 2, mergeInProgress: true })).toEqual({ text: "↑2 (merging)", label: "2 commits ahead, merge in progress" });
+  });
+});
+
+describe("planGitEntries and applyGitEntries (S6d)", () => {
+  const status = { branch: "main", upstream: "origin/main", ahead: 2, behind: 0 };
+
+  /** A fake bar: the entries it holds, by id. */
+  function bar() {
+    const held = new Map<string, unknown>();
+    return { held, setElement: (id: string, entry: unknown) => void held.set(id, entry), removeElement: (id: string) => void held.delete(id) };
+  }
+  const make = (id: string, parts: { text: string }) => ({ id, text: parts.text });
+
+  it("has the three entries on a branch with an upstream and commits ahead", () => {
+    const b = bar();
+    applyGitEntries(b, planGitEntries(status, false), make);
+    expect([...b.held.keys()]).toEqual(["spexr-git-branch", "spexr-git-divergence", "spexr-git-sync"]);
+    expect(b.held.get("spexr-git-sync")).toMatchObject({ text: "$(sync) synced" });
+  });
+
+  it("removes the divergence pill when ahead goes back to 0, and keeps the others", () => {
+    const b = bar();
+    applyGitEntries(b, planGitEntries(status, false), make);
+    applyGitEntries(b, planGitEntries({ ...status, ahead: 0 }, false), make);
+    expect([...b.held.keys()]).toEqual(["spexr-git-branch", "spexr-git-sync"]);
+  });
+
+  it("removes the sync item when the upstream goes, and every entry when the status does", () => {
+    const b = bar();
+    applyGitEntries(b, planGitEntries(status, false), make);
+    applyGitEntries(b, planGitEntries({ branch: "main", ahead: 2, behind: 0 }, false), make);
+    expect([...b.held.keys()]).toEqual(["spexr-git-branch", "spexr-git-divergence"]);
+    applyGitEntries(b, planGitEntries(undefined, false), make);
+    expect(b.held.size).toBe(0);
+  });
+
+  it("says commits behind once: in the sync item, not in the branch's pills", () => {
+    const entries = planGitEntries({ ...status, ahead: 0, behind: 3 }, false);
+    expect(entries.sync?.text).toBe("$(sync) ↓3 to pull");
+    expect(entries.divergence).toBeUndefined();
+    expect(entries.branch?.text).toBe("$(git-branch) main");
+  });
+
+  it("shows a failed fetch in the sync item", () => {
+    expect(planGitEntries(status, true).sync?.text).toBe("$(warning) fetch failed");
   });
 });
 

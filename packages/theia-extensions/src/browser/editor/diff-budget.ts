@@ -11,7 +11,7 @@
 import type { DiffStats } from "./breadcrumb-model.js";
 
 /** The budget for the part of the two texts that differs: lines on either side, characters on either side, and how lopsided the sides may be. */
-export const DIFF_BUDGET = { maxLines: 2000, maxChars: 512 * 1024, maxRatio: 10, ratioFloor: 200 } as const;
+export const DIFF_BUDGET = { maxLines: 1000, maxChars: 512 * 1024, maxRatio: 10, ratioFloor: 200 } as const;
 
 /** The text without a byte order mark, which would make a file's first line differ from HEAD's. */
 export function stripBom(text: string): string {
@@ -46,18 +46,21 @@ export function withinBudget(previous: readonly string[], current: readonly stri
   return !(longest > ratioFloor && longest > maxRatio * Math.max(1, shortest));
 }
 
-/** What to do with two texts: the answer outright, the differing region to diff, or nothing (over budget). */
-export type DiffPlan = { kind: "stats"; stats: DiffStats } | { kind: "diff"; previous: string; current: string } | { kind: "skip" };
+/** What to do with two texts: the answer outright, the differing lines to count, or nothing (over budget). */
+export type DiffPlan = { kind: "stats"; stats: DiffStats } | { kind: "diff"; previous: string[]; current: string[] } | { kind: "skip" };
 
 /**
- * Plan the diff of HEAD's text against the editor's. Identical texts, and a
- * region that is only added or only removed, are answered without a diff.
+ * Plan the count of HEAD's text against the editor's. Identical texts, and a
+ * region that is only added or only removed, are answered without a diff. The
+ * lines left to compare are counted by a plain line diff (diff-stats.ts),
+ * which agrees with `git diff --numstat`: a changed line is one added and one
+ * removed, whether or not it is blank.
  */
 export function planDiff(previousText: string, currentText: string): DiffPlan {
   const { previous, current } = trimCommon(linesOf(stripBom(previousText)), linesOf(stripBom(currentText)));
   if (previous.length === 0 || current.length === 0) return { kind: "stats", stats: { added: current.length, removed: previous.length } };
   if (!withinBudget(previous, current)) return { kind: "skip" };
-  return { kind: "diff", previous: previous.join("\n"), current: current.join("\n") };
+  return { kind: "diff", previous, current };
 }
 
 /**
@@ -96,12 +99,13 @@ export interface SignedStatus {
 }
 
 /**
- * What changes when HEAD can have: the branch, the divergence (a commit, a
- * pull) and the file's own status (a commit that takes it from changed to
- * clean). The cached HEAD text of a file is kept while this is the same.
+ * What changes when HEAD can have: HEAD's own sha (a commit, a reset, a
+ * rebase, with or without an upstream), the branch, the divergence and the
+ * file's own status. The cached HEAD text of a file is kept while this is the
+ * same.
  */
-export function headSignature(status: SignedStatus | undefined, relPath: string): string {
-  if (!status) return "none";
+export function headSignature(status: SignedStatus | undefined, relPath: string, headSha = ""): string {
+  if (!status) return `none|${headSha}`;
   const file = status.files.find((f) => f.path === relPath);
-  return [status.branch, status.ahead, status.behind, file?.stagedState ?? "", file?.unstagedState ?? ""].join("|");
+  return [headSha, status.branch, status.ahead, status.behind, file?.stagedState ?? "", file?.unstagedState ?? ""].join("|");
 }

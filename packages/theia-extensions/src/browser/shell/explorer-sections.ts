@@ -31,6 +31,10 @@ export const SMART_SEARCH_EVICTION_ID = "smart-search-eviction";
  * empties it ({@link clearMigrations}), so the defaults apply again.
  */
 export const SECTIONS_MIGRATION_KEY = "spexr.migration.explorerSections.v1";
+// NB: the key's name is the Explorer's, which is all it held at first. It is the
+// left island's one done-list now (it also holds the activity bar's removal,
+// activity-views.ts); the name stays so a stored list is still read. A rename
+// would need a migration of the stored value, for no behaviour.
 
 let lock: Promise<unknown> = Promise.resolve();
 

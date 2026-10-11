@@ -4,7 +4,11 @@
  * Theia's own entries are reached by their ids instead.
  */
 
-/** A fact read as data, whole: the mono at the primary ink. Only the model value (S6d, D15) is set this way; the branch's name is {@link STATUS_BRANCH}'s. */
+/**
+ * A fact read as data, whole: the mono at the primary ink (S6d, D15). No entry
+ * carries it yet: it is kept for the model value ("✦ Opus · tok/s"), which S6j
+ * adds; the branch's name is {@link STATUS_BRANCH}'s.
+ */
 export const STATUS_DATA = "spexr-status--data";
 
 /** The branch entry: its name is the one run of text set as data; the counts and the rest stay the bar's muted sans (S6d, D15). */

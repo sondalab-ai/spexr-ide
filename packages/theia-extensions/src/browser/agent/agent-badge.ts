@@ -8,3 +8,8 @@ import { CLAUDE_TERMINAL_ID } from "./claude-terminal-id.js";
 export function agentBadge(widgetId: string, running: number): Array<{ badge: number }> {
   return widgetId === CLAUDE_TERMINAL_ID && running > 0 ? [{ badge: running }] : [];
 }
+
+/** The Agent tab's tooltip: its own caption, then the count in words when agents run ("Agent — 2 agents running"). */
+export function agentTabCaption(base: string, label: string | undefined): string {
+  return label ? `${base} — ${label}` : base;
+}

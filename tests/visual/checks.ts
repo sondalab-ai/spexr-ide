@@ -311,6 +311,9 @@ export function checkLeftViews(steps: ReadonlyArray<{ step: string; left: number
  * which the demo's has not, so it overflows, and Theia scrolls it when the
  * island narrows (agent-front: the left island at 432) or when the right
  * island's views open over it (right-panel). Their counts are in the summary.
+ * The base scene overflows too (by 64px at the capture's width, in the strip
+ * probe's `overflow`) but needs no alignment scroll, because Theia has
+ * already scrolled it to the current tab.
  */
 const ALIGNED_STRIPS_EXEMPT: readonly string[] = ["right-panel", "agent-front"];
 
