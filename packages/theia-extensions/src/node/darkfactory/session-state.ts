@@ -5,7 +5,9 @@ const IDLE_WINDOW_MS = 12 * 3_600_000;
 /** A tool_use must sit unresolved this long before we call it a pending prompt. */
 export const SETTLE_MS = 2_000;
 /** Tools whose use pauses the agent on a permission prompt. */
-const PERMISSION_TOOLS = new Set(["Bash", "Edit", "Write", "WebFetch"]);
+const PERMISSION_TOOLS = new Set(["Bash", "Edit", "Write", "WebFetch", "NotebookEdit", "WebSearch", "ExitPlanMode", "AskUserQuestion"]);
+/** Tools of an MCP server are named `mcp__<server>__<tool>` and ask like the built-in ones. */
+const isPermissionTool = (name: string): boolean => PERMISSION_TOOLS.has(name) || name.startsWith("mcp__");
 /** Permission modes that auto-approve tools, so a pending tool_use is work, not a prompt. */
 export const AUTO_APPROVE_MODES = new Set(["auto", "bypassPermissions"]);
 
@@ -84,7 +86,7 @@ export function lastTurn(entries: StateEntry[]): Turn {
   if (!Array.isArray(last.content)) return "unknown";
   const tail = last.content[last.content.length - 1] as { type?: string; name?: string };
   if (tail?.type === "tool_use") {
-    return tail.name && PERMISSION_TOOLS.has(tail.name) ? "permission" : "acting";
+    return tail.name && isPermissionTool(tail.name) ? "permission" : "acting";
   }
   if (tail?.type === "text") return "ended";
   return "acting"; // thinking / partial block → still generating

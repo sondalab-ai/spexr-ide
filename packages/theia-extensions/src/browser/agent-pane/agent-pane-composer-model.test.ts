@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { SHIFT_TAB, assemblePrompt, composerState, sanitizeMessage, type ComposerInputs } from "./agent-pane-composer-model.js";
+import { assemblePrompt, composerState, fileMention, pathFromAgentRoot, sanitizeMessage, startsShellCommand, type ComposerInputs } from "./agent-pane-composer-model.js";
 
 describe("sanitizeMessage", () => {
-  it("normalises line endings and keeps newlines and tabs", () => {
+  it("is the shared paste sanitiser: line endings normalised, every control character dropped", () => {
     expect(sanitizeMessage("a\r\nb\rc\td")).toBe("a\nb\nc\td");
-  });
-
-  it("drops escapes and other control characters, so text can never be taken for a key or end a paste", () => {
     expect(sanitizeMessage("hi\x1b[201~there")).toBe("hi[201~there");
-    expect(sanitizeMessage("a\x00b\x07c\x7fd\x9be")).toBe("abcde");
-    expect(sanitizeMessage(`x${SHIFT_TAB}y`)).toBe("x[Zy");
+    expect(sanitizeMessage("x\x1b[Zy")).toBe("x[Zy");
   });
+});
 
-  it("leaves ordinary and non-latin text alone", () => {
-    expect(sanitizeMessage("Also fix the colour literal, è 日本 \u{1f600}")).toBe("Also fix the colour literal, è 日本 \u{1f600}");
+describe("fileMention", () => {
+  it("is @path, and quotes a path with spaces the way Claude Code reads it", () => {
+    expect(fileMention("src/probe/resolve.ts")).toBe("@src/probe/resolve.ts");
+    expect(fileMention("my dir/a b.ts")).toBe('@"my dir/a b.ts"');
+    expect(fileMention("a\nb.ts")).toBe('@"a b.ts"');
+    expect(fileMention('say "hi" now.ts')).toBe('@"say hi now.ts"');
   });
 });
 
@@ -22,7 +23,7 @@ describe("assemblePrompt", () => {
     expect(assemblePrompt("  Also fix the colour literal, then open a PR \n", undefined)).toBe("Also fix the colour literal, then open a PR");
   });
 
-  it("is led by the pressed chip's workspace-relative path as @path", () => {
+  it("is led by the pressed chip's path as @path", () => {
     expect(assemblePrompt("fix it", "src/probe/resolve.ts")).toBe("@src/probe/resolve.ts fix it");
   });
 
@@ -32,22 +33,35 @@ describe("assemblePrompt", () => {
     expect(assemblePrompt("\x1b\x07", undefined)).toBeUndefined();
   });
 
-  it("keeps the line breaks of a multi-line message, and a path with spaces on one line", () => {
-    expect(assemblePrompt("one\ntwo", "my dir/a b.ts")).toBe("@my dir/a b.ts one\ntwo");
-    expect(assemblePrompt("x", "a\nb.ts")).toBe("@a b.ts x");
+  it("keeps the line breaks of a multi-line message, and quotes a path with spaces", () => {
+    expect(assemblePrompt("one\ntwo", "my dir/a b.ts")).toBe('@"my dir/a b.ts" one\ntwo');
+  });
+
+  it("keeps a leading ! (the person's own text: nothing is submitted) when the chip is off", () => {
+    expect(assemblePrompt("!git status", undefined)).toBe("!git status");
+    expect(startsShellCommand("!git status")).toBe(true);
+    expect(startsShellCommand("git status")).toBe(false);
+    expect(startsShellCommand(undefined)).toBe(false);
   });
 });
 
-describe("SHIFT_TAB", () => {
-  it("is the escape sequence a Shift+Tab key sends", () => {
-    expect(SHIFT_TAB).toBe("\u001b[Z");
+describe("pathFromAgentRoot", () => {
+  it("is the file's path from the agent's own folder, which is not the workspace root the file lies in", () => {
+    expect(pathFromAgentRoot("/w/mono/packages/app", "/w/mono/packages/app/src/a.ts")).toBe("src/a.ts");
+    expect(pathFromAgentRoot("/w/mono/packages/app/", "/w/mono/packages/app/src/a.ts")).toBe("src/a.ts");
+  });
+
+  it("is undefined for a file outside the agent's folder, a sibling folder with the same prefix, or no folder", () => {
+    expect(pathFromAgentRoot("/w/mono/packages/app", "/w/mono/packages/lib/a.ts")).toBeUndefined();
+    expect(pathFromAgentRoot("/w/mono/packages/app", "/w/mono/packages/app2/a.ts")).toBeUndefined();
+    expect(pathFromAgentRoot(undefined, "/w/a.ts")).toBeUndefined();
   });
 });
 
 describe("composerState", () => {
-  const base: ComposerInputs = { draft: "go", running: true, phase: "ready", trusted: true, ownSession: true, sending: false };
+  const base: ComposerInputs = { draft: "go", running: true, trusted: true, ownSession: true, sending: false };
 
-  it("lets a running agent at its prompt be sent to and planned", () => {
+  it("lets a running agent be sent to and planned", () => {
     expect(composerState(base)).toEqual({ mode: "send", canSend: true, canPlan: true });
   });
 
@@ -55,27 +69,20 @@ describe("composerState", () => {
     expect(composerState({ ...base, draft: "  " })).toEqual({ mode: "send", canSend: false, canPlan: true });
   });
 
-  it("disables both while the agent is working, and says so", () => {
-    expect(composerState({ ...base, phase: "working" })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "working" });
+  it("does not look at what the agent is doing: a paste without Enter submits nothing, so it is never refused for that", () => {
+    expect(Object.keys(base)).not.toContain("phase");
+    expect(composerState(base).canSend).toBe(true);
   });
 
-  it("disables both while the phase is not known yet: never ready by default", () => {
-    expect(composerState({ ...base, phase: undefined })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "working" });
-  });
-
-  it("disables both while a permission may be pending, and says why", () => {
-    expect(composerState({ ...base, phase: "permission" })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "needs-you" });
-  });
-
-  it("disables everything in an untrusted workspace, whatever the phase", () => {
+  it("disables everything in an untrusted workspace, and says so", () => {
     for (const running of [true, false]) {
       expect(composerState({ ...base, trusted: false, running })).toEqual({ mode: "send", canSend: false, canPlan: false, reason: "untrusted" });
     }
   });
 
-  it("allows Send with no agent running (it only starts one), but not Plan, which is a key into a running TUI", () => {
-    expect(composerState({ ...base, running: false, phase: undefined })).toEqual({ mode: "send", canSend: true, canPlan: false });
-    expect(composerState({ ...base, running: false, phase: undefined, draft: "" })).toEqual({ mode: "send", canSend: false, canPlan: false });
+  it("allows Send with no agent running (it starts one), but not Plan, which brings a running terminal forward", () => {
+    expect(composerState({ ...base, running: false })).toEqual({ mode: "send", canSend: true, canPlan: false });
+    expect(composerState({ ...base, running: false, draft: "" })).toEqual({ mode: "send", canSend: false, canPlan: false });
   });
 
   it("disables both while a send is in flight", () => {

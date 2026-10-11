@@ -3,6 +3,9 @@ import { FileUri } from "@theia/core/lib/common/file-uri";
 import { IShellTerminalServer } from "@theia/terminal/lib/common/shell-terminal-protocol";
 import { ProcessManager } from "@theia/process/lib/node/process-manager";
 import { TerminalProcess } from "@theia/process/lib/node/terminal-process";
+import { bracketedPaste } from "../../common/terminal-paste.js";
+
+export { bracketedPaste };
 
 /**
  * The terminal server merges the backend's environment into every pty. A SPEXR
@@ -20,17 +23,11 @@ export function withoutClaudeSessionMarkers(env: NodeJS.ProcessEnv): Record<stri
 export const PASTE_ENTER_DELAY_MS = 100;
 
 /**
- * `text` as one bracketed paste. CR becomes LF, and every other control
- * character but LF and tab is dropped first — above all ESC, so `ESC[201~`
- * cannot end the paste early and turn the rest into keystrokes. The text can
- * carry a check's output, which comes from code the agent wrote.
+ * Paste `text`, then press Enter once the TUI has taken the paste in. The Enter
+ * is deliberate and only here: a scheduled task runs unattended, with nobody
+ * to press it. The text goes through the shared sanitiser (common/terminal-paste.ts)
+ * like every other writer's.
  */
-export function bracketedPaste(text: string): string {
-  const clean = text.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
-  return `\x1b[200~${clean}\x1b[201~`;
-}
-
-/** Paste `text`, then press Enter once the TUI has taken the paste in. */
 export async function pasteInto(
   write: (data: string) => void,
   text: string,

@@ -455,8 +455,8 @@ export const SEEDED_DRAFT = "Also fix the colour literal, then open a PR";
  * the island's edges, `agent.textarea`, `agent.chip` 24 high, the Plan and Send
  * buttons 24 high): 12px off the ring's inside, so 326 wide against the demo's
  * 328; the seeded draft; the chip `@resolve.ts` pressed; Plan idle and Send
- * with its keycap, both disabled while the agent works, with "Agent is
- * working" shown; the focus ring only in the composer-focus scene.
+ * with its keycap, both enabled and no note; the focus ring only in the
+ * composer-focus scene.
  */
 function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[number], focused: boolean): string[] {
   const problems: string[] = [];
@@ -466,7 +466,7 @@ function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[numb
   const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
   if (!near(box.x - pane.x, 13, 1) || !near(box.w, 326, 1.5)) problems.push(`composer: at ${box.x - pane.x} in, ${box.w} wide, want 13 and 326 (the demo's 12 and 328, in the ring)`);
   if (!near(pane.y + pane.h - (box.y + box.h), 13, 1.5)) problems.push(`composer: ${pane.y + pane.h - (box.y + box.h)}px above the island's bottom edge, want 13`);
-  // The demo's is 100.3. While the agent works a note line sits in it (S6i's security decision: Send is off, and says why): +24.
+  // The demo's is 100.3. A note line (what was pasted, the shell-command hint) would add 24.
   const noted = c.note !== null;
   const [lo, hi] = noted ? [110, 128] : [90, 104];
   if (box.h < lo || box.h > hi) problems.push(`composer: ${box.h}px tall, want about the demo's 100 (${lo} to ${hi}${noted ? ", with its note" : ""})`);
@@ -480,11 +480,11 @@ function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[numb
     if (!r) problems.push(`composer: no ${key}`);
     else if (!near(r.h, 24, 1.5)) problems.push(`composer: ${key} is ${r.h}px tall, want the demo's 24`);
   }
-  // The audit's agent is mid-turn (a call is open): Send and Plan are off, and the composer says why. The demo's are on;
-  // typing into a working Claude can answer a permission dialog with Enter, so they are not (S6i's security decision).
-  if (c.planPressed || !c.planDisabled) problems.push(`composer: Plan pressed=${c.planPressed} disabled=${c.planDisabled}, want idle and disabled while the agent works`);
-  if (!c.sendDisabled || !/^Send\s*\u23ce$/.test(c.sendText)) problems.push(`composer: Send disabled=${c.sendDisabled} text ${JSON.stringify(c.sendText)}, want disabled "Send \u23ce"`);
-  if (c.note !== "Agent is working") problems.push(`composer: the note reads ${JSON.stringify(c.note)}, want "Agent is working"`);
+  // Send and Plan are on, as the demo's are, whatever the audit's agent is doing: Send pastes without Enter and Plan only
+  // brings the terminal forward, so neither is gated on the transcript (S6i's security decision). No note shows.
+  if (c.planPressed || c.planDisabled) problems.push(`composer: Plan pressed=${c.planPressed} disabled=${c.planDisabled}, want idle and enabled (the agent runs; its footer shows no plan mode)`);
+  if (c.sendDisabled || !/^Send\s*\u23ce$/.test(c.sendText)) problems.push(`composer: Send disabled=${c.sendDisabled} text ${JSON.stringify(c.sendText)}, want enabled "Send \u23ce" (the demo's)`);
+  if (c.note !== null) problems.push(`composer: the note reads ${JSON.stringify(c.note)}, want none before anything is pasted`);
   if (c.focused !== focused) problems.push(`composer: focus-within is ${c.focused}, want ${focused}`);
   return problems;
 }

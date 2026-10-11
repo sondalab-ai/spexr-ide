@@ -27,7 +27,8 @@ import { Emitter, type Event } from "@theia/core/lib/common/event";
 import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
 import { agentSessionKey, launchLine, withSessionId } from "./session-launch.js";
-import { SHIFT_TAB } from "../agent-pane/agent-pane-composer-model.js";
+import { bracketedPaste } from "../../common/terminal-paste.js";
+import { FOOTER_LINES, parseModeFooter, type ModeFooter } from "../agent-pane/agent-mode-footer.js";
 import { WorkspaceTrustService } from "@theia/workspace/lib/browser/workspace-trust-service";
 import {
   AMBIGUOUS_ACCOUNT,
@@ -608,31 +609,37 @@ export class ClaudeTerminalManager {
     return !!this.widget && isReusableTerminal(this.widget);
   }
 
-  /**
-   * The keys the composer types into the agent's TUI, one at a time: the
-   * guards (agent-pane/agent-pane-guard.ts) decide when each is safe. Nothing
-   * here checks idleness; each refuses only what can never be right, an agent
-   * that is not running or a workspace that is not trusted.
-   */
   private agentTerminal(): TerminalWidget {
     const term = this.widget;
     if (!term || !isReusableTerminal(term)) throw new Error("the agent is not running");
     return term;
   }
 
-  /** Put text in the TUI's input without submitting it: a paste, bracketed when the TUI asked for that. */
+  /**
+   * Put text in the agent's TUI input as one bracketed paste, the markers
+   * written out here whatever mode the TUI is in, and nothing after it: the
+   * person presses Enter in the terminal. This is the only input the composer
+   * gives the agent; there is no Enter and no Shift+Tab (agent-pane-send.ts).
+   */
   pasteIntoAgent(text: string): void {
-    this.agentTerminal().paste(text);
+    this.agentTerminal().sendText(bracketedPaste(text));
   }
 
-  /** Press Enter in the agent's TUI. */
-  submitAgentInput(): void {
-    this.agentTerminal().sendText("\r");
-  }
-
-  /** Press Shift+Tab once in the agent's TUI: it moves to the next permission mode. */
-  cycleAgentMode(): void {
-    this.agentTerminal().sendText(SHIFT_TAB);
+  /**
+   * The permission mode Claude Code's footer shows, read from the terminal's
+   * last lines; undefined when the agent is not running or the footer says
+   * nothing known. Best-effort: see agent-mode-footer.ts.
+   */
+  agentModeFooter(): ModeFooter | undefined {
+    const term = this.widget;
+    if (!term || !isReusableTerminal(term)) return undefined;
+    try {
+      const { buffer } = term;
+      const start = Math.max(0, buffer.length - FOOTER_LINES);
+      return parseModeFooter(buffer.getLines(start, FOOTER_LINES, true));
+    } catch {
+      return undefined;
+    }
   }
 
   /** Whether Theia trusts the workspace (always, when workspace trust is off). */
