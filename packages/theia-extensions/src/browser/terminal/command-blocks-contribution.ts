@@ -41,6 +41,8 @@ export class SpexrCommandBlocksContribution implements FrontendApplicationContri
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
   @inject(SpexrTerminalBlocksServiceProxy) private readonly service!: SpexrTerminalBlocksService;
 
+  /** Whether each terminal has its shell's nonce: for the attribute that answers "why no blocks?". */
+  private readonly nonceState = new WeakMap<TerminalWidget, string>();
   private readonly attached = new Map<TerminalWidget, { blocks: TerminalBlocks; dispose: DisposableCollection }>();
 
   onStart(): void {
@@ -85,7 +87,8 @@ export class SpexrCommandBlocksContribution implements FrontendApplicationContri
     try {
       const dispose = new DisposableCollection();
       // The marks met so far, readable on the terminal's element: the answer to "why are there no blocks here?".
-      const report = (): void => void widget.node.setAttribute("data-spexr-blocks", Object.entries(blocks.stats).map(([k, v]) => `${k}:${v}`).join(" "));
+      const report = (): void =>
+        void widget.node.setAttribute("data-spexr-blocks", `${Object.entries(blocks.stats).map(([k, v]) => `${k}:${v}`).join(" ")} nonce:${this.nonceState.get(widget) ?? "pending"}`);
       const blocks = new TerminalBlocks(xterm, report);
       dispose.push({ dispose: () => blocks.dispose() });
       report();
@@ -110,9 +113,12 @@ export class SpexrCommandBlocksContribution implements FrontendApplicationContri
       await started.processId;
       const nonce = await this.service.nonce(started.terminalId);
       if (this.attached.get(widget)?.blocks === blocks) blocks.setNonce(nonce);
+      this.nonceState.set(widget, nonce ? "set" : `none(terminal ${started.terminalId})`);
       report();
-    } catch {
+    } catch (err) {
       // The backend does not know this terminal: it has no blocks.
+      this.nonceState.set(widget, `error(${err instanceof Error ? err.message : String(err)})`.slice(0, 80));
+      report();
     }
   }
 

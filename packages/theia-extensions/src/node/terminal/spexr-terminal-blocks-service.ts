@@ -33,6 +33,9 @@ export class SpexrTerminalBlocksBackend implements SpexrTerminalBlocksService {
   async nonce(terminalId: number): Promise<string | undefined> {
     const process = this.processes.get(terminalId) as unknown as ProcessWithOptions | undefined;
     const value = process?.options?.options?.env?.[NONCE_ENV];
-    return typeof value === "string" && NONCE.test(value) ? value : undefined;
+    const found = typeof value === "string" && NONCE.test(value);
+    // Never the nonce itself: only whether the process is there and has one.
+    console.info(`[spexr] command blocks nonce for terminal ${terminalId}: ${found ? "found" : process ? "the process has none" : "no such process"}`);
+    return found ? value : undefined;
   }
 }
