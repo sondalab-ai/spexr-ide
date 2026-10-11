@@ -4,8 +4,11 @@
  * Theia's own entries are reached by their ids instead.
  */
 
-/** A fact read as data (a branch, a project, a count): the mono at the primary ink, as written. */
+/** A fact read as data, whole: the mono at the primary ink. Only the model value (S6d, D15) is set this way; the branch's name is {@link STATUS_BRANCH}'s. */
 export const STATUS_DATA = "spexr-status--data";
+
+/** The branch entry: its name is the one run of text set as data; the counts and the rest stay the bar's muted sans (S6d, D15). */
+export const STATUS_BRANCH = "spexr-status--branch";
 
 /** A state that is live (a job running, a download in progress): a dot of the accent before it. */
 export const STATUS_LIVE = "spexr-status--live";

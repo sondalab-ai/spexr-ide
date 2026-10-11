@@ -36,6 +36,12 @@ export const WORKBENCH = {
   tab: 28,
   /** The breadcrumbs under the editor's tabs: 32 (Lumen 30), so the code starts where Lumen's does (38 + 30 = 36 + 32). */
   breadcrumbs: 32,
+  /** The activity bar's count badge (the Agent tile's running agents, Source Control's changes): the kit's 16 high, r6 (Lumen's pill is 16 high). */
+  activityBadge: 16,
+  /** The count badge's least width: the kit's 20, so one digit is not a circle. */
+  activityBadgeMinWidth: 20,
+  /** A status item's padding at the sides: the kit's and Lumen's 8. */
+  statusItemPadding: 8,
   /** A tile tab's padding at the sides: 12 (Lumen 11.2). */
   tabPaddingInline: 12,
   /** A tab's close slot, where the dirty dot and the hover cross sit: 16, always reserved so a hover moves nothing. */

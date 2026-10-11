@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { STATUS_DATA, STATUS_LIVE } from "../shell/status-dock.js";
+import { STATUS_BRANCH, STATUS_DATA, STATUS_LIVE } from "../shell/status-dock.js";
 
 const resolve = createRequire(import.meta.url).resolve;
 const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
@@ -40,6 +40,7 @@ describe("the status dock's hooks", () => {
 
   it("read spexr's own class hooks", () => {
     expect(dock).toContain(`.${STATUS_DATA}`);
+    expect(dock).toContain(`.${STATUS_BRANCH}`);
     expect(dock).toContain(`.${STATUS_LIVE}`);
   });
 });
@@ -103,21 +104,26 @@ describe("the status dock", () => {
     expect(rule(`.theia-mod-offline ${ITEM}.${STATUS_LIVE}::after {`)).toMatch(/background-color:\s*currentColor/);
   });
 
-  it("sets data in the mono at the primary ink, never on the offline bar or a ground of its own", () => {
+  it("sets only the branch's name and a marked fact in the mono at the primary ink, never on the offline bar or a ground of its own (S6d, D15)", () => {
     const start = css.indexOf("\nbody:not(.theia-mod-offline) #theia-statusBar");
     expect(start).toBeGreaterThanOrEqual(0);
     const selector = css.slice(start, css.indexOf("{", start));
+    // The caret's place, the encoding, the line ends and the problem count are the bar's muted sans now.
     for (const id of ["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "problem-marker-status"]) {
-      expect(selector, id).toContain(`#status-bar-${id}`);
+      expect(selector, id).not.toContain(`#status-bar-${id}`);
     }
-    // The title bar's bell replaced the notification item (S5b-1).
     expect(selector).not.toContain("#status-bar-theia-notification-center");
-    expect(selector).toContain(`.${STATUS_DATA}`);
-    expect(selector).toContain(":not(.has-background) > span:not(.codicon, .fa)");
+    expect(selector).toContain(`.${STATUS_DATA}:not(.has-background) > span:not(.codicon, .fa)`);
+    expect(selector).toContain(`.${STATUS_BRANCH}:not(.has-background) > .codicon:first-child + span`);
     const data = css.slice(css.indexOf("{", start), css.indexOf("}", start));
     expect(data).toMatch(/font-family:\s*var\(--sl-font-mono\)/);
     expect(data).toMatch(/font-weight:\s*500/);
     expect(data).toMatch(/color:\s*var\(--slc-text\)/);
+  });
+
+  it("draws the warning glyph in the kit's warning tone, on the problem count and the failed fetch only", () => {
+    const warn = rule("#theia-statusBar .area:is(.left, .right) > :is(#status-bar-problem-marker-status, #status-bar-spexr-git-sync):not(.has-background) > .codicon-warning {");
+    expect(warn).toMatch(/color:\s*var\(--sl-status-warning\)/);
   });
 
   // Lumen draws no hairlines, and the kit's are opt-in since 0.34 (S5c).

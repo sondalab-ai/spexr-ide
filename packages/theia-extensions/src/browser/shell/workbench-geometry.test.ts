@@ -309,7 +309,7 @@ describe("Theia's layout start, which the default layout relies on", () => {
   it("leaves the settled mark to the default layout, and reapplies the sizes on Reset Layout", () => {
     const layout = own("./spexr-shell-layout-contribution.ts");
     expect(layout).not.toMatch(/spexrLayoutReady|data-spexr-layout-ready/);
-    expect(layout).toMatch(/await this\.applyDefaultLayout\(\);\s*await this\.defaultLayout\.resetSizes\(\);/);
+    expect(layout).toMatch(/await this\.applyDefaultLayout\(\);\s*await this\.removeActivityViews\(\);\s*await this\.defaultLayout\.resetSizes\(\);/);
     // The every-launch expansion keeps a restored width: no floor of its own.
     expect(layout).toMatch(/void expandSidePanel\(this\.shell, "left"\);/);
     // The e2e suite waits on the same mark.

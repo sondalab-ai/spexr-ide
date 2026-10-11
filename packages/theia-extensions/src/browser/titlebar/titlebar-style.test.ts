@@ -179,7 +179,11 @@ describe("the title bar's markup", () => {
   // The crumb drags the window, so a title tooltip on it never shows.
   it("gives the crumb its full path as text for a screen reader, not as a tooltip", () => {
     const crumb = widget.slice(widget.indexOf('<span className="sl-titlebar__crumb"'), widget.indexOf("</div>", widget.indexOf('<span className="sl-titlebar__crumb"')));
-    expect(crumb).not.toMatch(/\btitle=/);
+    // The root is a no-drag button (S6d: the project switch), whose own title shows; the rest of the crumb drags.
+    const rest = crumb.replace(/<button[\s\S]*?<\/button>/, "");
+    expect(rest).not.toMatch(/\btitle=/);
+    expect(crumb).toMatch(/<button[^>]*className="spexr-titlebar__root"[^>]*onClick=\{this\.onSwitchProject\}/);
+    expect(widget).toContain("executeCommand(SWITCH_PROJECT_COMMAND)");
     expect(crumb).toContain('<span aria-hidden="true">');
     expect(crumb).toContain('<span className="spexr-sr-only">{this.crumbName}</span>');
   });

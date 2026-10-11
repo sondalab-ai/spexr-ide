@@ -1681,6 +1681,31 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   flex: none;
 }
 
+/* The crumb's root, the project's name, is the project switch (S6d): it
+   reads as the crumb's own text, and is no-drag so a click reaches it. Its
+   hover and focus ring are the crumb's own colour step. */
+.spexr-titlebar-host .spexr-titlebar__root {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sl-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.spexr-titlebar-host .spexr-titlebar__root:hover {
+  color: var(--slc-text);
+}
+
+.spexr-titlebar-host .spexr-titlebar__root:focus-visible {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: 2px;
+}
+
 /* The menu button keeps its room while the window's style is not known
    yet, and shows nothing: it must not flash in a native window. */
 .spexr-titlebar-host .spexr-titlebar__menu--pending {
@@ -1838,14 +1863,26 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   flex-shrink: 0;
 }
 
-/* Data: the caret's place, the encoding, the line ends, the problem count,
-   and spexr's branch, project and resource meter. Not on the offline bar or
+/* Data (S6d, D15, which reverses S4/S5c's every-fact-in-the-mono rule):
+   the bar's words are the muted sans, the caret's place, the encoding, the
+   line ends and the counts included, as Lumen's. Only two things are set as
+   data, the mono at the primary ink: the branch's name (the one run of text
+   after the branch glyph; the counts that follow stay muted sans) and a
+   fact marked STATUS_DATA (the model's name, S5). Not on the offline bar or
    on an item with a ground of its own, whose label stays theirs. The
    notification count left with its item: the title bar's bell has it. */
-body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, .spexr-status--data):not(.has-background) > span:not(.codicon, .fa) {
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > .spexr-status--data:not(.has-background) > span:not(.codicon, .fa),
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > .spexr-status--branch:not(.has-background) > .codicon:first-child + span {
   font-family: var(--sl-font-mono);
   font-weight: 500;
   color: var(--slc-text);
+}
+
+/* The warning glyph (the problem count's, and "fetch failed") takes the
+   kit's warning tone, a state indicator at 3:1 on the bar's ground
+   (status-dock-style.test.ts); its number stays the bar's muted ink. */
+#theia-statusBar .area:is(.left, .right) > :is(#status-bar-problem-marker-status, #status-bar-spexr-git-sync):not(.has-background) > .codicon-warning {
+  color: var(--sl-status-warning);
 }
 
 /* Theia pulls a left item with a ground, and an entry it compacts onto its

@@ -426,8 +426,32 @@ export class SpexrGitScmProvider implements ScmProvider {
 
   async fetch(): Promise<void> {
     if (!this.rootFsPath) return;
-    await this.gitService.fetch(this.rootFsPath);
+    try {
+      await this.gitService.fetch(this.rootFsPath);
+    } catch (err) {
+      this.setFetchFailed(true);
+      throw err;
+    }
+    this.setFetchFailed(false);
     await this.refresh();
+  }
+
+  /**
+   * Whether the last fetch, by hand or in the background, failed (offline, no
+   * remote, credentials nobody can be asked for). The status bar's "synced"
+   * reads it: behind 0 is only worth saying after a fetch that worked.
+   */
+  get fetchFailed(): boolean {
+    return this._fetchFailed;
+  }
+
+  private _fetchFailed = false;
+
+  /** Record a fetch's outcome, and tell the status listeners when it changed (the status itself may be unchanged). */
+  private setFetchFailed(failed: boolean): void {
+    if (this._fetchFailed === failed) return;
+    this._fetchFailed = failed;
+    this._onDidChangeStatusEmitter.fire(this._lastStatus);
   }
 
   /**
@@ -441,8 +465,10 @@ export class SpexrGitScmProvider implements ScmProvider {
     if (!this.rootFsPath) return;
     try {
       await this.gitService.backgroundFetch(this.rootFsPath);
+      this.setFetchFailed(false);
     } catch {
       /* offline, no remote, credentials nobody can be asked for */
+      this.setFetchFailed(true);
     }
     await this.refresh();
   }

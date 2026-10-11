@@ -8,6 +8,7 @@ import { ContextKeyService } from "@theia/core/lib/browser/context-key-service";
 import { KeybindingRegistry } from "@theia/core/lib/browser/keybinding";
 import { CommonCommands } from "@theia/core/lib/browser/common-commands";
 import { CommandService } from "@theia/core/lib/common/command";
+import { SWITCH_PROJECT_COMMAND } from "./titlebar-model.js";
 import { Disposable } from "@theia/core/lib/common/disposable";
 import { MAIN_MENU_BAR, MANAGE_MENU, type MenuPath } from "@theia/core/lib/common/menu";
 import { isOSX, isWindows } from "@theia/core/lib/common/os";
@@ -262,6 +263,8 @@ export class SpexrTitleBarWidget extends ReactWidget {
   private readonly onMenu = (e: React.MouseEvent<HTMLElement>): void => this.openMenu(MAIN_MENU_BAR, e.currentTarget);
   private readonly onManage = (e: React.MouseEvent<HTMLElement>): void => this.openMenu(MANAGE_MENU, e.currentTarget);
   private readonly onQuickOpen = (): void => void this.commands.executeCommand(QUICK_OPEN_COMMAND);
+  /** The crumb's root is the project: a click switches it (S6d, S1; the status bar's project item is gone). */
+  private readonly onSwitchProject = (): void => void this.commands.executeCommand(SWITCH_PROJECT_COMMAND);
   private readonly onRightPanel = (): void => void this.commands.executeCommand(CommonCommands.TOGGLE_RIGHT_PANEL.id);
   private readonly onBell = (): void => void this.commands.executeCommand(NotificationsCommands.TOGGLE.id);
 
@@ -291,14 +294,22 @@ export class SpexrTitleBarWidget extends ReactWidget {
           </span>
           {this.crumb.length > 0 && (
             <span className="sl-titlebar__crumb" data-parity="title.crumb">
+              <button
+                type="button"
+                className="spexr-titlebar__root"
+                title="Switch project"
+                aria-label={`${this.crumb[0]}, switch project`}
+                onClick={this.onSwitchProject}
+                data-parity="title.crumb.root"
+              >
+                {this.crumb[0]}
+              </button>
               <span aria-hidden="true">
-                {this.crumb.map((part, i) => (
+                {this.crumb.slice(1).map((part, i) => (
                   <React.Fragment key={i}>
-                    {i > 0 && (
-                      <span className="sl-titlebar__sep" data-parity="title.crumb.sep">
-                        /
-                      </span>
-                    )}
+                    <span className="sl-titlebar__sep" data-parity="title.crumb.sep">
+                      /
+                    </span>
                     {part}
                   </React.Fragment>
                 ))}

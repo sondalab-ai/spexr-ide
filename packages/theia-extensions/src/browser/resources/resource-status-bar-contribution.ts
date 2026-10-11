@@ -4,7 +4,9 @@ import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-ba
 import type { SpexrResourceService } from "../../common/resource-protocol.js";
 import { formatResourceEntry, formatResourceLabel, renderResourceTooltip } from "./resource-status-format.js";
 import { isPowerSaving } from "../power/power-save-dom.js";
-import { STATUS_DATA } from "../shell/status-dock.js";
+import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
+import { SPEXR_STATUS_RESOURCES_PREFERENCE } from "../preferences/spexr-preferences.js";
+import { pollAction } from "./resource-poll-gate.js";
 
 /** Symbol for the backend resource service proxy, bound in the frontend module. */
 export const SpexrResourceServiceProxy = Symbol("SpexrResourceServiceProxy");
@@ -15,7 +17,7 @@ const POLL_MS = 4_000;
 const POWER_SAVE_POLL_MS = 20_000;
 
 /**
- * SPEXR's memory and CPU in the status bar, with a per-group breakdown on
+ * SPEXR's memory and CPU in the status bar (when `spexr.statusBar.resources` is on), with a per-group breakdown on
  * hover. Polls the backend while the window is visible, less often while
  * saving power; a hidden window skips its turns. The entry is removed where usage cannot be measured.
  */
@@ -23,10 +25,29 @@ const POWER_SAVE_POLL_MS = 20_000;
 export class SpexrResourceStatusBarContribution implements FrontendApplicationContribution {
   @inject(StatusBar) private readonly statusBar!: StatusBar;
   @inject(SpexrResourceServiceProxy) private readonly service!: SpexrResourceService;
+  @inject(PreferenceService) private readonly preferences!: PreferenceService;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private running = false;
 
   onStart(): void {
-    void this.poll();
+    this.sync();
+    this.preferences.onPreferenceChanged((e) => {
+      if (e.preferenceName === SPEXR_STATUS_RESOURCES_PREFERENCE) this.sync();
+    });
+  }
+
+  /** Follow `spexr.statusBar.resources`: no polling and no entry while it is off (the default). */
+  private sync(): void {
+    const action = pollAction(this.preferences.get<boolean>(SPEXR_STATUS_RESOURCES_PREFERENCE, false), this.running);
+    if (action === "start") {
+      this.running = true;
+      void this.poll();
+    } else if (action === "stop") {
+      this.running = false;
+      if (this.timer !== undefined) clearTimeout(this.timer);
+      this.timer = undefined;
+      this.statusBar.removeElement(ENTRY_ID);
+    }
   }
 
   onStop(): void {
@@ -35,12 +56,12 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
 
   /** Render the latest sample unless hidden, then ask again after `POLL_MS`. */
   private async poll(): Promise<void> {
+    if (!this.running) return;
     if (!document.hidden) {
       const usage = await this.service.usage().catch(() => undefined);
       if (usage) {
         void this.statusBar.setElement(ENTRY_ID, {
           text: formatResourceEntry(usage),
-          className: STATUS_DATA,
           tooltip: renderResourceTooltip(usage, this.interval()),
           accessibilityInformation: { label: formatResourceLabel(usage) },
           alignment: StatusBarAlignment.RIGHT,
@@ -50,6 +71,7 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
         this.statusBar.removeElement(ENTRY_ID);
       }
     }
+    if (!this.running) return;
     this.timer = setTimeout(() => void this.poll(), this.interval());
   }
 

@@ -24,9 +24,6 @@ describe("spexr's status entries", () => {
   const read = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
 
   it.each([
-    ["../scm/git-status-bar-contribution.ts", "className: STATUS_DATA,"],
-    ["../resources/resource-status-bar-contribution.ts", "className: STATUS_DATA,"],
-    ["../project/project-status-bar-contribution.ts", "className: statusClass({ data: !!path }),"],
     ["../search/description-job-status-bar-contribution.ts", "className: statusClass({ live: entry.live }),"],
     ["../decision/decision-model-status-bar.ts", "className: statusClass({ live: downloadStatusLive(s) }),"],
   ])("%s sets %s", (file, hook) => {

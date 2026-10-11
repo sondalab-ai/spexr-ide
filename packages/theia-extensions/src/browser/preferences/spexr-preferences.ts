@@ -95,6 +95,13 @@ export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDt
 export const SPEXR_GIT_AUTOFETCH_PREFERENCE = "spexr.git.autofetch";
 
 /**
+ * Whether the status bar shows SPEXR's memory and CPU meter. Off by default
+ * (S6d, D14): Lumen's bar does not carry it, and the meter polls the backend
+ * while it is on.
+ */
+export const SPEXR_STATUS_RESOURCES_PREFERENCE = "spexr.statusBar.resources";
+
+/**
  * Which backdrop the Spec and Dark Factory panels draw: the Game of Life, or
  * a photo printed as halftone dots in the bottom-right corner.
  */
@@ -304,6 +311,13 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "so the branch's ahead/behind counts stay truthful. Never touches the working " +
         "tree and never prompts for credentials. Turn off on a metered connection, or " +
         "where an unattended authentication attempt is unwelcome.",
+    },
+    [SPEXR_STATUS_RESOURCES_PREFERENCE]: {
+      type: "boolean",
+      default: false,
+      description:
+        "Show SPEXR's own memory and CPU use in the status bar, with a per-group breakdown on hover. " +
+        "Off by default: the meter polls the backend every few seconds while it is shown.",
     },
     [SPEXR_BACKDROP_KIND_PREFERENCE]: {
       type: "string",

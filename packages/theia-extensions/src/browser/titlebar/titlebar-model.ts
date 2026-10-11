@@ -26,6 +26,9 @@ export function fieldKeys(caps: KeyCaps | undefined): FieldKeys | undefined {
   return { caps: caps.chords.flat(), ...(caps.aria ? { aria: caps.aria } : {}) };
 }
 
+/** The command the crumb's root runs: Spexr: Switch project (`SpexrCommands.SWITCH_PROJECT`; the id is repeated here to keep this module free of Theia). */
+export const SWITCH_PROJECT_COMMAND = "spexr.project.switch";
+
 /** How many of the active file's folders the crumb names; deeper ones fold into "…". */
 export const CRUMB_FOLDERS = 2;
 
