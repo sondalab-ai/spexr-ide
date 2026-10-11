@@ -139,13 +139,19 @@ test.describe("the default layout's island sizes", () => {
 
   test("a restored layout keeps its own widths", async ({ page }) => {
     test.setTimeout(150_000);
+    // The agent terminal may be in front on the full stack (432): the Explorer is put there first, as in the tests above.
+    await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
     await dragLeftSash(page, 100);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(364, 0);
+    // The width is saved shortly after the drag (left-island-width.ts), not only at unload; wait for it to be.
+    await page.waitForTimeout(1_000);
 
     // Theia stores the layout on unload and restores it on load.
     await page.reload();
     await page.waitForSelector("body[data-spexr-layout-ready]", { timeout: 60_000 });
+    // The agent terminal may come to the front again on load; the Explorer's own width is read with the Explorer in front.
+    await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(364, 0);
     await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
   });
