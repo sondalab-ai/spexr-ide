@@ -82,6 +82,7 @@ import { SessionSearchState } from "./session-search.js";
 import { addTrashed, partitionTrashed, readTrashed, removeTrashed, writeTrashed } from "./trash.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
+import { AGENTS_TAB_ICON, agentsTabLabel } from "./agents-tab-title.js";
 import { Backdrop } from "../backdrop/backdrop.js";
 import { WorkingHold } from "./working-hold.js";
 
@@ -282,10 +283,10 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @postConstruct()
   protected init(): void {
     this.id = SpexrDarkfactoryWidget.ID;
-    this.title.label = "Darkfactory";
+    this.title.label = agentsTabLabel();
     this.title.caption = "All agent sessions at work";
     this.title.closable = true;
-    this.title.iconClass = "codicon codicon-server-process";
+    this.title.iconClass = AGENTS_TAB_ICON;
     this.addClass("spexr-darkfactory");
     // Focusable from script, not a tab stop: activating the tab moves the
     // focus into the wall (onActivateRequest), so the shell's focus tracker
@@ -1345,7 +1346,20 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     );
   }
 
+  /**
+   * The tab reads "Agents", or "Agent · <name>" while a session is lifted into
+   * a card (the newest one). Written only on change, so a render never
+   * re-announces an unchanged title.
+   */
+  private syncTabLabel(): void {
+    const newest = this.pinned[0];
+    const tile = newest ? this.tiles.find((t) => t.sessionId === newest) : undefined;
+    const label = agentsTabLabel(tile ? defaultSessionName(tile) : undefined);
+    if (this.title.label !== label) this.title.label = label;
+  }
+
   protected render(): React.ReactNode {
+    this.syncTabLabel();
     if (!this.loaded) {
       return (
         <div className="spexr-df-loading">
