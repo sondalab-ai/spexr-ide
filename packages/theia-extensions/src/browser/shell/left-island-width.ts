@@ -110,8 +110,8 @@ type ChangedSlot = Parameters<LeftPanelLike["tabBar"]["currentChanged"]["connect
  *   collapsed (no incoming view) is recorded and left alone; Theia keeps the
  *   size for its next opening, which the next change then settles.
  * - {@link noteResize} records the view in front shortly after a drag ends,
- *   so a width is saved when it changes: a save started as the window closes
- *   may not finish before the reload (storage is asynchronous).
+ *   so a width is saved when it changes, not only when the window closes: at
+ *   unload the view in front may not be the one that was dragged.
  * - {@link flush} records the view in front, for a window that is closing.
  * - {@link clear} forgets every width (Reset Layout).
  *
@@ -120,6 +120,8 @@ type ChangedSlot = Parameters<LeftPanelLike["tabBar"]["currentChanged"]["connect
 export class LeftIslandWidth {
   private widths: LeftWidths = {};
   private attached = false;
+  /** Whether the remembered widths have been read: until then there is nothing to add to, and a save would overwrite them. */
+  private loaded = false;
   private pending = 0;
   private queue: Promise<void> = Promise.resolve();
 
@@ -160,6 +162,7 @@ export class LeftIslandWidth {
     } catch (err) {
       this.warn("[spexr] the left island's remembered widths could not be read", err);
     }
+    this.loaded = true;
     if (!(await this.alignSeeded())) this.flush();
     this.panel.tabBar.currentChanged.connect(this.onChanged);
   }
@@ -211,6 +214,7 @@ export class LeftIslandWidth {
 
   /** Record the width of the view in front (a closing window; the settled layout). */
   flush(): void {
+    if (!this.loaded) return;
     const current = this.panel.tabBar.currentTitle?.owner.id;
     if (current) this.remember(current);
   }

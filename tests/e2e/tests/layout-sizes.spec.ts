@@ -144,8 +144,22 @@ test.describe("the default layout's island sizes", () => {
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
     await dragLeftSash(page, 100);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(364, 0);
-    // The width is saved shortly after the drag (left-island-width.ts), not only at unload; wait for it to be.
-    await page.waitForTimeout(1_000);
+    // The width is saved shortly after the drag (left-island-width.ts), not only at unload: wait for it in storage.
+    await expect
+      .poll(
+        () =>
+          page.evaluate((view) => {
+            const key = Object.keys(window.localStorage).find((k) => k.endsWith(":spexr.leftIsland.widths"));
+            if (!key) return null;
+            try {
+              return (JSON.parse(window.localStorage.getItem(key) ?? "null") as Record<string, number> | null)?.[view] ?? null;
+            } catch {
+              return null;
+            }
+          }, EXPLORER),
+        { timeout: 10_000 },
+      )
+      .toBe(364);
 
     // Theia stores the layout on unload and restores it on load.
     await page.reload();
