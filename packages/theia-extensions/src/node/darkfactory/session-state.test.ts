@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { classifySession } from "./session-state.js";
+import { classifySession, lastTurn } from "./session-state.js";
 
 const NOW = 1_000_000_000_000;
 const LIVE = new Set(["/p"]);
@@ -139,5 +139,19 @@ describe("classifySession — no live process", () => {
 
   test("null liveDirs (scan failed) never yields working", () => {
     expect(classifySession("/p", NOW - 1_000, true, null, NOW, userMsg).state).toBe("idle");
+  });
+});
+
+describe("tools that ask for permission", () => {
+  const call = (name: string): Array<{ message: { role: string; content: unknown } }> => [
+    { message: { role: "user", content: "go" } },
+    { message: { role: "assistant", content: [{ type: "tool_use", id: "t", name, input: {} }] } },
+  ];
+  test.each(["Bash", "Edit", "Write", "WebFetch", "NotebookEdit", "WebSearch", "ExitPlanMode", "AskUserQuestion", "mcp__github__create_issue"])("%s waits on the user", (name) => {
+    expect(lastTurn(call(name))).toBe("permission");
+  });
+
+  test("does not count a read-only built-in", () => {
+    expect(lastTurn(call("Read"))).toBe("acting");
   });
 });

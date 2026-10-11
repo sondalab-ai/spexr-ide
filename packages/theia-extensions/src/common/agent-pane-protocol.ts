@@ -59,15 +59,27 @@ export interface AgentPaneTurn {
   diff?: PaneDiff;
 }
 
+/**
+ * Where the followed session's turn stands, read from its transcript:
+ * - `ready`: the last message ended the turn and no tool call is open. Claude
+ *   is at its prompt (a label only: no write into the agent is gated on it,
+ *   because the transcript does not show every dialog).
+ * - `working`: a turn is open (a prompt or a result to act on, a call running).
+ * - `permission`: a call that asks for permission is unresolved: Claude may be
+ *   showing a dialog, where Enter would accept it.
+ */
+export type PanePhase = "ready" | "working" | "permission";
+
 export interface AgentPaneSnapshot {
   sessionId: string;
   title?: string;
   model?: string;
   state?: AgentState;
   needsYou?: boolean;
+  phase?: PanePhase;
   /** The last `permission-mode` record. */
   permissionMode?: string;
-  /** `permissionMode` is `plan`: the composer's Plan toggle reads this back. */
+  /** `permissionMode` is `plan` as the file last recorded it: it can lag the TUI, so nothing is gated on it (the composer reads the terminal's footer). */
   planMode?: boolean;
   turn?: AgentPaneTurn;
   plan?: PanePlanItem[];
@@ -96,6 +108,7 @@ export interface AgentPaneDelta {
   model?: string;
   state?: AgentState;
   needsYou?: boolean;
+  phase?: PanePhase;
   permissionMode?: string;
   planMode?: boolean;
   tokPerSec?: number;

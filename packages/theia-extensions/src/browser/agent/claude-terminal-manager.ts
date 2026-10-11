@@ -27,6 +27,9 @@ import { Emitter, type Event } from "@theia/core/lib/common/event";
 import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
 import { agentSessionKey, launchLine, withSessionId } from "./session-launch.js";
+import { bracketedPaste } from "../../common/terminal-paste.js";
+import { lastRows, parseModeFooter, type ModeReading } from "../agent-pane/agent-mode-footer.js";
+import { WorkspaceTrustService } from "@theia/workspace/lib/browser/workspace-trust-service";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
@@ -81,6 +84,9 @@ export class ClaudeTerminalManager {
 
   @inject(StorageService)
   private readonly storage!: StorageService;
+
+  @inject(WorkspaceTrustService)
+  private readonly trust!: WorkspaceTrustService;
 
   @optional()
   @inject(SpexrAgentServiceProxy)
@@ -343,6 +349,11 @@ export class ClaudeTerminalManager {
       void this.messages.info("SPEXR: open a workspace to start the Claude session.");
       return false;
     }
+    // Restricted Mode: the agent runs tools in the folder, so nothing starts until the workspace is trusted.
+    if (!(await this.isTrusted())) {
+      void this.messages.info("Trust this workspace to start the agent.");
+      return false;
+    }
     if (!this.agentService) return false;
 
     // Remembered first: the account and launch settings below are read
@@ -591,6 +602,59 @@ export class ClaudeTerminalManager {
    */
   send(text: string): void {
     this.widget?.sendText(text);
+  }
+
+  /** Whether a Claude session is running in the agent terminal now. */
+  isRunning(): boolean {
+    return !!this.widget && isReusableTerminal(this.widget);
+  }
+
+  private agentTerminal(): TerminalWidget {
+    const term = this.widget;
+    if (!term || !isReusableTerminal(term)) throw new Error("the agent is not running");
+    return term;
+  }
+
+  /**
+   * Put text in the agent's TUI input as one bracketed paste, the markers
+   * written out here whatever mode the TUI is in, and nothing after it: the
+   * person presses Enter in the terminal. This is the only input the composer
+   * gives the agent; there is no Enter and no Shift+Tab (agent-pane-send.ts).
+   */
+  pasteIntoAgent(text: string): void {
+    this.agentTerminal().sendText(bracketedPaste(text));
+  }
+
+  /**
+   * The permission mode Claude Code's footer shows, read from the last
+   * non-blank rows of the terminal's buffer; undefined when the agent is not
+   * running, and `unknown` when no footer is on screen (the default mode draws
+   * none, and a dialog can cover it). Best-effort: see agent-mode-footer.ts.
+   */
+  agentModeFooter(): ModeReading | undefined {
+    const term = this.widget;
+    if (!term || !isReusableTerminal(term)) return undefined;
+    try {
+      const { buffer } = term;
+      const tail = Math.min(buffer.length, 40);
+      return parseModeFooter(lastRows(buffer.getLines(buffer.length - tail, tail, true)));
+    } catch {
+      return { kind: "unknown" };
+    }
+  }
+
+  /** Whether Theia trusts the workspace (always, when workspace trust is off). */
+  async isTrusted(): Promise<boolean> {
+    try {
+      return await this.trust.getWorkspaceTrust();
+    } catch {
+      return false;
+    }
+  }
+
+  /** Fires when workspace trust changes. */
+  get onDidChangeTrust(): Event<boolean> {
+    return this.trust.onDidChangeWorkspaceTrust;
   }
 
   /** Returns the current placement of the widget. */
