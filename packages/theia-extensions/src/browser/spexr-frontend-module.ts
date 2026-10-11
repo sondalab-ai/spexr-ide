@@ -106,6 +106,8 @@ import { BreadcrumbsRendererFactory } from "@theia/core/lib/browser/breadcrumbs/
 import { SpexrDebugContribution, SpexrExtensionsContribution } from "./shell/activity-view-contributions.js";
 import { DebugFrontendApplicationContribution } from "@theia/debug/lib/browser/debug-frontend-application-contribution";
 import { VSXExtensionsContribution } from "@theia/vsx-registry/lib/browser/vsx-extensions-contribution";
+import { SpexrAgentBadgeDecorator } from "./agent/agent-badge-decorator.js";
+import { TabBarDecorator } from "@theia/core/lib/browser/shell/tab-bar-decorator";
 import { SpexrSplitToolbarContribution } from "./editor/split-toolbar-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
 import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
@@ -391,6 +393,9 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     child.bind(BreadcrumbRenderer).to(SpexrBreadcrumbRenderer).inSingletonScope();
     return child.get(SpexrBreadcrumbsRenderer);
   });
+  bind(SpexrAgentBadgeDecorator).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrAgentBadgeDecorator);
+  bind(TabBarDecorator).toService(SpexrAgentBadgeDecorator);
   bind(SpexrSplitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrSplitToolbarContribution);
 

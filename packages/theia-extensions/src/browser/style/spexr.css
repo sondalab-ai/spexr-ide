@@ -1302,7 +1302,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   height: 1rem;
   padding: 0 4px;
   font: 600 9px/1rem var(--sl-font-mono);
-  border-radius: 8px;
+  border-radius: 6px;
   box-shadow: 0 0 0 2px var(--slc-canvas);
 }
 
