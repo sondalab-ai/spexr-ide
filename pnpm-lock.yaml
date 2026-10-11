@@ -366,6 +366,9 @@ importers:
       '@theia/workspace':
         specifier: ^1.75.0
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
+      '@xterm/headless':
+        specifier: 5.4.0
+        version: 5.4.0
       dompurify:
         specifier: ^3.4.14
         version: 3.4.14
@@ -2217,6 +2220,9 @@ packages:
   '@xmldom/xmldom@0.9.12':
     resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
     engines: {node: '>=14.6'}
+
+  '@xterm/headless@5.4.0':
+    resolution: {integrity: sha512-CrFsRbkdGe4w8RExNPuXCceJ71ZBPHNJSM4pIbB31ioJj4Bgx51xjc6825m9Ftqfy3Bc9JpHhC8zeFvFeGx9Hg==}
 
   '@yarnpkg/lockfile@1.1.0':
     resolution: {integrity: sha512-GpSwvyXOcOOlV70vbnzjj4fW5xW/FdUF6nQEt1ENy7m4ZCczi1+/buVUPAqmGfqznsORNFzUMjctTIp8a9tuCQ==}
@@ -8511,6 +8517,8 @@ snapshots:
     optional: true
 
   '@xmldom/xmldom@0.9.12': {}
+
+  '@xterm/headless@5.4.0': {}
 
   '@yarnpkg/lockfile@1.1.0': {}
 

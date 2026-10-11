@@ -1,60 +1,161 @@
+import { Terminal } from "@xterm/headless";
 import { bracketedPaste } from "../../common/terminal-paste.js";
 
 /**
- * What a scheduled task's pty shows, read from its raw output, so the runner's
- * unattended Enter is pressed only on an idle input prompt. Tasks are
- * interactive `claude` sessions in a backend pty, and an Enter that lands on a
- * dialog accepts it, so the follow-up's Enter fails closed: with no idle prompt
- * on screen, or any dialog chrome, nothing is pressed and the task needs the
- * user. The screen is approximated by the output's tail with the escape
- * sequences stripped (there is no terminal emulator in the backend), which is
- * enough to tell a prompt from a dialog and never to claim one it cannot see.
+ * What a scheduled task's pty shows, so the runner's unattended Enter is
+ * pressed only on Claude Code's idle input prompt. Tasks are interactive
+ * `claude` sessions in a backend pty, and an Enter that lands on a dialog
+ * accepts it (a permission, a question, an MCP form), so the gate fails closed.
+ *
+ * The pty's output is fed to a headless terminal emulator (@xterm/headless)
+ * kept at the pty's size, so the rows read are the real screen: cursor
+ * addressing, colour, erase and save/restore have already been applied. The
+ * screen counts as idle only if all of this holds on its bottom rows:
+ * - a rule row of `─`, then a `❯` input row (continuation rows allowed), then
+ *   a second rule row (the CLI's input box, 2.1.296);
+ * - below the second rule at most 8 non-blank rows, none of them a `❯` row or
+ *   a `───` run (the footer is not matched by content: a user's status line
+ *   can put anything there);
+ * - the emulator's cursor is on a row of the input;
+ * - no known dialog phrase (numbered options, "Enter to submit", "Esc to
+ *   cancel", "to select", ...) in the footer or the 6 rows above the input box.
+ * Anything else, including a layout this does not know, is not idle. The gate
+ * reads the screen as it is once all output received so far is applied; a
+ * dialog that opens after that read can only be caught by the next one, which
+ * is why the runner reads before the paste and again before the Enter. It does
+ * not tell an idle input from a busy turn with the input box still showing, nor
+ * a slash-command suggestion list shown over it: Enter there queues the
+ * message, or runs the command, and accepts no dialog.
  */
 
-/** How much of a pty's output is kept for the screen, in characters. */
-export const SCREEN_TAIL_CHARS = 16_384;
-/** How many non-blank rows from the bottom are looked at. */
-export const SCREEN_ROWS = 12;
+/** Rows of the idle layout's rule: only `─`, at least this many. */
+const MIN_RULE = 8;
+/** How many rows below the input's closing rule are taken as footer. */
+const MAX_FOOTER_ROWS = 8;
+/** How many rows an input (with pasted or typed lines) may span between its rules. */
+const MAX_INPUT_ROWS = 12;
+/** How many rows above the input's opening rule are searched for dialog chrome. */
+const CHROME_ROWS_ABOVE = 6;
 
-/** The output with CSI, OSC and other escape sequences, and bare carriage returns, taken out. */
-export function stripAnsi(raw: string): string {
-  return raw
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-9;?<>=]*[ -/]*[@-~]/g, "\n")
-    .replace(/\x1b[()][0-9A-Za-z]/g, "")
-    .replace(/\x1b[@-Z\\-_=>]/g, "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
-}
+const RULE = new RegExp(`^─{${MIN_RULE},}$`);
+const PROMPT = /^❯(?:\s.*)?$/;
 
-/** The last non-blank rows of `raw`, in order. */
-export function screenRows(raw: string, rows: number = SCREEN_ROWS): string[] {
-  return stripAnsi(raw)
-    .split("\n")
-    .map((l) => l.replace(/\s+$/, ""))
-    .filter((l) => l.trim() !== "")
-    .slice(-rows);
-}
-
-/** Rows of a dialog: numbered options, a confirm or cancel hint, a question to accept. */
-const DIALOG = [
+/** Chrome of a dialog, a form or a list: numbered options, a confirm or cancel hint, a question to accept. */
+const CHROME = [
   /[❯>]\s*\d+\.\s+\S/,
   /^\s*[│|]?\s*\d+\.\s+(?:Yes|No|Allow|Deny)\b/i,
   /\bDo you want to\b/i,
   /\bWould you like to\b/i,
   /\besc to cancel\b/i,
-  /\benter to (?:confirm|select|continue)\b/i,
+  /\benter to (?:confirm|select|continue|submit)\b/i,
   /\bpress enter\b/i,
+  /\bto select\b/i,
+  /\bto navigate\b/i,
+  /\btype something\b/i,
 ];
 
-/** The input prompt: an optional box border, then `>` or `❯` and the (possibly empty) text. */
-const PROMPT = /^\s*[│|]?\s*[>❯](?:\s+\S.*|\s*)(?:[│|])?\s*$/;
+/** The emulator's viewport as plain text, one entry per row, and the cursor's row in it. */
+export interface ScreenSnapshot {
+  readonly rows: readonly string[];
+  readonly cursorRow: number;
+}
 
-/** Idle: an input prompt among the rows and no dialog chrome in any of them. Fails closed. */
-export function isIdlePrompt(rows: readonly string[]): boolean {
-  if (rows.length === 0) return false;
-  if (rows.some((r) => DIALOG.some((d) => d.test(r)))) return false;
-  return rows.some((r) => PROMPT.test(r) && !/^\s*[│|]?\s*[>❯]\s*\d+\./.test(r));
+/**
+ * Idle: the bottom rows are rule, `❯` input, rule, then footer rows only; the
+ * cursor is inside the input; and no dialog chrome sits in the footer or in
+ * the few rows above the input. Fails closed.
+ */
+export function isIdleScreen(screen: ScreenSnapshot): boolean {
+  const rows = screen.rows.map((r) => r.replace(/\s+$/, ""));
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last] === "") last--;
+  if (last < 0) return false;
+
+  let closing = -1;
+  for (let i = last; i >= 0 && i >= last - MAX_FOOTER_ROWS; i--) {
+    if (RULE.test(rows[i]!)) {
+      closing = i;
+      break;
+    }
+  }
+  if (closing < 0) return false;
+  if (rows.slice(closing + 1, last + 1).some((r) => PROMPT.test(r) || /─{3,}/.test(r))) return false;
+
+  let opening = -1;
+  for (let i = closing - 1; i >= 0 && i >= closing - 1 - MAX_INPUT_ROWS; i--) {
+    if (RULE.test(rows[i]!)) {
+      opening = i;
+      break;
+    }
+  }
+  if (opening < 0 || opening + 1 >= closing) return false;
+  const input = opening + 1;
+  if (!PROMPT.test(rows[input]!) || /^❯\s*\d+\./.test(rows[input]!)) return false;
+  if (rows.slice(input + 1, closing).some((r) => PROMPT.test(r))) return false;
+  if (screen.cursorRow < input || screen.cursorRow >= closing) return false;
+
+  const outside = [...rows.slice(Math.max(0, opening - CHROME_ROWS_ABOVE), opening), ...rows.slice(closing + 1, last + 1)];
+  return !outside.some((r) => CHROME.some((c) => c.test(r)));
+}
+
+/**
+ * A pty's screen, kept by a headless terminal fed with the pty's raw output and
+ * resized with the pty. `write` is asynchronous inside the emulator, so every
+ * read first waits for the output written so far to be applied.
+ */
+export class PtyScreen {
+  private readonly term: Terminal;
+  private broken = false;
+  private disposed = false;
+
+  constructor(cols: number, rows: number) {
+    this.term = new Terminal({ cols, rows, scrollback: 0, allowProposedApi: true });
+  }
+
+  /** The emulator's current size. */
+  get size(): { cols: number; rows: number } {
+    return { cols: this.term.cols, rows: this.term.rows };
+  }
+
+  /** Feed the pty's output. An emulator that cannot keep up (its write buffer overflowed) stops being trusted. */
+  write(data: string): void {
+    if (this.disposed) return;
+    try {
+      this.term.write(data);
+    } catch {
+      this.broken = true;
+    }
+  }
+
+  /** Follow the pty's size; sizes that are not whole and positive are ignored, as the pty ignores them. */
+  resize(cols: number, rows: number): void {
+    if (this.disposed || !Number.isFinite(cols) || !Number.isFinite(rows)) return;
+    this.term.resize(Math.max(1, Math.floor(cols)), Math.max(1, Math.floor(rows)));
+  }
+
+  /** The viewport once everything written so far is applied; undefined when disposed or no longer trusted. */
+  async snapshot(): Promise<ScreenSnapshot | undefined> {
+    if (this.disposed || this.broken) return undefined;
+    await new Promise<void>((resolve) => this.term.write("", resolve));
+    if (this.disposed || this.broken) return undefined;
+    const buffer = this.term.buffer.active;
+    const rows: string[] = [];
+    for (let y = 0; y < this.term.rows; y++) rows.push(buffer.getLine(buffer.baseY + y)?.translateToString(true) ?? "");
+    return { rows, cursorRow: buffer.cursorY };
+  }
+
+  /** The screen shows Claude Code's idle input prompt (isIdleScreen); false when it cannot tell. */
+  async isIdle(): Promise<boolean> {
+    const screen = await this.snapshot();
+    return screen !== undefined && isIdleScreen(screen);
+  }
+
+  /** Release the emulator. Later writes are dropped and every read says "cannot tell". */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.term.dispose();
+  }
 }
 
 /** Wait between a paste and the Enter that submits it, so the TUI has taken the paste in (probe, 2026-09-27). */
@@ -79,12 +180,12 @@ export async function pasteInto(
   write: (data: string) => void,
   text: string,
   sleep: (ms: number) => Promise<void>,
-  idle: () => boolean,
+  idle: () => Promise<boolean>,
 ): Promise<PasteOutcome> {
-  if (!idle()) return "not-idle";
+  if (!(await idle())) return "not-idle";
   write(bracketedPaste(text));
   await sleep(PASTE_ENTER_DELAY_MS);
-  if (!idle()) return "left-in-input";
+  if (!(await idle())) return "left-in-input";
   write("\r");
   return "submitted";
 }

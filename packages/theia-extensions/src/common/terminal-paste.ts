@@ -8,9 +8,10 @@
  * is never followed by Enter: submitting is the person's own key press in the
  * terminal. The one writer of that kind that does press Enter is the schedule
  * runner: its tasks are interactive `claude` sessions in a backend pty with
- * nobody at them, so its Enter is pressed only when the pty's screen shows an
- * idle input prompt and no dialog (node/schedule/pty-screen.ts, which uses
- * this same sanitiser), and otherwise the task is marked as needing the user.
+ * nobody at them, so its Enter is pressed only when the pty's emulated screen
+ * matches Claude Code's idle input layout with the cursor in the input
+ * (node/schedule/pty-screen.ts, which uses this same sanitiser), and otherwise
+ * the task is marked as needing the user.
  */
 
 /** Start and end of a bracketed paste (DEC private mode 2004). */

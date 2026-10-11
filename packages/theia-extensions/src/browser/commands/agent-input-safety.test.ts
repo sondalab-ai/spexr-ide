@@ -33,7 +33,7 @@ describe("what the commands type into the agent", () => {
     const screen = read("../../node/schedule/pty-screen.ts");
     expect(screen).toMatch(/from "\.\.\/\.\.\/common\/terminal-paste\.js"/);
     expect(screen).toMatch(/unattended/);
-    expect(code("../../node/schedule/pty-screen.ts")).toMatch(/if \(!idle\(\)\) return "not-idle";[\s\S]*?if \(!idle\(\)\) return "left-in-input";[\s\S]*?write\("\\r"\)/);
+    expect(code("../../node/schedule/pty-screen.ts")).toMatch(/if \(!\(await idle\(\)\)\) return "not-idle";[\s\S]*?if \(!\(await idle\(\)\)\) return "left-in-input";[\s\S]*?write\("\\r"\)/);
     expect(read("../../node/schedule/schedule-pty.ts")).toMatch(/from "\.\/pty-screen\.js"/);
   });
 });

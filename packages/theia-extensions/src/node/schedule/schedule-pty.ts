@@ -4,9 +4,13 @@ import { IShellTerminalServer } from "@theia/terminal/lib/common/shell-terminal-
 import { ProcessManager } from "@theia/process/lib/node/process-manager";
 import { TerminalProcess } from "@theia/process/lib/node/terminal-process";
 import { bracketedPaste } from "../../common/terminal-paste.js";
-import { SCREEN_TAIL_CHARS, isIdlePrompt, pasteInto, screenRows, type PasteOutcome } from "./pty-screen.js";
+import { PtyScreen, pasteInto, type PasteOutcome } from "./pty-screen.js";
 
 export { bracketedPaste };
+
+/** A task pty's size at launch; the headless screen starts at the same. */
+const LAUNCH_COLS = 120;
+const LAUNCH_ROWS = 40;
 
 /**
  * The terminal server merges the backend's environment into every pty. A SPEXR
@@ -29,37 +33,46 @@ export class SchedulePty {
   @inject(IShellTerminalServer) private readonly terminals!: IShellTerminalServer;
   @inject(ProcessManager) private readonly processes!: ProcessManager;
 
-  /** Each task pty's recent output, kept for the idle-prompt gate on the follow-up's Enter (pty-screen.ts). */
-  private readonly tails = new Map<number, string>();
+  /** Each task pty's screen, kept for the idle-prompt gate on the follow-up's Enter (pty-screen.ts). */
+  private readonly screens = new Map<number, PtyScreen>();
 
-  /** Keep the tail of a pty's output: a reader of its own, so Theia's terminal stream is not touched. */
-  private followOutput(terminalId: number): void {
+  /**
+   * Keep a headless copy of a pty's screen: a reader of its own on the output,
+   * so Theia's terminal stream is not touched; resized whenever the pty is
+   * (Theia resizes it as a card attaches); disposed with the pty.
+   */
+  private followOutput(terminalId: number, cols: number, rows: number): void {
     const p = this.processes.get(terminalId);
     if (!(p instanceof TerminalProcess)) return;
-    this.tails.set(terminalId, "");
-    p.createOutputStream().on("data", (chunk: unknown) => {
-      const text = ((this.tails.get(terminalId) ?? "") + String(chunk)).slice(-SCREEN_TAIL_CHARS);
-      this.tails.set(terminalId, text);
+    const screen = new PtyScreen(cols, rows);
+    this.screens.set(terminalId, screen);
+    p.createOutputStream().on("data", (chunk: unknown) => screen.write(String(chunk)));
+    const resize = p.resize.bind(p);
+    p.resize = (c: number, r: number) => {
+      resize(c, r);
+      screen.resize(c, r);
+    };
+    p.onExit(() => {
+      screen.dispose();
+      this.screens.delete(terminalId);
     });
-    p.onExit(() => this.tails.delete(terminalId));
   }
 
-  /** The task's pty shows an idle input prompt and no dialog; false when it cannot tell (fails closed). */
-  private idle(terminalId: number): boolean {
-    const tail = this.tails.get(terminalId);
-    return tail !== undefined && isIdlePrompt(screenRows(tail));
+  /** The task's pty shows Claude Code's idle input prompt; false when it cannot tell (fails closed). */
+  private async idle(terminalId: number): Promise<boolean> {
+    return (await this.screens.get(terminalId)?.isIdle()) === true;
   }
 
   async launch(line: string, cwd: string): Promise<{ terminalId: number; processId: number }> {
     const terminalId = await this.terminals.create({
       args: ["-i", "-l", "-c", line],
       rootURI: FileUri.create(cwd).toString(),
-      cols: 120,
-      rows: 40,
+      cols: LAUNCH_COLS,
+      rows: LAUNCH_ROWS,
       env: withoutClaudeSessionMarkers(process.env),
     });
     if (terminalId < 0) throw new Error("The terminal server could not start the session.");
-    this.followOutput(terminalId);
+    this.followOutput(terminalId, LAUNCH_COLS, LAUNCH_ROWS);
     return { terminalId, processId: await this.terminals.getProcessId(terminalId) };
   }
 

@@ -267,7 +267,7 @@ export class ScheduleRunner {
             console.error("[schedule] pasting the follow-up failed", err);
             return undefined;
           });
-          // Fails closed: no idle prompt on screen (a dialog, or nothing readable) means no Enter, and the person is asked to look.
+          // Fails closed: no idle prompt on screen (a dialog, an unknown layout, or nothing readable) means no Enter, and the person is asked to look.
           if (outcome === "not-idle" || outcome === "left-in-input") {
             await this.dispatch(scheduleId, { type: "needs-you", task: e.task }, runId);
           }
