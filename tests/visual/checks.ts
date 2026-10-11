@@ -378,9 +378,10 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
   if (!pane) return ["agent pane: the right island is not on screen"];
   if (state.empty) return ["agent pane: the pane is empty (no session was followed)"];
   const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
-  // Expanded, the log outgrows the island and scrolls: its scrollbar (up to 12px) narrows every card.
-  const cardWidth = expanded ? AGENT.cardWidth - 6 : AGENT.cardWidth;
-  const cardTol = expanded ? 7 : 1;
+  // Expanded, or in a window the runner clamped (macos-15/26 displays are 1024x768: the island is 605px tall, not 828), the log outgrows the island and scrolls: its scrollbar (up to 12px) narrows every card.
+  const scrolls = expanded || pane.h < 700;
+  const cardWidth = scrolls ? AGENT.cardWidth - 6 : AGENT.cardWidth;
+  const cardTol = scrolls ? 7 : 1;
   if (!near(pane.x, AGENT.island.x, 1) || !near(pane.w, AGENT.island.w, 1)) problems.push(`agent pane: the island is at x ${pane.x}, ${pane.w} wide, want ${AGENT.island.x} (the demo's 1082 less the right activity bar) and ${AGENT.island.w}`);
 
   const head = regions["ap.head"]?.[0];
@@ -433,8 +434,8 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
       problems.push(`agent pane: diff rows ${state.diff.rows.map((r) => r.kind).join(",")}, want 3 removed then 3 added`);
     }
     const dcard = regions["ap.diff"]?.[0];
-    // Scrolled out of the island when expanded: its geometry is then not measured.
-    if (!(expanded && !dcard) && (!dcard || !near(dcard.w, cardWidth, cardTol))) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
+    // Scrolled out of the island when expanded or in a clamped window: its geometry is then not measured.
+    if (!(scrolls && !dcard) && (!dcard || !near(dcard.w, cardWidth, cardTol))) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
   }
 
   if (state.plan.map((p) => p.checked).join() !== "true,true,false") problems.push(`agent pane: plan checks ${state.plan.map((p) => p.checked).join()}, want true,true,false`);
