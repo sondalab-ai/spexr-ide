@@ -107,7 +107,7 @@ export async function probeLitRim(page: Page): Promise<LitRim> {
     return {
       lit,
       wash: image("#theia-main-content-panel .lm-TabBar .theia-tabBar-tab-row"),
-      tint: image("#theia-main-content-panel .theia-breadcrumbs"),
+      tint: image("#theia-main-content-panel .theia-tabBar-breadcrumb-row"),
       drop: handle ? getComputedStyle(handle).boxShadow : null,
     };
   });
