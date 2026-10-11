@@ -79,6 +79,15 @@ export interface LeftPanelLike {
   resize(size: number): void;
 }
 
+/** The timers the controller debounces with; Theia's own in the app, a fake in tests. */
+export interface WidthTimers {
+  set(run: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
+
+/** How long after a drag ends the width is saved: long enough for the panel to lay out the dragged size. */
+export const RESIZE_SAVE_DELAY_MS = 150;
+
 /** Where the widths live. */
 export interface LeftWidthStore {
   load(): Promise<unknown>;
@@ -100,6 +109,9 @@ type ChangedSlot = Parameters<LeftPanelLike["tabBar"]["currentChanged"]["connect
  *   the incoming one, after Theia's pending panel update. A panel being
  *   collapsed (no incoming view) is recorded and left alone; Theia keeps the
  *   size for its next opening, which the next change then settles.
+ * - {@link noteResize} records the view in front shortly after a drag ends,
+ *   so a width is saved when it changes, not only when the window closes: at
+ *   unload the view in front may not be the one that was dragged.
  * - {@link flush} records the view in front, for a window that is closing.
  * - {@link clear} forgets every width (Reset Layout).
  *
@@ -108,6 +120,8 @@ type ChangedSlot = Parameters<LeftPanelLike["tabBar"]["currentChanged"]["connect
 export class LeftIslandWidth {
   private widths: LeftWidths = {};
   private attached = false;
+  /** Whether the remembered widths have been read: until then there is nothing to add to, and a save would overwrite them. */
+  private loaded = false;
   private pending = 0;
   private queue: Promise<void> = Promise.resolve();
 
@@ -120,7 +134,10 @@ export class LeftIslandWidth {
     private readonly panel: LeftPanelLike,
     private readonly store: LeftWidthStore,
     private readonly warn: (message: string, ...detail: unknown[]) => void = () => undefined,
+    private readonly timers: WidthTimers = { set: (run, ms) => setTimeout(run, ms), clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) },
   ) {}
+
+  private resizeTimer: unknown;
 
   private readonly onChanged: ChangedSlot = (_sender, args) => {
     const outgoing = args.previousTitle?.owner.id;
@@ -145,6 +162,7 @@ export class LeftIslandWidth {
     } catch (err) {
       this.warn("[spexr] the left island's remembered widths could not be read", err);
     }
+    this.loaded = true;
     if (!(await this.alignSeeded())) this.flush();
     this.panel.tabBar.currentChanged.connect(this.onChanged);
   }
@@ -174,12 +192,29 @@ export class LeftIslandWidth {
 
   /** Stop following the panel. */
   detach(): void {
+    if (this.resizeTimer !== undefined) this.timers.clear(this.resizeTimer);
+    this.resizeTimer = undefined;
     this.panel.tabBar.currentChanged.disconnect(this.onChanged);
     this.attached = false;
   }
 
+  /**
+   * A drag may have ended: record the view in front once the panel has laid
+   * out, debounced so a stream of events is one save. Ignored before
+   * {@link attach}, when the panel still has the seeded width.
+   */
+  noteResize(): void {
+    if (!this.attached) return;
+    if (this.resizeTimer !== undefined) this.timers.clear(this.resizeTimer);
+    this.resizeTimer = this.timers.set(() => {
+      this.resizeTimer = undefined;
+      this.flush();
+    }, RESIZE_SAVE_DELAY_MS);
+  }
+
   /** Record the width of the view in front (a closing window; the settled layout). */
   flush(): void {
+    if (!this.loaded) return;
     const current = this.panel.tabBar.currentTitle?.owner.id;
     if (current) this.remember(current);
   }

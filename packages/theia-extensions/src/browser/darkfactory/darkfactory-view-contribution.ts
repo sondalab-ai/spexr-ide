@@ -29,6 +29,9 @@ export class SpexrDarkfactoryViewContribution extends AbstractViewContribution<S
     });
   }
 
+  /** Attached behind the editors at a restore, not raised (reveal-on-restore.ts, S6c, D8); the toggle or an explicit open still raises it. */
+  readonly attachBehind = true;
+
   override registerCommands(commands: CommandRegistry): void {
     super.registerCommands(commands);
     commands.registerCommand(DARKFACTORY_REFRESH_COMMAND, {

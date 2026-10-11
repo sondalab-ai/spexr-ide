@@ -104,6 +104,12 @@ import { FileTreeDecoratorAdapter } from "@theia/filesystem/lib/browser/file-tre
 import { SpexrGitServiceProxySymbol, GIT_SERVICE_PATH } from "./scm/git-service-proxy.js";
 import { SpexrGitClientDispatcher, SpexrGitClientToken } from "./scm/git-client.js";
 import { SpexrGitCommandsContribution } from "./scm/git-commands-contribution.js";
+import { SpexrBreadcrumbRenderer } from "./editor/spexr-breadcrumb-renderer.js";
+import { SpexrBreadcrumbsRenderer } from "./editor/spexr-breadcrumbs-renderer.js";
+import { SpexrBreadcrumbMetaService } from "./editor/breadcrumb-meta-service.js";
+import { BreadcrumbRenderer } from "@theia/core/lib/browser/breadcrumbs/breadcrumb-renderer";
+import { BreadcrumbsRendererFactory } from "@theia/core/lib/browser/breadcrumbs/breadcrumbs-renderer";
+import { SpexrSplitToolbarContribution } from "./editor/split-toolbar-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
 import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
 import { GitOriginalResourceResolver } from "./scm/git-original-resource.js";
@@ -391,6 +397,18 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
 
   bind(SpexrGitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrGitToolbarContribution);
+  bind(SpexrBreadcrumbMetaService).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrBreadcrumbMetaService);
+  bind(SpexrBreadcrumbsRenderer).toSelf();
+  // Theia builds each tab bar's breadcrumbs in a child container that binds its own crumb renderer.
+  rebind(BreadcrumbsRendererFactory).toFactory((ctx) => () => {
+    const child = ctx.container.createChild();
+    child.bind(BreadcrumbRenderer).to(SpexrBreadcrumbRenderer).inSingletonScope();
+    return child.get(SpexrBreadcrumbsRenderer);
+  });
+  bind(SpexrSplitToolbarContribution).toSelf().inSingletonScope();
+  bind(TabBarToolbarContribution).toService(SpexrSplitToolbarContribution);
+  bind(CommandContribution).toService(SpexrSplitToolbarContribution);
 
   bind(GitOriginalResourceResolver).toSelf().inSingletonScope();
   bind(ResourceResolver).toService(GitOriginalResourceResolver);

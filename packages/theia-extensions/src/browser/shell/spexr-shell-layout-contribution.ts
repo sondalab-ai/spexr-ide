@@ -17,15 +17,20 @@ import { SpexrWelcomeViewContribution, WELCOME_VIEW_ID } from "../views/welcome-
 import { SPEC_VIEW_ID } from "../views/spec-view-contribution.js";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-manager.js";
 import { expandSidePanel } from "./side-panel.js";
+import { pinnedOrder } from "./pin-order.js";
+import { DARKFACTORY_VIEW_ID } from "../darkfactory/darkfactory-view-id.js";
 import { SpexrDarkfactorySidebarVisibilityContribution } from "../darkfactory/darkfactory-sidebar-visibility-contribution.js";
 import { consumeProjectLanding } from "../project/project-landing-intent.js";
-import { SpexrRevealOnRestore, type RevealOnRestoreView } from "./reveal-on-restore.js";
+import { SpexrRevealOnRestore, restoreOptions, type RevealOnRestoreView } from "./reveal-on-restore.js";
 import { SpexrDefaultLayoutContribution } from "./default-layout-contribution.js";
 import { StorageService } from "@theia/core/lib/browser/storage-service";
 import { SECTIONS_MIGRATION_KEY, clearMigrations } from "./explorer-sections.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
 const PINNED_IDS = [WELCOME_VIEW_ID, SPEC_VIEW_ID, CLAUDE_TERMINAL_ID] as const;
+
+/** IDs of tabs pinned after every other tab: the agents' wall (S6c, D8). */
+const TRAILING_PINNED_IDS = [DARKFACTORY_VIEW_ID] as const;
 
 const TERMINAL_NEW_COMMAND = "terminal:new";
 
@@ -115,9 +120,10 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       await this.revealRegisteredDefaults();
       await this.revealAgentPane(!alreadyConfigured);
       if (!alreadyConfigured) await this.openTerminal();
-      // A project switch has to land on a project tab: the restored layout, plus
-      // the Darkfactory reveal above, would otherwise leave the dashboard in
-      // front — the tab the user just navigated away from, and the one that
+      // A project switch has to land on a project tab: a restored layout can
+      // have the Darkfactory wall in front (the wall is attached behind the
+      // editors at a restore, but a saved layout may have had it current), and
+      // the wall is the tab the user just navigated away from, and the one that
       // keeps the project sidebar collapsed. Read as late as possible: the
       // intent is consumed on read, so a throw above would otherwise burn it
       // and the next launch could not retry.
@@ -160,7 +166,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   private async revealRegisteredDefaults(): Promise<void> {
     for (const view of this.revealOnRestore) {
       try {
-        await view.openView({ activate: false, reveal: true });
+        await view.openView(restoreOptions(view));
       } catch (err) {
         console.warn("[spexr] revealRegisteredDefaults failed for a registered view", view.constructor?.name, err);
       }
@@ -296,7 +302,8 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   }
 
   /**
-   * Enforce Welcome → Specs → Agent order in every main-area tab bar.
+   * Enforce Welcome → Specs → Agent order at the head of every main-area tab bar, and the
+   * Darkfactory wall at its tail.
    * Called on startup and whenever a widget is added to the shell so that
    * newly opened editors or views never push the pinned tabs out of positions 0–2.
    */
@@ -307,20 +314,39 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     this.shell.onDidAddWidget(() => {
       setTimeout(() => this.enforcePinnedOrder(), 0);
     });
+    // A tab dragged to another place, or a layout restored or rearranged, fires
+    // the main panel's layoutModified; the order is then put right again. The
+    // order is a fixed point (pin-order.ts), so the re-order it causes ends here.
+    this.shell.mainPanel.layoutModified.connect(() => setTimeout(() => this.enforcePinnedOrder(), 0));
   }
 
+  /** Tab bars already listened to for a tab dragged to another place. */
+  private readonly pinWatched = new WeakSet<object>();
+  private enforcing = false;
+
   private enforcePinnedOrder(): void {
-    for (const tabBar of this.shell.mainAreaTabBars) {
-      let insertIdx = 0;
-      for (const id of PINNED_IDS) {
-        const titles = tabBar.titles;
-        const titleIdx = titles.findIndex((t) => t.owner.id === id);
-        if (titleIdx < 0) continue;
-        if (titleIdx !== insertIdx) {
-          tabBar.insertTab(insertIdx, titles[titleIdx]!);
+    if (this.enforcing) return;
+    this.enforcing = true;
+    try {
+      for (const tabBar of this.shell.mainAreaTabBars) {
+        if (!this.pinWatched.has(tabBar)) {
+          this.pinWatched.add(tabBar);
+          tabBar.tabMoved.connect(() => setTimeout(() => this.enforcePinnedOrder(), 0));
         }
-        insertIdx++;
+        const wanted = pinnedOrder(
+          tabBar.titles.map((t) => t.owner.id),
+          PINNED_IDS,
+          TRAILING_PINNED_IDS,
+        );
+        wanted.forEach((id, idx) => {
+          const titles = tabBar.titles;
+          if (titles[idx]?.owner.id === id) return;
+          const from = titles.findIndex((t) => t.owner.id === id);
+          if (from >= 0) tabBar.insertTab(idx, titles[from]!);
+        });
       }
+    } finally {
+      this.enforcing = false;
     }
   }
 }

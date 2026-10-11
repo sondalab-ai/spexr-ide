@@ -30,6 +30,28 @@ export function withSpexrGutter<T extends object>(options: T): T & typeof SPEXR_
   return { ...options, ...SPEXR_GUTTER_OPTIONS };
 }
 
+/**
+ * The overview ruler off (S6c, E8, D27): Monaco's scrollbar-side lanes for
+ * the cursor, the selection and the diagnostics' marks. `editor.overviewRulerLanes`
+ * is not a Theia preference (only `editor.overviewRulerBorder` is, and the
+ * desktop app's defaults turn it off), so the lane count is laid over the
+ * options as the gutter's are.
+ */
+export const SPEXR_RULER_OPTIONS = { overviewRulerLanes: 0 } as const;
+
+/** Editor options with no overview ruler lanes: the same for an editor and for a diff editor's two sides. */
+export function withoutOverviewRuler<T extends object>(options: T): T & typeof SPEXR_RULER_OPTIONS {
+  return { ...options, ...SPEXR_RULER_OPTIONS };
+}
+
+/**
+ * A diff editor's overview ruler off (D27): its `overviewRulerLanes` has no
+ * say over the ruler of the changes, `renderOverviewRuler` does.
+ */
+export function withoutDiffOverviewRuler<T extends object>(options: T): T & { renderOverviewRuler: false } {
+  return { ...withoutOverviewRuler(options), renderOverviewRuler: false };
+}
+
 /** The width Monaco adds to the decorations for the folding controls. */
 export const MONACO_FOLDING_WIDTH = 16;
 

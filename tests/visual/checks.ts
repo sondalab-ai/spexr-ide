@@ -107,7 +107,7 @@ export async function probeLitRim(page: Page): Promise<LitRim> {
     return {
       lit,
       wash: image("#theia-main-content-panel .lm-TabBar .theia-tabBar-tab-row"),
-      tint: image("#theia-main-content-panel .theia-breadcrumbs"),
+      tint: image("#theia-main-content-panel .theia-tabBar-breadcrumb-row"),
       drop: handle ? getComputedStyle(handle).boxShadow : null,
     };
   });
@@ -612,4 +612,103 @@ export function checkLeftViews(steps: ReadonlyArray<{ step: string; left: number
     if (a === null || b === null || !near(a, b, 1)) problems.push(`left views: the ${key} island moved with the left view (${a} then ${b})`);
   }
   return problems;
+}
+
+// ── S6c: the editor strip ────────────────────────────────────────────────
+
+/**
+ * Scenes exempt from the aligned-strips check, and why. A fixture difference,
+ * not a defect: the fixture's main strip holds the Welcome and Specs tabs,
+ * which the demo's has not, so it overflows, and Theia scrolls it when the
+ * island narrows (agent-front: the left island at 432) or when the right
+ * island's views open over it (right-panel). Their counts are in the summary.
+ * The base scene overflows too (by 64px at the capture's width, in the strip
+ * probe's `overflow`) but needs no alignment scroll, because Theia has
+ * already scrolled it to the current tab.
+ */
+const ALIGNED_STRIPS_EXEMPT: readonly string[] = ["right-panel", "agent-front"];
+
+/**
+ * The main tab strips need no help from the capture. The scenes' alignment
+ * pass scrolls a strip so the current tab comes first; with the pinned tabs in
+ * their places (Darkfactory trailing) a strip that stays put needs no scroll,
+ * and one here means the strip moved on its own. Every scene is checked but
+ * the exempt ones; a scene whose count is null (a crop, which never ran the
+ * pass) is no evidence either way and is skipped.
+ */
+export function checkAlignedStrips(scenes: ReadonlyArray<{ scene: string; alignedStrips: number | null }>): string[] {
+  return scenes
+    .filter((s) => s.alignedStrips !== null && s.alignedStrips !== 0 && !ALIGNED_STRIPS_EXEMPT.includes(s.scene))
+    .map((s) => `tab strip: scene ${s.scene} needed ${s.alignedStrips} alignment scroll(s), want 0`);
+}
+
+/**
+ * The strip against the geometry table: a 36px strip with 28px tabs, 32px
+ * breadcrumbs under it, no icon in any crumb, the meta at the row's end and
+ * the Agents tab last. `strip` is the tab row and its tabs, `crumbs` the
+ * breadcrumb row and its items, `meta` the meta's text and the box of its text (not of its padding).
+ */
+export interface EditorStrip {
+  readonly row: Rect | null;
+  readonly tabs: Rects;
+  readonly crumbsRow: Rect | null;
+  readonly crumbIcons: number;
+  readonly meta: { text: string; box: Rect } | null;
+  readonly tabIds: string[];
+  /** How far the tabs overflow the strip (scrollWidth less clientWidth); 0 when they fit. Reported, not asserted: see {@link ALIGNED_STRIPS_EXEMPT}. */
+  readonly overflow: number;
+  /** Whether the current tab is cut off by the strip's edges. */
+  readonly currentTabClipped: boolean;
+}
+type Rect = { x: number; y: number; w: number; h: number };
+
+export function checkEditorStrip(strip: EditorStrip): string[] {
+  const problems: string[] = [];
+  if (!strip.row) return ["editor strip: no tab row"];
+  if (!near(strip.row.h, 36, 1)) problems.push(`editor strip: tab row ${strip.row.h}px, want 36`);
+  for (const [i, tab] of strip.tabs.entries()) if (!near(tab.h, 28, 1)) problems.push(`editor strip: tab ${i} is ${tab.h}px tall, want 28`);
+  if (!strip.crumbsRow) problems.push("editor strip: no breadcrumb row");
+  else if (!near(strip.crumbsRow.h, 32, 1)) problems.push(`editor strip: breadcrumb row ${strip.crumbsRow.h}px, want 32`);
+  if (strip.crumbIcons !== 0) problems.push(`editor strip: ${strip.crumbIcons} breadcrumb icon(s), want none`);
+  if (strip.meta && strip.crumbsRow && !near(strip.meta.box.x + strip.meta.box.w, strip.crumbsRow.x + strip.crumbsRow.w - 16, 2)) {
+    problems.push(`editor strip: the meta ends at ${strip.meta.box.x + strip.meta.box.w}, want ${strip.crumbsRow.x + strip.crumbsRow.w - 16}`);
+  }
+  if (strip.currentTabClipped) problems.push("editor strip: the current tab is cut off by the strip's edge");
+  const wall = strip.tabIds.indexOf("shell-tab-spexr.view.darkfactory");
+  if (wall >= 0 && wall !== strip.tabIds.length - 1) problems.push(`editor strip: the Agents tab (Darkfactory) is ${wall + 1} of ${strip.tabIds.length}, want last`);
+  return problems;
+}
+
+/** Read {@link EditorStrip} from the main island's first tab bar. */
+export async function probeEditorStrip(page: Page): Promise<EditorStrip> {
+  return page.evaluate(() => {
+    const box = (el: Element | null): { x: number; y: number; w: number; h: number } | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    };
+    const bar = document.querySelector("#theia-main-content-panel .lm-TabBar");
+    const meta = bar?.querySelector(".spexr-breadcrumbs-meta") ?? null;
+    const container = bar?.querySelector<HTMLElement>(".lm-TabBar-content-container") ?? null;
+    const textBox = (el: Element): { x: number; y: number; w: number; h: number } => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const r = range.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    };
+    return {
+      row: box(bar?.querySelector(".theia-tabBar-tab-row") ?? null),
+      tabs: [...(bar?.querySelectorAll(".lm-TabBar-tab") ?? [])].map((t) => box(t)!).filter((b) => b.w > 0),
+      crumbsRow: box(bar?.querySelector(".theia-tabBar-breadcrumb-row") ?? null),
+      crumbIcons: bar?.querySelectorAll(".theia-breadcrumb-item > [class*='codicon'], .theia-breadcrumb-item > .file-icon").length ?? 0,
+      meta: meta ? { text: meta.textContent ?? "", box: textBox(meta) } : null,
+      tabIds: [...(bar?.querySelectorAll(".lm-TabBar-tab") ?? [])].map((t) => t.id),
+      overflow: Math.max(0, (container?.scrollWidth ?? 0) - (container?.clientWidth ?? 0)),
+      currentTabClipped: (() => {
+        const current = bar?.querySelector(".lm-TabBar-tab.lm-mod-current")?.getBoundingClientRect();
+        const edge = container?.getBoundingClientRect();
+        return !!current && !!edge && (current.left < edge.left - 1 || current.right > edge.right + 1);
+      })(),
+    };
+  });
 }

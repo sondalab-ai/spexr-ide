@@ -3,7 +3,7 @@ import { MonacoEditorProvider } from "@theia/monaco/lib/browser/monaco-editor-pr
 import type { MonacoEditorModel } from "@theia/monaco/lib/browser/monaco-editor-model";
 import type { MonacoEditor } from "@theia/monaco/lib/browser/monaco-editor";
 import type { MonacoDiffEditor } from "@theia/monaco/lib/browser/monaco-diff-editor";
-import { withSpexrGutter } from "./spexr-editor-gutter.js";
+import { withSpexrGutter, withoutDiffOverviewRuler, withoutOverviewRuler } from "./spexr-editor-gutter.js";
 import { SpexrGlyphLane } from "./spexr-glyph-lane-service.js";
 
 /**
@@ -18,12 +18,12 @@ import { SpexrGlyphLane } from "./spexr-glyph-lane-service.js";
 export class SpexrMonacoEditorProvider extends MonacoEditorProvider {
   @inject(SpexrGlyphLane) private readonly glyphLane!: SpexrGlyphLane;
 
-  /** The gutter, and the glyph lane where debugging needs it (spexr-glyph-lane.ts); Theia's own options are rebuilt through here on every update without an event. */
+  /** The gutter, no overview ruler lanes, and the glyph lane where debugging needs it (spexr-glyph-lane.ts); Theia's own options are rebuilt through here on every update without an event. */
   protected override createMonacoEditorOptions(model: MonacoEditorModel): MonacoEditor.IOptions {
-    return { ...withSpexrGutter(super.createMonacoEditorOptions(model)), ...this.glyphLane.optionFor(model.uri) };
+    return { ...withoutOverviewRuler(withSpexrGutter(super.createMonacoEditorOptions(model))), ...this.glyphLane.optionFor(model.uri) };
   }
 
   protected override createMonacoDiffEditorOptions(original: MonacoEditorModel, modified: MonacoEditorModel): MonacoDiffEditor.IOptions {
-    return withSpexrGutter(super.createMonacoDiffEditorOptions(original, modified));
+    return withoutDiffOverviewRuler(withSpexrGutter(super.createMonacoDiffEditorOptions(original, modified)));
   }
 }

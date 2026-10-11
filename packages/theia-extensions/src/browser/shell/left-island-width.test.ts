@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { CLAUDE_TERMINAL_ID } from "../agent/claude-terminal-id.js";
 import {
   LeftIslandWidth,
@@ -181,6 +183,100 @@ describe("the left island's width controller", () => {
     expect(panel.size).toBe(ACTIVITY_COLUMN + 300);
     expect(widths.remembered).toEqual({ [CLAUDE_TERMINAL_ID]: 532, [EXPLORER]: 300 });
     expect(store.saved.length).toBeGreaterThan(0);
+  });
+
+  /** Timers a test runs by hand. */
+  function fakeTimers() {
+    const pending = new Map<number, () => void>();
+    let next = 1;
+    return {
+      pending,
+      timers: { set: (run: () => void) => (pending.set(next, run), next++), clear: (h: unknown) => void pending.delete(h as number) },
+      fire: () => {
+        for (const [id, run] of [...pending]) {
+          pending.delete(id);
+          run();
+        }
+      },
+    };
+  }
+
+  it("saves a width that changed shortly after the drag, before any unload: a save started as the window closes may never finish", async () => {
+    const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 264);
+    const store = memoryStore();
+    const { timers, fire, pending } = fakeTimers();
+    const widths = new LeftIslandWidth(panel, store, undefined, timers);
+    await widths.attach();
+    const savedAtStart = store.saved.length;
+    panel.size = ACTIVITY_COLUMN + 364; // the drag
+    widths.noteResize();
+    expect(pending.size).toBe(1);
+    expect(store.saved.length).toBe(savedAtStart); // debounced: not yet
+    fire(); // flush() is never called here: no unload happens
+    expect(widths.remembered).toEqual({ [EXPLORER]: 364 });
+    expect(store.saved[store.saved.length - 1]).toEqual({ [EXPLORER]: 364 });
+  });
+
+  it("makes one save of a stream of drag events", async () => {
+    const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 264);
+    const store = memoryStore();
+    const { timers, fire, pending } = fakeTimers();
+    const widths = new LeftIslandWidth(panel, store, undefined, timers);
+    await widths.attach();
+    const before = store.saved.length;
+    for (let size = 270; size <= 364; size += 10) {
+      panel.size = ACTIVITY_COLUMN + size;
+      widths.noteResize();
+    }
+    expect(pending.size).toBe(1);
+    fire();
+    expect(store.saved.length).toBe(before + 1);
+  });
+
+  it("saves nothing when the width did not change, and ignores a resize before the layout has settled (attach)", async () => {
+    const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 264);
+    const store = memoryStore();
+    const { timers, fire, pending } = fakeTimers();
+    const widths = new LeftIslandWidth(panel, store, undefined, timers);
+    widths.noteResize();
+    expect(pending.size).toBe(0);
+    await widths.attach();
+    const before = store.saved.length;
+    widths.noteResize();
+    fire();
+    widths.noteResize();
+    fire();
+    expect(store.saved.length).toBe(before);
+  });
+
+  it("does nothing until the stored widths have been read: a flush before would overwrite them", async () => {
+    const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 300);
+    let release!: (value: unknown) => void;
+    const store: LeftWidthStore & { saved: unknown[] } = { saved: [], load: () => new Promise((resolve) => (release = resolve)), save: async (w) => void store.saved.push(w) };
+    const widths = new LeftIslandWidth(panel, store);
+    const attaching = widths.attach();
+    widths.flush();
+    expect(store.saved).toEqual([]);
+    release({ [SEARCH]: 280 });
+    await attaching;
+    expect(widths.remembered).toEqual({ [SEARCH]: 280, [EXPLORER]: 300 });
+  });
+
+  it("drops a pending save on detach", async () => {
+    const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 264);
+    const { timers, pending } = fakeTimers();
+    const widths = new LeftIslandWidth(panel, memoryStore(), undefined, timers);
+    await widths.attach();
+    widths.noteResize();
+    widths.detach();
+    expect(pending.size).toBe(0);
+  });
+
+  it("is wired to the end of a drag and to the page being hidden, with the unload as a last resort", () => {
+    const source = readFileSync(fileURLToPath(new URL("./default-layout-contribution.ts", import.meta.url)), "utf8");
+    expect(source).toContain('window.addEventListener("pointerup", () => widths.noteResize(), true);');
+    expect(source).toContain('document.visibilityState === "hidden" && widths.flush()');
+    expect(source).toContain('window.addEventListener("beforeunload", () => widths.flush());');
   });
 
   it("starts from the widths in storage", async () => {

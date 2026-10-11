@@ -49,7 +49,7 @@ import { AgentsCount, type AgentsView } from "./agents-count.js";
  *   mode does the same), only where the system draws no menu bar: a custom
  *   window on Windows or Linux.
  * - `__mark` and `__dot`: "spexr".
- * - `__crumb`: the workspace root, the active editor's folders, its file.
+ * - `__crumb`: the workspace root and the active editor's folders (not the file).
  * - `__cmd`: runs Quick Open, its keys read from the keybinding registry.
  * - `__r`: Dark Factory's running agents (hidden at 0, held as the wall
  *   holds them, see AgentsCount), the right panel's disclosure, the

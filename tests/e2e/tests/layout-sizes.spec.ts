@@ -9,13 +9,15 @@
  *
  * The left island follows the view in front (S6b, D2): 432px with the agent
  * terminal, 264px with the Explorer, and the width a user gives a view is
- * remembered for that view. This suite runs without the agent CLI, so the
- * agent terminal never starts and the Explorer is the view in front: the
- * seeded 432px is taken to the Explorer's 264px once the layout has settled.
- * The agent terminal's 432px is not measured here. It is measured by the
- * visual capture, whose stub CLI starts it (tests/visual/capture.visual.ts,
- * the "agent-front" scene and `checkLeftViews`), and the width policy itself
- * is tested by left-island-width.test.ts.
+ * remembered for that view. Which view is in front on a first open is not
+ * this suite's to assume: the bootstrap always asks the agent terminal to
+ * start (`SpexrBootstrapContribution.onDidInitializeLayout`), and on the full
+ * stack it can come to the front, so the island is then 432px. The tests
+ * therefore bring the Explorer to the front themselves before they read 264px.
+ * The agent terminal's 432px is measured by the visual capture, whose stub CLI
+ * starts it (tests/visual/capture.visual.ts, the "agent-front" scene and
+ * `checkLeftViews`), and the width policy itself is tested by
+ * left-island-width.test.ts.
  *
  * The right island is read with a project tab in front: the Darkfactory
  * dashboard, which a launch can leave in front, collapses the right panel
@@ -101,7 +103,7 @@ const EXPLORER = "explorer-view-container";
 
 test.describe("the default layout's island sizes", () => {
   test("a workspace's first open sizes the islands: left 264 (the Explorer in front), right 352, bottom 204", async ({ page }) => {
-    // The bootstrap's Agent terminal can be the view in front on first open (it is revealed as the layout settles), and then the island is 432: the Explorer is brought forward first.
+    // The agent terminal may have come to the front on its own (432); the Explorer is put there before the width is read.
     await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
     await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
@@ -137,13 +139,33 @@ test.describe("the default layout's island sizes", () => {
 
   test("a restored layout keeps its own widths", async ({ page }) => {
     test.setTimeout(150_000);
+    // The agent terminal may be in front on the full stack (432): the Explorer is put there first, as in the tests above.
+    await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
     await dragLeftSash(page, 100);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(364, 0);
+    // The width is saved shortly after the drag (left-island-width.ts), not only at unload: wait for it in storage.
+    await expect
+      .poll(
+        () =>
+          page.evaluate((view) => {
+            const key = Object.keys(window.localStorage).find((k) => k.endsWith(":spexr.leftIsland.widths"));
+            if (!key) return null;
+            try {
+              return (JSON.parse(window.localStorage.getItem(key) ?? "null") as Record<string, number> | null)?.[view] ?? null;
+            } catch {
+              return null;
+            }
+          }, EXPLORER),
+        { timeout: 10_000 },
+      )
+      .toBe(364);
 
     // Theia stores the layout on unload and restores it on load.
     await page.reload();
     await page.waitForSelector("body[data-spexr-layout-ready]", { timeout: 60_000 });
+    // The agent terminal may come to the front again on load; the Explorer's own width is read with the Explorer in front.
+    await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(364, 0);
     await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
   });

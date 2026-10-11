@@ -63,7 +63,7 @@ function renderSummary(runs: Run[]): string {
   md += row("bottom panel top edge (demo 666)", (m) =>
     m.bottomPanel ? `${m.bottomPanel.top}${m.bottomPanel.held ? "" : " (still moving when read)"}` : "not showing",
   );
-  md += row("main tab strips aligned", (m) => m.scenes.map((s) => `${s.scene} ${s.alignedStrips}`).join(", "));
+  md += row("main tab strips aligned", (m) => m.scenes.map((s) => `${s.scene} ${s.alignedStrips ?? "n/a"}`).join(", "));
   md += row("infinite animations paused", (m) => m.scenes.map((s) => `${s.scene} ${s.pausedLoops}`).join(", "));
   for (const view of ["todo", "experts", "memory"]) {
     md += row(`right panel (${view}): head h / eyebrow y / title y / card x,w / row h (demo 69.8 / 13.6 / 32 / 16,320 / 32.4)`, (m) => {

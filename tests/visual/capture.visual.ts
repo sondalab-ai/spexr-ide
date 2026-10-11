@@ -7,10 +7,11 @@ import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { lateFontScene } from "./late-font";
 import { nativeCapture } from "./native";
 import { agentSession, liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
-import { SEEDED_DRAFT, checkAgentPane, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, probeLeftIsland, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
+import { SEEDED_DRAFT, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkAgentPane, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, probeLeftIsland, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
 import { probeProcesses, startLiveStubs, type LiveStubs } from "./stubs";
 import { AGENT_PANE_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
+  captureCrop,
   captureStable,
   bottomPanelTop,
   firstVisibleLine,
@@ -288,6 +289,19 @@ for (const theme of THEMES) {
       await page.evaluate(() => (document.querySelector(".monaco-editor textarea") as HTMLElement | null)?.focus());
       await page.waitForFunction(() => document.querySelector<HTMLElement>('.spexr-island[data-island="main"]')?.hasAttribute("data-lit") === true && !document.querySelector<HTMLElement>('.spexr-island[data-island="right"]')?.hasAttribute("data-lit"), undefined, { timeout: 15_000 });
 
+      // S6c: the editor strip against the table, and its crop for the side-by-side.
+      {
+        const strip = await probeEditorStrip(page);
+        meta.editorStrip = strip;
+        const rows = [strip.row, strip.crumbsRow].filter((r): r is NonNullable<typeof r> => !!r);
+        if (rows.length) {
+          const file = path.join(out, "tabs-crumbs.png");
+          meta.scenes.push({ scene: "tabs-crumbs", file: path.basename(file), ...(await captureCrop(page, file, rows)) });
+        }
+        check("editor strip", checkEditorStrip(strip));
+        writeMeta();
+      }
+
       // palette: the command palette open on a query that finds several
       // commands, some with a shortcut, the first one selected. Placed against
       // the editor island, which is measured with it (S5f).
@@ -432,6 +446,8 @@ for (const theme of THEMES) {
       // macOS the system's traffic lights sitting in the bar's room and on
       // its centre, at 100% and one zoom level out. Everything else is for
       // looking at.
+      // S6c: no scene but the exempt ones (checks.ts) needed a tab strip scrolled into place.
+      check("aligned strips", checkAlignedStrips(meta.scenes));
       const problems = Object.entries(meta.sceneProblems ?? {}).map(([scene, found]) => `${scene}: ${found.join("; ")}`);
       if (OS === "mac") {
         problems.push(

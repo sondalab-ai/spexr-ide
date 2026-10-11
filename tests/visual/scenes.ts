@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 
-export const SCENES = ["base", "agent-pane", "composer-focus", "agent-needs-you", "palette", "toast", "focus-tree", "right-panel", "right-experts", "right-memory", "agent-front", "left-search", "left-scm", "late-font"] as const;
+export const SCENES = ["base", "agent-pane", "composer-focus", "agent-needs-you", "palette", "toast", "focus-tree", "right-panel", "right-experts", "right-memory", "agent-front", "left-search", "left-scm", "tabs-crumbs", "late-font"] as const;
 export type Scene = (typeof SCENES)[number];
 
 export interface SceneResult {
@@ -17,7 +17,7 @@ export interface SceneResult {
   /** Infinite animations paused at t=0 before the capture. */
   readonly pausedLoops: number;
   /** Main tab strips scrolled by script so the current tab comes first; the PNG is not untouched spexr there. */
-  readonly alignedStrips: number;
+  readonly alignedStrips: number | null;
   /** What the fixture extension reported, when the scene goes through it. */
   readonly ack?: SceneAck;
 }
@@ -309,4 +309,27 @@ export async function bottomPanelTop(page: Page, timeoutMs = 5_000): Promise<{ t
     }
     return last === null ? null : { top: last, held: held >= 5 };
   }, timeoutMs);
+}
+
+// ── S6c: the editor strip's crop ─────────────────────────────────────────
+
+/**
+ * The editor island's tab strip and breadcrumbs as one PNG, for the
+ * side-by-side with the demo's strip: the full-window scenes show them at
+ * 1x, and this is the same pixels without the rest of the window. Taken from
+ * the stable base capture's state (nothing moves between the two), clipped to
+ * the union of the two rows, with no pixel of the editor below.
+ */
+export async function captureCrop(
+  page: Page,
+  file: string,
+  rows: ReadonlyArray<{ x: number; y: number; w: number; h: number }>,
+): Promise<Omit<SceneResult, "scene" | "file" | "ack">> {
+  const x = Math.min(...rows.map((r) => r.x));
+  const y = Math.min(...rows.map((r) => r.y));
+  const right = Math.max(...rows.map((r) => r.x + r.w));
+  const bottom = Math.max(...rows.map((r) => r.y + r.h));
+  const clip = { x: Math.floor(x), y: Math.floor(y), width: Math.ceil(right) - Math.floor(x), height: Math.ceil(bottom) - Math.floor(y) };
+  fs.writeFileSync(file, await page.screenshot({ animations: "allow", clip }));
+  return { attempts: 1, stable: true, lastDiff: null, pausedLoops: 0, alignedStrips: null };
 }
