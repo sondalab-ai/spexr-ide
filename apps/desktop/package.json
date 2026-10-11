@@ -51,6 +51,7 @@
           "editor.renderLineHighlight": "all",
           "editor.bracketPairColorization.enabled": false,
           "workbench.tree.indent": 16,
+          "workbench.iconTheme": "spexr-outline",
           "problems.decorations.enabled": false,
           "problems.decorations.tabbar.enabled": false,
           "workbench.editor.decorations.badges": false,

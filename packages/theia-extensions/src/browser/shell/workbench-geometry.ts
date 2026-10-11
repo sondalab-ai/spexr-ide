@@ -46,6 +46,8 @@ export const WORKBENCH = {
   panelChip: 16,
   /** A bottom panel button ("+", the close ×): 24 (Lumen's 26). */
   panelButton: 24,
+  /** The gap round a file or folder glyph in a tree row or a tab (the outline icon theme): Lumen's 4. The glyph's own 14px is a type size. */
+  treeIconGap: 4,
   /** A tile tab's padding at the sides: 12 (Lumen 11.2). */
   tabPaddingInline: 12,
   /** A tab's close slot, where the dirty dot and the hover cross sit: 16, always reserved so a hover moves nothing. */

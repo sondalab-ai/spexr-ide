@@ -111,6 +111,9 @@ import { TabBarDecorator } from "@theia/core/lib/browser/shell/tab-bar-decorator
 import { StatusBarViewModel } from "@theia/core/lib/browser/status-bar/status-bar-view-model";
 import { SpexrStatusBarViewModel } from "./shell/status-bar-view-model.js";
 import { SpexrBottomPanelContribution, SpexrOutputRevealView } from "./shell/bottom-panel-contribution.js";
+import { SpexrOutlineIconTheme } from "./theme/outline-icon-theme.js";
+import { IconThemeContribution } from "@theia/core/lib/browser/icon-theme-contribution";
+import { LabelProviderContribution } from "@theia/core/lib/browser/label-provider";
 import { SpexrSplitToolbarContribution } from "./editor/split-toolbar-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
 import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
@@ -406,6 +409,9 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(TabBarToolbarContribution).toService(SpexrBottomPanelContribution);
   bind(SpexrOutputRevealView).toSelf().inSingletonScope();
   bind(SpexrRevealOnRestore).toService(SpexrOutputRevealView);
+  bind(SpexrOutlineIconTheme).toSelf().inSingletonScope();
+  bind(IconThemeContribution).toService(SpexrOutlineIconTheme);
+  bind(LabelProviderContribution).toService(SpexrOutlineIconTheme);
   bind(SpexrSplitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrSplitToolbarContribution);
   bind(CommandContribution).toService(SpexrSplitToolbarContribution);

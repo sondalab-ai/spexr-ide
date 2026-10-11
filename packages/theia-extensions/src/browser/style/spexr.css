@@ -426,6 +426,31 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   color: var(--slc-accent-text);
 }
 
+/* THE OUTLINE ICON THEME (S6f, D10). "spexr outline" (theme/outline-icon-theme.ts)
+   draws a file and a folder as Lumen's 14px outline glyph: the muted ink, the
+   accent text on the selected tree row and on the current tab. A glyph is a
+   state indicator, so at least 3:1 on the row's ground and on the tile
+   (outline-icons-style.test.ts). A folder takes the opened glyph while its
+   row is expanded (a label provider is not told the tree's state). The glyph
+   sits 4px from the twisty and 4px from the name (Lumen's 89 / 103 / 107). */
+:root:not([data-sl-theme="high-contrast"]) .spexr-outline-icon {
+  color: var(--slc-text-muted);
+  font-size: 14px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-TreeNode.theia-mod-selected, .lm-TabBar-tab.lm-mod-current) .spexr-outline-icon {
+  color: var(--slc-accent-text);
+}
+
+.theia-TreeNode:has(> .theia-ExpansionToggle:not(.theia-mod-collapsed)) .spexr-outline-icon--folder::before {
+  content: "\eaf7";
+}
+
+#theia-main-content-panel .lm-TabBar-tabIcon.spexr-outline-icon,
+.theia-TreeNode .file-icon.spexr-outline-icon {
+  margin-inline-end: 4px;
+}
+
 /* Theia's activity-bar/tab badge (e.g. SCM changed-file count) is a fixed
    15.5px circle (upstream tabs.css) sized for a single digit — "99+" (3
    chars) overflows it. Let it grow into a pill instead of clipping. */
