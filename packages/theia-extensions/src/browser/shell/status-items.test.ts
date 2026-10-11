@@ -61,6 +61,13 @@ describe("the status bar's entries (S6d, S1/S2)", () => {
     expect(shapeStatusEntry("problem-marker-status", entry, off)).toBe(entry);
   });
 
+  it("keeps no sample of its own: the meter's contribution owns its entry, so turning the meter back on never re-adds an old one", () => {
+    const model = own("./status-bar-view-model.ts");
+    expect(model).not.toContain("lastSet");
+    expect(model).not.toContain("onPreferenceChanged");
+    expect(own("../resources/resource-status-bar-contribution.ts")).toContain("this.preferences.ready.then(");
+  });
+
   it("goes through every entry set, in the model the bar and the service share", () => {
     const model = own("./status-bar-view-model.ts");
     expect(model).toContain("extends StatusBarViewModel");
@@ -86,9 +93,9 @@ describe("the resource meter's preference (D14)", () => {
     expect(pollAction(false, false)).toBe("none");
   });
 
-  it("is read by the contribution: no sample is asked for until the preference is on", () => {
+  it("is read by the contribution once the preferences have loaded, and handed to the poller", () => {
     const source = own("../resources/resource-status-bar-contribution.ts");
-    expect(source).toContain("pollAction(this.preferences.get<boolean>(SPEXR_STATUS_RESOURCES_PREFERENCE, false), this.running)");
-    expect(source).toMatch(/private async poll\(\): Promise<void> \{\s*if \(!this\.running\) return;/);
+    expect(source).toContain("this.poller.setEnabled(this.preferences.get<boolean>(SPEXR_STATUS_RESOURCES_PREFERENCE, false))");
+    expect(own("../resources/resource-poller.ts")).toContain("pollAction(enabled, this.running)");
   });
 });
