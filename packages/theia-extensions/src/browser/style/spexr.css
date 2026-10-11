@@ -1332,6 +1332,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    collapsed section elsewhere is 28px tall too, its 24px header inside it. */
 #theia-left-content-panel {
   --theia-view-container-title-height: 28px;
+  --theia-view-container-content-height: calc(100% - var(--theia-view-container-title-height));
 }
 
 #theia-left-content-panel .theia-view-container-part-header {

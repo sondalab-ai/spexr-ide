@@ -25,8 +25,9 @@ export const SMART_SEARCH_EVICTION_ID = "smart-search-eviction";
 /**
  * Where the left island's layout migrations already done are kept (Theia's
  * `StorageService`): one list of ids, the sections above and
- * {@link SMART_SEARCH_EVICTION_ID}, so each is decided once. Like Theia's
- * layout cache it is shared by every workspace of the profile. Reset Layout
+ * {@link SMART_SEARCH_EVICTION_ID}, so each is decided once. `@theia/workspace`
+ * rebinds the storage to `WorkspaceStorageService`, which prefixes keys with the
+ * workspace URI, so the list is per workspace. Reset Layout
  * empties it ({@link clearMigrations}), so the defaults apply again.
  */
 export const SECTIONS_MIGRATION_KEY = "spexr.migration.explorerSections.v1";
