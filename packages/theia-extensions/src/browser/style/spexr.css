@@ -5753,8 +5753,8 @@ code {
   font-size: 12px;
   font-style: normal;
   font-weight: 400;
+  text-decoration: none;
   white-space: nowrap;
-  pointer-events: none;
 }
 
 /* Monaco's own token colours (.mtkN) are set on the same span: the monaco-editor prefix outweighs them. */
