@@ -25,7 +25,6 @@ import {
   avatarLabel,
   bellLabel,
   crumbFolders,
-  switchProjectTooltip,
   fieldKeys,
   initialMenuButton,
   initials,
@@ -258,7 +257,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
               <button
                 type="button"
                 className="spexr-titlebar__root"
-                title={switchProjectTooltip(this.switchKeys?.caps)}
+                title="Switch project"
                 aria-label={`${this.crumb[0]}, switch project`}
                 aria-keyshortcuts={this.switchKeys?.aria}
                 onClick={this.onSwitchProject}

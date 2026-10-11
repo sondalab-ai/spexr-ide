@@ -47,7 +47,9 @@ export class SpexrDefaultLayoutContribution implements FrontendApplicationContri
 
   private readonly layout = new DefaultLayout({
     warn: (message, ...detail) => console.warn(message, ...detail),
-    markSettled: () => document.body.setAttribute(LAYOUT_READY_ATTRIBUTE, "1"),
+    // The ready mark is set in onDidInitializeLayout, after the left island's widths are attached: a test that
+    // waits for it then finds the width policy running, not about to start.
+    markSettled: () => undefined,
   });
 
   async initializeLayout(): Promise<void> {
@@ -56,14 +58,19 @@ export class SpexrDefaultLayoutContribution implements FrontendApplicationContri
   }
 
   async onDidInitializeLayout(): Promise<void> {
-    await this.layout.settle(this.shell);
-    const widths = this.leftWidths();
-    // A width is saved when it changes: shortly after a drag ends, and when the page is hidden.
-    // The save at unload is a last resort, since storage is asynchronous and the reload can outrun it.
-    window.addEventListener("pointerup", () => widths.noteResize(), true);
-    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && widths.flush());
-    window.addEventListener("beforeunload", () => widths.flush());
-    await widths.attach();
+    try {
+      await this.layout.settle(this.shell);
+      const widths = this.leftWidths();
+      // A width is saved when it changes: shortly after a drag ends, and when the page is hidden. The save at
+      // unload is the last resort: LocalStorageService writes synchronously, but the width then recorded is
+      // the view in front at that moment, which may not be the one the user dragged.
+      window.addEventListener("pointerup", () => widths.noteResize(), true);
+      document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && widths.flush());
+      window.addEventListener("beforeunload", () => widths.flush());
+      await widths.attach();
+    } finally {
+      document.body.setAttribute(LAYOUT_READY_ATTRIBUTE, "1");
+    }
   }
 
   /** Reset Layout's sizes: the default ones again, the left island the agent terminal's when it is in front. */

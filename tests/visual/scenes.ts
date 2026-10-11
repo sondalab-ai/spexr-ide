@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 
-export const SCENES = ["base", "palette", "toast", "focus-tree", "right-panel", "right-experts", "right-memory", "agent-front", "left-search", "left-scm", "tabs-crumbs", "status", "bottom-panel"] as const;
+export const SCENES = ["base", "palette", "toast", "focus-tree", "right-panel", "right-experts", "right-memory", "agent-front", "left-search", "left-scm", "tabs-crumbs", "status", "bottom-panel", "bottom-terminal"] as const;
 export type Scene = (typeof SCENES)[number];
 
 export interface SceneResult {

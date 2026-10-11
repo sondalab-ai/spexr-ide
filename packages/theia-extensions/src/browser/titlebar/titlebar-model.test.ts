@@ -10,7 +10,6 @@ import {
   bellLabel,
   CRUMB_ELLIPSIS,
   crumbFolders,
-  switchProjectTooltip,
   SWITCH_PROJECT_COMMAND,
   fieldKeys,
   initialMenuButton,
@@ -100,13 +99,6 @@ describe("crumbFolders", () => {
 });
 
 describe("the crumb root's button (S6d)", () => {
-  it("says the chord in its tooltip when the command is bound", () => {
-    expect(switchProjectTooltip(["⌘", "⌥", "P"])).toBe("Switch project (⌘ ⌥ P)");
-    expect(switchProjectTooltip(["Ctrl", "Alt", "P"])).toBe("Switch project (Ctrl Alt P)");
-    expect(switchProjectTooltip([])).toBe("Switch project");
-    expect(switchProjectTooltip()).toBe("Switch project");
-  });
-
   it("runs the command Spexr registers under that id, bound to Ctrl/Cmd+Alt+P", () => {
     const own = readFileSync(fileURLToPath(new URL("../commands/spexr-commands-contribution.ts", import.meta.url)), "utf8");
     expect(own).toContain(`SWITCH_PROJECT: { id: "${SWITCH_PROJECT_COMMAND}"`);

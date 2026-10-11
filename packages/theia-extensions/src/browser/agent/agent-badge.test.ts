@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { CLAUDE_TERMINAL_ID } from "./claude-terminal-id.js";
-import { agentBadge, agentTabCaption } from "./agent-badge.js";
+import { agentBadge } from "./agent-badge.js";
 import { runningAgents } from "../titlebar/titlebar-model.js";
 
 const read = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 describe("the Agent tile's badge (S6d, A3)", () => {
   it("counts the running agents on the agent terminal's tile", () => {
-    expect(agentBadge(CLAUDE_TERMINAL_ID, 2)).toEqual([{ badge: 2 }]);
-    expect(agentBadge(CLAUDE_TERMINAL_ID, 14)).toEqual([{ badge: 14 }]);
+    expect(agentBadge(CLAUDE_TERMINAL_ID, 2)).toEqual([{ badge: 2, tooltip: "2 agents running" }]);
+    expect(agentBadge(CLAUDE_TERMINAL_ID, 14)).toEqual([{ badge: 14, tooltip: "14 agents running" }]);
   });
 
   it("is nothing at 0, and nothing on any other tile", () => {
@@ -20,7 +20,7 @@ describe("the Agent tile's badge (S6d, A3)", () => {
 
   it("is the title bar's number: the working sessions", () => {
     const tiles = [{ state: "working" }, { state: "idle" }, { state: "working" }];
-    expect(agentBadge(CLAUDE_TERMINAL_ID, runningAgents(tiles))).toEqual([{ badge: 2 }]);
+    expect(agentBadge(CLAUDE_TERMINAL_ID, runningAgents(tiles))).toEqual([{ badge: 2, tooltip: "2 agents running" }]);
   });
 
   it("is the title bar's count, from one shared service, and bound as a tab bar decorator", () => {
@@ -36,9 +36,14 @@ describe("the Agent tile's badge (S6d, A3)", () => {
 });
 
 describe("the badge in words (S6d review)", () => {
-  it("adds the count to the tab's tooltip, and takes it away at 0", () => {
-    expect(agentTabCaption("Agent", "2 agents running")).toBe("Agent — 2 agents running");
-    expect(agentTabCaption("Agent", undefined)).toBe("Agent");
+  it("carries the count as a tooltip Theia appends to the tab's own, and never touches the caption", () => {
+    expect(agentBadge(CLAUDE_TERMINAL_ID, 1)).toEqual([{ badge: 1, tooltip: "1 agent running" }]);
+    expect(read("./agent-badge-decorator.ts")).not.toContain("title.caption");
+    expect(read("../../../../../node_modules/@theia/core/src/browser/shell/tab-bars.ts")).toContain("ArrayUtils.coalesce([title.caption, ...this.getDecorationData(title, 'tooltip')])");
+  });
+
+  it("covers a widget created after the count is above 0: the decoration is computed per title, from the live count", () => {
+    expect(read("./agent-badge-decorator.ts")).toContain("agentBadge(title.owner.id, this.count.count)");
   });
 
   it("is r6 in every area, not only the side bars: the badge also renders on a main-area tab when the agent terminal is moved there", () => {

@@ -1,10 +1,12 @@
 /**
  * What the breadcrumb meta may spend on a diff, and the small rules around it
- * (S6c, E7). Theia's DiffComputer is quadratic in the changed region (about
- * 2.5 s for a fully rewritten 3,000-line file, 30 s for 10,000), and it runs
- * on the UI thread, so the meta diffs only what changed (the lines the two
- * texts share at their start and end are cut away first, which does not
- * change the counts) and shows nothing when what is left is over a budget.
+ * (S6c, E7). A line diff is quadratic in the changed region (about 2.5 s for
+ * a fully rewritten 3,000-line file, 30 s for 10,000, measured on Theia's
+ * DiffComputer, which runs the same jsdiff), and it runs on the UI thread, so
+ * the meta diffs only what changed (the lines the two texts share at their
+ * start and end are cut away first, which does not change the counts), shows
+ * nothing when what is left is over a budget, and the diff itself is given a
+ * time limit (diff-stats.ts).
  *
  * Free of Theia, so it runs in plain node.
  */
@@ -102,7 +104,9 @@ export interface SignedStatus {
  * What changes when HEAD can have: HEAD's own sha (a commit, a reset, a
  * rebase, with or without an upstream), the branch, the divergence and the
  * file's own status. The cached HEAD text of a file is kept while this is the
- * same.
+ * same. It is only as current as the sha it is given: the service reads that
+ * afresh on each refresh (head-sha-cache.ts), and a commit made while no
+ * refresh runs is seen at the next one.
  */
 export function headSignature(status: SignedStatus | undefined, relPath: string, headSha = ""): string {
   if (!status) return `none|${headSha}`;

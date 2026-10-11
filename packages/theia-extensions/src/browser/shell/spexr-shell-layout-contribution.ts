@@ -24,6 +24,7 @@ import { SpexrDefaultLayoutContribution } from "./default-layout-contribution.js
 import { StorageService } from "@theia/core/lib/browser/storage-service";
 import { SECTIONS_MIGRATION_KEY, clearMigrations, type MigrationStore } from "./explorer-sections.js";
 import { removeActivityViewsOnce } from "./activity-views.js";
+import { SpexrOutputAttach } from "./bottom-panel-contribution.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
 const PINNED_IDS = [WELCOME_VIEW_ID, SPEC_VIEW_ID, CLAUDE_TERMINAL_ID] as const;
@@ -83,6 +84,9 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   @inject(StorageService)
   private readonly storage!: StorageService;
 
+  @inject(SpexrOutputAttach)
+  private readonly outputAttach!: SpexrOutputAttach;
+
   @inject(SpexrDefaultLayoutContribution)
   private readonly defaultLayout!: SpexrDefaultLayoutContribution;
 
@@ -114,6 +118,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       if (!alreadyConfigured) await this.openWelcome();
       await this.openSideViews();
       await this.removeActivityViews();
+      await this.attachOutput();
       await this.revealRegisteredDefaults();
       if (!alreadyConfigured) await this.openTerminal();
       // A project switch has to land on a project tab: a restored layout can
@@ -180,7 +185,17 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     await clearMigrations({ load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) });
     await this.applyDefaultLayout();
     await this.removeActivityViews();
+    await this.attachOutput();
     await this.defaultLayout.resetSizes();
+  }
+
+  /** Output joins the bottom bar once per workspace (bottom-panel-contribution.ts); a failure is logged, and the next launch tries again. */
+  private async attachOutput(): Promise<void> {
+    try {
+      await this.outputAttach.attachOnce({ load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) });
+    } catch (err) {
+      console.warn("[spexr] Output could not be put on the bottom bar", err);
+    }
   }
 
   /** Debug and Extensions leave the left bar once per workspace (activity-views.ts); a failure is logged, and the next launch tries again. */
