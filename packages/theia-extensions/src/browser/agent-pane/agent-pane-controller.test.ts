@@ -133,6 +133,20 @@ describe("AgentPaneController.bind", () => {
     expect(c.snapshot).toEqual({ sessionId: B });
   });
 
+  it("keeps the first answer when the same session is bound again while its follow is pending", async () => {
+    const { service, terminal, c } = make();
+    terminal.running = A;
+    let answer!: (s: AgentPaneSnapshot) => void;
+    service.answer = () => new Promise<AgentPaneSnapshot>((r) => (answer = r));
+    const first = c.bind();
+    await Promise.resolve();
+    await c.bind(); // the same id: nothing new to follow
+    expect(service.follows).toHaveLength(1);
+    answer({ sessionId: A, title: "the first answer" });
+    await first;
+    expect(c.snapshot?.title).toBe("the first answer");
+  });
+
   it("forgets a follow that failed, so the next bind tries again", async () => {
     const { service, terminal, c, warnings } = make();
     terminal.running = A;
