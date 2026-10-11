@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_BLOCKS, TerminalBlocks, type BlockHost, type XtermDecoration, type XtermLike, type XtermMarker } from "./command-blocks-controller.js";
+import { MAX_BLOCKS, RELAY_MS, TerminalBlocks, type BlockHost, type XtermDecoration, type XtermLike, type XtermMarker } from "./command-blocks-controller.js";
 
 const N = "0123456789abcdef0123456789abcdef";
 const T0 = 1_791_739_000_000;
@@ -68,36 +68,63 @@ class FakeTerm implements XtermLike {
 }
 let fake: FakeTerm;
 
-function setup(): { term: FakeTerm; blocks: TerminalBlocks; clock: { t: number } } {
-  fake = new FakeTerm();
-  const clock = { t: T0 };
-  const blocks = new TerminalBlocks(fake, () => clock.t);
-  return { term: fake, blocks, clock };
+/** Fake timers: time moves only when told. */
+class Clock {
+  t = 0;
+  private next = 1;
+  private pending = new Map<number, { at: number; fn: () => void }>();
+  timers = {
+    set: (fn: () => void, ms: number): unknown => {
+      const id = this.next++;
+      this.pending.set(id, { at: this.t + ms, fn });
+      return id;
+    },
+    clear: (h: unknown): void => void this.pending.delete(h as number),
+  };
+  advance(ms: number): void {
+    this.t += ms;
+    for (const [id, p] of [...this.pending]) {
+      if (p.at <= this.t) {
+        this.pending.delete(id);
+        p.fn();
+      }
+    }
+  }
 }
 
-/** One command the way the shell scripts and Theia's mark it. */
-function command(term: FakeTerm, clock: { t: number }, exit: number, outputLines: number, ms = 2400): void {
-  term.osc("prompt_started");
+function setup(nonce: string | null = N): { term: FakeTerm; blocks: TerminalBlocks; clock: Clock; changes: { n: number } } {
+  fake = new FakeTerm();
+  const clock = new Clock();
+  const changes = { n: 0 };
+  const blocks = new TerminalBlocks(fake, () => void changes.n++, clock.timers);
+  blocks.setNonce(nonce ?? undefined);
+  return { term: fake, blocks, clock, changes };
+}
+
+const prompt = `spexr_prompt;${N}`;
+const started = (ms = T0, nonce = N): string => `spexr_started;${nonce};${ms}`;
+const finished = (exit: number, ms: number, nonce = N): string => `spexr_finished;${nonce};${exit};${ms}`;
+
+/** One command the way the shell scripts mark it: a prompt, the command typed on its line, output, the end. */
+function command(term: FakeTerm, at: { ms: number }, exit: number, outputLines: number, ms = 2400): void {
+  term.osc(prompt);
   term.line += 1; // the command is typed on the prompt's line, and Enter moves down
-  term.osc("command_started;41");
-  clock.t += ms;
+  term.osc(started(at.ms));
+  at.ms += ms;
   term.line += outputLines;
-  term.osc(`spexr_finished;${N};${exit};${clock.t}`);
-  term.osc("command_finished");
+  term.osc(finished(exit, at.ms));
   term.line += 1;
 }
 
 describe("TerminalBlocks", () => {
   it("draws a block over the command's lines when it finishes: from the prompt to the end of the output", () => {
-    const { term, clock } = setup();
-    term.osc(`spexr_hello;${N}`);
-    term.osc("prompt_started");
+    const { term } = setup();
+    term.osc(prompt);
     expect(term.markers[0]!.line).toBe(0);
     term.line = 1;
-    term.osc("command_started;41");
-    clock.t += 2400;
+    term.osc(started());
     term.line = 4; // three lines of output
-    expect(term.osc(`spexr_finished;${N};0;${clock.t}`)).toBe(true);
+    expect(term.osc(finished(0, T0 + 2400))).toBe(true);
     const framed = term.decos.filter((d) => d.options.height! > 1);
     expect(framed).toHaveLength(1);
     expect(framed[0]!.options).toMatchObject({ x: 0, width: 80, height: 4, layer: "top" });
@@ -105,24 +132,22 @@ describe("TerminalBlocks", () => {
   });
 
   it("draws a running command as the chip alone on its prompt line, and takes it away when the command finishes", () => {
-    const { term, clock } = setup();
-    term.osc(`spexr_hello;${N}`);
-    term.osc("prompt_started");
+    const { term } = setup();
+    term.osc(prompt);
     term.line = 1;
-    term.osc("command_started;41");
+    term.osc(started());
     expect(term.decos).toHaveLength(1);
     expect(term.decos[0]!.options.height).toBe(1);
-    clock.t += 5;
     term.line = 2;
-    term.osc(`spexr_finished;${N};0;${clock.t}`);
+    term.osc(finished(0, T0 + 5));
     expect(term.decos[0]!.isDisposed).toBe(true);
     expect(term.decos).toHaveLength(2);
   });
 
-  it("fills each element once, with the time, the duration and the exit as text, however often xterm renders it", () => {
-    const { term, clock } = setup();
-    term.osc(`spexr_hello;${N}`);
-    command(term, clock, 1, 2, 800);
+  it("fills each element once, as text, however often xterm renders it", () => {
+    const { term } = setup();
+    const at = { ms: T0 };
+    command(term, at, 1, 2, 800);
     const final = term.decos[term.decos.length - 1]!;
     const h = host();
     final.render(h);
@@ -132,36 +157,69 @@ describe("TerminalBlocks", () => {
 
   it("lets Theia's own marks through (false) and takes spexr's (true), believed or not", () => {
     const { term } = setup();
-    // Only this handler is registered here: what it answers is what Theia's, behind it, would or would not see.
     expect(term.osc("prompt_started")).toBe(false);
     expect(term.osc("command_started;41")).toBe(false);
     expect(term.osc("command_finished")).toBe(false);
     expect(term.osc("spexr_garbage")).toBe(true);
   });
 
-  it("is not fooled by text a command prints: a finished mark with the wrong nonce, or before the hello, draws no block", () => {
-    const { term, clock } = setup();
-    term.osc("prompt_started");
+  it("moves no block for Theia's own marks, which anything may print: a forged prompt_started and command_started draw nothing and reset nothing", () => {
+    const { term, blocks } = setup();
+    term.osc(prompt);
     term.line = 1;
+    term.osc(started(T0));
+    term.osc("prompt_started");
     term.osc("command_started;41");
-    term.line = 3;
-    // Printed by `cat evil.txt`: no hello was ever told, so nothing is believed.
-    term.osc(`spexr_finished;${N};0;${clock.t}`);
-    expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(0);
-    // Even a forged hello now cannot start believing: a command has already run.
-    term.osc(`spexr_hello;${"f".repeat(32)}`);
-    term.osc(`spexr_finished;${"f".repeat(32)};0;${clock.t}`);
-    expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(0);
+    term.line = 5;
+    term.osc("prompt_started");
+    term.osc(finished(0, T0 + 3000));
+    expect(blocks.stats).toMatchObject({ prompts: 1, started: 1, finished: 1, rejected: 0 });
+    const framed = term.decos.filter((d) => d.options.height! > 1);
+    // From the real prompt marker, not from a printed one, and timed from the real start.
+    expect(framed).toHaveLength(1);
+    expect(framed[0]!.options.marker).toBe(term.markers[0]);
   });
 
-  it("lays each frame again after a change of width, as high as its lines now are, from the markers that follow the reflow", () => {
+  it("believes nothing before it has the nonce, and everything once it has it", () => {
+    const { term, blocks } = setup(null);
+    command(term, { ms: T0 }, 0, 2);
+    expect(term.decos).toHaveLength(0);
+    expect(blocks.stats.rejected).toBeGreaterThan(0);
+    blocks.setNonce(N);
+    command(term, { ms: T0 }, 0, 2);
+    expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(1);
+  });
+
+  it("is not fooled by text a command prints: marks with another nonce draw no block, and a forged hello gives no nonce", () => {
+    const { term, blocks } = setup();
+    term.osc(prompt);
+    term.line = 1;
+    term.osc(started());
+    term.line = 3;
+    const other = "f".repeat(32);
+    term.osc(`spexr_hello;${other}`);
+    term.osc(finished(7, T0 + 5, other));
+    term.osc(`spexr_prompt;${other}`);
+    expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(0);
+    expect(blocks.stats.rejected).toBe(3);
+    // The real end still closes the real command, with its own exit.
+    term.osc(finished(0, T0 + 5));
+    expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(1);
+  });
+
+  it("reports each mark it handles, so the terminal's element can show the counts without a timer", () => {
+    const { term, changes } = setup();
+    command(term, { ms: T0 }, 0, 1);
+    expect(changes.n).toBe(3);
+  });
+
+  it("lays each frame again once the width has held still, as high as its lines now are, from the markers that follow the reflow", () => {
     const { term, clock } = setup();
-    term.osc(`spexr_hello;${N}`);
-    command(term, clock, 0, 3); // prompt at line 0, ends at 4: 4 lines
-    command(term, clock, 1, 2); // 3 lines
+    const at = { ms: T0 };
+    command(term, at, 0, 3); // prompt at line 0, ends at 4: 4 lines
+    command(term, at, 1, 2); // 3 lines
     const before = term.decos.filter((d) => d.options.height! > 1 && !d.isDisposed);
     expect(before.map((d) => d.options.height)).toEqual([4, 3]);
-    // The narrower terminal wraps the output: the ends move down, as xterm's reflow moves its markers.
     // Markers, in order: prompt 1, end 1, prompt 2, end 2.
     expect(term.markers).toHaveLength(4);
     term.markers[1]!.line += 2;
@@ -169,6 +227,9 @@ describe("TerminalBlocks", () => {
     term.markers[3]!.line += 4;
     term.cols = 40;
     for (const l of term.resizeListeners) l({ cols: 40, rows: 24 });
+    // Not yet: a drag is many resizes.
+    expect(before.every((d) => d.isDisposed)).toBe(false);
+    clock.advance(RELAY_MS);
     expect(before.every((d) => d.isDisposed)).toBe(true);
     const laid = term.decos.filter((d) => !d.isDisposed && d.options.width === 40);
     expect(laid).toHaveLength(2);
@@ -176,41 +237,78 @@ describe("TerminalBlocks", () => {
     // A resize that keeps the width changes nothing.
     const count = term.decos.length;
     for (const l of term.resizeListeners) l({ cols: 40, rows: 40 });
+    clock.advance(RELAY_MS * 2);
     expect(term.decos).toHaveLength(count);
+  });
+
+  it("acts once on a drag of many resizes, and lays the running command's chip again at the new width", () => {
+    const { term, clock } = setup();
+    term.osc(prompt);
+    term.line = 1;
+    term.osc(started());
+    const first = term.decos[0]!;
+    for (const cols of [79, 70, 60, 50]) {
+      term.cols = cols;
+      for (const l of term.resizeListeners) l({ cols, rows: 24 });
+      clock.advance(RELAY_MS / 4);
+    }
+    expect(first.isDisposed).toBe(false);
+    clock.advance(RELAY_MS);
+    expect(first.isDisposed).toBe(true);
+    const chips = term.decos.filter((d) => !d.isDisposed);
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.options).toMatchObject({ width: 50, height: 1 });
   });
 
   it("keeps the chip alone after a resize when the block's end marker is gone", () => {
     const { term, clock } = setup();
-    term.osc(`spexr_hello;${N}`);
-    command(term, clock, 0, 3);
+    command(term, { ms: T0 }, 0, 3);
     term.markers[1]!.isDisposed = true;
     term.cols = 120;
     for (const l of term.resizeListeners) l({ cols: 120, rows: 24 });
+    clock.advance(RELAY_MS);
     const chips = term.decos.filter((d) => !d.isDisposed && d.options.width === 120);
     expect(chips).toHaveLength(1);
     expect(chips[0]!.options.height).toBe(1);
   });
 
-  it("draws nothing for a command whose prompt scrolled out of the buffer", () => {
-    const { term, clock } = setup();
-    term.osc(`spexr_hello;${N}`);
-    term.osc("prompt_started");
+  it("draws nothing for a command whose prompt scrolled out of the buffer, and lets its marker go", () => {
+    const { term } = setup();
+    term.osc(prompt);
     term.line = 1;
-    term.osc("command_started;41");
+    term.osc(started());
     term.markers[0]!.line = -1;
-    term.markers[0]!.dispose();
-    clock.t += 5;
     term.line = 2;
-    term.osc(`spexr_finished;${N};0;${clock.t}`);
+    term.osc(finished(0, T0 + 5));
     expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(0);
+    expect(term.markers[0]!.isDisposed).toBe(true);
   });
 
-  it("keeps the last MAX_BLOCKS blocks and lets the oldest go", () => {
-    const { term, clock, blocks } = setup();
-    term.osc(`spexr_hello;${N}`);
-    for (let i = 0; i < MAX_BLOCKS + 3; i++) command(term, clock, 0, 1);
+  it("keeps the last MAX_BLOCKS blocks, and lets the oldest go with its decoration and both of its markers", () => {
+    const { term, blocks } = setup();
+    const at = { ms: T0 };
+    for (let i = 0; i < MAX_BLOCKS + 3; i++) command(term, at, 0, 1);
     expect(blocks.count).toBe(MAX_BLOCKS);
     expect(term.decos.filter((d) => d.options.height! > 1 && d.isDisposed)).toHaveLength(3);
+    // Markers: a prompt and an end per command; the first three commands' are all gone.
+    expect(term.markers.slice(0, 6).every((m) => m.isDisposed)).toBe(true);
+    expect(term.markers[6]!.isDisposed).toBe(false);
+  });
+
+  it("lets go of a command that never reported its end when the next one starts: its chip and its prompt marker", () => {
+    const { term } = setup();
+    term.osc(prompt);
+    term.line = 1;
+    term.osc(started());
+    const lost = term.decos[0]!;
+    const lostPrompt = term.markers[0]!;
+    // The finished mark never came; the next prompt and command did.
+    term.line = 4;
+    term.osc(prompt);
+    term.line = 5;
+    term.osc(started(T0 + 9000));
+    expect(lost.isDisposed).toBe(true);
+    expect(lostPrompt.isDisposed).toBe(true);
   });
 
   it("registers its handler again, in front, when asked: Theia re-registers its own on a preference change", () => {
@@ -218,18 +316,28 @@ describe("TerminalBlocks", () => {
     const theia = (): boolean => true;
     term.oscHandlers.push(theia);
     // Theia's handler is now last, so it would be asked first and take every mark.
-    expect(term.osc(`spexr_hello;${N}`)).toBe(true);
+    expect(term.osc(prompt)).toBe(true);
+    expect(blocks.stats.prompts).toBe(0);
     blocks.hook();
     expect(term.oscHandlers[term.oscHandlers.length - 1]).not.toBe(theia);
+    term.osc(prompt);
+    expect(blocks.stats.prompts).toBe(1);
   });
 
-  it("lets go of its handler, its resize listener and its decorations on dispose", () => {
-    const { term, clock, blocks } = setup();
-    term.osc(`spexr_hello;${N}`);
-    command(term, clock, 0, 1);
+  it("lets go of its handler, its resize listener, its timer, its decorations and every marker on dispose, the running command's and the idle prompt's included", () => {
+    const { term, blocks, clock } = setup();
+    command(term, { ms: T0 }, 0, 1);
+    term.osc(prompt); // an idle prompt marker
+    term.osc(started(T0 + 5000)); // a command still running, with its own prompt marker
+    term.cols = 100;
+    for (const l of term.resizeListeners) l({ cols: 100, rows: 24 });
     blocks.dispose();
+    clock.advance(RELAY_MS * 3);
     expect(term.oscHandlers).toHaveLength(0);
     expect(term.resizeListeners).toHaveLength(0);
     expect(term.decos.every((d) => d.isDisposed)).toBe(true);
+    expect(term.markers.every((m) => m.isDisposed)).toBe(true);
+    // The relay timer did not run after dispose.
+    expect(term.decos.filter((d) => d.options.width === 100)).toHaveLength(0);
   });
 });

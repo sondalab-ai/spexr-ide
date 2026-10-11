@@ -1,10 +1,13 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { injectable } from "@theia/core/shared/inversify";
+import { randomBytes } from "node:crypto";
+import { basename } from "node:path";
+import { inject, injectable } from "@theia/core/shared/inversify";
 import { guessShellTypeFromExecutable } from "@theia/terminal/lib/common/shell-type";
 import { ShellProcess } from "@theia/terminal/lib/node/shell-process";
 import { ShellIntegrationInjector } from "@theia/terminal/lib/node/shell-integration-injector";
 import type { ShellProcessOptions } from "@theia/terminal/lib/node/shell-process";
+import { SpexrTerminalBlocksBackend } from "./spexr-terminal-blocks-service.js";
 import { isCommandRun, theiaInjection, unpackedPath, withSpexrBlocks, type IntegratedShell, type SpexrScripts } from "./shell-integration-options.js";
 
 /**
@@ -47,6 +50,8 @@ function theiaScriptsDir(): string | undefined {
  */
 @injectable()
 export class SpexrShellIntegrationInjector extends ShellIntegrationInjector {
+  @inject(SpexrTerminalBlocksBackend) private readonly blocks!: SpexrTerminalBlocksBackend;
+
   override injectShellIntegration(options: ShellProcessOptions): ShellProcessOptions {
     let theia = super.injectShellIntegration(options);
     let how = "theia";
@@ -55,16 +60,16 @@ export class SpexrShellIntegrationInjector extends ShellIntegrationInjector {
       const shell = guessShellTypeFromExecutable(options.shell ?? ShellProcess.getShellExecutablePath()) as unknown as IntegratedShell;
       if (dir && (shell === "bash" || shell === "zsh")) {
         theia = theiaInjection(options, shell, dir, process.env.ZDOTDIR);
-        how = "spexr (theia's scripts from the package's sources)";
+        how = "theia from the package's sources";
       }
     }
-    const found = scripts();
-    const injected = withSpexrBlocks(options, theia, found);
-    // One line per terminal in the backend log: what went in and why not, for which shell.
-    console.info(
-      `[spexr] shell integration for ${options.shell ?? "the default shell"} args=${JSON.stringify(options.args ?? [])}: ` +
-        `${injected === options ? "none" : `${how} + spexr command blocks`} (theia injected: ${theia !== options}, spexr scripts: bash ${found.bashRcfile ?? "missing"}, zsh ${found.zshDir ?? "missing"})`,
-    );
+    // A nonce per shell, from the system's random source: it is how the terminal tells the shell's marks from text a command printed.
+    const nonce = this.blocks.enabled ? randomBytes(16).toString("hex") : undefined;
+    const injected = withSpexrBlocks(options, theia, scripts(), nonce);
+    const withBlocks = injected !== theia && injected !== options;
+    // One line per terminal in the backend log: the shell's name and what went in, never its arguments (they carry session ids and paths).
+    const decision = injected === options ? (isCommandRun(options.args) ? "none (a command run)" : "none") : withBlocks ? `${how} + spexr command blocks` : this.blocks.enabled ? how : `${how} (command blocks are off)`;
+    console.info(`[spexr] shell integration for ${basename(options.shell ?? ShellProcess.getShellExecutablePath() ?? "the default shell")}: ${decision}`);
     return injected;
   }
 }

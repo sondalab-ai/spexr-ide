@@ -26,26 +26,35 @@ const px = (body: string, name: string): number => {
 
 // The numbers repeat TERMINAL_BLOCK in shell/workbench-geometry.ts: CSS cannot read it.
 describe("the terminal command block in spexr.css", () => {
-  it("is the table's frame: r8 and a 1px ring on the kit's control edge, 2px outside the lines it holds", () => {
+  it("is the table's frame: r8 and a 1px inset ring on the kit's control edge, outside the lines at the sides only, so it never bleeds into the previous row", () => {
     const frame = rules('.spexr-term-block[data-frame="true"]::after');
     expect(px(frame, "border-radius")).toBe(TERMINAL_BLOCK.radius);
-    expect(frame).toMatch(new RegExp(`inset:\\s*-${TERMINAL_BLOCK.frameInset}px`));
-    expect(frame).toMatch(new RegExp(`box-shadow:\\s*0 0 0 ${TERMINAL_BLOCK.ring}px var\\(--slc-edge-control\\)`));
+    expect(frame).toMatch(new RegExp(`inset:\\s*${TERMINAL_BLOCK.frameOutsetY} -${TERMINAL_BLOCK.frameOutsetX}px`));
+    expect(frame).toMatch(new RegExp(`box-shadow:\\s*inset 0 0 0 ${TERMINAL_BLOCK.ring}px var\\(--slc-edge-control\\)`));
   });
 
   it("rings a failure in the danger tone whole, in place of the control edge", () => {
-    expect(rules('.spexr-term-block[data-frame="true"][data-exit]:not([data-exit="0"], [data-exit="cancelled"])::after')).toMatch(/box-shadow:\s*0 0 0 1px var\(--slc-danger\)/);
+    expect(rules('.spexr-term-block[data-frame="true"][data-exit]:not([data-exit="0"], [data-exit="cancelled"])::after')).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--slc-danger\)/);
   });
 
-  it("is the table's seam: 1px high, 44 long, 12 in, in the exit tone", () => {
+  it("is the kit's seam: 2px high with a rounded bottom, 44 long, 12 in, in the exit tone", () => {
     const seam = rules('.spexr-term-block[data-frame="true"]::before');
     expect(px(seam, "height")).toBe(TERMINAL_BLOCK.seamHeight);
+    expect(seam).toMatch(/border-radius:\s*0 0 2px 2px/);
     expect(px(seam, "width")).toBe(TERMINAL_BLOCK.seamWidth);
     expect(px(seam, "left")).toBe(TERMINAL_BLOCK.seamInset);
     expect(seam).toMatch(/background-color:\s*var\(--_spexr-exit\)/);
   });
 
-  it("is the table's chip: the mono at 11.5px on a 16px line, 8px from the right, 12px between its parts, muted, with the exit in its tone", () => {
+  it("fades the command under the chip over 16px, and sets the chip in the code face first", () => {
+    const fade = rules(".spexr-term-block__meta::before");
+    expect(px(fade, "width")).toBe(TERMINAL_BLOCK.metaFade);
+    expect(px(fade, "left")).toBe(-TERMINAL_BLOCK.metaFade);
+    expect(fade).toMatch(/linear-gradient\(to right, transparent, var\(--slc-surface\)\)/);
+    expect(rules(".spexr-term-block")).toMatch(/font-family:\s*var\(--sl-font-code, var\(--sl-font-mono\)\)/);
+  });
+
+  it("is the table's chip: the code face at 11.5px on a 16px line, 8px from the right, 12px between its parts, muted, with the exit in its tone", () => {
     expect(px(rules(".spexr-term-block"), "font-size")).toBe(TERMINAL_BLOCK.metaSize);
     const meta = rules(".spexr-term-block__meta");
     expect(px(meta, "line-height")).toBe(TERMINAL_BLOCK.metaLine);
@@ -103,13 +112,6 @@ const status = (theme: Theme, name: "success" | "danger"): string => new RegExp(
 // The owner's rules: text at least 4.5:1; a boundary or a state indicator at least 3:1.
 describe.each(["dark", "light"] as const)("the command block on %s", (theme) => {
   const ground = neutrals[theme]["bg-surface"]!;
-  const accent = kitNeutrals.products.spexr.accent[theme];
-  const accentInk = ((): string => {
-    if (theme === "dark") return accent;
-    const cap = Number(/--sl-accent-text-lmax:\s*([\d.]+)/.exec(kitFile("themes/light.css"))![1]);
-    const [L, C, h] = toOklch(accent);
-    return fromOklch([Math.min(L, cap), C, h]);
-  })();
   const edge = ((): string => {
     const k = kitFile("components.css");
     const step = Number(/--slc-shade-step:\s*([\d.]+)/.exec(k)![1]);
@@ -125,10 +127,11 @@ describe.each(["dark", "light"] as const)("the command block on %s", (theme) => 
     atLeast(4.5, neutrals[theme]["text-muted"]!, ground, "time and duration");
   });
 
-  it("reads the exit text at 4.5:1 in each tone: success, danger, and the running accent", () => {
+  it("reads the exit text at 4.5:1 in each tone: success, danger, and the muted ink of a running command or a cancelled one", () => {
     atLeast(4.5, status(theme, "success"), ground, "exit 0");
     atLeast(4.5, status(theme, "danger"), ground, "exit 1");
-    atLeast(4.5, accentInk, ground, "running");
+    atLeast(4.5, neutrals[theme]["text-muted"]!, ground, "running and cancelled");
+    expect(rules(".spexr-term-block")).toMatch(/--_spexr-exit:\s*var\(--slc-text-muted\)/);
   });
 
   it("draws the ring at 3:1 (the control edge, and the danger tone) and the seams at 3:1", () => {
@@ -137,6 +140,5 @@ describe.each(["dark", "light"] as const)("the command block on %s", (theme) => 
     atLeast(3, status(theme, "success"), ground, "success seam");
     atLeast(3, status(theme, "danger"), ground, "failure seam");
     atLeast(3, neutrals[theme]["text-muted"]!, ground, "cancelled seam");
-    atLeast(3, accentInk, ground, "running seam");
   });
 });

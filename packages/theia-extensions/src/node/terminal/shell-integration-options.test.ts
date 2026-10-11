@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isCommandRun, theiaInjection, unpackedPath, withSpexrBlocks, type ShellLaunch } from "./shell-integration-options.js";
 
+const NONCE = "0123456789abcdef0123456789abcdef";
 const SCRIPTS = { bashRcfile: "/s/bash/spexr-bash-integration.bash", zshDir: "/s/zsh" };
 
 describe("isCommandRun", () => {
@@ -23,48 +24,49 @@ describe("withSpexrBlocks", () => {
   it("puts spexr's rcfile in front of Theia's for bash, and hands Theia's over", () => {
     const original: ShellLaunch = { shell: "/bin/bash", args: ["-l"], env: { A: "1" } };
     const injected: ShellLaunch = { ...original, args: ["--rcfile", "/theia/bash/bash-integration.bash"] };
-    expect(withSpexrBlocks(original, injected, SCRIPTS)).toEqual({
+    expect(withSpexrBlocks(original, injected, SCRIPTS, NONCE)).toEqual({
       shell: "/bin/bash",
       args: ["--rcfile", "/s/bash/spexr-bash-integration.bash"],
-      env: { A: "1", SPEXR_THEIA_BASH_RCFILE: "/theia/bash/bash-integration.bash" },
+      env: { A: "1", SPEXR_THEIA_BASH_RCFILE: "/theia/bash/bash-integration.bash", SPEXR_BLOCK_NONCE: NONCE },
     });
   });
 
   it("keeps the rest of bash's arguments after the rcfile", () => {
     const original: ShellLaunch = { shell: "/bin/bash", args: ["-i"] };
     const injected: ShellLaunch = { ...original, args: ["--rcfile", "/theia/b.bash", "-i"] };
-    expect(withSpexrBlocks(original, injected, SCRIPTS).args).toEqual(["--rcfile", "/s/bash/spexr-bash-integration.bash", "-i"]);
+    expect(withSpexrBlocks(original, injected, SCRIPTS, NONCE).args).toEqual(["--rcfile", "/s/bash/spexr-bash-integration.bash", "-i"]);
   });
 
   it("points zsh's THEIA_ZSH_DIR at spexr's directory and keeps Theia's ZDOTDIR and its own directory in SPEXR_THEIA_ZSH_DIR", () => {
     const original: ShellLaunch = { shell: "/bin/zsh", env: { A: "1" } };
     const injected: ShellLaunch = { ...original, env: { A: "1", ZDOTDIR: "/theia/zsh/zdotdir/", THEIA_ZSH_DIR: "/theia/zsh", THEIA_ORIGINAL_ZDOTDIR: "" } };
-    expect(withSpexrBlocks(original, injected, SCRIPTS).env).toEqual({
+    expect(withSpexrBlocks(original, injected, SCRIPTS, NONCE).env).toEqual({
       A: "1",
       ZDOTDIR: "/theia/zsh/zdotdir/",
       THEIA_ZSH_DIR: "/s/zsh",
       SPEXR_THEIA_ZSH_DIR: "/theia/zsh",
       THEIA_ORIGINAL_ZDOTDIR: "",
+      SPEXR_BLOCK_NONCE: NONCE,
     });
   });
 
   it("changes nothing when Theia injected nothing: fish, PowerShell, a missing script", () => {
     const original: ShellLaunch = { shell: "/usr/bin/fish", args: ["-l"] };
-    expect(withSpexrBlocks(original, original, SCRIPTS)).toBe(original);
+    expect(withSpexrBlocks(original, original, SCRIPTS, NONCE)).toBe(original);
   });
 
   it("gives a shell that runs a command (the agent terminal, a Dark Factory session) no blocks at all: Theia's own integration is dropped too", () => {
     const original: ShellLaunch = { shell: "/bin/bash", args: ["-i", "-l", "-c", "claude"] };
     const injected: ShellLaunch = { ...original, args: ["--rcfile", "/theia/b.bash", "-i", "-c", "claude"] };
-    expect(withSpexrBlocks(original, injected, SCRIPTS)).toBe(original);
+    expect(withSpexrBlocks(original, injected, SCRIPTS, NONCE)).toBe(original);
   });
 
   it("leaves Theia's integration as it is when spexr's script is not shipped", () => {
     const original: ShellLaunch = { shell: "/bin/bash" };
     const injected: ShellLaunch = { ...original, args: ["--rcfile", "/theia/b.bash"] };
-    expect(withSpexrBlocks(original, injected, { bashRcfile: undefined, zshDir: undefined })).toBe(injected);
+    expect(withSpexrBlocks(original, injected, { bashRcfile: undefined, zshDir: undefined }, NONCE)).toBe(injected);
     const z: ShellLaunch = { ...original, env: { THEIA_ZSH_DIR: "/theia/zsh" } };
-    expect(withSpexrBlocks(original, z, { bashRcfile: undefined, zshDir: undefined })).toBe(z);
+    expect(withSpexrBlocks(original, z, { bashRcfile: undefined, zshDir: undefined }, NONCE)).toBe(z);
   });
 });
 
@@ -81,11 +83,28 @@ describe("unpackedPath", () => {
     expect(unpackedPath("/repo/lib/backend/a.bash", () => true)).toBe("/repo/lib/backend/a.bash");
   });
 
+  it("is applied to zsh's ZDOTDIR too: a shell cannot read it inside the asar, and would lose the user's rc files and history", () => {
+    const zAsar = "/App/Resources/app.asar/lib/backend/shell-integrations/zsh/zdotdir/";
+    const zTwin = "/App/Resources/app.asar.unpacked/lib/backend/shell-integrations/zsh/zdotdir/";
+    const original: ShellLaunch = { shell: "/bin/zsh", env: {} };
+    const injected: ShellLaunch = { ...original, env: { ZDOTDIR: zAsar, THEIA_ZSH_DIR: "/App/Resources/app.asar/lib/backend/shell-integrations/zsh" } };
+    const real = (p: string): string => unpackedPath(p, () => true);
+    const out = withSpexrBlocks(original, injected, { ...SCRIPTS, real }, NONCE);
+    expect(out.env?.ZDOTDIR).toBe(zTwin);
+    expect(out.env?.SPEXR_THEIA_ZSH_DIR).toBe("/App/Resources/app.asar.unpacked/lib/backend/shell-integrations/zsh");
+  });
+
+  it("installs nothing, and leaves Theia's integration, when there is no nonce (the setting is off)", () => {
+    const original: ShellLaunch = { shell: "/bin/bash" };
+    const injected: ShellLaunch = { ...original, args: ["--rcfile", "/theia/b.bash"] };
+    expect(withSpexrBlocks(original, injected, SCRIPTS, undefined)).toBe(injected);
+  });
+
   it("is applied to Theia's own script and directory, which spexr hands on", () => {
     const original: ShellLaunch = { shell: "/bin/bash" };
     const injected: ShellLaunch = { ...original, args: ["--rcfile", asar] };
     const real = (p: string): string => unpackedPath(p, (x) => x === twin);
-    expect(withSpexrBlocks(original, injected, { ...SCRIPTS, real }).env?.SPEXR_THEIA_BASH_RCFILE).toBe(twin);
+    expect(withSpexrBlocks(original, injected, { ...SCRIPTS, real }, NONCE).env?.SPEXR_THEIA_BASH_RCFILE).toBe(twin);
   });
 });
 
@@ -106,7 +125,7 @@ describe("theiaInjection (Theia's own, from the package's sources, for a run wit
   it("is what withSpexrBlocks then builds on: the two together put spexr's script in front of Theia's", () => {
     const original: ShellLaunch = { shell: "/bin/bash", args: ["-l"] };
     const injected = theiaInjection(original, "bash", "/d", undefined);
-    expect(withSpexrBlocks(original, injected, SCRIPTS)).toMatchObject({ args: ["--rcfile", "/s/bash/spexr-bash-integration.bash"], env: { SPEXR_THEIA_BASH_RCFILE: "/d/bash/bash-integration.bash" } });
+    expect(withSpexrBlocks(original, injected, SCRIPTS, NONCE)).toMatchObject({ args: ["--rcfile", "/s/bash/spexr-bash-integration.bash"], env: { SPEXR_THEIA_BASH_RCFILE: "/d/bash/bash-integration.bash" } });
   });
 
   it("changes nothing for another shell", () => {

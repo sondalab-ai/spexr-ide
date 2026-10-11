@@ -91,6 +91,8 @@ export interface CaptureMeta {
   agentLog?: { state: AgentLogState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>> };
   /** The terminal command blocks in the base scene (S6l). */
   terminalBlocks?: TerminalBlocksState;
+  /** The same after `true` was typed last, for the success block (S6l). */
+  terminalBlocksSuccess?: TerminalBlocksState;
   /** The inline diagnostic chips in the base scene (S6k). */
   inlineDiagnostics?: InlineDiagState;
   /** The scene checks that failed (S5f), by scene; the capture throws after writing them. */

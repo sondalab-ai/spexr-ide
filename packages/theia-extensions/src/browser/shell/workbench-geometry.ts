@@ -241,13 +241,15 @@ export const TERMINAL_BLOCK = {
   radius: 8,
   /** The ring, in px. */
   ring: 1,
-  /** The frame sits this far outside the lines it holds. */
-  frameInset: 2,
-  /** The seam on the top edge: 1px high, 44 long (the kit's 2.75rem), 12 in. */
-  seamHeight: 1,
+  /** The frame is this far outside the lines it holds at the sides, and flush with them above and below (an inset ring: no bleed into the neighbouring rows). */
+  frameOutsetX: 2,
+  frameOutsetY: 0,
+  /** The seam on the top edge, the kit's: 2px high with a rounded bottom, 44 long (2.75rem), 12 in. */
+  seamHeight: 2,
   seamWidth: 44,
   seamInset: 12,
-  /** The chip: the mono at the demo's 11.5px, 16px of line, 8px from the right edge, 12px between its parts. */
+  /** The chip: the code face at the demo's 11.5px, 16px of line, 8px from the right edge, 12px between its parts, and a 16px fade where the command goes under it. */
+  metaFade: 16,
   metaSize: 11.5,
   metaLine: 16,
   metaInset: 8,

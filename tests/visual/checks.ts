@@ -788,6 +788,32 @@ export async function probeTerminalBlocks(page: Page): Promise<TerminalBlocksSta
 }
 
 /**
+ * The terminal-blocks scene: `true` typed last in the bottom terminal, so its
+ * success block is in the viewport beside the failing `pnpm sl-audit` block's
+ * tail. At least one framed block must be a success (exit 0) with its chip, its
+ * ring on the control edge (not the danger tone) and its seam in the success
+ * tone; the failing block, when still in view, keeps the danger tone. The base
+ * scene's check (below) holds the failing block, which is what fits there.
+ */
+export function checkTerminalSuccessBlock(state: TerminalBlocksState): string[] {
+  const problems: string[] = [];
+  const framed = state.blocks.filter((b) => b.framed);
+  const ok = framed.filter((b) => b.exit === "0");
+  const bad = framed.filter((b) => b.exit === "1");
+  if (ok.length === 0) return [`terminal blocks (success): no framed exit-0 block in view: ${JSON.stringify(state.blocks.map((b) => [b.exit, b.framed, b.chip]))}; marks met per terminal: ${JSON.stringify(state.stats)}`];
+  for (const b of ok) {
+    if (!/^\d{2}:\d{2}:\d{2}( [\d.]+ s)? exit 0$/.test(b.chip)) problems.push(`terminal blocks (success): chip ${JSON.stringify(b.chip)}, want "<time> <duration> exit 0"`);
+    if (b.radius !== "8px") problems.push(`terminal blocks (success): radius ${b.radius}, want 8px`);
+    if (/\(254, 130, 99\)|\(167, 43, 5\)/.test(b.ringShadow) && bad.length === 0) problems.push(`terminal blocks (success): the ring is in the danger tone: ${b.ringShadow}`);
+    if (b.seamBackground === "rgba(0, 0, 0, 0)") problems.push("terminal blocks (success): no seam");
+    if (b.chipRect && !(Math.abs(b.rect.x + b.rect.w - (b.chipRect.x + b.chipRect.w) - 8) <= 2)) problems.push("terminal blocks (success): the chip is not 8px from the block's right edge");
+  }
+  if (bad.length && ok[0]!.ringShadow === bad[0]!.ringShadow) problems.push("terminal blocks (success): the success ring is the failure's");
+  if (bad.length && ok[0]!.exitColor === bad[0]!.exitColor) problems.push("terminal blocks (success): exit 0 and exit 1 share a colour");
+  return problems;
+}
+
+/**
  * The bottom terminal against the demo's `term.block` (two blocks, `pnpm test
  * probe` exit 0 and `pnpm sl-audit` exit 1, each with a chip `14:02:11 2.4 s
  * exit 0`, r8, a ring, a seam on the top edge in the exit tone): the failing

@@ -30,6 +30,8 @@ export interface XtermLike {
 
 /** The most blocks kept per terminal: the oldest is let go past it. */
 export const MAX_BLOCKS = 200;
+/** A resize is acted on after the width has held still this long: dragging a sash is many resizes. */
+export const RELAY_MS = 120;
 
 interface Drawn {
   deco: XtermDecoration;
@@ -41,22 +43,43 @@ interface Drawn {
   framed: boolean;
 }
 
+/** The timers the controller uses; injected so a test moves time itself. */
+export interface BlockTimers {
+  set(fn: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
+
+const REAL_TIMERS: BlockTimers = { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) };
+
+export interface BlockStats {
+  prompts: number;
+  started: number;
+  finished: number;
+  rejected: number;
+  drawn: number;
+}
+
 /**
- * The command blocks of one terminal (S6l): reads Theia's OSC 133 marks and
- * spexr's own beside them, and lays an element over each command's lines with
- * xterm's decorations, a frame and a chip with the time, the duration and the
- * exit code. A running command gets the chip alone, on its prompt line.
+ * The command blocks of one terminal (S6l): reads spexr's OSC 133 marks (the
+ * shell's own, authenticated by the nonce the backend gave it: command-blocks.ts)
+ * and lays an element over each command's lines with xterm's decorations, a
+ * frame and a chip with the time, the duration and the exit code. A running
+ * command gets the chip alone, on its prompt line.
  *
  * - It must run before Theia's handler for the same OSC number (xterm calls
  *   the last registered first), and {@link hook} registers it again when Theia
  *   re-registers its own. It returns false for Theia's marks, which Theia still
- *   needs, and true for spexr's own, which nothing else is to see.
+ *   needs and which move no block here, and true for spexr's, which nothing
+ *   else is to see.
+ * - Until {@link setNonce} gives it the shell's nonce it believes nothing.
  * - A narrower or wider terminal reflows its lines, so a frame's width and
- *   height are no longer true. The markers follow the reflow, so on a change
- *   of columns each frame is laid again from the prompt marker to a marker at
- *   the end of its output. Where a marker is gone or the height does not come
- *   out, the command keeps the chip alone (the meta-only fallback), which
- *   does not depend on a height.
+ *   height are no longer true. The markers follow the reflow, so once the width
+ *   has held still (RELAY_MS) each frame, and the running chip, is laid again
+ *   from the prompt marker to a marker at the end of its output. Where a marker
+ *   is gone or the height does not come out, the command keeps the chip alone
+ *   (the meta-only fallback), which does not depend on a height.
+ * - Every marker it makes is let go with the block it belongs to: when the
+ *   block is evicted past {@link MAX_BLOCKS}, and on dispose.
  */
 export class TerminalBlocks {
   private readonly tracker = new BlockTracker<XtermMarker>();
@@ -67,20 +90,31 @@ export class TerminalBlocks {
   /** The prompt marker no command has used yet: let go when the next prompt replaces it. */
   private idlePrompt: XtermMarker | undefined;
   private lastCols: number;
+  private relayHandle: unknown;
   /** How many of each mark were met, for a support question ("why no blocks?") and the visual run's diagnosis. */
-  readonly stats = { prompts: 0, started: 0, hello: 0, finished: 0, rejected: 0, drawn: 0 };
+  readonly stats: BlockStats = { prompts: 0, started: 0, finished: 0, rejected: 0, drawn: 0 };
 
   constructor(
     private readonly term: XtermLike,
-    private readonly now: () => number = Date.now,
+    private readonly onChange: () => void = () => undefined,
+    private readonly timers: BlockTimers = REAL_TIMERS,
   ) {
     this.lastCols = term.cols;
     this.resize = term.onResize(({ cols }) => {
       if (cols === this.lastCols) return;
       this.lastCols = cols;
-      this.relayFrames();
+      if (this.relayHandle !== undefined) this.timers.clear(this.relayHandle);
+      this.relayHandle = this.timers.set(() => {
+        this.relayHandle = undefined;
+        this.relayFrames();
+      }, RELAY_MS);
     });
     this.hook();
+  }
+
+  /** The shell's nonce, from the backend (undefined: believe nothing). */
+  setNonce(nonce: string | undefined): void {
+    this.tracker.setNonce(nonce);
   }
 
   /** Register the OSC handler, in front of every one registered so far. */
@@ -90,13 +124,14 @@ export class TerminalBlocks {
   }
 
   dispose(): void {
+    if (this.relayHandle !== undefined) this.timers.clear(this.relayHandle);
+    this.relayHandle = undefined;
     this.handler?.dispose();
     this.resize.dispose();
     this.running?.dispose();
-    for (const d of this.drawn) {
-      d.deco.dispose();
-      d.end?.dispose();
-    }
+    const run = this.tracker.running;
+    if (run?.prompt && !this.drawn.some((d) => d.block.prompt === run.prompt)) run.prompt.dispose();
+    for (const d of this.drawn) this.release(d);
     this.drawn = [];
     this.idlePrompt?.dispose();
   }
@@ -107,7 +142,15 @@ export class TerminalBlocks {
   }
 
   private onMark(payload: string): boolean {
-    if (payload === "prompt_started") {
+    // Theia's own marks pass: it needs them, and here they are unauthenticated, so they move no block.
+    if (!isSpexrPayload(payload)) return false;
+    const mark = this.tracker.accept(payload);
+    if (!mark) {
+      this.stats.rejected++;
+      this.onChange();
+      return true;
+    }
+    if (mark.kind === "prompt") {
       this.stats.prompts++;
       const marker = this.term.registerMarker(0);
       if (marker) {
@@ -115,25 +158,33 @@ export class TerminalBlocks {
         this.idlePrompt = marker;
         this.tracker.promptStarted(marker);
       }
-      return false;
-    }
-    if (payload.startsWith("command_started")) {
+    } else if (mark.kind === "started") {
       this.stats.started++;
-      const run = this.tracker.commandStarted(this.now());
+      this.abandonRunning();
+      const run = this.tracker.commandStarted(mark.epochMs);
       // The prompt's marker now belongs to this command's decorations.
       if (run.prompt === this.idlePrompt) this.idlePrompt = undefined;
       this.drawRunning(run.prompt);
-      return false;
+    } else {
+      const { baseY, cursorY, cursorX } = this.term.buffer.active;
+      const block = this.tracker.finish(mark, baseY + cursorY, cursorX);
+      if (block) {
+        this.stats.finished++;
+        this.drawFinished(block);
+      } else {
+        this.stats.rejected++;
+      }
     }
-    if (!isSpexrPayload(payload)) return false;
-    const { baseY, cursorY, cursorX } = this.term.buffer.active;
-    const result = this.tracker.mark(payload, baseY + cursorY, cursorX);
-    if (result?.kind === "finished") this.drawFinished(result.block);
-    if (result?.kind === "hello") this.stats.hello++;
-    else if (result?.kind === "finished") this.stats.finished++;
-    else this.stats.rejected++;
-    // Whatever begins with `spexr_`, believed or not, is not Theia's to see.
+    this.onChange();
     return true;
+  }
+
+  /** A command that never reported its end (its mark was lost): its chip and marker are let go. */
+  private abandonRunning(): void {
+    const run = this.tracker.running;
+    this.running?.dispose();
+    this.running = undefined;
+    if (run?.prompt && !this.drawn.some((d) => d.block.prompt === run.prompt)) run.prompt.dispose();
   }
 
   private drawRunning(prompt: XtermMarker | undefined): void {
@@ -150,9 +201,15 @@ export class TerminalBlocks {
     this.running?.dispose();
     this.running = undefined;
     const marker = block.prompt;
-    if (!marker || marker.isDisposed || marker.line < 0 || block.lines < 1) return;
+    if (!marker || marker.isDisposed || marker.line < 0 || block.lines < 1) {
+      marker?.dispose();
+      return;
+    }
     const deco = this.term.registerDecoration({ marker, x: 0, width: this.term.cols, height: block.lines, layer: "top" });
-    if (!deco) return;
+    if (!deco) {
+      marker.dispose();
+      return;
+    }
     this.fill(deco, finishedMeta(block), true);
     this.stats.drawn++;
     const end = this.term.registerMarker(0);
@@ -160,9 +217,15 @@ export class TerminalBlocks {
     this.drawn.push({ deco, block, end, extra, framed: true });
     while (this.drawn.length > MAX_BLOCKS) {
       const old = this.drawn.shift();
-      old?.deco.dispose();
-      old?.end?.dispose();
+      if (old) this.release(old);
     }
+  }
+
+  /** Let go of a block's decoration and both of its markers. */
+  private release(d: Drawn): void {
+    d.deco.dispose();
+    d.end?.dispose();
+    d.block.prompt?.dispose();
   }
 
   /** Put the element in the decoration once xterm has made it, and not again however often it renders. */
@@ -175,7 +238,7 @@ export class TerminalBlocks {
     });
   }
 
-  /** After a change of width: each frame again, as high as its lines now are; the chip alone where that cannot be read. */
+  /** After the width has held still: each frame again, as high as its lines now are; the chip alone where that cannot be read. */
   private relayFrames(): void {
     for (const d of this.drawn) {
       d.deco.dispose();
@@ -190,5 +253,8 @@ export class TerminalBlocks {
         d.deco = deco;
       }
     }
+    // The running command's chip spans the width too.
+    const run = this.tracker.running;
+    if (this.running && run) this.drawRunning(run.prompt);
   }
 }

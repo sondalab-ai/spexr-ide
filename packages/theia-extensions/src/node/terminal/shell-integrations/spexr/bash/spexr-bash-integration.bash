@@ -2,23 +2,34 @@
 # spexr command blocks (S6l). Used as bash's --rcfile by SpexrShellIntegrationInjector.
 #
 # It chains Theia's own integration, which sources the user's rc files and
-# Theia's command-block support (OSC 133 prompt and command marks), and then
-# adds one sequence of its own after each command:
+# Theia's command-block support (OSC 133 prompt and command marks), and adds
+# marks of its own, each carrying a nonce:
 #
-#   OSC 133 ; spexr_finished ; <nonce> ; <exit code> ; <epoch ms> BEL
+#   OSC 133 ; spexr_prompt   ; <nonce>                         a prompt is about to be drawn
+#   OSC 133 ; spexr_started  ; <nonce> ; <epoch ms>            a command starts
+#   OSC 133 ; spexr_finished ; <nonce> ; <exit> ; <epoch ms>   it ended
 #
-# and, once at start-up before any command can run, the nonce itself:
+# The nonce is made by the backend for this shell alone and told to the
+# terminal out of band (an RPC by terminal id); it reaches the shell in
+# SPEXR_BLOCK_NONCE, which is read into a shell variable and unset here,
+# FIRST, before any rc file of the user's runs, so nothing the rc files print
+# or run can learn it and forge a mark. Without it nothing is installed.
 #
-#   OSC 133 ; spexr_hello ; <nonce> BEL
-#
-# The nonce is a shell variable, never exported, so what a command prints (a
-# `cat` of a hostile file) cannot forge a block: the terminal accepts a
-# finished mark only with the nonce it was told at start-up.
+# Resolution: with EPOCHREALTIME (bash 5) the clock is in milliseconds; without
+# it (macOS's bash 3.2) it is whole seconds from `date`, a fork per mark.
+
+__spexr_nonce="${SPEXR_BLOCK_NONCE-}"
+builtin unset SPEXR_BLOCK_NONCE
 
 if [ -n "${SPEXR_THEIA_BASH_RCFILE-}" ] && [ -r "$SPEXR_THEIA_BASH_RCFILE" ]; then
   builtin source "$SPEXR_THEIA_BASH_RCFILE"
 fi
 builtin unset SPEXR_THEIA_BASH_RCFILE
+
+# No nonce, no marks: Theia's integration stays as it is.
+if [ -z "${__spexr_nonce-}" ]; then
+  builtin return 0 2>/dev/null
+fi
 
 __spexr_now_ms() {
   if [[ -n "${EPOCHREALTIME-}" ]]; then
@@ -29,35 +40,37 @@ __spexr_now_ms() {
   fi
 }
 
-__spexr_make_nonce() {
-  builtin local n
-  if builtin command -v od > /dev/null && builtin command -v tr > /dev/null && [ -r /dev/urandom ]; then
-    n="$(builtin command od -An -N16 -tx1 /dev/urandom | builtin command tr -d ' \n')"
-  fi
-  if [ "${#n}" -ne 32 ]; then
-    n="$(builtin printf '%08x%08x%08x%08x' "$RANDOM$RANDOM" "$RANDOM$RANDOM" "$RANDOM$RANDOM" "$RANDOM$RANDOM")"
-    n="${n:0:32}"
-  fi
-  builtin printf '%s' "$n"
-}
-
-__spexr_nonce="$(__spexr_make_nonce)"
-__spexr_hello=""
+__spexr_running=""
 
 # Runs first in PROMPT_COMMAND, so $? is still the command's exit status.
-# Theia's precmd clears __theia_command_running after this one has looked.
+# It never returns non-zero: a shell with `set -e` would exit on it.
 __spexr_precmd() {
   builtin local __spexr_rc=$?
-  if [[ -z "$__spexr_hello" ]]; then
-    __spexr_hello="1"
-    builtin printf '\e]133;spexr_hello;%s\a' "$__spexr_nonce"
-  elif [[ -n "${__theia_command_running-}" ]]; then
+  if [[ -n "$__spexr_running" ]]; then
+    __spexr_running=""
     builtin printf '\e]133;spexr_finished;%s;%s;%s\a' "$__spexr_nonce" "$__spexr_rc" "$(__spexr_now_ms)"
   fi
-  return $__spexr_rc
+  builtin printf '\e]133;spexr_prompt;%s\a' "$__spexr_nonce"
+  # Hand the status on to the hooks after this one, unless that would trip errexit.
+  if [[ $- == *e* ]]; then
+    builtin return 0
+  fi
+  builtin return $__spexr_rc
 }
 
-if [[ ${#PROMPT_COMMAND[@]} -gt 1 ]]; then
+# Wrap Theia's preexec (called from its DEBUG trap) so a started mark goes out
+# first. Without Theia's function there is nothing to wrap and no blocks.
+if builtin declare -F __theia_command_preexec > /dev/null 2>&1; then
+  builtin eval "$(builtin declare -f __theia_command_preexec | builtin command sed '1s/__theia_command_preexec/__spexr_theia_preexec/')"
+  __theia_command_preexec() {
+    __spexr_running="1"
+    builtin printf '\e]133;spexr_started;%s;%s\a' "$__spexr_nonce" "$(__spexr_now_ms)"
+    __spexr_theia_preexec "$@"
+  }
+fi
+
+# `set -u` safe: the variable may not exist, and an array of one entry is a plain string.
+if [[ -n "${PROMPT_COMMAND+x}" ]] && [[ ${#PROMPT_COMMAND[@]} -gt 1 ]]; then
   PROMPT_COMMAND=("__spexr_precmd" "${PROMPT_COMMAND[@]}")
 else
   PROMPT_COMMAND="__spexr_precmd${PROMPT_COMMAND:+$'\n'$PROMPT_COMMAND}"

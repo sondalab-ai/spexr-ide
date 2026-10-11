@@ -45,23 +45,37 @@ export function isCommandRun(args: string | string[] | undefined): boolean {
  * `injected` (what Theia's injector made of `original`) with spexr's script
  * in front of Theia's: bash's `--rcfile` becomes spexr's, which is handed
  * Theia's in `SPEXR_THEIA_BASH_RCFILE`; zsh's THEIA_ZSH_DIR becomes spexr's,
- * with Theia's in `SPEXR_THEIA_ZSH_DIR`. Unchanged when Theia injected nothing
+ * with Theia's in `SPEXR_THEIA_ZSH_DIR`. Both get the shell's nonce in
+ * `SPEXR_BLOCK_NONCE` (the scripts take it out of the environment first thing). Unchanged when Theia injected nothing
  * (another shell, a missing script), when the shell runs a command, or when
  * spexr's script is not there.
  */
-export function withSpexrBlocks<T extends ShellLaunch>(original: T, injected: T, scripts: SpexrScripts): T {
+export function withSpexrBlocks<T extends ShellLaunch>(original: T, injected: T, scripts: SpexrScripts, nonce: string | undefined): T {
+  // Without a nonce the scripts install nothing, so Theia's integration is left as it is.
+  if (nonce === undefined) return injected;
   if (injected === original) return injected;
   if (isCommandRun(original.args)) return original;
   const real = scripts.real ?? ((p: string) => p);
   const args = injected.args;
   if (Array.isArray(args) && args[0] === "--rcfile" && typeof args[1] === "string") {
     if (!scripts.bashRcfile) return injected;
-    return { ...injected, args: ["--rcfile", scripts.bashRcfile, ...args.slice(2)], env: { ...injected.env, SPEXR_THEIA_BASH_RCFILE: real(args[1]) } };
+    return { ...injected, args: ["--rcfile", scripts.bashRcfile, ...args.slice(2)], env: { ...injected.env, SPEXR_THEIA_BASH_RCFILE: real(args[1]), SPEXR_BLOCK_NONCE: nonce } };
   }
   const theiaZsh = injected.env?.THEIA_ZSH_DIR;
   if (typeof theiaZsh === "string" && theiaZsh) {
     if (!scripts.zshDir) return injected;
-    return { ...injected, env: { ...injected.env, THEIA_ZSH_DIR: scripts.zshDir, SPEXR_THEIA_ZSH_DIR: real(theiaZsh) } };
+    const zdotdir = injected.env?.ZDOTDIR;
+    return {
+      ...injected,
+      env: {
+        ...injected.env,
+        // Theia's ZDOTDIR is in its package too: a shell cannot read it inside the asar either, and would find no rc files and no history.
+        ...(typeof zdotdir === "string" ? { ZDOTDIR: real(zdotdir) } : {}),
+        THEIA_ZSH_DIR: scripts.zshDir,
+        SPEXR_THEIA_ZSH_DIR: real(theiaZsh),
+        SPEXR_BLOCK_NONCE: nonce,
+      },
+    };
   }
   return injected;
 }
