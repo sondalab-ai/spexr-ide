@@ -29,9 +29,9 @@ describe("sendByPaste", () => {
     expect(log).toEqual(['paste:"fix it"', "reveal"]);
   });
 
-  it("pastes the first prompt of a fresh session: it starts the agent, waits for it, and asks nothing of a transcript that does not exist yet", async () => {
+  it("pastes the first prompt of a fresh session (and says it was pasted into a fresh launch, so the draft is kept): it starts the agent, waits for it, and asks nothing of a transcript that does not exist yet", async () => {
     const { ports, log } = fake({ running: false });
-    expect(await sendByPaste("first words", ports)).toBe("pasted");
+    expect(await sendByPaste("first words", ports)).toBe("pasted-after-start");
     expect(log).toEqual(["start", "ready", 'paste:"first words"', "reveal"]);
   });
 
@@ -85,5 +85,21 @@ describe("the composer never presses Enter or Shift+Tab", () => {
     expect(manager).toMatch(/pasteIntoAgent\(text: string\): void \{\s*this\.agentTerminal\(\)\.sendText\(bracketedPaste\(text\)\);/);
     expect(manager).not.toMatch(/submitAgentInput|cycleAgentMode|SHIFT_TAB/);
     expect(bracketedPaste("x")).toBe("\x1b[200~x\x1b[201~");
+  });
+});
+
+describe("a reflex second Enter", () => {
+  it("is ignored while the key repeats, and the terminal takes focus only after a pause when the send was a keystroke", () => {
+    const composer = code("./agent-pane-composer.tsx");
+    expect(composer).toMatch(/if \(e\.repeat\) return;[\s\S]*?p\.onSend\(true\)/);
+    expect(composer).toMatch(/p\.onSend\(false\)/);
+    const widget = code("./agent-pane-widget.tsx");
+    expect(widget).toMatch(/KEYBOARD_REVEAL_DELAY_MS = 400/);
+    expect(widget).toMatch(/viaKeyboard \? KEYBOARD_REVEAL_DELAY_MS : 0/);
+  });
+
+  it("keeps the draft after a paste into a fresh launch, and clears it only after a paste into a running agent", () => {
+    const widget = code("./agent-pane-widget.tsx");
+    expect(widget).toMatch(/if \(outcome === "pasted"\) this\.drafts\.clearIfUnchanged\(sent\)/);
   });
 });

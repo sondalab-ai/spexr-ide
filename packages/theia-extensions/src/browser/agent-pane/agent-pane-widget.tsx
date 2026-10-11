@@ -22,8 +22,10 @@ import { DraftKeeper, agentDraftKey } from "./agent-pane-draft.js";
 export { agentDraftKey };
 import { assemblePrompt, composerState, pathFromAgentRoot, startsShellCommand } from "./agent-pane-composer-model.js";
 import { planByReveal, sendByPaste, type SendPorts } from "./agent-pane-send.js";
-import type { ModeFooter } from "./agent-mode-footer.js";
+import type { ModeReading } from "./agent-mode-footer.js";
 
+/** How long after a keyboard send the terminal is brought forward and focused. */
+const KEYBOARD_REVEAL_DELAY_MS = 400;
 /** How often the agent terminal's footer is read for the permission mode. */
 const FOOTER_POLL_MS = 1000;
 
@@ -61,7 +63,7 @@ export class AgentPaneWidget extends ReactWidget {
   /** What the composer last told the user to do next (pasted, switch mode); cleared by the next keystroke. */
   private hint: string | undefined;
   /** The permission mode the agent's footer shows, read best-effort from the terminal buffer. */
-  private footer: ModeFooter | undefined;
+  private footer: ModeReading | undefined;
 
   constructor() {
     super();
@@ -164,7 +166,7 @@ export class AgentPaneWidget extends ReactWidget {
   private readFooter(): void {
     if (!this.isVisible) return;
     const now = this.terminal.agentModeFooter();
-    if (now?.mode === this.footer?.mode) return;
+    if (JSON.stringify(now) === JSON.stringify(this.footer)) return;
     this.footer = now;
     this.update();
   }
@@ -175,14 +177,18 @@ export class AgentPaneWidget extends ReactWidget {
   }
 
   /** The agent terminal as Send and Plan drive it: a paste, and bringing the terminal forward. Nothing else. */
-  private ports(): SendPorts {
+  private ports(revealDelayMs = 0): SendPorts {
     return {
       trusted: () => this.terminal.isTrusted(),
       running: () => this.terminal.isRunning(),
       start: () => this.terminal.ensureStarted(),
       ready: () => this.terminal.whenReady(),
       paste: (text) => this.terminal.pasteIntoAgent(text),
-      reveal: () => this.terminal.reveal(),
+      // After a keyboard send the terminal takes focus only after a pause: a reflex second Enter must not submit what was not read.
+      reveal: async () => {
+        if (revealDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, revealDelayMs));
+        await this.terminal.reveal();
+      },
     };
   }
 
@@ -192,7 +198,7 @@ export class AgentPaneWidget extends ReactWidget {
    * presses Enter there. The draft is cleared only if the paste went in and
    * the field still holds what was sent, so words typed meanwhile survive.
    */
-  private async send(): Promise<void> {
+  private async send(viaKeyboard: boolean): Promise<void> {
     const file = this.chipPressed ? this.activeFile() : undefined;
     const prompt = assemblePrompt(this.drafts.text, file?.path);
     if (!prompt || this.sending) return;
@@ -200,9 +206,10 @@ export class AgentPaneWidget extends ReactWidget {
     this.sending = true;
     this.update();
     try {
-      const outcome = await sendByPaste(prompt, this.ports());
-      if (outcome === "pasted") {
-        this.drafts.clearIfUnchanged(sent);
+      const outcome = await sendByPaste(prompt, this.ports(viaKeyboard ? KEYBOARD_REVEAL_DELAY_MS : 0));
+      if (outcome === "pasted" || outcome === "pasted-after-start") {
+        // A fresh launch may have shown a dialog of its own that took the paste: the text stays, to paste again.
+        if (outcome === "pasted") this.drafts.clearIfUnchanged(sent);
         this.hint = nls.localize("spexr/agentPane/pasted", "Pasted into the agent: press Enter in the terminal to send.");
       } else if (outcome === "untrusted") {
         this.messages.info(nls.localize("spexr/agentPane/trust", "Trust this workspace to start the agent."));
@@ -251,11 +258,12 @@ export class AgentPaneWidget extends ReactWidget {
           this.chipPressed = !this.chipPressed;
           this.update();
         }}
-        planPressed={this.footer?.mode === "plan"}
-        autoApprove={this.footer?.autoApprove === true}
+        planPressed={this.footer?.kind === "mode" && this.footer.mode === "plan"}
+        autoApprove={this.footer?.kind === "mode" && this.footer.autoApprove}
+        modeUnknown={this.footer?.kind !== "mode"}
         hint={this.hint ?? (startsShellCommand(assemblePrompt(this.drafts.text, this.chipPressed ? file?.path : undefined)) ? nls.localize("spexr/agentPane/shellCommand", "Starts a shell command in Claude.") : undefined)}
         state={state}
-        onSend={() => void this.send()}
+        onSend={(viaKeyboard) => void this.send(viaKeyboard)}
         onPlan={() => void this.plan()}
         onOpenInTerminal={() => void (this.controller.viewing === undefined ? this.terminal.reveal() : this.openFollowedInTerminal())}
       />

@@ -28,7 +28,7 @@ import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
 import { agentSessionKey, launchLine, withSessionId } from "./session-launch.js";
 import { bracketedPaste } from "../../common/terminal-paste.js";
-import { FOOTER_LINES, parseModeFooter, type ModeFooter } from "../agent-pane/agent-mode-footer.js";
+import { lastRows, parseModeFooter, type ModeReading } from "../agent-pane/agent-mode-footer.js";
 import { WorkspaceTrustService } from "@theia/workspace/lib/browser/workspace-trust-service";
 import {
   AMBIGUOUS_ACCOUNT,
@@ -626,19 +626,20 @@ export class ClaudeTerminalManager {
   }
 
   /**
-   * The permission mode Claude Code's footer shows, read from the terminal's
-   * last lines; undefined when the agent is not running or the footer says
-   * nothing known. Best-effort: see agent-mode-footer.ts.
+   * The permission mode Claude Code's footer shows, read from the last
+   * non-blank rows of the terminal's buffer; undefined when the agent is not
+   * running, and `unknown` when no footer is on screen (the default mode draws
+   * none, and a dialog can cover it). Best-effort: see agent-mode-footer.ts.
    */
-  agentModeFooter(): ModeFooter | undefined {
+  agentModeFooter(): ModeReading | undefined {
     const term = this.widget;
     if (!term || !isReusableTerminal(term)) return undefined;
     try {
       const { buffer } = term;
-      const start = Math.max(0, buffer.length - FOOTER_LINES);
-      return parseModeFooter(buffer.getLines(start, FOOTER_LINES, true));
+      const tail = Math.min(buffer.length, 40);
+      return parseModeFooter(lastRows(buffer.getLines(buffer.length - tail, tail, true)));
     } catch {
-      return undefined;
+      return { kind: "unknown" };
     }
   }
 
