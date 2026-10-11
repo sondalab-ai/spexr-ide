@@ -4,10 +4,24 @@ import { STALE_MS } from "../../common/session-timing.js";
 const IDLE_WINDOW_MS = 12 * 3_600_000;
 /** A tool_use must sit unresolved this long before we call it a pending prompt. */
 export const SETTLE_MS = 2_000;
-/** Tools whose use pauses the agent on a permission prompt. */
-const PERMISSION_TOOLS = new Set(["Bash", "Edit", "Write", "WebFetch", "NotebookEdit", "WebSearch", "ExitPlanMode", "AskUserQuestion"]);
-/** Tools of an MCP server are named `mcp__<server>__<tool>` and ask like the built-in ones. */
-const isPermissionTool = (name: string): boolean => PERMISSION_TOOLS.has(name) || name.startsWith("mcp__");
+/** Tools whose use pauses the agent on a permission prompt: what the wall and the schedule runner have always counted. */
+const PERMISSION_TOOLS = new Set(["Bash", "Edit", "Write", "WebFetch"]);
+/**
+ * A question to the user: a dialog in every permission mode, so a call to it
+ * is waiting for the user whatever the mode (and an auto-approve mode does
+ * not make it work).
+ */
+export const ASK_USER_TOOL = "AskUserQuestion";
+/**
+ * More tools that may ask: the agent pane's "Waiting for you" label counts
+ * them, the wall and the schedule runner do not (an allow-listed MCP or search
+ * call would be flagged as a prompt two seconds in).
+ */
+const PANE_PERMISSION_TOOLS = new Set(["NotebookEdit", "WebSearch", "ExitPlanMode"]);
+/** Which tools count as asking: the wall's and runner's set, or the pane's wider one. */
+export type ToolScope = "wall" | "pane";
+const isPermissionTool = (name: string, scope: ToolScope): boolean =>
+  PERMISSION_TOOLS.has(name) || name === ASK_USER_TOOL || (scope === "pane" && (PANE_PERMISSION_TOOLS.has(name) || name.startsWith("mcp__")));
 /** Permission modes that auto-approve tools, so a pending tool_use is work, not a prompt. */
 export const AUTO_APPROVE_MODES = new Set(["auto", "bypassPermissions"]);
 
@@ -70,7 +84,7 @@ export function isInterruptMarker(e: StateEntry | undefined): boolean {
  * permission-mode, system). Without this, a finished turn's trailing metadata
  * masks the assistant's closing text and the session looks like it is still working.
  */
-export function lastTurn(entries: StateEntry[]): Turn {
+export function lastTurn(entries: StateEntry[], scope: ToolScope = "wall"): Turn {
   let i = entries.length - 1;
   while (i >= 0) {
     // An interrupt marker after the last real message means the turn was aborted
@@ -86,10 +100,23 @@ export function lastTurn(entries: StateEntry[]): Turn {
   if (!Array.isArray(last.content)) return "unknown";
   const tail = last.content[last.content.length - 1] as { type?: string; name?: string };
   if (tail?.type === "tool_use") {
-    return tail.name && isPermissionTool(tail.name) ? "permission" : "acting";
+    return tail.name && isPermissionTool(tail.name, scope) ? "permission" : "acting";
   }
   if (tail?.type === "text") return "ended";
   return "acting"; // thinking / partial block → still generating
+}
+
+/** True when the turn's last call is a question to the user (AskUserQuestion), waiting for an answer. */
+export function asksUser(entries: StateEntry[]): boolean {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]!;
+    if (!isRealMessage(e)) continue;
+    const content = e.message?.content;
+    if (e.message?.role !== "assistant" || !Array.isArray(content)) return false;
+    const tail = content[content.length - 1] as { type?: string; name?: string } | undefined;
+    return tail?.type === "tool_use" && tail.name === ASK_USER_TOOL;
+  }
+  return false;
 }
 
 /**
@@ -120,7 +147,7 @@ export function classifySession(
     // A live session that awaits the human is not "working" (no green pulse); the
     // needsYou flag drives the attention styling instead. Under an auto-approving
     // permission mode a pending tool_use is not a prompt — the agent is working.
-    const blocked = turn === "permission" && !AUTO_APPROVE_MODES.has(permissionMode ?? "");
+    const blocked = turn === "permission" && (!AUTO_APPROVE_MODES.has(permissionMode ?? "") || asksUser(entries));
     if (blocked && gap >= SETTLE_MS) return { state: "idle", needsYou: true, needsYouCertain: true };
     if (turn === "ended") return { state: "idle", needsYou: true, needsYouCertain: false };
     return { state: "working", needsYou: false, needsYouCertain: false };

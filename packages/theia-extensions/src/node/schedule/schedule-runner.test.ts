@@ -4,6 +4,7 @@ import { ScheduleRunner, type RunnerPorts } from "./schedule-runner.js";
 import type { WatchEvent } from "./claude-task-watcher.js";
 import type { ScheduleFile } from "./schedule-store.js";
 import type { CheckRequest, CheckResult } from "./check-runner.js";
+import type { PasteOutcome } from "./pty-screen.js";
 import type { WorktreeRequest } from "./workspace.js";
 import { followUpPrompt } from "../../common/schedule/schedule-prompt.js";
 
@@ -24,6 +25,7 @@ function fakes() {
   let watch: ((e: WatchEvent) => void) | undefined;
   let exit: (() => void) | undefined;
   let saved: ScheduleFile | undefined;
+  let pasteOutcome: PasteOutcome = "submitted";
   const ports: RunnerPorts = {
     launch: async (line) => (lines.push(line), { terminalId: 3, processId: 30 }),
     onExit: (_id, l) => ((exit = l), () => (exit = undefined)),
@@ -34,7 +36,7 @@ function fakes() {
     now: () => 1,
     save: async (f) => void (saved = structuredClone(f)),
     publish: () => {},
-    paste: async (terminalId, text) => void log.push(`paste:${terminalId}:${text}`),
+    paste: async (terminalId, text) => (log.push(`paste:${terminalId}:${text}`), pasteOutcome),
     check: async (req, stillWanted) => {
       if (!stillWanted()) return undefined;
       checks.push(req);
@@ -51,6 +53,7 @@ function fakes() {
     checks,
     closes,
     setCheck: (r: CheckResult) => void (checkResult = r),
+    setPaste: (o: PasteOutcome) => void (pasteOutcome = o),
     emit: (e: WatchEvent) => watch!(e),
     exit: () => exit!(),
     saved: () => saved,
@@ -408,6 +411,25 @@ describe("ScheduleRunner", () => {
     return runner;
   };
 
+  it("marks the task as needing the user when the pty showed no idle prompt: the follow-up's Enter fails closed", async () => {
+    for (const outcome of ["not-idle", "left-in-input"] as const) {
+      const f = fakes();
+      f.setPaste(outcome);
+      await start(f);
+      f.emit({ type: "turn-ended", reply: "not yet" });
+      await settle();
+      expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("waiting-on-you");
+    }
+  });
+
+  it("leaves the task running when the follow-up was submitted", async () => {
+    const f = fakes();
+    await start(f);
+    f.emit({ type: "turn-ended", reply: "not yet" });
+    await settle();
+    expect(f.saved()!.runs["s"]!.tasks["a"]!.status).toBe("running");
+  });
+
   it("re-arms the watcher before pasting the follow-up, and renames the session each iteration", async () => {
     const f = fakes();
     await start(f);
@@ -615,7 +637,7 @@ describe("ScheduleRunner — the graph (Slice 4)", () => {
       now: () => 1,
       save: async (f) => void (saved = structuredClone(f)),
       publish: () => {},
-      paste: async () => {},
+      paste: async () => "submitted" as const,
       check: async () => ({ ok: true, tail: "" }),
       close: async (id, pid) => void closes.push([id, pid]),
       prepareWorktree: async (req) => (worktrees.push(req), `/wt/${req.taskId}`),

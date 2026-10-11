@@ -1,5 +1,5 @@
 import { basename, isAbsolute, relative } from "node:path";
-import { AUTO_APPROVE_MODES, lastTurn, type StateEntry } from "./session-state.js";
+import { AUTO_APPROVE_MODES, asksUser, lastTurn, type StateEntry } from "./session-state.js";
 import { isGenuinePrompt } from "./transcript-parser.js";
 import {
   PANE_DIFF_LINES,
@@ -357,10 +357,10 @@ export function tokPerSecOf(entries: readonly PaneEntry[]): number | undefined {
  */
 export function phaseOf(entries: readonly PaneEntry[], calls: readonly Call[], permissionMode?: string): PanePhase {
   const own = entries.filter((e) => e.isSidechain !== true) as StateEntry[];
-  const turn = lastTurn(own);
+  const turn = lastTurn(own, "pane");
   const open = calls.some((c) => !c.result && !interruptedAfter(entries, c.index));
   // Under a mode that approves on its own an open call is work, not a dialog.
-  if (turn === "permission" && !AUTO_APPROVE_MODES.has(permissionMode ?? "")) return "permission";
+  if (turn === "permission" && (!AUTO_APPROVE_MODES.has(permissionMode ?? "") || asksUser(own))) return "permission";
   if (turn === "ended" && !open) return "ready";
   return "working";
 }
