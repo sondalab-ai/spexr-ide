@@ -85,10 +85,10 @@ import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
 import { Backdrop } from "../backdrop/backdrop.js";
 import { WorkingHold } from "./working-hold.js";
 
-/** How many top-priority sessions render as full cards; the rest are condensed rows. */
 /** Why a scheduled run is refused in Restricted Mode. */
 const SCHEDULE_UNTRUSTED = "Trust this workspace to run scheduled tasks.";
 
+/** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bracketedPaste, pasteInto, SchedulePty, withoutClaudeSessionMarkers } from "./schedule-pty.js";
+import { bracketedPaste, SchedulePty, withoutClaudeSessionMarkers } from "./schedule-pty.js";
 
 describe("withoutClaudeSessionMarkers", () => {
   it("clears CLAUDECODE and CLAUDE_CODE_* but keeps the account", () => {
@@ -23,16 +23,6 @@ describe("bracketedPaste", () => {
     const out = bracketedPaste("safe\x9b201~text\x9b31mend");
     expect(out).toBe("\x1b[200~safe201~text31mend\x1b[201~");
     expect(out).not.toMatch(/[\x80-\x9f]/);
-  });
-});
-
-describe("pasteInto", () => {
-  it("pastes, waits, then presses Enter", async () => {
-    const writes: string[] = [];
-    const waits: number[] = [];
-    await pasteInto((d) => writes.push(d), "go", async (ms) => void waits.push(ms));
-    expect(writes).toEqual(["\x1b[200~go\x1b[201~", "\r"]);
-    expect(waits).toEqual([100]);
   });
 });
 

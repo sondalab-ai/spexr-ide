@@ -548,8 +548,8 @@ export class SpexrCommandsContribution
       await this.claudeTerminal.ensureStarted(folder.root);
       await this.pasteToAgent(prompt.body);
       await this.claudeTerminal.reveal();
+      // Recorded when the prompt is handed to the agent, not when it is submitted: the person presses Enter in the terminal, which nothing here can see.
       await this.persistStep(uri, step);
-      this.messages.info(`Sent ${WORKFLOW_STEP_LABEL[step]} prompt for ${spec.frontmatter.slug}.`);
     } catch (err) {
       console.error("[spexr] runWorkflowStep failed", err);
       this.messages.error(
@@ -1165,7 +1165,8 @@ export class SpexrCommandsContribution
       }
       await this.pasteToAgent(buildTodoHandoff(item));
       await this.claudeTerminal.reveal();
-      this.messages.info(expert ? `Sent to ${expert.name}${note}.` : "Sent to the agent.");
+      // Which expert the decision model picked is not in the paste's own toast.
+      if (expert) this.messages.info(`Pasted for ${expert.name}${note}.`);
     } catch (err) {
       console.error("[spexr] workOnTodo failed", err);
       this.messages.error(`Work on this failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -1464,7 +1465,6 @@ export class SpexrCommandsContribution
       await this.claudeTerminal.ensureStarted(folder.root);
       await this.pasteToAgent(payload);
       await this.claudeTerminal.reveal();
-      this.messages.info(`Sent ${slug} to agent.`);
     } catch (err) {
       console.error("[spexr] handoffSpec failed", err);
       this.messages.error(
@@ -1526,7 +1526,6 @@ export class SpexrCommandsContribution
       await this.claudeTerminal.ensureStarted(folder.root);
       await this.pasteToAgent(prompt);
       await this.claudeTerminal.reveal();
-      this.messages.info(`Started retrospective for ${spec.frontmatter.slug}.`);
     } catch (err) {
       console.error("[spexr] retrospectiveSpec failed", err);
       this.messages.error(
@@ -1556,15 +1555,12 @@ export class SpexrCommandsContribution
       // The agent reads the file rather than a copy in the prompt, so unsaved
       // edits have to reach disk first.
       await this.flushDirtyEditor(uri);
-      const slug = uri.path.base.replace(/\.md$/, "");
       const prompt = buildSpecLintFixPrompt({ path: this.workspacePath(uri), findings });
       const folder = await this.agentFolderForSpec(uri);
       if (!folder) return;
       await this.claudeTerminal.ensureStarted(folder.root);
       await this.pasteToAgent(prompt);
       await this.claudeTerminal.reveal();
-      const count = findings.length;
-      this.messages.info(`Sent ${count} ${slug} finding${count === 1 ? "" : "s"} to agent.`);
     } catch (err) {
       console.error("[spexr] fixSpecLint failed", err);
       this.messages.error(

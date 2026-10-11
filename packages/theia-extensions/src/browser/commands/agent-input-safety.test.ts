@@ -29,10 +29,12 @@ describe("what the commands type into the agent", () => {
     expect(manager).not.toMatch(/sendText\("\\r"\)|SHIFT_TAB/);
   });
 
-  it("has the schedule runner use the shared sanitiser, and says its Enter is deliberate", () => {
-    const raw = read("../../node/schedule/schedule-pty.ts");
-    expect(raw).toMatch(/from "\.\.\/\.\.\/common\/terminal-paste\.js"/);
-    expect(raw).toMatch(/unattended/);
+  it("has the schedule runner's one unattended Enter use the shared sanitiser and wait for an idle prompt", () => {
+    const screen = read("../../node/schedule/pty-screen.ts");
+    expect(screen).toMatch(/from "\.\.\/\.\.\/common\/terminal-paste\.js"/);
+    expect(screen).toMatch(/unattended/);
+    expect(code("../../node/schedule/pty-screen.ts")).toMatch(/if \(!idle\(\)\) return "not-idle";[\s\S]*?if \(!idle\(\)\) return "left-in-input";[\s\S]*?write\("\\r"\)/);
+    expect(read("../../node/schedule/schedule-pty.ts")).toMatch(/from "\.\/pty-screen\.js"/);
   });
 });
 
@@ -44,6 +46,13 @@ describe("workspace trust", () => {
     const wall = code("../darkfactory/darkfactory-wall-widget.tsx");
     expect(/private async runSchedule[\s\S]*?terminals\.trusted\(\)/.test(wall)).toBe(true);
     expect(/private async retryTask[\s\S]*?terminals\.trusted\(\)/.test(wall)).toBe(true);
+  });
+
+  it("warns, and stops nothing, when trust is withdrawn while the agent or a scheduled task runs", () => {
+    const watcher = code("../darkfactory/trust-revocation-contribution.ts");
+    expect(watcher).toMatch(/onDidChangeTrust\(\(trusted\) => \{\s*if \(!trusted\) void this\.warn\(\)/);
+    expect(watcher).not.toMatch(/\.kill\(|\.close\(|dispose\(/);
+    expect(code("../spexr-frontend-module.ts")).toMatch(/toService\(SpexrTrustRevocationContribution\)/);
   });
 
   it("is asked before the agent terminal adopts a terminal restored from the layout", () => {

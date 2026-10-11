@@ -7,8 +7,10 @@
  * only as one bracketed paste, stripped of every control character first, and
  * is never followed by Enter: submitting is the person's own key press in the
  * terminal. The one writer of that kind that does press Enter is the schedule
- * runner, an unattended headless flow with nobody to press it
- * (node/schedule/schedule-pty.ts, which uses this same sanitiser).
+ * runner: its tasks are interactive `claude` sessions in a backend pty with
+ * nobody at them, so its Enter is pressed only when the pty's screen shows an
+ * idle input prompt and no dialog (node/schedule/pty-screen.ts, which uses
+ * this same sanitiser), and otherwise the task is marked as needing the user.
  */
 
 /** Start and end of a bracketed paste (DEC private mode 2004). */

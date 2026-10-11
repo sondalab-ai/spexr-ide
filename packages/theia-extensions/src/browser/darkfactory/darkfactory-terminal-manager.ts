@@ -161,7 +161,9 @@ export class SpexrDarkfactoryTerminalManager {
   /**
    * Whether Theia trusts the workspace. A session starts the agent CLI, which
    * reads the folder's own instructions, settings and hooks, so none is started
-   * or re-attached in Restricted Mode.
+   * or re-attached in Restricted Mode. This is the window's workspace trust,
+   * not the trust of the project a session belongs to: a session of another
+   * project is started or re-attached on this window's say.
    */
   async trusted(): Promise<boolean> {
     try {

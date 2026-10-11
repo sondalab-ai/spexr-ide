@@ -62,6 +62,7 @@ import { SpexrEditorAnchorContribution } from "./shell/editor-anchor-contributio
 import { ApplicationShell } from "@theia/core/lib/browser/shell/application-shell";
 import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
+import { SpexrTrustRevocationContribution } from "./darkfactory/trust-revocation-contribution.js";
 import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
@@ -486,6 +487,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   // the layout's settled mark, so it must come after every contribution that
   // touches the layout (Theia runs onDidInitializeLayout in binding order, one
   // at a time). The shell layout injects it for Reset Layout.
+  bind(SpexrTrustRevocationContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrTrustRevocationContribution);
   bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
 });

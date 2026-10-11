@@ -4,6 +4,7 @@ import { IShellTerminalServer } from "@theia/terminal/lib/common/shell-terminal-
 import { ProcessManager } from "@theia/process/lib/node/process-manager";
 import { TerminalProcess } from "@theia/process/lib/node/terminal-process";
 import { bracketedPaste } from "../../common/terminal-paste.js";
+import { SCREEN_TAIL_CHARS, isIdlePrompt, pasteInto, screenRows, type PasteOutcome } from "./pty-screen.js";
 
 export { bracketedPaste };
 
@@ -19,25 +20,6 @@ export function withoutClaudeSessionMarkers(env: NodeJS.ProcessEnv): Record<stri
   return cleared;
 }
 
-/** Wait between a paste and the Enter that submits it, so the TUI has taken the paste in (probe, 2026-09-27). */
-export const PASTE_ENTER_DELAY_MS = 100;
-
-/**
- * Paste `text`, then press Enter once the TUI has taken the paste in. The Enter
- * is deliberate and only here: a scheduled task runs unattended, with nobody
- * to press it. The text goes through the shared sanitiser (common/terminal-paste.ts)
- * like every other writer's.
- */
-export async function pasteInto(
-  write: (data: string) => void,
-  text: string,
-  sleep: (ms: number) => Promise<void>,
-): Promise<void> {
-  write(bracketedPaste(text));
-  await sleep(PASTE_ENTER_DELAY_MS);
-  write("\r");
-}
-
 /**
  * Backend ptys for scheduled tasks, through the same terminal server the
  * frontend's terminals use: a window attaches to one by its terminal id.
@@ -46,6 +28,27 @@ export async function pasteInto(
 export class SchedulePty {
   @inject(IShellTerminalServer) private readonly terminals!: IShellTerminalServer;
   @inject(ProcessManager) private readonly processes!: ProcessManager;
+
+  /** Each task pty's recent output, kept for the idle-prompt gate on the follow-up's Enter (pty-screen.ts). */
+  private readonly tails = new Map<number, string>();
+
+  /** Keep the tail of a pty's output: a reader of its own, so Theia's terminal stream is not touched. */
+  private followOutput(terminalId: number): void {
+    const p = this.processes.get(terminalId);
+    if (!(p instanceof TerminalProcess)) return;
+    this.tails.set(terminalId, "");
+    p.createOutputStream().on("data", (chunk: unknown) => {
+      const text = ((this.tails.get(terminalId) ?? "") + String(chunk)).slice(-SCREEN_TAIL_CHARS);
+      this.tails.set(terminalId, text);
+    });
+    p.onExit(() => this.tails.delete(terminalId));
+  }
+
+  /** The task's pty shows an idle input prompt and no dialog; false when it cannot tell (fails closed). */
+  private idle(terminalId: number): boolean {
+    const tail = this.tails.get(terminalId);
+    return tail !== undefined && isIdlePrompt(screenRows(tail));
+  }
 
   async launch(line: string, cwd: string): Promise<{ terminalId: number; processId: number }> {
     const terminalId = await this.terminals.create({
@@ -56,6 +59,7 @@ export class SchedulePty {
       env: withoutClaudeSessionMarkers(process.env),
     });
     if (terminalId < 0) throw new Error("The terminal server could not start the session.");
+    this.followOutput(terminalId);
     return { terminalId, processId: await this.terminals.getProcessId(terminalId) };
   }
 
@@ -64,12 +68,17 @@ export class SchedulePty {
     if (p instanceof TerminalProcess) p.write(data);
   }
 
-  /** Paste a follow-up into a task's TUI and submit it as one prompt. */
-  paste(terminalId: number, text: string): Promise<void> {
+  /**
+   * Paste a follow-up into a task's TUI and submit it as one prompt, only
+   * while the pty shows an idle input prompt (before the paste and before the
+   * Enter): the outcome says when nothing, or no Enter, was written.
+   */
+  paste(terminalId: number, text: string): Promise<PasteOutcome> {
     return pasteInto(
       (data) => this.write(terminalId, data),
       text,
       (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      () => this.idle(terminalId),
     );
   }
 
