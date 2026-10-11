@@ -70,12 +70,19 @@ export function titleCrumb(roots: readonly string[], file?: string, fold: number
 }
 
 /**
- * The crumb's accessible name: every folder, none folded, so a screen reader
- * hears what the ellipsis hides. The crumb sits in the drag region, where a
- * `title` tooltip never shows, so this is its only long form.
+ * The crumb's folders below the root, every one, none folded: what a screen
+ * reader hears after the root button ("src / probe"), so the ellipsis hides
+ * nothing from it. The root is the button's own name, not repeated here. The
+ * crumb sits in the drag region, where a `title` tooltip never shows, so this
+ * is the folders' only long form. Empty when the file sits in the root.
  */
-export function crumbLabel(roots: readonly string[], file?: string): string {
-  return titleCrumb(roots, file, Number.POSITIVE_INFINITY).join(" / ");
+export function crumbFolders(roots: readonly string[], file?: string): string {
+  return titleCrumb(roots, file, Number.POSITIVE_INFINITY).slice(1).join(" / ");
+}
+
+/** The root button's tooltip: its job, and the chord when the command is bound ("Switch project (⌘ ⌥ P)"). */
+export function switchProjectTooltip(caps?: readonly string[]): string {
+  return caps && caps.length > 0 ? `Switch project (${caps.join(" ")})` : "Switch project";
 }
 
 /** The part of a Dark Factory tile the badge reads. */

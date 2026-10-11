@@ -24,7 +24,8 @@ import {
   agentsLabel,
   avatarLabel,
   bellLabel,
-  crumbLabel,
+  crumbFolders,
+  switchProjectTooltip,
   fieldKeys,
   initialMenuButton,
   initials,
@@ -80,6 +81,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
   private crumb: string[] = [];
   private crumbName = "";
   private keys: FieldKeys | undefined;
+  private switchKeys: FieldKeys | undefined;
   private notificationCount = 0;
   private centerOpen = false;
   private rightOpen = false;
@@ -164,6 +166,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
 
   private readKeys(): void {
     this.keys = fieldKeys(boundKeyCaps(this.keybindings, QUICK_OPEN_COMMAND, keyPlatform(isOSX, isWindows)));
+    this.switchKeys = fieldKeys(boundKeyCaps(this.keybindings, SWITCH_PROJECT_COMMAND, keyPlatform(isOSX, isWindows)));
     this.update();
   }
 
@@ -171,7 +174,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
     const roots = this.workspace.tryGetRoots().map((r) => r.resource.path.toString());
     const file = this.editors.currentEditor?.editor.uri.path.toString();
     this.crumb = titleCrumb(roots, file);
-    this.crumbName = crumbLabel(roots, file);
+    this.crumbName = crumbFolders(roots, file);
     this.update();
   }
 
@@ -255,8 +258,9 @@ export class SpexrTitleBarWidget extends ReactWidget {
               <button
                 type="button"
                 className="spexr-titlebar__root"
-                title="Switch project"
+                title={switchProjectTooltip(this.switchKeys?.caps)}
                 aria-label={`${this.crumb[0]}, switch project`}
+                aria-keyshortcuts={this.switchKeys?.aria}
                 onClick={this.onSwitchProject}
                 data-parity="title.crumb.root"
               >
@@ -272,7 +276,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
                   </React.Fragment>
                 ))}
               </span>
-              <span className="spexr-sr-only">{this.crumbName}</span>
+              {this.crumbName && <span className="spexr-sr-only">{this.crumbName}</span>}
             </span>
           )}
         </div>

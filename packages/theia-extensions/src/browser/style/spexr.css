@@ -1713,8 +1713,26 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   cursor: pointer;
 }
 
+.spexr-titlebar-host .spexr-titlebar__root {
+  position: relative;
+}
+
 .spexr-titlebar-host .spexr-titlebar__root:hover {
   color: var(--slc-text);
+}
+
+/* A chevron on hover and focus says the root is a control: it sits over the
+   separator after it, so the crumb does not move (Lumen's has no room for it). */
+.spexr-titlebar-host .spexr-titlebar__root:is(:hover, :focus-visible)::after {
+  content: "\eab4";
+  position: absolute;
+  inset-inline-end: -14px;
+  top: 50%;
+  translate: 0 -50%;
+  padding-inline: 2px;
+  font: normal 12px/1 codicon;
+  color: var(--slc-text-secondary);
+  background: var(--slc-canvas);
 }
 
 .spexr-titlebar-host .spexr-titlebar__root:focus-visible {
