@@ -9,8 +9,12 @@ export interface AgentPaneComposerProps {
   readonly file: { readonly name: string; readonly path: string } | undefined;
   readonly chipPressed: boolean;
   readonly onChip: () => void;
-  /** The agent is in plan mode, as the transcript's permission-mode says. */
+  /** The agent's footer shows plan mode (read from the terminal; unknown is not pressed). */
   readonly planPressed: boolean;
+  /** The agent's footer shows a mode that acts without asking (accept edits, auto, bypass). */
+  readonly autoApprove: boolean;
+  /** What to do next, or what the text will do: shown under the field. */
+  readonly hint?: string | undefined;
   readonly state: ComposerState;
   readonly onSend: () => void;
   readonly onPlan: () => void;
@@ -19,10 +23,12 @@ export interface AgentPaneComposerProps {
 }
 
 /**
- * The composer: Lumen's message box at the foot of the agent pane. It types
- * into the agent terminal's TUI, so it is a keyboard with a field: Enter
- * sends, Shift+Enter breaks the line, Plan is Shift+Tab. On another session
- * than the agent terminal's it is only "Open in terminal".
+ * The composer: Lumen's message box at the foot of the agent pane. Send (or
+ * Enter in the field) pastes the message into the agent terminal's input and
+ * brings the terminal forward; it never presses Enter there, so the person
+ * sends it with their own key. Shift+Enter breaks the line. Plan only brings
+ * the terminal forward: the mode is switched there with Shift+Tab. On another
+ * session than the agent terminal's it is only "Open in terminal".
  */
 export const AgentPaneComposer: React.FC<AgentPaneComposerProps> = (p) => {
   const { state } = p;
@@ -66,11 +72,16 @@ export const AgentPaneComposer: React.FC<AgentPaneComposerProps> = (p) => {
       </label>
       {state.reason ? (
         <p id={reasonId} className="spexr-agent-composer__note" role="status">
-          {state.reason === "needs-you"
-            ? nls.localize("spexr/agentPane/sendBlocked", "Waiting for you in the terminal: answer there first.")
-            : state.reason === "untrusted"
-              ? nls.localize("spexr/agentPane/trust", "Trust this workspace to start the agent.")
-              : nls.localize("spexr/agentPane/working", "Agent is working")}
+          {nls.localize("spexr/agentPane/trust", "Trust this workspace to start the agent.")}
+        </p>
+      ) : p.hint ? (
+        <p className="spexr-agent-composer__note" role="status">
+          {p.hint}
+        </p>
+      ) : null}
+      {p.autoApprove ? (
+        <p className="spexr-agent-composer__warn" role="status">
+          {nls.localize("spexr/agentPane/autoApprove", "Auto-approve on: the agent acts without asking. Shift+Tab in the terminal switches it off.")}
         </p>
       ) : null}
       <div className="spexr-agent-composer__bar">

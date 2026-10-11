@@ -15,7 +15,7 @@ import { parseTranscript } from "./transcript-parser.js";
 import { buildFollowEvents, type TurnEntry } from "./turns.js";
 import type { FollowEvent } from "../../common/darkfactory-protocol.js";
 import { PANE_LOG_EVENTS } from "../../common/agent-pane-protocol.js";
-import type { AgentPaneBinding, AgentPaneCheckpoint, AgentPaneClient, AgentPaneService, AgentPaneSnapshot, PanePlanItem } from "../../common/agent-pane-protocol.js";
+import type { AgentPaneBinding, AgentPaneClient, AgentPaneService, AgentPaneSnapshot, PanePlanItem } from "../../common/agent-pane-protocol.js";
 
 /** How much of a transcript's end the first read takes: a turn's head can be far back in a long one. */
 const TAIL_BYTES = 4 << 20;
@@ -220,21 +220,6 @@ export class AgentPaneBackendService implements AgentPaneService {
     this.successorCheckedAt = undefined;
     this.pendingCandidates = false;
     this.maxOtherMtime = 0;
-  }
-
-  async readPhase(): Promise<AgentPaneCheckpoint | undefined> {
-    if (!this.binding || !this.transcript) {
-      if (this.binding) await this.refresh();
-      if (!this.transcript) return undefined;
-    }
-    await this.refresh();
-    const last = this.last;
-    if (!last || !this.binding) return undefined;
-    return {
-      sessionId: this.binding.sessionId,
-      ...(last.phase ? { phase: last.phase } : {}),
-      ...(last.permissionMode ? { permissionMode: last.permissionMode } : {}),
-    };
   }
 
   async readLog(): Promise<FollowEvent[]> {

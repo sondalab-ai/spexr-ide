@@ -418,7 +418,9 @@ export function buildAgentPaneSnapshot(entries: readonly PaneEntry[], inputs: Pa
   for (const e of entries) {
     if (e.isSidechain === true) continue;
     if (e.message?.role === "assistant" && e.message.model) model = e.message.model;
-    // The mode is a standalone record when it changes, and a field of every user entry.
+    // The last mode the file records. Shift+Tab writes none: Claude Code saves the
+    // mode at file creation, at size thresholds, on compaction, resume and exit, and
+    // as a field of user entries, so this lags the TUI and is only a label.
     if (typeof e.permissionMode === "string" && (e.type === "permission-mode" || e.message?.role === "user")) permissionMode = e.permissionMode;
     updatedAtMs = timeOf(e) ?? updatedAtMs;
   }

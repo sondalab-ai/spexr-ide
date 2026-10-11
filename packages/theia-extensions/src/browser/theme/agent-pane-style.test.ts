@@ -110,6 +110,12 @@ describe("the agent pane in spexr.css", () => {
     expect(px(rules(".spexr-agent-composer__bar"), "gap")).toBe(AGENT_PANE.composerGap);
   });
 
+  it("keeps the composer's focus visible in forced colours: a transparent 2px outline, 1px inside, the system draws", () => {
+    const focused = rules(".spexr-agent-composer:focus-within");
+    expect(focused).toMatch(/outline:\s*2px solid transparent/);
+    expect(focused).toMatch(/outline-offset:\s*-1px/);
+  });
+
   it("focuses the composer with one flush ring in the focus colour, in place of the edge, and the field draws none", () => {
     expect(rules(".spexr-agent-composer:focus-within")).toMatch(/box-shadow:\s*0 0 0 var\(--sl-focus-ring-width, 2px\) var\(--slc-focus\)/);
     expect(rules(".spexr-agent-composer__input")).toMatch(/outline:\s*none/);
@@ -184,7 +190,8 @@ describe("the agent pane's sources", () => {
     expect(src).toMatch(/className="sl-btn sl-btn--ghost sl-btn--sm" aria-pressed=\{p\.planPressed\}/);
     expect(src).toMatch(/type="submit" className="sl-btn sl-btn--primary sl-btn--sm"/);
     expect(src).toMatch(/<kbd className="sl-kbd"[^>]*>\{"\u23ce"\}<\/kbd>/);
-    expect(src).toMatch(/Waiting for you in the terminal/);
+    expect(src).toMatch(/Trust this workspace to start the agent/);
+    expect(src).toMatch(/spexr\/agentPane\/autoApprove/);
     expect(src).not.toMatch(/style=\{\{/);
   });
 
@@ -362,6 +369,14 @@ describe.each(THEMES)("the agent pane on %s", (theme) => {
   it("reads a pressed chip and a pressed Plan at 4.5:1: the accent ink on its 12% wash, and the idle chip's muted ink on the raised ground", () => {
     atLeast(4.5, accentText, mix(acc(), 12, raised), "pressed");
     atLeast(4.5, muted, raised, "idle chip");
+  });
+
+  it("reads the auto-approve warning at 4.5:1 on its own wash over the raised ground, in the warning tone", () => {
+    const body = rules(".spexr-agent-composer__warn");
+    expect(body).toMatch(/color:\s*var\(--slc-warning-text, var\(--slc-warning\)\)/);
+    expect(body).toMatch(/background:\s*color-mix\(in srgb, var\(--slc-warning\) 12%, transparent\)/);
+    const warning = new RegExp("--sl-status-warning:\\s*(#[0-9a-f]{6})").exec(kitFile(`themes/${theme}.css`))![1]!;
+    atLeast(4.5, warning, mix(warning, 12, raised), "auto-approve warning");
   });
 
   function acc(): string {

@@ -2669,6 +2669,9 @@ body .theia-notifications-container.theia-notification-toasts {
 
 .spexr-agent-composer:focus-within {
   box-shadow: 0 0 0 var(--sl-focus-ring-width, 2px) var(--slc-focus);
+  /* Forced colours drop box-shadows: the transparent outline is what they draw, in the system's focus colour. */
+  outline: 2px solid transparent;
+  outline-offset: -1px;
 }
 
 .spexr-agent-composer__field {
@@ -2709,6 +2712,18 @@ body .theia-notifications-container.theia-notification-toasts {
   margin: 0;
   padding-inline: 4px;
   color: var(--slc-text-secondary);
+  font-size: var(--sl-text-xs);
+  line-height: 16px;
+}
+
+/* Auto-approve is on in the agent's footer (accept edits, auto, bypass): said in
+   words and the warning tone, on a wash of its own. */
+.spexr-agent-composer__warn {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--slc-warning-text, var(--slc-warning));
+  background: color-mix(in srgb, var(--slc-warning) 12%, transparent);
   font-size: var(--sl-text-xs);
   line-height: 16px;
 }
