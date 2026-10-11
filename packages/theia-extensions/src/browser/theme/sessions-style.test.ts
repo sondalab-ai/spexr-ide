@@ -73,6 +73,7 @@ describe("the sessions part, the agents pill and the agent log in spexr.css", ()
   });
 
   it("is the log's gutter and line: 16px in, 20px lines, a time column of eight characters of the mono, 12px before the text", () => {
+    expect(rules(".spexr-agent-log-widget.lm-Widget")).toMatch(/overflow:\s*auto/);
     expect(px(rules(".spexr-agent-log"), "padding")).toBe(AGENT_LOG.padding);
     expect(px(rules(".spexr-agent-log .spexr-df-term"), "line-height")).toBe(AGENT_LOG.line);
     expect(px(rules(".spexr-agent-log .spexr-df-term__line"), "gap")).toBe(AGENT_LOG.gap);

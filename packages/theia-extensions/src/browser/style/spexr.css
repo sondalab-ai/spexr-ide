@@ -5656,7 +5656,8 @@ code {
   color: var(--slc-text);
 }
 
-.spexr-agent-log-widget {
+/* Lumino's own `.lm-Widget` clips (overflow: hidden) at the same weight: the log scrolls. */
+.spexr-agent-log-widget.lm-Widget {
   overflow: auto;
   background: var(--sl-bg-surface);
 }
