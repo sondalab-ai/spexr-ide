@@ -10,6 +10,9 @@ export const STATUS_DATA = "spexr-status--data";
 /** The branch entry: its name is the one run of text set as data; the counts and the rest stay the bar's muted sans (S6d, D15). */
 export const STATUS_BRANCH = "spexr-status--branch";
 
+/** The divergence entry beside the branch ("↑2"): flush against the branch's pill, muted sans (S6d). */
+export const STATUS_DIVERGENCE = "spexr-status--divergence";
+
 /** A state that is live (a job running, a download in progress): a dot of the accent before it. */
 export const STATUS_LIVE = "spexr-status--live";
 

@@ -1,32 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { formatBranchEntry, formatSyncEntry } from "./git-status-bar-format.js";
+import { formatBranchEntry, formatDivergenceEntry, formatSyncEntry } from "./git-status-bar-format.js";
 
 describe("formatBranchEntry", () => {
-  it("shows just the branch when in sync", () => {
-    expect(formatBranchEntry({ branch: "main", ahead: 0, behind: 0 })).toBe("$(git-branch) main");
+  it("is the branch glyph and the name", () => {
+    expect(formatBranchEntry({ branch: "main" })).toBe("$(git-branch) main");
   });
-  it("shows ahead only", () => {
-    expect(formatBranchEntry({ branch: "main", ahead: 2, behind: 0 })).toBe(
-      "$(git-branch) main $(arrow-up)2",
-    );
+});
+
+describe("formatDivergenceEntry", () => {
+  it("is nothing when in sync", () => {
+    expect(formatDivergenceEntry({ ahead: 0, behind: 0 })).toBeUndefined();
   });
-  it("shows behind only", () => {
-    expect(formatBranchEntry({ branch: "main", ahead: 0, behind: 3 })).toBe(
-      "$(git-branch) main $(arrow-down)3",
-    );
-  });
-  it("shows both, ahead first", () => {
-    expect(formatBranchEntry({ branch: "dev", ahead: 2, behind: 3 })).toBe(
-      "$(git-branch) dev $(arrow-up)2$(arrow-down)3",
-    );
+  it("shows ahead only, behind only, or both, ahead first", () => {
+    expect(formatDivergenceEntry({ ahead: 2, behind: 0 })).toBe("↑2");
+    expect(formatDivergenceEntry({ ahead: 0, behind: 3 })).toBe("↓3");
+    expect(formatDivergenceEntry({ ahead: 2, behind: 3 })).toBe("↑2↓3");
   });
   it("marks an open merge, which is otherwise invisible once resolved", () => {
-    expect(formatBranchEntry({ branch: "main", ahead: 0, behind: 0, mergeInProgress: true })).toBe(
-      "$(git-branch) main (merging)",
-    );
-    expect(formatBranchEntry({ branch: "main", ahead: 2, behind: 0, mergeInProgress: true })).toBe(
-      "$(git-branch) main $(arrow-up)2 (merging)",
-    );
+    expect(formatDivergenceEntry({ ahead: 0, behind: 0, mergeInProgress: true })).toBe("(merging)");
+    expect(formatDivergenceEntry({ ahead: 2, behind: 0, mergeInProgress: true })).toBe("↑2 (merging)");
   });
 });
 

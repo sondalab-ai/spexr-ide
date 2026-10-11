@@ -408,7 +408,7 @@ const ACTIVITY_TILES = ["explorer-view-container", "search-view-container", "scm
 const HIDDEN_STATUS = ["editor-status-tabbing-config", "editor-language-status-items", "bottom-panel-toggle", "spexr-project", "spexr-resources"];
 
 /** The status bar entries Lumen's bar has, left to right on each side. */
-const STATUS_LEFT = ["spexr-git-branch", "spexr-git-sync", "problem-marker-status"];
+const STATUS_LEFT = ["spexr-git-branch", "spexr-git-divergence", "spexr-git-sync", "problem-marker-status"];
 const STATUS_RIGHT = ["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "editor-status-language"];
 
 /** What {@link probeActivityStatus} read. */

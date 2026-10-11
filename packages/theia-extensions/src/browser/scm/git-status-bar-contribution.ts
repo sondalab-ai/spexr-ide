@@ -3,12 +3,13 @@ import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-bar/status-bar";
 import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { GitCommands } from "./git-commands-contribution.js";
-import { formatBranchEntry, formatSyncEntry } from "./git-status-bar-format.js";
+import { formatBranchEntry, formatDivergenceEntry, formatSyncEntry } from "./git-status-bar-format.js";
 import type { GitStatusDto } from "../../common/git-protocol.js";
-import { STATUS_BRANCH } from "../shell/status-dock.js";
+import { STATUS_BRANCH, STATUS_DIVERGENCE } from "../shell/status-dock.js";
 
 const ENTRY_ID = "spexr-git-branch";
 const SYNC_ENTRY_ID = "spexr-git-sync";
+const DIVERGENCE_ENTRY_ID = "spexr-git-divergence";
 
 /**
  * Current branch and divergence from upstream; click opens the checkout picker.
@@ -46,18 +47,34 @@ export class GitStatusBarContribution implements FrontendApplicationContribution
       // A refresh failure clears the panel's status; mirror that here
       // instead of leaving a stale branch/ahead-behind entry on display.
       this.statusBar.removeElement(ENTRY_ID);
+      this.statusBar.removeElement(DIVERGENCE_ENTRY_ID);
       return;
     }
+    const tooltip = s.mergeInProgress
+      ? "Merge in progress — commit to conclude it"
+      : s.upstream
+        ? `Tracking ${s.upstream}`
+        : "No upstream branch";
     void this.statusBar.setElement(ENTRY_ID, {
       text: formatBranchEntry(s),
       className: STATUS_BRANCH,
       alignment: StatusBarAlignment.LEFT,
       priority: 200,
-      tooltip: s.mergeInProgress
-        ? "Merge in progress — commit to conclude it"
-        : s.upstream
-          ? `Tracking ${s.upstream}`
-          : "No upstream branch",
+      tooltip,
+      command: GitCommands.CHECKOUT.id,
+    });
+    // The divergence is the next pill, flush against the branch's (spexr.css).
+    const divergence = formatDivergenceEntry(s);
+    if (!divergence) {
+      this.statusBar.removeElement(DIVERGENCE_ENTRY_ID);
+      return;
+    }
+    void this.statusBar.setElement(DIVERGENCE_ENTRY_ID, {
+      text: divergence,
+      className: STATUS_DIVERGENCE,
+      alignment: StatusBarAlignment.LEFT,
+      priority: 199,
+      tooltip,
       command: GitCommands.CHECKOUT.id,
     });
   }

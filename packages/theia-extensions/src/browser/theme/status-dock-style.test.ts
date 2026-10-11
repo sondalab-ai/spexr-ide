@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { STATUS_BRANCH, STATUS_DATA, STATUS_LIVE } from "../shell/status-dock.js";
+import { STATUS_BRANCH, STATUS_DATA, STATUS_DIVERGENCE, STATUS_LIVE } from "../shell/status-dock.js";
 
 const resolve = createRequire(import.meta.url).resolve;
 const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
@@ -41,6 +41,7 @@ describe("the status dock's hooks", () => {
   it("read spexr's own class hooks", () => {
     expect(dock).toContain(`.${STATUS_DATA}`);
     expect(dock).toContain(`.${STATUS_BRANCH}`);
+    expect(dock).toContain(`.${STATUS_DIVERGENCE}`);
     expect(dock).toContain(`.${STATUS_LIVE}`);
   });
 });

@@ -1896,6 +1896,23 @@ body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > .spexr-s
   color: var(--slc-text);
 }
 
+/* The divergence ("↑2") is the pill after the branch's, as one fact with it:
+   the branch's pill gives up its end padding and the divergence's text starts
+   4px in (Lumen's "main ↑2" is one item). */
+#theia-statusBar .area.left > .spexr-status--branch:has(+ .spexr-status--divergence) {
+  padding-inline-end: 0;
+}
+
+#theia-statusBar .area.left > .spexr-status--divergence {
+  padding-inline-start: 4px;
+}
+
+/* The problem count's two glyphs are two groups, 12px apart (Lumen's "0" and
+   "2" runs), not Theia's 6. */
+#theia-statusBar #status-bar-problem-marker-status > .codicon ~ .codicon {
+  margin-inline-start: 12px;
+}
+
 /* The warning glyph (the problem count's, and "fetch failed") takes the
    kit's warning tone, a state indicator at 3:1 on the bar's ground
    (status-dock-style.test.ts); its number stays the bar's muted ink. */

@@ -1,23 +1,22 @@
+/** The branch entry's text: the branch glyph and the name, which is the one run set as data (S6d, D15). */
+export function formatBranchEntry(s: { branch: string }): string {
+  return `$(git-branch) ${s.branch}`;
+}
+
 /**
- * Branch plus divergence, e.g. "$(git-branch) main $(arrow-up)2$(arrow-down)3".
- *
- * The arrows are glyphs of their own, not text, so the bar's text runs are the
- * branch's name and the counts: the name is the one run set as data (the mono
- * at the primary ink, S6d), the counts stay the bar's muted sans.
- *
- * An open merge is appended because it is otherwise invisible once its
- * conflicts are resolved: the panel's groups can all be empty with the merge
- * still uncommitted.
+ * The divergence beside the branch, e.g. "↑2↓3", in an entry of its own so its
+ * words stay the bar's muted sans while the branch's name is the mono at the
+ * primary ink (the bar's text runs are split at glyphs, and the arrows are
+ * text, as Lumen's). An open merge is appended because it is otherwise
+ * invisible once its conflicts are resolved: the panel's groups can all be
+ * empty with the merge still uncommitted. Undefined when there is nothing to
+ * say.
  */
-export function formatBranchEntry(s: {
-  branch: string;
-  ahead: number;
-  behind: number;
-  mergeInProgress?: boolean;
-}): string {
-  const arrows = `${s.ahead > 0 ? `$(arrow-up)${s.ahead}` : ""}${s.behind > 0 ? `$(arrow-down)${s.behind}` : ""}`;
-  const merging = s.mergeInProgress ? " (merging)" : "";
-  return `$(git-branch) ${s.branch}${arrows ? ` ${arrows}` : ""}${merging}`;
+export function formatDivergenceEntry(s: { ahead: number; behind: number; mergeInProgress?: boolean }): string | undefined {
+  const arrows = `${s.ahead > 0 ? `↑${s.ahead}` : ""}${s.behind > 0 ? `↓${s.behind}` : ""}`;
+  const merging = s.mergeInProgress ? "(merging)" : "";
+  const text = [arrows, merging].filter(Boolean).join(" ");
+  return text || undefined;
 }
 
 /** What the "synced" item reads: the branch's divergence and whether the last fetch worked. */
