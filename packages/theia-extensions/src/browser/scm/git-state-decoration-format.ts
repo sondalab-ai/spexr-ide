@@ -1,10 +1,16 @@
 import type { GitFileChangeDto, GitFileState } from "../../common/git-protocol.js";
 
-/** A file decoration's letter, colour and tooltip, independent of Theia's `Decoration` type. */
+/**
+ * A file decoration's letter, colour and tooltip, independent of Theia's
+ * `Decoration` type. `bubble` is always false: a changed file marks its own
+ * row with a letter and never its folders with a dot (Lumen's Explorer shows
+ * letters only, S6b).
+ */
 export interface StateDecoration {
   readonly letter: string;
   readonly colorId: string;
   readonly tooltip: string;
+  readonly bubble: false;
 }
 
 // VS Code's own SCM decoration convention: "U" for untracked, "!" for
@@ -18,13 +24,13 @@ export interface StateDecoration {
 // semantic status colours where this table needs five distinct ones; the
 // letter ("D" vs "!") is what actually distinguishes the two states.
 const DECORATION_BY_STATE: Record<GitFileState, StateDecoration> = {
-  A: { letter: "A", colorId: "gitDecoration.addedResourceForeground", tooltip: "Added" },
-  M: { letter: "M", colorId: "gitDecoration.modifiedResourceForeground", tooltip: "Modified" },
-  D: { letter: "D", colorId: "gitDecoration.deletedResourceForeground", tooltip: "Deleted" },
-  R: { letter: "R", colorId: "gitDecoration.renamedResourceForeground", tooltip: "Renamed" },
-  C: { letter: "C", colorId: "gitDecoration.renamedResourceForeground", tooltip: "Copied" },
-  U: { letter: "!", colorId: "gitDecoration.conflictingResourceForeground", tooltip: "Conflicted" },
-  "?": { letter: "U", colorId: "gitDecoration.untrackedResourceForeground", tooltip: "Untracked" },
+  A: { letter: "A", colorId: "gitDecoration.addedResourceForeground", tooltip: "Added", bubble: false },
+  M: { letter: "M", colorId: "gitDecoration.modifiedResourceForeground", tooltip: "Modified", bubble: false },
+  D: { letter: "D", colorId: "gitDecoration.deletedResourceForeground", tooltip: "Deleted", bubble: false },
+  R: { letter: "R", colorId: "gitDecoration.renamedResourceForeground", tooltip: "Renamed", bubble: false },
+  C: { letter: "C", colorId: "gitDecoration.renamedResourceForeground", tooltip: "Copied", bubble: false },
+  U: { letter: "!", colorId: "gitDecoration.conflictingResourceForeground", tooltip: "Conflicted", bubble: false },
+  "?": { letter: "U", colorId: "gitDecoration.untrackedResourceForeground", tooltip: "Untracked", bubble: false },
 };
 
 /**

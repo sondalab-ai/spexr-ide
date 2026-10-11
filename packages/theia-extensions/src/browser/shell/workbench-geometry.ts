@@ -42,6 +42,16 @@ export const WORKBENCH = {
   treeIndent: 16,
   /** A side island's head (Explorer): Lumen's 40. */
   paneHead: 40,
+  /** A head's tool button (the Explorer's "+" and "..."): the kit's 24 (Lumen 26). */
+  paneTool: 24,
+  /** A head's distance from its last tool to the island's edge: Lumen's 8. */
+  paneToolInset: 8,
+  /** A section's eyebrow header in a side island: 28 (Lumen's 29.6: 9.6 + a 15.2 line + 4.8), its text 8px below the top and 4px above the foot. */
+  sectionHead: 28,
+  /** A section eyebrow's, and a tree row's git letter's, distance from the island's edge (Lumen 14.4 and 15.2). */
+  sectionInset: 16,
+  /** The git letter in a tree row ("M", "U"): the demo's 10.5px mono at 600, rounded to the grid. The one type size in this table. */
+  gitLetter: 12,
   /** A toast's distance from the window's bottom edge: Lumen's 48. */
   toastOffset: 48,
 } as const;

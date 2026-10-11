@@ -12,6 +12,7 @@ describe("decorationForFile", () => {
       letter: "A",
       colorId: "gitDecoration.addedResourceForeground",
       tooltip: "Added",
+      bubble: false,
     });
   });
 
@@ -41,6 +42,7 @@ describe("decorationForFile", () => {
       letter: "C",
       colorId: "gitDecoration.renamedResourceForeground",
       tooltip: "Copied",
+      bubble: false,
     });
   });
 
@@ -49,6 +51,7 @@ describe("decorationForFile", () => {
       letter: "U",
       colorId: "gitDecoration.untrackedResourceForeground",
       tooltip: "Untracked",
+      bubble: false,
     });
   });
 
@@ -57,6 +60,7 @@ describe("decorationForFile", () => {
       letter: "!",
       colorId: "gitDecoration.conflictingResourceForeground",
       tooltip: "Conflicted",
+      bubble: false,
     });
   });
 
@@ -68,5 +72,24 @@ describe("decorationForFile", () => {
 
   it("returns undefined when neither state is set", () => {
     expect(decorationForFile(file({}))).toBeUndefined();
+  });
+});
+
+describe("the letters-only mapping (S6b, L7)", () => {
+  it("never bubbles: a changed file marks its own row, not its folders", () => {
+    for (const state of ["A", "M", "D", "R", "C", "U", "?"] as const) {
+      expect(decorationForFile(file({ unstagedState: state }))?.bubble, state).toBe(false);
+    }
+  });
+
+  it("shows Lumen's two letters as the demo does: M for a modified file, U for an untracked one", () => {
+    expect(decorationForFile(file({ unstagedState: "M" }))?.letter).toBe("M");
+    expect(decorationForFile(file({ unstagedState: "?" }))?.letter).toBe("U");
+  });
+
+  it("gives every state one single-character letter", () => {
+    for (const state of ["A", "M", "D", "R", "C", "U", "?"] as const) {
+      expect(decorationForFile(file({ unstagedState: state }))?.letter.length, state).toBe(1);
+    }
   });
 });
