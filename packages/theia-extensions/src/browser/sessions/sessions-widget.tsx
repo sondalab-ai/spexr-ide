@@ -7,7 +7,7 @@ import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { AgentFollowHub } from "../agent-pane/agent-follow-hub.js";
 import { AgentPaneViewContribution } from "../agent-pane/agent-pane-view-contribution.js";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
-import { AgentTilesFeed } from "./agent-tiles-feed.js";
+import { SpexrAgentsCountService } from "../titlebar/agents-count-service.js";
 import { DARKFACTORY_OPEN_COMMAND, DARKFACTORY_OPEN_SESSION_COMMAND } from "../darkfactory/darkfactory-open-session.js";
 import { focusTarget, sessionRows, viewTarget, type SessionRow } from "./sessions-model.js";
 
@@ -21,13 +21,13 @@ export const SESSIONS_VIEW_ID = "spexr.view.sessions";
  * a name over `state · age · n tools`. A click, or an arrow key, points the
  * agent pane at that session, read-only (AgentFollowHub); the agent's own
  * session is the one that can be typed into. The selected row is the one the
- * pane follows. Rows come from Dark Factory's scan (AgentTilesFeed).
+ * pane follows. Rows come from Dark Factory's scan (SpexrAgentsCountService).
  */
 @injectable()
 export class SessionsWidget extends ReactWidget {
   static readonly ID = SESSIONS_VIEW_ID;
 
-  @inject(AgentTilesFeed) private readonly feed!: AgentTilesFeed;
+  @inject(SpexrAgentsCountService) private readonly agents!: SpexrAgentsCountService;
   @inject(AgentFollowHub) private readonly hub!: AgentFollowHub;
   @inject(AgentPaneViewContribution) private readonly paneView!: AgentPaneViewContribution;
   @inject(ClaudeTerminalManager) private readonly terminal!: ClaudeTerminalManager;
@@ -49,11 +49,10 @@ export class SessionsWidget extends ReactWidget {
 
   @postConstruct()
   protected init(): void {
-    this.toDispose.push(this.feed.onDidChange(() => this.update()));
+    this.toDispose.push(this.agents.onDidScan(() => this.update()));
     this.toDispose.push(this.hub.onDidChange(() => this.update()));
     this.toDispose.push(this.terminal.onDidChangeSession(() => this.update()));
     this.toDispose.push(this.workspace.onWorkspaceChanged(() => this.update()));
-    this.feed.start();
   }
 
   protected override onAfterAttach(msg: Message): void {
@@ -70,7 +69,7 @@ export class SessionsWidget extends ReactWidget {
   private rows(): { rows: SessionRow[]; more: number } {
     const roots = this.workspace.tryGetRoots().map((r) => r.resource.path.fsPath());
     const { followed, snapshot } = this.hub.current;
-    return sessionRows(this.feed.tiles(), roots, Date.now(), followed, followed && snapshot?.sessionId === followed ? { sessionId: followed, title: snapshot.title } : undefined);
+    return sessionRows(this.agents.tiles(), roots, Date.now(), followed, followed && snapshot?.sessionId === followed ? { sessionId: followed, title: snapshot.title } : undefined);
   }
 
   /**

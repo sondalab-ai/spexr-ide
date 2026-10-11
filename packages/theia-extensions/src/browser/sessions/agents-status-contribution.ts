@@ -6,7 +6,7 @@ import { STALE_MS } from "../../common/session-timing.js";
 import { AgentFollowHub } from "../agent-pane/agent-follow-hub.js";
 import { statusClass } from "../shell/status-dock.js";
 import { DARKFACTORY_OPEN_COMMAND } from "../darkfactory/darkfactory-open-session.js";
-import { AgentTilesFeed } from "./agent-tiles-feed.js";
+import { SpexrAgentsCountService } from "../titlebar/agents-count-service.js";
 import { agentsPill, modelItem } from "./sessions-model.js";
 
 const PILL_ID = "spexr-agents-pill";
@@ -14,7 +14,7 @@ const MODEL_ID = "spexr-agent-model";
 
 /**
  * The status bar's two agent items. The pill, "● 2 agents · 212 tools", says
- * how many agents run (the title bar's count) and the tool calls those agents
+ * how many agents run (the window's one count, SpexrAgentsCountService) and the tool calls those agents
  * have made; it is not drawn at 0. The model item, "✦ Opus · 86 tok/s", is
  * the model and the rate of the latest completed reply of the session the
  * agent pane follows; it is not drawn without one, or when the transcript has
@@ -26,7 +26,7 @@ const MODEL_ID = "spexr-agent-model";
 @injectable()
 export class SpexrAgentsStatusContribution implements FrontendApplicationContribution {
   @inject(StatusBar) private readonly statusBar!: StatusBar;
-  @inject(AgentTilesFeed) private readonly feed!: AgentTilesFeed;
+  @inject(SpexrAgentsCountService) private readonly agents!: SpexrAgentsCountService;
   @inject(AgentFollowHub) private readonly hub!: AgentFollowHub;
   /** What each item last said, so an unchanged scan or snapshot does not set the entry again. */
   private pillText: string | undefined;
@@ -34,9 +34,8 @@ export class SpexrAgentsStatusContribution implements FrontendApplicationContrib
   private staleTimer: ReturnType<typeof setTimeout> | undefined;
 
   onStart(): void {
-    this.feed.onDidChange(() => this.renderPill());
+    this.agents.onDidScan(() => this.renderPill());
     this.hub.onDidChange(() => this.renderModel());
-    this.feed.start();
     this.renderPill();
     this.renderModel();
   }
@@ -46,7 +45,7 @@ export class SpexrAgentsStatusContribution implements FrontendApplicationContrib
   }
 
   private renderPill(): void {
-    const pill = agentsPill(this.feed.live());
+    const pill = agentsPill(this.agents.live());
     if (!pill) {
       if (this.pillText !== undefined) this.statusBar.removeElement(PILL_ID);
       this.pillText = undefined;

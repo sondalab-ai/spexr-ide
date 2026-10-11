@@ -63,7 +63,6 @@ import { ScmContribution } from "@theia/scm/lib/browser/scm-contribution";
 import { SpexrBootstrapContribution } from "./bootstrap/spexr-bootstrap-contribution.js";
 import { SpexrTrustRevocationContribution } from "./darkfactory/trust-revocation-contribution.js";
 import { AgentFollowHub } from "./agent-pane/agent-follow-hub.js";
-import { AgentTilesFeed } from "./sessions/agent-tiles-feed.js";
 import { SessionsWidget, SESSIONS_VIEW_ID } from "./sessions/sessions-widget.js";
 import { SpexrSessionsContribution } from "./sessions/sessions-contribution.js";
 import { SpexrAgentsStatusContribution } from "./sessions/agents-status-contribution.js";
@@ -297,9 +296,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     .inSingletonScope();
   // S6j: the Sessions part of the Explorer, the status bar's agents pill and
   // model item, and the Agent log in the bottom panel; they share what the pane
-  // follows through AgentFollowHub and the scan through AgentTilesFeed.
+  // follows through AgentFollowHub and the scan through SpexrAgentsCountService.
   bind(AgentFollowHub).toSelf().inSingletonScope();
-  bind(AgentTilesFeed).toSelf().inSingletonScope();
   bind(SessionsWidget).toSelf();
   bind(WidgetFactory)
     .toDynamicValue((ctx) => ({
