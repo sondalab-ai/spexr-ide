@@ -32,11 +32,12 @@ export function formatDivergenceEntry(s: { ahead: number; mergeInProgress?: bool
   return texts.length ? { text: texts.join(" "), label: labels.join(", ") } : undefined;
 }
 
-/** What the "synced" item reads: the branch's divergence and whether the last fetch worked. */
+/** What the "synced" item reads: the branch's divergence and what the last fetches say. */
 export interface SyncState {
   readonly upstream?: string | undefined;
   readonly behind: number;
-  readonly fetchFailed: boolean;
+  /** The fetches' outcome: "unknown" before any fetch and after a branch switch. */
+  readonly outcome: "unknown" | "ok" | "failed";
 }
 
 /** The sync item as the bar draws it: its text (with Theia's `$(icon)` syntax), a tooltip and the screen reader's name. */
@@ -48,17 +49,26 @@ export interface SyncEntry {
 
 /**
  * The "synced" item (S6d, S3, D16). "synced" means no commit to pull and a
- * fetch that did not fail; otherwise it says "↓n to pull" or "fetch failed". A branch
- * with no upstream has nothing to sync with, so there is no item (undefined).
- * Clicking it fetches, whether or not autofetch is on.
+ * fetch that did not fail; otherwise it says "↓n to pull" or "fetch failed".
+ * A failed fetch is said first, and with the count it left when that is known
+ * ("fetch failed · ↓3"): the count may be out of date, but it is not nothing.
+ * Before any fetch, and after a branch switch, nothing is claimed beyond the
+ * tracking branch ("synced" says so in its tooltip). A branch with no upstream
+ * has nothing to sync with, so there is no item (undefined). Clicking it
+ * fetches, whether or not autofetch is on.
  */
 export function formatSyncEntry(s: SyncState): SyncEntry | undefined {
   if (!s.upstream) return undefined;
-  if (s.fetchFailed) {
-    return { text: "$(warning) fetch failed", tooltip: `The last fetch from ${s.upstream} failed — click to try again`, label: "Fetch failed, click to try again" };
+  if (s.outcome === "failed") {
+    const behind = s.behind > 0 ? ` · ↓${s.behind}` : "";
+    const known = s.behind > 0 ? `, ${s.behind} commit${s.behind === 1 ? "" : "s"} to pull as of the last good fetch` : "";
+    return { text: `$(warning) fetch failed${behind}`, tooltip: `The last fetch from ${s.upstream} failed — click to try again`, label: `Fetch failed${known}, click to try again` };
   }
   if (s.behind > 0) {
     return { text: `$(sync) ↓${s.behind} to pull`, tooltip: `${s.behind} commit${s.behind === 1 ? "" : "s"} to pull from ${s.upstream} — click to fetch`, label: `${s.behind} to pull, click to fetch` };
+  }
+  if (s.outcome === "unknown") {
+    return { text: "$(sync) synced", tooltip: `Up to date with ${s.upstream} as last seen; not fetched yet on this branch — click to fetch`, label: "Synced as last seen, not fetched yet, click to fetch" };
   }
   return { text: "$(sync) synced", tooltip: `Up to date with ${s.upstream} as of the last fetch — click to fetch`, label: "Synced, click to fetch" };
 }
@@ -84,11 +94,11 @@ export interface GitBarEntries {
  * none without a status, the branch with a tooltip, the divergence only when
  * there is something to say, the sync item only on a branch with an upstream.
  */
-export function planGitEntries(s: GitBarStatus | undefined, fetchFailed: boolean): GitBarEntries {
+export function planGitEntries(s: GitBarStatus | undefined, outcome: SyncState["outcome"]): GitBarEntries {
   if (!s) return {};
   const tooltip = s.mergeInProgress ? "Merge in progress — commit to conclude it" : s.upstream ? `Tracking ${s.upstream}` : "No upstream branch";
   const divergence = formatDivergenceEntry(s);
-  const sync = formatSyncEntry({ upstream: s.upstream, behind: s.behind, fetchFailed });
+  const sync = formatSyncEntry({ upstream: s.upstream, behind: s.behind, outcome });
   return {
     branch: { text: formatBranchEntry(s), tooltip },
     ...(divergence ? { divergence: { ...divergence, tooltip } } : {}),

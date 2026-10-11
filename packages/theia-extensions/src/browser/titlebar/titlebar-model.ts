@@ -80,11 +80,6 @@ export function crumbFolders(roots: readonly string[], file?: string): string {
   return titleCrumb(roots, file, Number.POSITIVE_INFINITY).slice(1).join(" / ");
 }
 
-/** The root button's tooltip: its job, and the chord when the command is bound ("Switch project (⌘ ⌥ P)"). */
-export function switchProjectTooltip(caps?: readonly string[]): string {
-  return caps && caps.length > 0 ? `Switch project (${caps.join(" ")})` : "Switch project";
-}
-
 /** The part of a Dark Factory tile the badge reads. */
 export interface TileState {
   readonly state: string;

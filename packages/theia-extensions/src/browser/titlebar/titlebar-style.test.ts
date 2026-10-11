@@ -188,6 +188,18 @@ describe("the title bar's markup", () => {
     expect(crumb).toContain('<span className="spexr-sr-only">{this.crumbName}</span>');
   });
 
+  it("says the chord once, to a screen reader as the shortcut, not as well in the tooltip it would read as a description", () => {
+    const crumb = widget.slice(widget.indexOf('className="spexr-titlebar__root"'), widget.indexOf("</button>", widget.indexOf('className="spexr-titlebar__root"')));
+    expect(crumb).toContain("aria-keyshortcuts={this.switchKeys?.aria}");
+    expect(crumb).toContain('title="Switch project"');
+    expect(crumb).toContain("aria-label=");
+  });
+
+  it("draws the root's chevron on the title bar's own ground, the canvas, in both themes", () => {
+    expect(rule("#theia-top-panel")).toMatch(/background:\s*var\(--slc-canvas\)/);
+    expect(rule(".spexr-titlebar-host .spexr-titlebar__root:is(:hover, :focus-visible)::after")).toMatch(/background:\s*var\(--slc-canvas\)/);
+  });
+
   it("names the avatar after the initials it shows", () => {
     expect(widget).toContain("aria-label={avatarLabel(monogram)}");
   });
