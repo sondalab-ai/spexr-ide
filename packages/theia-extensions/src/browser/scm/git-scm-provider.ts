@@ -1,4 +1,4 @@
-import { FETCH_TIMEOUT_MS, FetchQueue, FetchState, withTimeout } from "./fetch-state.js";
+import { FetchCoordinator, type FetchOutcome } from "./fetch-state.js";
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { Emitter, DisposableCollection } from "@theia/core";
 import type { Event } from "@theia/core";
@@ -284,10 +284,11 @@ export class SpexrGitScmProvider implements ScmProvider {
     if (!this.rootFsPath) return;
     try {
       const status = await this.gitService.getStatus(this.rootFsPath);
-      // Another branch's fetch says nothing about this one.
-      if (this._lastStatus && this._lastStatus.branch !== status.branch && this.fetchState.reset()) this._onDidChangeFetchStateEmitter.fire();
+      const switched = this._lastStatus !== undefined && this._lastStatus.branch !== status.branch;
       if (sameStatus(this._lastStatus, status)) return;
       this._lastStatus = status;
+      // Another branch's fetches say nothing about this one: the outcome is unknown again, once the status is the new branch's.
+      if (switched) this.fetches.reset();
       this._onDidChangeStatusEmitter.fire(status);
       const root = this.rootFsPath;
 
@@ -428,47 +429,36 @@ export class SpexrGitScmProvider implements ScmProvider {
   }
 
   /**
-   * Fetch by hand. It goes through the fetch queue (never overlapping a
-   * background fetch, and shared by a second click) with a timeout. Unlike the
-   * background one it may ask for credentials: a user-initiated fetch can show
+   * Fetch by hand: queued, shared by a second click, with a timeout, and
+   * recorded apart from the background ones (fetch-state.ts). Unlike the
+   * background fetch it may ask for credentials: a user-initiated fetch can show
    * an authentication prompt, which is why it is the one the "synced" item runs.
    */
   async fetch(): Promise<void> {
     if (!this.rootFsPath) return;
-    const root = this.rootFsPath;
-    await this.fetches.manual(async () => {
-      try {
-        await withTimeout(this.gitService.fetch(root), FETCH_TIMEOUT_MS, "Fetch");
-      } catch (err) {
-        this.noteFetch(true);
-        throw err;
-      }
-      this.noteFetch(false);
-    });
+    await this.fetches.manualFetch();
     await this.refresh();
   }
 
   /**
-   * Whether the last fetch, by hand or in the background, failed (offline, no
-   * remote, credentials nobody can be asked for). The status bar's "synced"
-   * reads it: behind 0 is only worth saying after a fetch that worked. The
-   * queue runs the two kinds one at a time, so a background failure is always
-   * from a fetch that began after the last manual success, and may replace it.
+   * Whether the last fetches failed (offline, no remote, credentials nobody can
+   * be asked for), as the status bar's "synced" reads it. "unknown" before any
+   * fetch and after a branch switch. A background failure does not undo a newer
+   * manual success (fetch-state.ts).
    */
-  get fetchFailed(): boolean {
-    return this.fetchState.isFailed;
+  get fetchOutcome(): FetchOutcome {
+    return this.fetches.outcome;
   }
 
-  private readonly fetchState = new FetchState();
-  private readonly fetches = new FetchQueue();
   private readonly _onDidChangeFetchStateEmitter = new Emitter<void>();
-  /** The last fetch's outcome changed. Apart from {@link onDidChangeStatus}, which drives the decorations and the breadcrumb meta, and has nothing to do with it. */
+  /** The fetches' outcome changed. Apart from {@link onDidChangeStatus}, which drives the decorations and the breadcrumb meta, and has nothing to do with it. */
   readonly onDidChangeFetchState: Event<void> = this._onDidChangeFetchStateEmitter.event;
 
-  /** Record a fetch's outcome; announced on its own event, and only when it changed. */
-  private noteFetch(failed: boolean): void {
-    if (this.fetchState.record(failed)) this._onDidChangeFetchStateEmitter.fire();
-  }
+  private readonly fetches = new FetchCoordinator({
+    runManual: () => (this.rootFsPath ? this.gitService.fetch(this.rootFsPath) : Promise.resolve()),
+    runBackground: () => (this.rootFsPath ? this.gitService.backgroundFetch(this.rootFsPath) : Promise.resolve()),
+    changed: () => this._onDidChangeFetchStateEmitter.fire(),
+  });
 
   /**
    * Move the remote-tracking branches so `behind` reflects the remote, without
@@ -479,18 +469,7 @@ export class SpexrGitScmProvider implements ScmProvider {
    */
   async backgroundFetch(): Promise<void> {
     if (!this.rootFsPath) return;
-    const root = this.rootFsPath;
-    await this.fetches
-      .enqueue(async () => {
-        try {
-          await withTimeout(this.gitService.backgroundFetch(root), FETCH_TIMEOUT_MS, "Background fetch");
-          this.noteFetch(false);
-        } catch {
-          /* offline, no remote, credentials nobody can be asked for */
-          this.noteFetch(true);
-        }
-      })
-      .catch(() => undefined);
+    await this.fetches.backgroundFetch();
     await this.refresh();
   }
 

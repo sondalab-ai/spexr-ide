@@ -249,6 +249,19 @@ describe("the left island's width controller", () => {
     expect(store.saved.length).toBe(before);
   });
 
+  it("does nothing until the stored widths have been read: a flush before would overwrite them", async () => {
+    const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 300);
+    let release!: (value: unknown) => void;
+    const store: LeftWidthStore & { saved: unknown[] } = { saved: [], load: () => new Promise((resolve) => (release = resolve)), save: async (w) => void store.saved.push(w) };
+    const widths = new LeftIslandWidth(panel, store);
+    const attaching = widths.attach();
+    widths.flush();
+    expect(store.saved).toEqual([]);
+    release({ [SEARCH]: 280 });
+    await attaching;
+    expect(widths.remembered).toEqual({ [SEARCH]: 280, [EXPLORER]: 300 });
+  });
+
   it("drops a pending save on detach", async () => {
     const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 264);
     const { timers, pending } = fakeTimers();

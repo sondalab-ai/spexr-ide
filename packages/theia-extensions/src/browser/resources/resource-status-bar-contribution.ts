@@ -44,11 +44,13 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
     cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
   });
 
+  private subscription: { dispose(): void } | undefined;
+
   onStart(): void {
     // The preference is read once it has loaded: before that `get` answers with the default (off).
     void this.preferences.ready.then(() => {
       this.sync();
-      this.preferences.onPreferenceChanged((e) => {
+      this.subscription = this.preferences.onPreferenceChanged((e) => {
         if (e.preferenceName === SPEXR_STATUS_RESOURCES_PREFERENCE) this.sync();
       });
     });
@@ -60,6 +62,7 @@ export class SpexrResourceStatusBarContribution implements FrontendApplicationCo
   }
 
   onStop(): void {
+    this.subscription?.dispose();
     this.poller.stop();
   }
 

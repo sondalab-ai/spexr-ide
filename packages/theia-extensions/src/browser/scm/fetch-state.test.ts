@@ -1,37 +1,121 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { FetchQueue, FetchState, withTimeout } from "./fetch-state.js";
+import { BACKGROUND_FETCH_TIMEOUT_MS, FetchCoordinator, FetchQueue, MANUAL_FETCH_TIMEOUT_MS, withTimeout, type FetchDeps } from "./fetch-state.js";
 
 const own = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
 
+/** A coordinator over fakes: `manual` and `background` are what the two fetches do, `events` counts announcements. */
+function make(over: Partial<{ manual: () => Promise<void>; background: () => Promise<void>; timeouts: FetchDeps["timeouts"] }> = {}) {
+  const state = { events: 0, manual: async () => undefined, background: async () => undefined, ...over } as { events: number; manual: () => Promise<void>; background: () => Promise<void> };
+  const fetches = new FetchCoordinator({
+    runManual: () => state.manual(),
+    runBackground: () => state.background(),
+    changed: () => void state.events++,
+    ...(over.timeouts ? { timeouts: over.timeouts } : {}),
+  });
+  return { fetches, state };
+}
+const fails = async (): Promise<void> => {
+  throw new Error("offline");
+};
+
 describe("the fetch outcome (S6d, S3)", () => {
-  it("announces a change and only a change", () => {
-    const state = new FetchState();
-    expect(state.isFailed).toBe(false);
-    expect(state.record(false)).toBe(false);
-    expect(state.record(true)).toBe(true);
-    expect(state.isFailed).toBe(true);
-    expect(state.record(true)).toBe(false);
-    expect(state.record(false)).toBe(true);
-    expect(state.isFailed).toBe(false);
+  it("is unknown before any fetch", () => {
+    expect(make().fetches.outcome).toBe("unknown");
   });
 
-  it("is forgotten on a branch switch, and says whether that changed anything", () => {
-    const state = new FetchState();
-    expect(state.reset()).toBe(false);
-    state.record(true);
-    expect(state.reset()).toBe(true);
-    expect(state.isFailed).toBe(false);
+  it("is ok after a fetch that worked and failed after one that did not, announcing only a change", async () => {
+    const { fetches, state } = make();
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("ok");
+    expect(state.events).toBe(1);
+    await fetches.backgroundFetch();
+    expect(state.events).toBe(1); // ok again: nothing to say
+    state.background = fails;
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("failed");
+    expect(state.events).toBe(2);
   });
 
-  it("is a separate event from the status's: a fetch's outcome fires only onDidChangeFetchState, and a branch switch resets it", () => {
+  it("keeps a manual success through background failures: on a remote that needs credentials the unattended fetch fails every tick", async () => {
+    const { fetches, state } = make({ background: fails });
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("failed");
+    await fetches.manualFetch(); // the user's fetch works, with the credentials the prompt got
+    expect(fetches.outcome).toBe("ok");
+    await fetches.backgroundFetch(); // the next tick fails again
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("ok");
+    expect(state.events).toBe(2); // failed, then ok: the ticks announced nothing
+  });
+
+  it("lets a background success end the override, so a later background failure counts again", async () => {
+    const { fetches, state } = make({ background: fails });
+    await fetches.manualFetch();
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("ok");
+    state.background = async () => undefined;
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("ok");
+    state.background = fails;
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("failed");
+  });
+
+  it("lets a newer manual attempt decide: a failed one is failed whatever the background said, and a new success is ok again", async () => {
+    const { fetches, state } = make();
+    await fetches.backgroundFetch();
+    state.manual = fails;
+    let failure = "";
+    try {
+      await fetches.manualFetch();
+    } catch (err) {
+      failure = (err as Error).message;
+    }
+    expect(failure).toBe("offline");
+    expect(fetches.outcome).toBe("failed");
+    state.manual = async () => undefined;
+    await fetches.manualFetch();
+    expect(fetches.outcome).toBe("ok");
+  });
+
+  it("is unknown again after a branch switch, and says so once", async () => {
+    const { fetches, state } = make();
+    await fetches.manualFetch();
+    const before = state.events;
+    fetches.reset();
+    expect(fetches.outcome).toBe("unknown");
+    expect(state.events).toBe(before + 1);
+    fetches.reset();
+    expect(state.events).toBe(before + 1);
+  });
+
+  it("counts a fetch that outlasts its limit as failed, a manual one getting the longer limit", async () => {
+    expect(MANUAL_FETCH_TIMEOUT_MS).toBeGreaterThan(BACKGROUND_FETCH_TIMEOUT_MS);
+    const hang = (): Promise<void> => new Promise(() => undefined);
+    const { fetches } = make({ manual: hang, background: hang, timeouts: { manual: 20, background: 10 } });
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("failed");
+    let failure = "";
+    try {
+      await fetches.manualFetch();
+    } catch (err) {
+      failure = (err as Error).message;
+    }
+    expect(failure).toContain("timed out");
+  });
+
+  it("is wired to the provider, with the limits the backend's own are shorter than", () => {
     const provider = own("./git-scm-provider.ts");
-    const note = provider.slice(provider.indexOf("private noteFetch(failed: boolean)"), provider.indexOf("async backgroundFetch()"));
-    expect(note).toContain("_onDidChangeFetchStateEmitter.fire()");
-    expect(note).not.toContain("_onDidChangeStatusEmitter");
-    expect(provider).toContain("this._lastStatus.branch !== status.branch && this.fetchState.reset()");
-    expect(own("./git-status-bar-contribution.ts")).toContain("this.registry.onDidChangeFetchState(() => this.renderActive())");
+    expect(provider).toContain("new FetchCoordinator({");
+    expect(provider).toContain("get fetchOutcome(): FetchOutcome");
+    expect(provider).toContain("a user-initiated fetch can show");
+    const backend = own("../../node/spexr-git-backend-service.ts");
+    expect(backend).toContain("const MANUAL_FETCH_TIMEOUT_MS = 120_000;");
+    expect(backend).toContain("timeout: { block: MANUAL_FETCH_TIMEOUT_MS }");
+    expect(BACKGROUND_FETCH_TIMEOUT_MS).toBeGreaterThan(20_000);
+    expect(MANUAL_FETCH_TIMEOUT_MS).toBeGreaterThan(120_000);
   });
 });
 
@@ -85,14 +169,6 @@ describe("the fetch queue", () => {
     }
     expect(failure).toBe("offline");
     expect(await queue.enqueue(async () => "ok")).toBe("ok");
-  });
-
-  it("runs the provider's fetches through it, with a timeout", () => {
-    const provider = own("./git-scm-provider.ts");
-    expect(provider).toContain("this.fetches.manual(");
-    expect(provider).toContain("this.fetches\n      .enqueue(");
-    expect(provider).toContain("withTimeout(this.gitService.fetch(root), FETCH_TIMEOUT_MS");
-    expect(provider).toContain("a user-initiated fetch can show");
   });
 });
 

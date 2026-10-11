@@ -50,6 +50,13 @@ const MAX_COMMIT_DIFF_CHARS = 512_000;
  */
 const BACKGROUND_FETCH_TIMEOUT_MS = 20_000;
 
+/**
+ * How long a fetch by hand may go without output before it is killed: longer,
+ * since the user may be answering an authentication prompt. Shorter than the
+ * frontend's own limit, so git is gone before the fetch queue is freed.
+ */
+const MANUAL_FETCH_TIMEOUT_MS = 120_000;
+
 /** How long `git config --get user.name` may go without output before it is killed. */
 const USER_NAME_TIMEOUT_MS = 5_000;
 
@@ -725,7 +732,11 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async fetch(root: string): Promise<void> {
-    await this.git(root).fetch();
+    // Its own client, as the background fetch's: the shared one has no timeout, and a fetch stalled on an
+    // unreachable remote would hold every other operation on the repository behind it.
+    await simpleGit(root, { maxConcurrentProcesses: 1, timeout: { block: MANUAL_FETCH_TIMEOUT_MS }, unsafe: INHERITED_ENV_UNSAFE })
+      .env({ ...process.env, GIT_OPTIONAL_LOCKS: "0" })
+      .fetch();
   }
 
   async backgroundFetch(root: string): Promise<void> {

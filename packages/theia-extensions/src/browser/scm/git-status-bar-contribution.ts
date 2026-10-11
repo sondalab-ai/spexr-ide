@@ -41,7 +41,7 @@ export class GitStatusBarContribution implements FrontendApplicationContribution
    */
   private renderActive(): void {
     const active = this.registry.active;
-    applyGitEntries<StatusBarEntry>(this.statusBar, planGitEntries(active?.lastStatus, active?.fetchFailed ?? false), (id, parts) => ({
+    applyGitEntries<StatusBarEntry>(this.statusBar, planGitEntries(active?.lastStatus, active?.fetchOutcome ?? "unknown"), (id, parts) => ({
       text: parts.text,
       alignment: StatusBarAlignment.LEFT,
       tooltip: parts.tooltip,
