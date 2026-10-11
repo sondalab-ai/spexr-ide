@@ -18,9 +18,6 @@ class FakeService implements AgentPaneService {
   async stop(): Promise<void> {
     this.stops++;
   }
-  async readPhase(): Promise<undefined> {
-    return undefined;
-  }
   async readLog(): Promise<[]> {
     return [];
   }

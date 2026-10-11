@@ -27,4 +27,11 @@ describe("AgentFollowHub", () => {
     expect(asked).toEqual(["b", undefined]);
     expect(hub.pendingView).toBeUndefined();
   });
+
+  it("forgets a pending request when the pane that did not take it is gone", () => {
+    const hub = new AgentFollowHub();
+    hub.requestView("b");
+    hub.clearPending();
+    expect(hub.pendingView).toBeUndefined();
+  });
 });

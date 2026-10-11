@@ -5,6 +5,7 @@ import { nls } from "@theia/core/lib/common/nls";
 import { STALE_MS } from "../../common/session-timing.js";
 import { AgentFollowHub } from "../agent-pane/agent-follow-hub.js";
 import { statusClass } from "../shell/status-dock.js";
+import { DARKFACTORY_OPEN_COMMAND } from "../darkfactory/darkfactory-open-session.js";
 import { AgentTilesFeed } from "./agent-tiles-feed.js";
 import { agentsPill, modelItem } from "./sessions-model.js";
 
@@ -18,13 +19,18 @@ const MODEL_ID = "spexr-agent-model";
  * the model and the rate of the latest completed reply of the session the
  * agent pane follows; it is not drawn without one, or when the transcript has
  * been silent for longer than a working session may be (the rate is then
- * not what the agent does now).
+ * not what the agent does now). The model item follows whatever session the
+ * agent pane is viewing, so it is empty while the pane is closed. The pill
+ * opens the Agents wall.
  */
 @injectable()
 export class SpexrAgentsStatusContribution implements FrontendApplicationContribution {
   @inject(StatusBar) private readonly statusBar!: StatusBar;
   @inject(AgentTilesFeed) private readonly feed!: AgentTilesFeed;
   @inject(AgentFollowHub) private readonly hub!: AgentFollowHub;
+  /** What each item last said, so an unchanged scan or snapshot does not set the entry again. */
+  private pillText: string | undefined;
+  private modelText: string | undefined;
   private staleTimer: ReturnType<typeof setTimeout> | undefined;
 
   onStart(): void {
@@ -42,10 +48,14 @@ export class SpexrAgentsStatusContribution implements FrontendApplicationContrib
   private renderPill(): void {
     const pill = agentsPill(this.feed.live());
     if (!pill) {
-      this.statusBar.removeElement(PILL_ID);
+      if (this.pillText !== undefined) this.statusBar.removeElement(PILL_ID);
+      this.pillText = undefined;
       return;
     }
+    if (pill.text === this.pillText) return;
+    this.pillText = pill.text;
     void this.statusBar.setElement(PILL_ID, {
+      command: DARKFACTORY_OPEN_COMMAND.id,
       text: pill.text,
       className: statusClass({ live: true, agents: true }),
       alignment: StatusBarAlignment.LEFT,
@@ -59,9 +69,12 @@ export class SpexrAgentsStatusContribution implements FrontendApplicationContrib
     const snapshot = this.hub.current.snapshot;
     const item = modelItem(snapshot, Date.now());
     if (!item) {
-      this.statusBar.removeElement(MODEL_ID);
+      if (this.modelText !== undefined) this.statusBar.removeElement(MODEL_ID);
+      this.modelText = undefined;
       return;
     }
+    if (item.text !== this.modelText) {
+      this.modelText = item.text;
     void this.statusBar.setElement(MODEL_ID, {
       text: `$(sparkle) ${item.text}`,
       className: statusClass({ data: true }),
@@ -69,6 +82,7 @@ export class SpexrAgentsStatusContribution implements FrontendApplicationContrib
       priority: 1000,
       tooltip: nls.localize("spexr/sessions/modelTip", "The model and its output rate on the latest reply"),
     });
+    }
     // A session that is not working keeps the item only while its last reply is recent: look again when it stops being.
     if (snapshot?.state !== "working" && snapshot?.updatedAtMs !== undefined) {
       this.staleTimer = setTimeout(() => this.renderModel(), Math.max(1000, snapshot.updatedAtMs + STALE_MS - Date.now() + 1));

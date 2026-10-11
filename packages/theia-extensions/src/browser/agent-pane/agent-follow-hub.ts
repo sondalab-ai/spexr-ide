@@ -46,6 +46,11 @@ export class AgentFollowHub {
     this.changed.fire(next);
   }
 
+  /** The pane is gone: what was asked of it is not asked of the next one that opens. */
+  clearPending(): void {
+    this.requested = undefined;
+  }
+
   /** Ask the pane to follow `sessionId` read-only, or its own session with undefined. */
   requestView(sessionId: string | undefined): void {
     this.requested = sessionId;

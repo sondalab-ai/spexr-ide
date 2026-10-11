@@ -4,9 +4,10 @@ import { nls } from "@theia/core/lib/common/nls";
 import { AGENT_LOG_VIEW_ID, type AgentLogWidget } from "./agent-log-widget.js";
 
 /**
- * Where the Agent log sits among the bottom panel's tabs: after the terminals
- * and the panels Theia and spexr add (Problems, Output). The tab order of the
- * whole panel is the bottom-panel slice's to decide; this is only "last".
+ * Where the Agent log sits among the bottom panel's tabs: a high rank, so it is
+ * added after the others. The panel's real tab order (Terminal, Problems,
+ * Output, Agent log) is the bottom-panel slice's (S6e) to set; this is only a
+ * default until then.
  */
 export const AGENT_LOG_RANK = 1000;
 

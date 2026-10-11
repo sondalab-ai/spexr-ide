@@ -374,10 +374,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * when its card is already open. A session the wall has no tile for yet is
    * opened when the next scan brings it.
    */
-  openSession(sessionId: string): void {
+  openSession(sessionId: string, waitForScan = true): void {
     const tile = this.tiles.find((t) => t.sessionId === sessionId);
     if (!tile) {
-      this.pendingOpen = sessionId;
+      // Kept for one scan only: a session the next scan does not bring is not coming.
+      this.pendingOpen = waitForScan ? sessionId : undefined;
       return;
     }
     this.pendingOpen = undefined;
@@ -1008,7 +1009,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     }
     this.adoptLaunched(tiles);
     this.adoptForks(tiles);
-    if (this.pendingOpen) this.openSession(this.pendingOpen);
+    if (this.pendingOpen) {
+      const asked = this.pendingOpen;
+      this.pendingOpen = undefined;
+      this.openSession(asked, false);
+    }
     this.savePins();
     const restore = this.pendingRestore;
     this.pendingRestore = undefined;

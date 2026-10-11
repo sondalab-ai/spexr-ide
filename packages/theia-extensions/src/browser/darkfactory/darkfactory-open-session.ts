@@ -11,3 +11,10 @@ export const DARKFACTORY_OPEN_SESSION_COMMAND: Command = {
   category: "Darkfactory",
   label: "Open Session",
 };
+
+/** Show the Darkfactory wall (the Agents wall), in front: what the status bar's pill and the Sessions part's "N more" open. */
+export const DARKFACTORY_OPEN_COMMAND: Command = {
+  id: "spexr.darkfactory.open",
+  category: "Darkfactory",
+  label: "Open Agents Wall",
+};

@@ -120,6 +120,7 @@ export class AgentPaneWidget extends ReactWidget {
     this.toDispose.push({
       dispose: () => {
         this.controller.dispose();
+        this.hub.clearPending();
         this.hub.publish({ followed: undefined, viewing: false, snapshot: undefined });
       },
     });
