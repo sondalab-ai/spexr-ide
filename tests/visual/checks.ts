@@ -1159,3 +1159,111 @@ export function checkInlineDiagnostics(state: InlineDiagState): string[] {
   if (c.background === "rgba(0, 0, 0, 0)" || c.background === "transparent") problems.push("inline diagnostics: the chip has no wash");
   return problems;
 }
+
+/* ── S6l: terminal command blocks ───────────────────────────────────────── */
+
+/** The command blocks in the bottom panel's terminal, as drawn. */
+export interface TerminalBlocksState {
+  /** The marks each terminal met, from its `data-spexr-blocks` attribute: the diagnosis when there are no blocks. */
+  readonly stats: readonly string[];
+  readonly blocks: ReadonlyArray<{
+    readonly exit: string | null;
+    readonly framed: boolean;
+    readonly chip: string;
+    readonly rect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+    readonly chipRect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | null;
+    readonly radius: string;
+    readonly ringShadow: string;
+    readonly seamBackground: string;
+    readonly exitColor: string;
+  }>;
+}
+
+/** Read the command blocks of the bottom panel's terminal. */
+export async function probeTerminalBlocks(page: Page): Promise<TerminalBlocksState> {
+  return page.evaluate(() => {
+    const els = [...document.querySelectorAll<HTMLElement>("#theia-bottom-content-panel .spexr-term-block")].filter((e) => e.getBoundingClientRect().width > 0);
+    const box = (r: DOMRect): { x: number; y: number; w: number; h: number } => ({ x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 });
+    return {
+      stats: [...document.querySelectorAll<HTMLElement>("[data-spexr-blocks]")].map((e) => `${e.id || e.className.toString().slice(0, 40)}: ${e.getAttribute("data-spexr-blocks")}`),
+      blocks: els.map((el) => {
+        const chip = el.querySelector<HTMLElement>(".spexr-term-block__meta");
+        return {
+          exit: el.getAttribute("data-exit"),
+          framed: el.getAttribute("data-frame") === "true",
+          chip: [...(chip?.children ?? [])].map((c) => (c.textContent ?? "").trim()).join(" "),
+          rect: box(el.getBoundingClientRect()),
+          chipRect: chip ? box(chip.getBoundingClientRect()) : null,
+          radius: getComputedStyle(el, "::after").borderTopLeftRadius,
+          ringShadow: getComputedStyle(el, "::after").boxShadow,
+          seamBackground: getComputedStyle(el, "::before").backgroundColor,
+          exitColor: getComputedStyle(el.querySelector(".spexr-term-block__exit") ?? el).color,
+        };
+      }),
+    };
+  });
+}
+
+/**
+ * The terminal-blocks scene: `true` typed last in the bottom terminal, so its
+ * success block is in the viewport beside the failing `pnpm sl-audit` block's
+ * tail. At least one framed block must be a success (exit 0) with its chip, its
+ * ring on the control edge (not the danger tone) and its seam in the success
+ * tone; the failing block, when still in view, keeps the danger tone. The base
+ * scene's check (below) holds the failing block, which is what fits there.
+ */
+export function checkTerminalSuccessBlock(state: TerminalBlocksState): string[] {
+  const problems: string[] = [];
+  const framed = state.blocks.filter((b) => b.framed);
+  const ok = framed.filter((b) => b.exit === "0");
+  const bad = framed.filter((b) => b.exit === "1");
+  if (ok.length === 0) return [`terminal blocks (success): no framed exit-0 block in view: ${JSON.stringify(state.blocks.map((b) => [b.exit, b.framed, b.chip]))}; marks met per terminal: ${JSON.stringify(state.stats)}`];
+  for (const b of ok) {
+    if (!/^\d{2}:\d{2}:\d{2}( [\d.]+ s)? exit 0$/.test(b.chip)) problems.push(`terminal blocks (success): chip ${JSON.stringify(b.chip)}, want "<time> <duration> exit 0"`);
+    if (b.radius !== "8px") problems.push(`terminal blocks (success): radius ${b.radius}, want 8px`);
+    if (/\(254, 130, 99\)|\(167, 43, 5\)/.test(b.ringShadow) && bad.length === 0) problems.push(`terminal blocks (success): the ring is in the danger tone: ${b.ringShadow}`);
+    if (b.seamBackground === "rgba(0, 0, 0, 0)") problems.push("terminal blocks (success): no seam");
+    if (b.chipRect && !(Math.abs(b.rect.x + b.rect.w - (b.chipRect.x + b.chipRect.w) - 8) <= 2)) problems.push("terminal blocks (success): the chip is not 8px from the block's right edge");
+  }
+  if (bad.length && ok[0]!.ringShadow === bad[0]!.ringShadow) problems.push("terminal blocks (success): the success ring is the failure's");
+  if (bad.length && ok[0]!.exitColor === bad[0]!.exitColor) problems.push("terminal blocks (success): exit 0 and exit 1 share a colour");
+  return problems;
+}
+
+/**
+ * The bottom terminal against the demo's `term.block` (two blocks, `pnpm test
+ * probe` exit 0 and `pnpm sl-audit` exit 1, each with a chip `14:02:11 2.4 s
+ * exit 0`, r8, a ring, a seam on the top edge in the exit tone): the failing
+ * block `pnpm sl-audit` is framed with its chip (the time, the duration and
+ * `exit 1`), the frame's radius 8, the chip's right edge 8px inside the block's,
+ * the failure's ring in the danger tone and the seam in the exit tone. The
+ * first block's prompt line is above the small panel's viewport (its output
+ * wraps in a 513px terminal, where the demo's 748px does not), and xterm
+ * draws no decoration for a marker that is scrolled out: only its tail shows,
+ * so it may be absent (deviation recorded in the PR). The demo's header row
+ * has no counterpart in a terminal, whose command line carries the chip.
+ */
+export function checkTerminalBlocks(state: TerminalBlocksState): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  const framed = state.blocks.filter((b) => b.framed);
+  const last = framed[framed.length - 1];
+  if (!last || last.exit !== "1" || framed.some((b) => b.exit !== "0" && b.exit !== "1") || framed.length > 2) {
+    return [`terminal blocks: framed blocks with exits [${framed.map((b) => b.exit).join(", ")}], want [1] or [0, 1] ending with pnpm sl-audit; marks met per terminal: ${JSON.stringify(state.stats)}; all blocks: ${JSON.stringify(state.blocks.map((b) => [b.exit, b.framed, b.chip]))}`];
+  }
+  for (const [i, b] of framed.entries()) {
+    const want = b.exit === "0" ? "exit 0" : "exit 1";
+    if (!/^\d{2}:\d{2}:\d{2}( [\d.]+ s| \d+ m \d{2} s)? exit [01]$/.test(b.chip) || !b.chip.endsWith(want)) problems.push(`terminal blocks: block ${i} chip ${JSON.stringify(b.chip)}, want "<time> <duration> ${want}"`);
+    if (b.radius !== "8px") problems.push(`terminal blocks: block ${i} radius ${b.radius}, want 8px`);
+    if (b.chipRect && !near(b.rect.x + b.rect.w - (b.chipRect.x + b.chipRect.w), 8, 2)) problems.push(`terminal blocks: block ${i} chip ends ${b.rect.x + b.rect.w - (b.chipRect.x + b.chipRect.w)}px from the block's right edge, want 8`);
+    if (b.chipRect && !near(b.chipRect.h, 16, 2)) problems.push(`terminal blocks: block ${i} chip is ${b.chipRect.h}px tall, want 16`);
+    if (b.rect.h < 18) problems.push(`terminal blocks: block ${i} is ${b.rect.h}px tall, less than a line`);
+    if (b.seamBackground === "rgba(0, 0, 0, 0)") problems.push(`terminal blocks: block ${i} has no seam`);
+  }
+  if (framed.length === 2) {
+    if (framed[0]!.ringShadow === framed[1]!.ringShadow) problems.push("terminal blocks: the failure's ring is the success's: want the danger tone for exit 1");
+    if (framed[0]!.exitColor === framed[1]!.exitColor) problems.push("terminal blocks: exit 0 and exit 1 are in the same colour");
+    if (framed[1]!.rect.y <= framed[0]!.rect.y + framed[0]!.rect.h - 1) problems.push("terminal blocks: the second block overlaps the first");
+  }
+  return problems;
+}

@@ -67,6 +67,12 @@ export const SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE = "spexr.experts.activeId";
 export const SPEXR_EDITOR_INLINE_DIAGNOSTICS_PREFERENCE = "spexr.editor.inlineDiagnostics";
 
 /**
+ * Key for the terminal's command blocks: each command of a bash or zsh shell
+ * framed, with its time, duration and exit code (terminal/command-blocks.ts).
+ */
+export const SPEXR_TERMINAL_COMMAND_BLOCKS_PREFERENCE = "spexr.terminal.commandBlocks";
+
+/**
  * Toggle for locally-generated AI file descriptions in search results.
  * On by default. Off shows heuristic descriptions only and skips the local model.
  */
@@ -388,6 +394,12 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       type: "boolean",
       default: true,
       description: "Show each warning and error of an open file as a chip after its line.",
+    },
+    [SPEXR_TERMINAL_COMMAND_BLOCKS_PREFERENCE]: {
+      type: "boolean",
+      default: true,
+      description:
+        "Frame each command of a bash or zsh terminal with its time, duration and exit code. Needs terminal.integrated.enableCommandHistory (on by default in SPEXR); applies to terminals opened after it is changed.",
     },
     [SPEXR_SEARCH_AI_DESCRIPTIONS_PREFERENCE]: {
       type: "boolean",

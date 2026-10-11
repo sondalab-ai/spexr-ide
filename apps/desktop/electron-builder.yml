@@ -38,6 +38,8 @@ asarUnpack:
   - "node_modules/node-pty/**/*"
   - "node_modules/nsfw/**/*"
   - "node_modules/@spexr/theia-extensions/resources/models/**"
+  # A shell reads the shell-integration scripts (--rcfile, ZDOTDIR) from the real disk, not from the archive.
+  - "lib/backend/shell-integrations/**"
 afterSign: build/after-sign.js
 
 mac:

@@ -69,6 +69,9 @@ import { SpexrAgentsStatusContribution } from "./sessions/agents-status-contribu
 import { AgentLogWidget, AGENT_LOG_VIEW_ID } from "./sessions/agent-log-widget.js";
 import { AgentLogViewContribution } from "./sessions/agent-log-contribution.js";
 import { SpexrInlineDiagnosticsContribution } from "./editor/inline-diagnostics-contribution.js";
+import { SpexrTerminalBlocksServiceProxy } from "./terminal/terminal-blocks-service-proxy.js";
+import { TERMINAL_BLOCKS_SERVICE_PATH } from "../common/terminal-blocks-protocol.js";
+import { SpexrCommandBlocksContribution } from "./terminal/command-blocks-contribution.js";
 import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrExplorerChromeContribution } from "./shell/explorer-chrome-contribution.js";
 import { applySectionHeaderHeight } from "./shell/section-header-height.js";
@@ -577,6 +580,11 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
 
   bind(SpexrInlineDiagnosticsContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrInlineDiagnosticsContribution);
+  bind(SpexrTerminalBlocksServiceProxy)
+    .toDynamicValue((ctx) => ctx.container.get(WebSocketConnectionProvider).createProxy(TERMINAL_BLOCKS_SERVICE_PATH))
+    .inSingletonScope();
+  bind(SpexrCommandBlocksContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrCommandBlocksContribution);
 
   // Keep last: its onDidInitializeLayout reads the default sizes back and sets
   // the layout's settled mark, so it must come after every contribution that

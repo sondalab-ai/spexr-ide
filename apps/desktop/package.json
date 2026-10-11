@@ -54,6 +54,7 @@
           "editor.wordWrap": "on",
           "editor.cursorStyle": "block",
           "editor.minimap.enabled": false,
+          "terminal.integrated.enableCommandHistory": true,
           "editor.padding.top": 12,
           "editor.glyphMargin": false,
           "editor.renderLineHighlight": "all",

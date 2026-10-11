@@ -7,7 +7,7 @@ import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { lateFontScene } from "./late-font";
 import { nativeCapture } from "./native";
 import { agentSession, liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
-import { checkOutlineIcons, probeOutlineIcons, DEMO_AGENTS_PILL, DEMO_SESSION_ROWS, checkAgentLog, checkInlineDiagnostics, probeInlineDiagnostics, checkSessions, probeAgentLog, probeSessions, checkBottomPanel, probeBottomPanel, checkActivityStatus, probeActivityStatus, SEEDED_DRAFT, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkAgentPane, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, probeLeftIsland, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
+import { checkTerminalBlocks, checkTerminalSuccessBlock, probeTerminalBlocks, checkOutlineIcons, probeOutlineIcons, DEMO_AGENTS_PILL, DEMO_SESSION_ROWS, checkAgentLog, checkInlineDiagnostics, probeInlineDiagnostics, checkSessions, probeAgentLog, probeSessions, checkBottomPanel, probeBottomPanel, checkActivityStatus, probeActivityStatus, SEEDED_DRAFT, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkAgentPane, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, probeLeftIsland, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
 import { probeProcesses, startLiveStubs, type LiveStubs } from "./stubs";
 import { AGENT_LOG_REGIONS, AGENT_PANE_REGIONS, SESSIONS_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
@@ -197,6 +197,8 @@ for (const theme of THEMES) {
         touchTranscripts(prepared);
         await page.waitForTimeout(2_000);
       }
+      // S6l: the two commands the driver ran are framed (the shell's integration marks them as they finish).
+      await page.locator('#theia-bottom-content-panel .spexr-term-block[data-frame="true"][data-exit="1"]').first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => undefined);
       // S6k: the inline diagnostic is drawn after the language server's markers and a pause.
       await page.locator(".spexr-inline-diag").first().waitFor({ state: "visible", timeout: 60_000 });
       await shoot("base", baseAck);
@@ -206,6 +208,8 @@ for (const theme of THEMES) {
         meta.sessions = { state: sessionsState, regions: sessionsRegions, waitedMs: Date.now() - sessionsWait };
         check("sessions", checkSessions(sessionsState, sessionsRegions));
         // S6k: the chip after line 46's code, drawn from the warning the parity driver set.
+        meta.terminalBlocks = await probeTerminalBlocks(page);
+        check("terminal blocks", checkTerminalBlocks(meta.terminalBlocks));
         meta.inlineDiagnostics = await probeInlineDiagnostics(page);
         check("inline diagnostics", checkInlineDiagnostics(meta.inlineDiagnostics));
         writeMeta();
@@ -374,6 +378,20 @@ for (const theme of THEMES) {
         writeMeta();
       }
       await page.locator("#theia-bottom-content-panel .lm-TabBar-tab", { hasText: /^Terminal/ }).first().click();
+      await page.evaluate(() => (document.querySelector(".monaco-editor textarea") as HTMLElement | null)?.focus());
+      await page.waitForFunction(() => document.querySelector<HTMLElement>('.spexr-island[data-island="main"]')?.hasAttribute("data-lit") === true && !document.querySelector<HTMLElement>('.spexr-island[data-island="bottom"]')?.hasAttribute("data-lit"), undefined, { timeout: 15_000 });
+
+      // S6l: terminal-blocks. `true` typed last in the bottom terminal gives a success block beside the
+      // failing block's tail. A real click and real keys, as a user: the bottom island is lit meanwhile, and
+      // focus goes back to the editor after, as the other scenes expect.
+      await page.locator("#theia-bottom-content-panel .xterm").first().click();
+      await page.keyboard.type("true");
+      await page.keyboard.press("Enter");
+      await page.locator('#theia-bottom-content-panel .spexr-term-block[data-frame="true"][data-exit="0"]').first().waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
+      await shoot("terminal-blocks");
+      meta.terminalBlocksSuccess = await probeTerminalBlocks(page);
+      check("terminal blocks (success)", checkTerminalSuccessBlock(meta.terminalBlocksSuccess));
+      writeMeta();
       await page.evaluate(() => (document.querySelector(".monaco-editor textarea") as HTMLElement | null)?.focus());
       await page.waitForFunction(() => document.querySelector<HTMLElement>('.spexr-island[data-island="main"]')?.hasAttribute("data-lit") === true && !document.querySelector<HTMLElement>('.spexr-island[data-island="bottom"]')?.hasAttribute("data-lit"), undefined, { timeout: 15_000 });
 

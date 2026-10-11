@@ -26,6 +26,10 @@ import { POWER_SERVICE_PATH, type SpexrPowerService } from "../common/power-prot
 import { SpexrPowerBackendService, followPowerSaving } from "./power/spexr-power-backend-service.js";
 import { SCHEDULE_SERVICE_PATH, type SpexrScheduleClient } from "../common/schedule/schedule-protocol.js";
 import { SpexrScheduleBackendService } from "./schedule/spexr-schedule-backend-service.js";
+import { ShellIntegrationInjector } from "@theia/terminal/lib/node/shell-integration-injector";
+import { SpexrShellIntegrationInjector } from "./terminal/spexr-shell-integration-injector.js";
+import { SpexrTerminalBlocksBackend } from "./terminal/spexr-terminal-blocks-service.js";
+import { TERMINAL_BLOCKS_SERVICE_PATH } from "../common/terminal-blocks-protocol.js";
 import { SchedulePty } from "./schedule/schedule-pty.js";
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -119,6 +123,13 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
           return exposed;
         }),
     )
+    .inSingletonScope();
+
+  // Command blocks (S6l): Theia's shell integration with spexr's finished-mark chained after it.
+  bind(SpexrTerminalBlocksBackend).toSelf().inSingletonScope();
+  rebind(ShellIntegrationInjector).to(SpexrShellIntegrationInjector).inSingletonScope();
+  bind(ConnectionHandler)
+    .toDynamicValue((ctx) => new RpcConnectionHandler(TERMINAL_BLOCKS_SERVICE_PATH, () => ctx.container.get(SpexrTerminalBlocksBackend)))
     .inSingletonScope();
 
   bind(SchedulePty).toSelf().inSingletonScope();
