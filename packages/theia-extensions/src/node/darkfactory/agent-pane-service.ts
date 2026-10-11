@@ -363,7 +363,7 @@ export class AgentPaneBackendService implements AgentPaneService {
 
     // The folder is always scanned: whether this transcript is the project's newest decides whether it is live
     // (classifySession). Only the move to a successor is a read-only look's to skip: it never leaves its session.
-    const scan = await this.scanFolder(file);
+    const scan = await this.scanFolder(file, b.readOnly === true);
     const next = await this.snapshot(b, file, epoch);
     const successor = scan && !b.readOnly ? await this.findSuccessor(b, file, scan) : undefined;
     if (epoch !== this.epoch) return;
@@ -441,7 +441,7 @@ export class AgentPaneBackendService implements AgentPaneService {
    * left a newer transcript undecided. At most once per few seconds; a scan
    * wanted sooner is deferred to a timer that is cleared with the follow.
    */
-  private async scanFolder(file: string): Promise<FolderScan | undefined> {
+  private async scanFolder(file: string, readOnly = false): Promise<FolderScan | undefined> {
     const dir = join(file, "..");
     const dirMtime = await stat(dir).then((s) => s.mtimeMs, () => undefined);
     const changed = this.dirDirty || dirMtime !== this.dirMtime || this.pendingCandidates;
@@ -477,7 +477,8 @@ export class AgentPaneBackendService implements AgentPaneService {
       const path = join(dir, name);
       const mtimeMs = await stat(path).then((s) => s.mtimeMs, () => 0);
       maxOther = Math.max(maxOther, mtimeMs);
-      if (mtimeMs <= ownMtime) continue;
+      // A read-only look only needs how new its neighbours are, never who might continue it.
+      if (readOnly || mtimeMs <= ownMtime) continue;
       const root = await readRoot(path);
       newer.push({ sessionId, mtimeMs, file: path, ...(root?.atMs !== undefined ? { firstAtMs: root.atMs } : {}), ...(root ? { rootUuid: root.uuid } : {}) });
     }

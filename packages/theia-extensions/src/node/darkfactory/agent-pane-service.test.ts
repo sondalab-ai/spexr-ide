@@ -218,7 +218,9 @@ describe("AgentPaneBackendService", () => {
     s.now.t += 5000;
     await s.svc.refresh();
     const states = s.events.flatMap((e) => (e[0] === "delta" ? [e[1].state] : e[0] === "snapshot" ? [e[1].state] : [])).filter((x) => x !== undefined);
-    expect(states[states.length - 1]).not.toBe("working");
+    // A delta arrived, and it says the session is no longer working: the sibling is newer, so it is not the project's live one.
+    expect(states.length).toBeGreaterThan(0);
+    expect(states[states.length - 1]).toBe("idle");
     expect(s.events.filter((e) => e[0] === "adopted")).toEqual([]);
     await s.svc.stop();
   });

@@ -26,7 +26,7 @@ const px = (body: string, name: string): number => {
 // The numbers repeat INLINE_DIAGNOSTIC in shell/workbench-geometry.ts: CSS cannot read it.
 describe("the inline diagnostic chip in spexr.css", () => {
   it("is the table's chip: 24px after the code, 8px of padding, r4, the sans at 12px", () => {
-    const chip = rules(".spexr-inline-diag");
+    const chip = rules(".monaco-editor .spexr-inline-diag");
     expect(px(chip, "margin-left")).toBe(INLINE_DIAGNOSTIC.marginLeft);
     expect(chip).toMatch(new RegExp(`padding:\\s*0 ${INLINE_DIAGNOSTIC.paddingInline}px`));
     expect(px(chip, "border-radius")).toBe(INLINE_DIAGNOSTIC.radius);
@@ -54,8 +54,11 @@ describe("the inline diagnostics' sources", () => {
     expect(src).toMatch(/after: \{ content: d\.text, inlineClassName: inlineClass\(d\.tone\)/);
     expect(src).not.toMatch(/innerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/);
     expect(src).toMatch(/SPEXR_EDITOR_INLINE_DIAGNOSTICS_PREFERENCE/);
-    expect(src).toMatch(/widget\.isVisible/);
-    expect(src).toMatch(/REFRESH_MS = 200/);
+    expect(src).toMatch(/visible: widget\.isVisible/);
+    expect(src).toMatch(/InjectedTextCursorStops\.None/);
+    expect(src).toMatch(/hoverMessage: \{ value: plainTextBlock\(d\.full\), isTrusted: false \}/);
+    expect(src).toMatch(/widget\.onDidChangeVisibility/);
+    expect(read("../editor/inline-diagnostics-refresher.ts")).toMatch(/REFRESH_MS = 200/);
     expect(read("../preferences/spexr-preferences.ts")).toMatch(/\[SPEXR_EDITOR_INLINE_DIAGNOSTICS_PREFERENCE\]: \{\s*type: "boolean",\s*default: true/);
   });
 });
@@ -69,14 +72,16 @@ const mix = (fg: string, pct: number, bg: string): string => {
   return `#${f.map((c, i) => Math.round(c * (pct / 100) + b[i]! * (1 - pct / 100)).toString(16).padStart(2, "0")).join("")}`;
 };
 
-// The owner's rule: text at least 4.5:1, on the editor's own ground and on the current line's wash.
+// The owner's rule: text at least 4.5:1, on the editor's ground (the surface) and on the raised rung the lit island's ground steps to.
 describe.each(["dark", "light"] as const)("the inline diagnostic chip on %s", (theme) => {
-  const ground = neutrals[theme]["bg-surface"]!;
-  for (const tone of ["warning", "danger"] as const) {
-    it(`reads the ${tone} text at 4.5:1 on its 12% wash over the editor's ground`, () => {
-      const ink = status(theme, tone);
-      const wash = mix(ink, INLINE_DIAGNOSTIC.washPercent, ground);
-      expect(contrastRatio(ink, wash)).toBeGreaterThanOrEqual(4.5);
-    });
+  for (const [name, key] of [["surface", "bg-surface"], ["raised", "bg-surface-raised"]] as const) {
+    const ground = neutrals[theme][key]!;
+    for (const tone of ["warning", "danger"] as const) {
+      it(`reads the ${tone} text at 4.5:1 on its 12% wash over the ${name} ground`, () => {
+        const ink = status(theme, tone);
+        const wash = mix(ink, INLINE_DIAGNOSTIC.washPercent, ground);
+        expect(contrastRatio(ink, wash)).toBeGreaterThanOrEqual(4.5);
+      });
+    }
   }
 });

@@ -221,8 +221,6 @@ export const INLINE_DIAGNOSTIC = {
   paddingInline: 8,
   radius: 4,
   fontSize: 12,
-  /** The chip's own height: a 12px sans's box, as the demo's. */
-  height: 16,
   /** The wash under the text, as a share of the tone. */
   washPercent: 12,
 } as const;

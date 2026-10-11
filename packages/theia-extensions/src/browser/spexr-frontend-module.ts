@@ -516,14 +516,15 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     })
     .inSingletonScope();
 
-  // Keep last: its onDidInitializeLayout reads the default sizes back and sets
-  // the layout's settled mark, so it must come after every contribution that
-  // touches the layout (Theia runs onDidInitializeLayout in binding order, one
-  // at a time). The shell layout injects it for Reset Layout.
   bind(SpexrInlineDiagnosticsContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrInlineDiagnosticsContribution);
   bind(SpexrCommandBlocksContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrCommandBlocksContribution);
+
+  // Keep last: its onDidInitializeLayout reads the default sizes back and sets
+  // the layout's settled mark, so it must come after every contribution that
+  // touches the layout (Theia runs onDidInitializeLayout in binding order, one
+  // at a time). The shell layout injects it for Reset Layout.
   bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
 });
