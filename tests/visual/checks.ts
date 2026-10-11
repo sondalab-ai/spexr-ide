@@ -428,7 +428,8 @@ export function checkAgentPane(state: AgentPaneState, regions: Regions, expanded
       problems.push(`agent pane: diff rows ${state.diff.rows.map((r) => r.kind).join(",")}, want 3 removed then 3 added`);
     }
     const dcard = regions["ap.diff"]?.[0];
-    if (!dcard || !near(dcard.w, AGENT.cardWidth, 1)) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
+    // Expanded, the card sits below the fold of a window the runner clamped (macos-15/26 displays are 1024x768, so the window is 677 tall) and probeRegions drops it; its width is the folded pass's check, the same CSS.
+    if ((dcard || !expanded) && (!dcard || !near(dcard.w, AGENT.cardWidth, 1))) problems.push(`agent pane: diff card ${dcard?.w}px wide, want ${AGENT.cardWidth}`);
   }
 
   if (state.plan.map((p) => p.checked).join() !== "true,true,false") problems.push(`agent pane: plan checks ${state.plan.map((p) => p.checked).join()}, want true,true,false`);
