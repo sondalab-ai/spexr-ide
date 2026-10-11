@@ -107,7 +107,7 @@ export async function probeLitRim(page: Page): Promise<LitRim> {
     return {
       lit,
       wash: image("#theia-main-content-panel .lm-TabBar .theia-tabBar-tab-row"),
-      tint: image("#theia-main-content-panel .theia-breadcrumbs"),
+      tint: image("#theia-main-content-panel .theia-tabBar-breadcrumb-row"),
       drop: handle ? getComputedStyle(handle).boxShadow : null,
     };
   });
@@ -305,23 +305,26 @@ export function checkLeftViews(steps: ReadonlyArray<{ step: string; left: number
 
 // ── S6c: the editor strip ────────────────────────────────────────────────
 
-/** The scenes that keep the base layout: no island is resized and no view opened, so the strip's width is the base scene's. */
-const BASE_LAYOUT_SCENES: readonly string[] = ["base", "palette", "toast", "focus-tree", "tabs-crumbs"];
+/**
+ * Scenes exempt from the aligned-strips check, and why. A fixture difference,
+ * not a defect: the fixture's main strip holds the Welcome and Specs tabs,
+ * which the demo's has not, so it overflows, and Theia scrolls it when the
+ * island narrows (agent-front: the left island at 432) or when the right
+ * island's views open over it (right-panel). Their counts are in the summary.
+ */
+const ALIGNED_STRIPS_EXEMPT: readonly string[] = ["right-panel", "agent-front"];
 
 /**
- * The main tab strips need no help from the capture in the scenes that keep
- * the base layout. The scenes' alignment pass scrolls a strip so the current
- * tab comes first; with the pinned tabs in their places (Darkfactory
- * trailing) a strip that fits does not move, and a scroll here means tabs
- * spilled over or the current tab is not where the demo puts it. The later
- * scenes resize the left island (432 for the agent) or open the right
- * island's views over a strip that also holds the fixture's Welcome and
- * Specs tabs, which the demo has not, so Theia scrolls it there; their count
- * is reported in the summary, not asserted.
+ * The main tab strips need no help from the capture. The scenes' alignment
+ * pass scrolls a strip so the current tab comes first; with the pinned tabs in
+ * their places (Darkfactory trailing) a strip that stays put needs no scroll,
+ * and one here means the strip moved on its own. Every scene is checked but
+ * the exempt ones; a scene whose count is null (a crop, which never ran the
+ * pass) is no evidence either way and is skipped.
  */
-export function checkAlignedStrips(scenes: ReadonlyArray<{ scene: string; alignedStrips: number }>): string[] {
+export function checkAlignedStrips(scenes: ReadonlyArray<{ scene: string; alignedStrips: number | null }>): string[] {
   return scenes
-    .filter((s) => BASE_LAYOUT_SCENES.includes(s.scene) && s.alignedStrips !== 0)
+    .filter((s) => s.alignedStrips !== null && s.alignedStrips !== 0 && !ALIGNED_STRIPS_EXEMPT.includes(s.scene))
     .map((s) => `tab strip: scene ${s.scene} needed ${s.alignedStrips} alignment scroll(s), want 0`);
 }
 
@@ -338,6 +341,10 @@ export interface EditorStrip {
   readonly crumbIcons: number;
   readonly meta: { text: string; box: Rect } | null;
   readonly tabIds: string[];
+  /** How far the tabs overflow the strip (scrollWidth less clientWidth); 0 when they fit. Reported, not asserted: see {@link ALIGNED_STRIPS_EXEMPT}. */
+  readonly overflow: number;
+  /** Whether the current tab is cut off by the strip's edges. */
+  readonly currentTabClipped: boolean;
 }
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -352,6 +359,7 @@ export function checkEditorStrip(strip: EditorStrip): string[] {
   if (strip.meta && strip.crumbsRow && !near(strip.meta.box.x + strip.meta.box.w, strip.crumbsRow.x + strip.crumbsRow.w - 16, 2)) {
     problems.push(`editor strip: the meta ends at ${strip.meta.box.x + strip.meta.box.w}, want ${strip.crumbsRow.x + strip.crumbsRow.w - 16}`);
   }
+  if (strip.currentTabClipped) problems.push("editor strip: the current tab is cut off by the strip's edge");
   const wall = strip.tabIds.indexOf("shell-tab-spexr.view.darkfactory");
   if (wall >= 0 && wall !== strip.tabIds.length - 1) problems.push(`editor strip: the Agents tab (Darkfactory) is ${wall + 1} of ${strip.tabIds.length}, want last`);
   return problems;
@@ -367,6 +375,7 @@ export async function probeEditorStrip(page: Page): Promise<EditorStrip> {
     };
     const bar = document.querySelector("#theia-main-content-panel .lm-TabBar");
     const meta = bar?.querySelector(".spexr-breadcrumbs-meta") ?? null;
+    const container = bar?.querySelector<HTMLElement>(".lm-TabBar-content-container") ?? null;
     const textBox = (el: Element): { x: number; y: number; w: number; h: number } => {
       const range = document.createRange();
       range.selectNodeContents(el);
@@ -380,6 +389,12 @@ export async function probeEditorStrip(page: Page): Promise<EditorStrip> {
       crumbIcons: bar?.querySelectorAll(".theia-breadcrumb-item > [class*='codicon'], .theia-breadcrumb-item > .file-icon").length ?? 0,
       meta: meta ? { text: meta.textContent ?? "", box: textBox(meta) } : null,
       tabIds: [...(bar?.querySelectorAll(".lm-TabBar-tab") ?? [])].map((t) => t.id),
+      overflow: Math.max(0, (container?.scrollWidth ?? 0) - (container?.clientWidth ?? 0)),
+      currentTabClipped: (() => {
+        const current = bar?.querySelector(".lm-TabBar-tab.lm-mod-current")?.getBoundingClientRect();
+        const edge = container?.getBoundingClientRect();
+        return !!current && !!edge && (current.left < edge.left - 1 || current.right > edge.right + 1);
+      })(),
     };
   });
 }

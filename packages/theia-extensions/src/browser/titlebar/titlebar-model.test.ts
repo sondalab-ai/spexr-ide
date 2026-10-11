@@ -39,8 +39,9 @@ describe("titleCrumb", () => {
   });
 
   it("never claims a root the file is not in, a sibling with the same prefix included", () => {
-    expect(titleCrumb([ws], "/home/me/probe-engine-2/src/x.ts")).toEqual(["src"]);
-    expect(titleCrumb([ws], "/Untitled-1")).toEqual([]);
+    expect(titleCrumb([ws], "/home/me/probe-engine-2/src/x.ts")).toEqual(["probe-engine"]);
+    expect(titleCrumb([ws], "/Untitled-1")).toEqual(["probe-engine"]);
+    expect(titleCrumb([], "/Untitled-1")).toEqual([]);
   });
 });
 

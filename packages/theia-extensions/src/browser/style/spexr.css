@@ -799,11 +799,13 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      move the label. Lumino keeps one tab per bar in the tab order (a
      roving tabindex), so a focused tab shows the cross as a hovered one does,
      and the editor's Close command closes it from the keyboard.
+   - Pinned tabs keep Theia's pin glyph in that slot (and its unpin
+     affordance), in the muted ink; the slot rules are for the others.
    - Tab icon: the muted ink, the accent text on the current tab.
    - Breadcrumbs: a name each, no icon slot, the current symbol in the
      primary ink at 500; the meta ("+14 −3 · not saved") sits at the row's
      end in the mono, muted, 11px (type is shape: Lumen's own). */
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab > .lm-TabBar-tabCloseIcon {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned) > .lm-TabBar-tabCloseIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -815,7 +817,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   border-radius: 4px;
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab > .lm-TabBar-tabCloseIcon::before {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned) > .lm-TabBar-tabCloseIcon::before {
   content: "";
   display: block;
   width: 6px;
@@ -824,19 +826,19 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   background: none;
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-dirty {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned).theia-mod-dirty {
   --spexr-tab-dot: var(--slc-text-muted);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-dirty.lm-mod-current {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned).theia-mod-dirty.lm-mod-current {
   --spexr-tab-dot: var(--slc-accent);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-dirty > .lm-TabBar-tabCloseIcon::before {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned).theia-mod-dirty > .lm-TabBar-tabCloseIcon::before {
   background: var(--spexr-tab-dot);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:is(:hover, :focus-within) > .lm-TabBar-tabCloseIcon::before {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned):is(:hover, :focus-within) > .lm-TabBar-tabCloseIcon::before {
   content: "\ea76";
   width: auto;
   height: auto;
@@ -846,8 +848,12 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   font: normal normal normal 16px/16px codicon;
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable > .lm-TabBar-tabCloseIcon:hover {
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-closable:not(.theia-mod-pinned) > .lm-TabBar-tabCloseIcon:hover {
   background-color: color-mix(in srgb, var(--slc-text) 8%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab.theia-mod-pinned > .lm-TabBar-tabCloseIcon {
+  color: var(--slc-text-muted);
 }
 
 :root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab .lm-TabBar-tabIcon {
@@ -858,9 +864,19 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   color: var(--slc-accent-text);
 }
 
+/* The row holds the ground, the crumb list and the meta sit on it: Theia
+   paints the list itself, which left a step where the meta starts. */
+#theia-main-content-panel .theia-tabBar-breadcrumb-row {
+  background-color: var(--theia-breadcrumb-background);
+}
+
 #theia-main-content-panel .theia-tabBar-breadcrumb-row > div {
   display: flex;
   align-items: center;
+}
+
+#theia-main-content-panel .theia-tabBar-breadcrumb-row .theia-breadcrumbs {
+  background-color: transparent;
 }
 
 #theia-main-content-panel .theia-tabBar-breadcrumb-row .theia-breadcrumbs {
@@ -1129,7 +1145,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   background-image: var(--slc-lit-wash);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .theia-breadcrumbs {
+/* On the row, not the crumb list: the meta at the row's end shares the
+   tint, so no step shows where it starts (S6c). */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .theia-tabBar-breadcrumb-row {
   background-image: var(--slc-lit-tint);
 }
 

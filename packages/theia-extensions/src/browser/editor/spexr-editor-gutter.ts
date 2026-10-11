@@ -44,6 +44,14 @@ export function withoutOverviewRuler<T extends object>(options: T): T & typeof S
   return { ...options, ...SPEXR_RULER_OPTIONS };
 }
 
+/**
+ * A diff editor's overview ruler off (D27): its `overviewRulerLanes` has no
+ * say over the ruler of the changes, `renderOverviewRuler` does.
+ */
+export function withoutDiffOverviewRuler<T extends object>(options: T): T & { renderOverviewRuler: false } {
+  return { ...withoutOverviewRuler(options), renderOverviewRuler: false };
+}
+
 /** The width Monaco adds to the decorations for the folding controls. */
 export const MONACO_FOLDING_WIDTH = 16;
 

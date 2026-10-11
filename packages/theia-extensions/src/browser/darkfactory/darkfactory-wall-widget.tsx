@@ -1348,18 +1348,26 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
 
   /**
    * The tab reads "Agents", or "Agent · <name>" while a session is lifted into
-   * a card (the newest one). Written only on change, so a render never
-   * re-announces an unchanged title.
+   * a card (the newest one), named as the card is (the user's name, else the
+   * AI headline, else the first sentence), cut to a tab's width. Written only
+   * on change, so an update never re-announces an unchanged title.
    */
   private syncTabLabel(): void {
     const newest = this.pinned[0];
     const tile = newest ? this.tiles.find((t) => t.sessionId === newest) : undefined;
-    const label = agentsTabLabel(tile ? defaultSessionName(tile) : undefined);
+    const summary = tile ? this.summaries.get(tile.sessionId) : undefined;
+    const headline = summary && !summary.loading && summary.summary ? summary.summary.overview || summary.summary.now : "";
+    const label = agentsTabLabel(tile ? defaultSessionName(tile, headline) : undefined);
     if (this.title.label !== label) this.title.label = label;
   }
 
-  protected render(): React.ReactNode {
+  /** The tab's name follows the wall's state after each render, not during one (a title change inside render re-enters the shell). */
+  protected override onUpdateRequest(msg: Message): void {
+    super.onUpdateRequest(msg);
     this.syncTabLabel();
+  }
+
+  protected render(): React.ReactNode {
     if (!this.loaded) {
       return (
         <div className="spexr-df-loading">
