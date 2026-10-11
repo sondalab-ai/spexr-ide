@@ -1,3 +1,4 @@
+import { AGENT_LEFT_RANK } from "../shell/activity-views.js";
 import { injectable, inject, optional } from "@theia/core/shared/inversify";
 import { Disposable, DisposableCollection } from "@theia/core";
 import { Deferred } from "@theia/core/lib/common/promise-util";
@@ -491,7 +492,7 @@ export class ClaudeTerminalManager {
     // reconnected to the backend on wake from standby.
     evictOnAttachFailure(term, () => this.disposeCurrent());
     this.placement = "left";
-    await this.shell.addWidget(term, { area: "left", rank: 1 });
+    await this.shell.addWidget(term, { area: "left", rank: AGENT_LEFT_RANK });
     await this.reveal();
   }
 
@@ -584,7 +585,7 @@ export class ClaudeTerminalManager {
       await this.shell.activateWidget(term.id);
       this.placement = "main";
     } else {
-      await this.shell.addWidget(term, { area: "left", rank: 1 });
+      await this.shell.addWidget(term, { area: "left", rank: AGENT_LEFT_RANK });
       this.placement = "left";
       await this.reveal();
     }

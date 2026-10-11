@@ -103,6 +103,9 @@ import { SpexrBreadcrumbsRenderer } from "./editor/spexr-breadcrumbs-renderer.js
 import { SpexrBreadcrumbMetaService } from "./editor/breadcrumb-meta-service.js";
 import { BreadcrumbRenderer } from "@theia/core/lib/browser/breadcrumbs/breadcrumb-renderer";
 import { BreadcrumbsRendererFactory } from "@theia/core/lib/browser/breadcrumbs/breadcrumbs-renderer";
+import { SpexrDebugContribution, SpexrExtensionsContribution } from "./shell/activity-view-contributions.js";
+import { DebugFrontendApplicationContribution } from "@theia/debug/lib/browser/debug-frontend-application-contribution";
+import { VSXExtensionsContribution } from "@theia/vsx-registry/lib/browser/vsx-extensions-contribution";
 import { SpexrSplitToolbarContribution } from "./editor/split-toolbar-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
 import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
@@ -224,6 +227,9 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   // Lumen islands: the shell areas float as the kit's panes on the canvas, and
   // the one that holds the focus is lit (see shell/islands.ts).
   rebind(ApplicationShell).to(SpexrApplicationShell).inSingletonScope();
+  // Debug and Extensions are not in the default activity bar (S6d, D13).
+  rebind(DebugFrontendApplicationContribution).to(SpexrDebugContribution).inSingletonScope();
+  rebind(VSXExtensionsContribution).to(SpexrExtensionsContribution).inSingletonScope();
   bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
   // The editor island's place, for the palette and the toasts that float above it (S5f).

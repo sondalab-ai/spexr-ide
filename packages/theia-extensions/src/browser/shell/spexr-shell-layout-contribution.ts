@@ -22,7 +22,8 @@ import { consumeProjectLanding } from "../project/project-landing-intent.js";
 import { SpexrRevealOnRestore, type RevealOnRestoreView } from "./reveal-on-restore.js";
 import { SpexrDefaultLayoutContribution } from "./default-layout-contribution.js";
 import { StorageService } from "@theia/core/lib/browser/storage-service";
-import { SECTIONS_MIGRATION_KEY, clearMigrations } from "./explorer-sections.js";
+import { SECTIONS_MIGRATION_KEY, clearMigrations, type MigrationStore } from "./explorer-sections.js";
+import { removeActivityViewsOnce } from "./activity-views.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
 const PINNED_IDS = [WELCOME_VIEW_ID, SPEC_VIEW_ID, CLAUDE_TERMINAL_ID] as const;
@@ -112,6 +113,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       const alreadyConfigured = this.layoutAlreadyConfigured();
       if (!alreadyConfigured) await this.openWelcome();
       await this.openSideViews();
+      await this.removeActivityViews();
       await this.revealRegisteredDefaults();
       if (!alreadyConfigured) await this.openTerminal();
       // A project switch has to land on a project tab: the restored layout, plus
@@ -176,7 +178,23 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     // again on the Explorer the reset builds (explorer-sections.ts).
     await clearMigrations({ load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) });
     await this.applyDefaultLayout();
+    await this.removeActivityViews();
     await this.defaultLayout.resetSizes();
+  }
+
+  /** Debug and Extensions leave the left bar once per workspace (activity-views.ts); a failure is logged, and the next launch tries again. */
+  private async removeActivityViews(): Promise<void> {
+    const store: MigrationStore = { load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) };
+    try {
+      await removeActivityViewsOnce(store, {
+        has: (id) => this.shell.getWidgets("left").some((w) => w.id === id),
+        close: async (id) => {
+          await this.shell.getWidgets("left").find((w) => w.id === id)?.close();
+        },
+      });
+    } catch (err) {
+      console.warn("[spexr] Debug and Extensions could not be taken off the activity bar", err);
+    }
   }
 
   /**
