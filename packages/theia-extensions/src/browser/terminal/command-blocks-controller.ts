@@ -34,6 +34,10 @@ export const MAX_BLOCKS = 200;
 interface Drawn {
   deco: XtermDecoration;
   readonly block: FinishedBlock<XtermMarker>;
+  /** Where the block's output ended: it follows the buffer's reflow, so the frame's height can be read from it again. */
+  readonly end: XtermMarker | undefined;
+  /** 1 when the output left the cursor on its last line (no trailing newline), else 0. */
+  readonly extra: number;
   framed: boolean;
 }
 
@@ -47,10 +51,12 @@ interface Drawn {
  *   the last registered first), and {@link hook} registers it again when Theia
  *   re-registers its own. It returns false for Theia's marks, which Theia still
  *   needs, and true for spexr's own, which nothing else is to see.
- * - A narrower or wider terminal reflows its lines, so the frames' heights are
- *   no longer true: on a change of columns each frame is let go and its
- *   command keeps the chip (the meta-only fallback), which does not depend on a
- *   height.
+ * - A narrower or wider terminal reflows its lines, so a frame's width and
+ *   height are no longer true. The markers follow the reflow, so on a change
+ *   of columns each frame is laid again from the prompt marker to a marker at
+ *   the end of its output. Where a marker is gone or the height does not come
+ *   out, the command keeps the chip alone (the meta-only fallback), which
+ *   does not depend on a height.
  */
 export class TerminalBlocks {
   private readonly tracker = new BlockTracker<XtermMarker>();
@@ -72,7 +78,7 @@ export class TerminalBlocks {
     this.resize = term.onResize(({ cols }) => {
       if (cols === this.lastCols) return;
       this.lastCols = cols;
-      this.collapseFrames();
+      this.relayFrames();
     });
     this.hook();
   }
@@ -87,7 +93,10 @@ export class TerminalBlocks {
     this.handler?.dispose();
     this.resize.dispose();
     this.running?.dispose();
-    for (const d of this.drawn) d.deco.dispose();
+    for (const d of this.drawn) {
+      d.deco.dispose();
+      d.end?.dispose();
+    }
     this.drawn = [];
     this.idlePrompt?.dispose();
   }
@@ -146,8 +155,14 @@ export class TerminalBlocks {
     if (!deco) return;
     this.fill(deco, finishedMeta(block), true);
     this.stats.drawn++;
-    this.drawn.push({ deco, block, framed: true });
-    while (this.drawn.length > MAX_BLOCKS) this.drawn.shift()?.deco.dispose();
+    const end = this.term.registerMarker(0);
+    const extra = end ? Math.max(0, block.lines - (end.line - marker.line)) : 0;
+    this.drawn.push({ deco, block, end, extra, framed: true });
+    while (this.drawn.length > MAX_BLOCKS) {
+      const old = this.drawn.shift();
+      old?.deco.dispose();
+      old?.end?.dispose();
+    }
   }
 
   /** Put the element in the decoration once xterm has made it, and not again however often it renders. */
@@ -160,15 +175,18 @@ export class TerminalBlocks {
     });
   }
 
-  private collapseFrames(): void {
+  /** After a change of width: each frame again, as high as its lines now are; the chip alone where that cannot be read. */
+  private relayFrames(): void {
     for (const d of this.drawn) {
-      if (!d.framed) continue;
-      d.framed = false;
       d.deco.dispose();
-      const marker = d.block.prompt;
-      const deco = marker && !marker.isDisposed && marker.line >= 0 ? this.term.registerDecoration({ marker, x: 0, width: this.term.cols, height: 1, layer: "top" }) : undefined;
+      const start = d.block.prompt;
+      const alive = start && !start.isDisposed && start.line >= 0;
+      const height = alive && d.end && !d.end.isDisposed && d.end.line >= start.line ? d.end.line - start.line + d.extra : 0;
+      const framed = height >= 1;
+      const deco = alive ? this.term.registerDecoration({ marker: start, x: 0, width: this.term.cols, height: framed ? height : 1, layer: "top" }) : undefined;
+      d.framed = framed;
       if (deco) {
-        this.fill(deco, finishedMeta(d.block), false);
+        this.fill(deco, finishedMeta(d.block), framed);
         d.deco = deco;
       }
     }

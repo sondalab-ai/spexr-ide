@@ -154,22 +154,41 @@ describe("TerminalBlocks", () => {
     expect(term.decos.filter((d) => d.options.height! > 1)).toHaveLength(0);
   });
 
-  it("keeps the chip alone when the terminal is resized to another width: the frames' heights are no longer true", () => {
+  it("lays each frame again after a change of width, as high as its lines now are, from the markers that follow the reflow", () => {
+    const { term, clock } = setup();
+    term.osc(`spexr_hello;${N}`);
+    command(term, clock, 0, 3); // prompt at line 0, ends at 4: 4 lines
+    command(term, clock, 1, 2); // 3 lines
+    const before = term.decos.filter((d) => d.options.height! > 1 && !d.isDisposed);
+    expect(before.map((d) => d.options.height)).toEqual([4, 3]);
+    // The narrower terminal wraps the output: the ends move down, as xterm's reflow moves its markers.
+    // Markers, in order: prompt 1, end 1, prompt 2, end 2.
+    expect(term.markers).toHaveLength(4);
+    term.markers[1]!.line += 2;
+    term.markers[2]!.line += 2; // the second prompt moved by the first block's growth
+    term.markers[3]!.line += 4;
+    term.cols = 40;
+    for (const l of term.resizeListeners) l({ cols: 40, rows: 24 });
+    expect(before.every((d) => d.isDisposed)).toBe(true);
+    const laid = term.decos.filter((d) => !d.isDisposed && d.options.width === 40);
+    expect(laid).toHaveLength(2);
+    expect(laid.every((d) => d.options.height! > 1)).toBe(true);
+    // A resize that keeps the width changes nothing.
+    const count = term.decos.length;
+    for (const l of term.resizeListeners) l({ cols: 40, rows: 40 });
+    expect(term.decos).toHaveLength(count);
+  });
+
+  it("keeps the chip alone after a resize when the block's end marker is gone", () => {
     const { term, clock } = setup();
     term.osc(`spexr_hello;${N}`);
     command(term, clock, 0, 3);
-    command(term, clock, 1, 2);
-    const framedBefore = term.decos.filter((d) => d.options.height! > 1 && !d.isDisposed);
-    expect(framedBefore).toHaveLength(2);
+    term.markers[1]!.isDisposed = true;
     term.cols = 120;
     for (const l of term.resizeListeners) l({ cols: 120, rows: 24 });
-    expect(framedBefore.every((d) => d.isDisposed)).toBe(true);
-    const chips = term.decos.filter((d) => !d.isDisposed && d.options.height === 1 && d.options.width === 120);
-    expect(chips).toHaveLength(2);
-    // A resize that keeps the width changes nothing.
-    const count = term.decos.length;
-    for (const l of term.resizeListeners) l({ cols: 120, rows: 40 });
-    expect(term.decos).toHaveLength(count);
+    const chips = term.decos.filter((d) => !d.isDisposed && d.options.width === 120);
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.options.height).toBe(1);
   });
 
   it("draws nothing for a command whose prompt scrolled out of the buffer", () => {
