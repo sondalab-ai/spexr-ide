@@ -5656,8 +5656,8 @@ code {
   color: var(--slc-text);
 }
 
-/* Lumino's own `.lm-Widget` clips (overflow: hidden) at the same weight: the log scrolls. */
-.spexr-agent-log-widget.lm-Widget {
+/* Theia and Lumino clip a bottom-panel widget (overflow: hidden, by id and by class): the log scrolls. */
+#theia-bottom-content-panel .spexr-agent-log-widget.lm-Widget {
   overflow: auto;
   background: var(--sl-bg-surface);
 }
