@@ -39,6 +39,7 @@ describe("the Explorer's section headers in spexr.css (S6b)", () => {
     expect(root, "the left island's rule for the section header's height").toBeGreaterThanOrEqual(0);
     expect(px(css.slice(root, css.indexOf("}", root)), "--theia-view-container-title-height")).toBe(WORKBENCH.sectionHead);
     expect(css).not.toMatch(/:root \{\s*--theia-view-container-title-height/);
+    expect(css.slice(root, css.indexOf("}", root))).toContain("--theia-view-container-content-height: calc(100% - var(--theia-view-container-title-height));");
     expect(header).toContain("height: var(--theia-view-container-title-height);");
     expect(own("../shell/section-header-height.ts")).toContain("HEADER_HEIGHT = WORKBENCH.sectionHead;");
     // Theia reads the static as a collapsed section's height, and the variable as the body's: both are the header's.
