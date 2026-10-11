@@ -137,7 +137,6 @@ test.describe("the default layout's island sizes", () => {
 
   test("a restored layout keeps its own widths", async ({ page }) => {
     test.setTimeout(150_000);
-    await showLeftView(page, EXPLORER);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
     await dragLeftSash(page, 100);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(364, 0);
