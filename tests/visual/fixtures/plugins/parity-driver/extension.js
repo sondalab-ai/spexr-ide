@@ -143,16 +143,16 @@ async function placeCursor(editor) {
  */
 function showShellTerminal() {
   const names = vscode.window.terminals.map((t) => t.name);
-  const shell = vscode.window.terminals.find((t) => /^(bash|zsh|sh|fish)$/.test(t.name));
+  const shell = vscode.window.terminals.find((t) => /^(bash|zsh|sh|fish|Terminal( \d+)?)$/.test(t.name));
   if (shell) shell.show(true);
   return { names, shown: shell ? shell.name : null };
 }
 
-/** The shell terminal, waited for: the panel may open a moment after the window. */
+/** The shell terminal, waited for: the panel may open a moment after the window. S6e titles it "Terminal" (or "Terminal 2"), not by its shell. */
 async function waitForShellTerminal(timeoutMs) {
   const started = Date.now();
   for (;;) {
-    const shell = vscode.window.terminals.find((t) => /^(bash|zsh|sh|fish)$/.test(t.name));
+    const shell = vscode.window.terminals.find((t) => /^(bash|zsh|sh|fish|Terminal( \d+)?)$/.test(t.name));
     if (shell) return shell;
     if (Date.now() - started > timeoutMs) return undefined;
     await delay(250);
