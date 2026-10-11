@@ -18,11 +18,14 @@ interface XtermHost {
   getTerminal?: () => XtermLike;
 }
 
-/** What the nonce is asked of: the widget's backend terminal id, known once its process has started. */
+/** What the nonce is asked of: the widget's backend terminal id, which is -1 until the terminal has started. */
 interface StartedTerminal {
   readonly terminalId: number;
-  readonly processId: Promise<number>;
 }
+
+/** How long, and how often, a terminal is waited on for its backend id: it is created before it is started. */
+const START_POLL_MS = 100;
+const START_TIMEOUT_MS = 15_000;
 
 /**
  * Command blocks (S6l, D22) in the user's shell terminals: bash and zsh,
@@ -110,7 +113,10 @@ export class SpexrCommandBlocksContribution implements FrontendApplicationContri
   private async learnNonce(widget: TerminalWidget, blocks: TerminalBlocks, report: () => void): Promise<void> {
     try {
       const started = widget as unknown as StartedTerminal;
-      await started.processId;
+      for (let waited = 0; started.terminalId < 0; waited += START_POLL_MS) {
+        if (waited >= START_TIMEOUT_MS || !this.attached.get(widget)) throw new Error("terminal never started");
+        await new Promise((resolve) => setTimeout(resolve, START_POLL_MS));
+      }
       const nonce = await this.service.nonce(started.terminalId);
       if (this.attached.get(widget)?.blocks === blocks) blocks.setNonce(nonce);
       this.nonceState.set(widget, nonce ? "set" : `none(terminal ${started.terminalId})`);
