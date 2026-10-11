@@ -95,9 +95,10 @@ export class SpexrCommandBlocksContribution implements FrontendApplicationContri
       const blocks = new TerminalBlocks(xterm, report);
       dispose.push({ dispose: () => blocks.dispose() });
       report();
-      void this.learnNonce(widget, blocks, report);
       dispose.push(widget.onDidDispose(() => this.detach(widget)));
       this.attached.set(widget, { blocks, dispose });
+      // After the entry is there: the lookup gives up when its terminal is no longer attached.
+      void this.learnNonce(widget, blocks, report);
     } catch (err) {
       // xterm's proposed API is closed for this terminal (it started before the preference was on): no blocks, no error.
       console.warn("[spexr] command blocks are not available in this terminal", err);
