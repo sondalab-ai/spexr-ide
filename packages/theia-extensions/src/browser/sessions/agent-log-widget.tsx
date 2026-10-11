@@ -84,7 +84,10 @@ export class AgentLogWidget extends ReactWidget {
 
   protected override onUpdateRequest(msg: Parameters<ReactWidget["onUpdateRequest"]>[0]): void {
     super.onUpdateRequest(msg);
-    if (this.stick) this.node.scrollTop = this.node.scrollHeight;
+    // After the render has laid the new lines out.
+    requestAnimationFrame(() => {
+      if (this.stick) this.node.scrollTop = this.node.scrollHeight;
+    });
   }
 
   protected render(): React.ReactNode {
