@@ -9,7 +9,8 @@ import { modelFamily } from "../agent-pane/agent-pane-format.js";
 export const SESSION_ROWS_MAX = 12;
 
 /** A session's state as its row says it. */
-export type SessionRowState = "running" | "waiting" | "idle" | "done";
+/** `done` is every session that is not working: Dark Factory's `idle` is a session with no process, which the list calls done as the demo does. */
+export type SessionRowState = "running" | "waiting" | "done";
 
 export interface SessionRow {
   readonly sessionId: string;
@@ -40,7 +41,7 @@ export function toolsLabel(count: number | undefined): string | undefined {
 /** The word a row leads with. */
 export function rowState(tile: Pick<AgentTile, "state" | "needsYou">): SessionRowState {
   if (tile.needsYou) return "waiting";
-  return tile.state === "working" ? "running" : tile.state;
+  return tile.state === "working" ? "running" : "done";
 }
 
 /** The row's second line: `running · 14 tools`, `done · 1h · 212 tools`. */
@@ -58,7 +59,14 @@ export function rowMeta(tile: AgentTile, now: number): string {
  * working first and then the most recent, capped at {@link SESSION_ROWS_MAX}.
  * `ownSessionId` marks the row of the agent terminal's own session.
  */
-export function sessionRows(tiles: readonly AgentTile[], workspacePath: string | undefined, now: number, ownSessionId?: string): SessionRow[] {
+export function sessionRows(
+  tiles: readonly AgentTile[],
+  workspacePath: string | undefined,
+  now: number,
+  ownSessionId?: string,
+  /** The name the agent pane's head gives the session it follows: it reads the names file afresh, which a scan may not have yet. */
+  followedTitle?: { readonly sessionId: string; readonly title?: string },
+): SessionRow[] {
   if (!workspacePath) return [];
   const here = normalizeProjectPath(workspacePath);
   const mine = tiles.filter((t) => normalizeProjectPath(t.projectPath) === here);
@@ -66,7 +74,7 @@ export function sessionRows(tiles: readonly AgentTile[], workspacePath: string |
     .slice(0, SESSION_ROWS_MAX)
     .map((t) => ({
       sessionId: t.sessionId,
-      name: defaultSessionName(t) || t.sessionId.slice(0, 8),
+      name: (t.customName?.trim() ? undefined : followedTitle?.sessionId === t.sessionId ? followedTitle.title : undefined) || defaultSessionName(t) || t.sessionId.slice(0, 8),
       state: rowState(t),
       meta: rowMeta(t, now),
       own: t.sessionId === ownSessionId,

@@ -282,6 +282,7 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(SpexrAgentsStatusContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrAgentsStatusContribution);
   bindViewContribution(bind, AgentLogViewContribution);
+  bind(FrontendApplicationContribution).toService(AgentLogViewContribution);
   bind(AgentLogWidget).toSelf();
   bind(WidgetFactory)
     .toDynamicValue((ctx) => ({

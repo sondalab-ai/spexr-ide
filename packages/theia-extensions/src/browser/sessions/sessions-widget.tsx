@@ -65,7 +65,8 @@ export class SessionsWidget extends ReactWidget {
 
   private rows(): SessionRow[] {
     const root = this.workspace.tryGetRoots()[0]?.resource.path.fsPath();
-    return sessionRows(this.feed.tiles(), root, Date.now(), this.terminal.currentSessionId());
+    const { followed, snapshot } = this.hub.current;
+    return sessionRows(this.feed.tiles(), root, Date.now(), this.terminal.currentSessionId(), followed && snapshot?.sessionId === followed ? { sessionId: followed, title: snapshot.title } : undefined);
   }
 
   /** Point the agent pane at a session, opening the pane when it is closed. */

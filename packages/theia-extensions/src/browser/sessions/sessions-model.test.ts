@@ -41,9 +41,9 @@ describe("rowMeta", () => {
     expect(rowMeta(tile("x"), NOW)).toBe("done · now");
   });
 
-  it("says waiting for a session that needs the user, and idle for one at its prompt", () => {
+  it("says waiting for a session that needs the user, and done for one with no process, as the demo does", () => {
     expect(rowMeta(tile("x", { state: "working", needsYou: true, toolCount: 3 }), NOW)).toBe("waiting · now · 3 tools");
-    expect(rowMeta(tile("x", { state: "idle", lastActivityMs: NOW - 5 * MIN }), NOW)).toBe("idle · 5m");
+    expect(rowMeta(tile("x", { state: "idle", lastActivityMs: NOW - 5 * MIN }), NOW)).toBe("done · 5m");
   });
 });
 
@@ -66,6 +66,14 @@ describe("sessionRows", () => {
     expect(sessionRows([refactor, prism], "/w/probe-engine", NOW, "b").map((r) => r.own)).toEqual([false, true]);
     const many = Array.from({ length: SESSION_ROWS_MAX + 5 }, (_, i) => tile(`s${i}`, { customName: `n${i}` }));
     expect(sessionRows(many, "/w/probe-engine", NOW)).toHaveLength(SESSION_ROWS_MAX);
+  });
+
+  it("takes the name the agent pane's head gives the followed session when the scan has none yet, and never over a name the user gave", () => {
+    const unnamed = tile("a", { goal: "Make cache.write awaited and keep the p95 under 2 ms. Show me the evidence." });
+    expect(sessionRows([unnamed], "/w/probe-engine", NOW, "a", { sessionId: "a", title: "Refactor the audit" })[0]!.name).toBe("Refactor the audit");
+    expect(sessionRows([unnamed], "/w/probe-engine", NOW, "a")[0]!.name).toBe("Make cache.write awaited and keep the p95 under 2 ms");
+    expect(sessionRows([refactor], "/w/probe-engine", NOW, "a", { sessionId: "a", title: "Other" })[0]!.name).toBe("Refactor the audit");
+    expect(sessionRows([unnamed], "/w/probe-engine", NOW, "a", { sessionId: "z", title: "Other" })[0]!.name).toBe("Make cache.write awaited and keep the p95 under 2 ms");
   });
 
   it("falls back to the session id's head for a session with nothing to call it", () => {
