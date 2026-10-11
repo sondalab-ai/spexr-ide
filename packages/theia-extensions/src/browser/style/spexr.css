@@ -5728,12 +5728,13 @@ code {
   pointer-events: none;
 }
 
-.spexr-inline-diag--warning {
+/* Monaco's own token colours (.mtkN) are set on the same span: the monaco-editor prefix outweighs them. */
+.monaco-editor .spexr-inline-diag--warning {
   color: var(--slc-warning-text, var(--slc-warning));
   background: color-mix(in srgb, var(--slc-warning) 12%, transparent);
 }
 
-.spexr-inline-diag--error {
+.monaco-editor .spexr-inline-diag--error {
   color: var(--slc-danger-text, var(--slc-danger));
   background: color-mix(in srgb, var(--slc-danger) 12%, transparent);
 }

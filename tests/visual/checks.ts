@@ -666,6 +666,8 @@ export interface InlineDiagState {
     readonly paddingRight: string;
     readonly marginLeft: string;
     readonly color: string;
+    /** The colour of the code on the same line, which the chip must not wear. */
+    readonly editorColor: string;
     readonly background: string;
     readonly rect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
     /** The editor line (its number) the chip sits on, from the gutter row at the same height. */
@@ -689,7 +691,7 @@ export async function probeInlineDiagnostics(page: Page): Promise<InlineDiagStat
           return mid >= b.top && mid <= b.bottom;
         });
         return {
-          text: (el.textContent ?? "").trim(),
+          text: (el.textContent ?? "").replace(/\u00a0/g, " ").trim(),
           tone: el.classList.contains("spexr-inline-diag--warning") ? ("warning" as const) : el.classList.contains("spexr-inline-diag--error") ? ("error" as const) : null,
           fontSize: cs.fontSize,
           fontFamily: cs.fontFamily,
@@ -698,6 +700,7 @@ export async function probeInlineDiagnostics(page: Page): Promise<InlineDiagStat
           paddingRight: cs.paddingRight,
           marginLeft: cs.marginLeft,
           color: cs.color,
+          editorColor: getComputedStyle(el.closest(".view-line") ?? document.body).color,
           background: cs.backgroundColor,
           rect: { x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 },
           line: row ? Number(row.textContent?.trim()) || null : null,
@@ -734,6 +737,8 @@ export function checkInlineDiagnostics(state: InlineDiagState): string[] {
   if (c.paddingLeft !== "8px" || c.paddingRight !== "8px") problems.push(`inline diagnostics: padding ${c.paddingLeft} / ${c.paddingRight}, want 8px`);
   if (c.marginLeft !== "24px") problems.push(`inline diagnostics: margin ${c.marginLeft}, want 24px`);
   if (!near(c.rect.h, 16, 2)) problems.push(`inline diagnostics: the chip is ${c.rect.h}px tall, want 16 (the demo's)`);
+  // Monaco's token colour sits on the same span: the chip's own text colour must win (the warning's, not the editor's).
+  if (c.color === c.editorColor) problems.push(`inline diagnostics: the chip's text is the editor's colour ${c.color}, not the tone's`);
   if (c.background === "rgba(0, 0, 0, 0)" || c.background === "transparent") problems.push("inline diagnostics: the chip has no wash");
   return problems;
 }

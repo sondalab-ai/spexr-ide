@@ -37,8 +37,8 @@ describe("the inline diagnostic chip in spexr.css", () => {
   });
 
   it("is the tone's text on a 12% wash of the tone, for a warning and for an error", () => {
-    expect(rules(".spexr-inline-diag--warning")).toMatch(new RegExp(`color:\\s*var\\(--slc-warning-text, var\\(--slc-warning\\)\\);\\s*background:\\s*color-mix\\(in srgb, var\\(--slc-warning\\) ${INLINE_DIAGNOSTIC.washPercent}%, transparent\\)`));
-    expect(rules(".spexr-inline-diag--error")).toMatch(new RegExp(`color:\\s*var\\(--slc-danger-text, var\\(--slc-danger\\)\\);\\s*background:\\s*color-mix\\(in srgb, var\\(--slc-danger\\) ${INLINE_DIAGNOSTIC.washPercent}%, transparent\\)`));
+    expect(rules(".monaco-editor .spexr-inline-diag--warning")).toMatch(new RegExp(`color:\\s*var\\(--slc-warning-text, var\\(--slc-warning\\)\\);\\s*background:\\s*color-mix\\(in srgb, var\\(--slc-warning\\) ${INLINE_DIAGNOSTIC.washPercent}%, transparent\\)`));
+    expect(rules(".monaco-editor .spexr-inline-diag--error")).toMatch(new RegExp(`color:\\s*var\\(--slc-danger-text, var\\(--slc-danger\\)\\);\\s*background:\\s*color-mix\\(in srgb, var\\(--slc-danger\\) ${INLINE_DIAGNOSTIC.washPercent}%, transparent\\)`));
   });
 
   it("writes no colour literal, and does not animate", () => {
