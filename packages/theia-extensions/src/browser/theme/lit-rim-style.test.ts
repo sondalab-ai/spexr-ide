@@ -30,8 +30,8 @@ describe("the lit island's light in spexr.css", () => {
     expect(bars).toContain("this.node.appendChild(this.breadcrumbsContainer);");
   });
 
-  it("tints the breadcrumbs under it, and only while the main island is lit", () => {
-    expect(rule(`${NOT_HC} ${MAIN} .theia-breadcrumbs {`)).toMatch(/background-image:\s*var\(--slc-lit-tint\);/);
+  it("tints the breadcrumb row under it (the crumbs and the meta share the ground), and only while the main island is lit", () => {
+    expect(rule(`${NOT_HC} ${MAIN} .theia-tabBar-breadcrumb-row {`)).toMatch(/background-image:\s*var\(--slc-lit-tint\);/);
   });
 
   it("wears the drop inward on the handle under the lit main island: the gap between it and the bottom island", () => {
@@ -43,7 +43,7 @@ describe("the lit island's light in spexr.css", () => {
     const wearing = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*--slc-lit-(?:wash|tint|drop)[^{}]*)\}/g)].map((m) => m[1]!.trim().replace(/\s+/g, " "));
     expect(wearing).toEqual([
       `${NOT_HC} ${MAIN} .lm-TabBar .theia-tabBar-tab-row`,
-      `${NOT_HC} ${MAIN} .theia-breadcrumbs`,
+      `${NOT_HC} ${MAIN} .theia-tabBar-breadcrumb-row`,
       `${NOT_HC} #theia-bottom-split-panel:has(> #theia-main-content-panel.spexr-island[data-lit]) > .lm-SplitPanel-handle`,
     ]);
   });

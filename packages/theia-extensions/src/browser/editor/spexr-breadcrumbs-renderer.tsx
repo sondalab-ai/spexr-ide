@@ -30,7 +30,7 @@ export class SpexrBreadcrumbsRenderer extends BreadcrumbsRenderer {
       <>
         {super.doRender()}
         {text && this.active && (
-          <span className="spexr-breadcrumbs-meta" data-parity="crumbs.meta">
+          <span className="spexr-breadcrumbs-meta" data-parity="crumbs.meta" title="Changed since the last commit">
             {text}
           </span>
         )}

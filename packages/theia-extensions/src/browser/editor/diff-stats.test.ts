@@ -12,7 +12,16 @@ describe("the lines a file differs by (E7)", () => {
     expect(diffStats("a\nb\n", "a\nb\n")).toEqual({ added: 0, removed: 0 });
   });
 
-  it("reads a file with no committed revision as all added", () => {
+  it("reads a file with no committed revision as all added ", () => {
     expect(diffStats("", "a\nb\nc")).toEqual({ added: 3, removed: 0 });
+  });
+
+  it("is nothing for a rewrite over the budget, and cheap for a one-line edit in a long file", () => {
+    const rows = (n: number, tag: string): string => Array.from({ length: n }, (_, i) => `${tag}${i}`).join("\n");
+    const started = Date.now();
+    expect(diffStats(rows(5000, "a"), rows(5000, "b"))).toBeUndefined();
+    const long = rows(10_000, "x");
+    expect(diffStats(long, long.replace("x5000\n", "changed\n"))).toEqual({ added: 1, removed: 1 });
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });

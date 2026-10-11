@@ -78,6 +78,11 @@ describe("the editor strip in spexr.css", () => {
     expect(px(split, "height")).toBe(WORKBENCH.tabSplitButton);
   });
 
+  it("paints the breadcrumb ground on the row, and the crumb list transparent, so the meta shares it", () => {
+    expect(rule("#theia-main-content-panel .theia-tabBar-breadcrumb-row")).toContain("background-color: var(--theia-breadcrumb-background)");
+    expect(rule("#theia-main-content-panel .theia-tabBar-breadcrumb-row .theia-breadcrumbs")).toContain("background-color: transparent");
+  });
+
   it("draws no icon slot before a breadcrumb", () => {
     expect(rule("#theia-main-content-panel .theia-breadcrumbs .theia-breadcrumb-item::before")).toContain("display: none");
   });

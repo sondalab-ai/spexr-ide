@@ -858,9 +858,19 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   color: var(--slc-accent-text);
 }
 
+/* The row holds the ground, the crumb list and the meta sit on it: Theia
+   paints the list itself, which left a step where the meta starts. */
+#theia-main-content-panel .theia-tabBar-breadcrumb-row {
+  background-color: var(--theia-breadcrumb-background);
+}
+
 #theia-main-content-panel .theia-tabBar-breadcrumb-row > div {
   display: flex;
   align-items: center;
+}
+
+#theia-main-content-panel .theia-tabBar-breadcrumb-row .theia-breadcrumbs {
+  background-color: transparent;
 }
 
 #theia-main-content-panel .theia-tabBar-breadcrumb-row .theia-breadcrumbs {
@@ -1129,7 +1139,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   background-image: var(--slc-lit-wash);
 }
 
-:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .theia-breadcrumbs {
+/* On the row, not the crumb list: the meta at the row's end shares the
+   tint, so no step shows where it starts (S6c). */
+:root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .theia-tabBar-breadcrumb-row {
   background-image: var(--slc-lit-tint);
 }
 
