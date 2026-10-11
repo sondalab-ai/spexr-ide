@@ -58,6 +58,10 @@ export class SpexrDefaultLayoutContribution implements FrontendApplicationContri
   async onDidInitializeLayout(): Promise<void> {
     await this.layout.settle(this.shell);
     const widths = this.leftWidths();
+    // A width is saved when it changes: shortly after a drag ends, and when the page is hidden.
+    // The save at unload is a last resort, since storage is asynchronous and the reload can outrun it.
+    window.addEventListener("pointerup", () => widths.noteResize(), true);
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && widths.flush());
     window.addEventListener("beforeunload", () => widths.flush());
     await widths.attach();
   }
