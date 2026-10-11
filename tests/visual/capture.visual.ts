@@ -310,7 +310,10 @@ for (const theme of THEMES) {
 
       // S6e: a second terminal, in front: the "+" is there, and the titles are "Terminal" and "Terminal 2".
       {
-        await runCommand(page, "Create New Terminal");
+        // Through the panel's own "+", with the first terminal in front: the palette command opens the new
+        // terminal beside whatever has the focus (the left island, after the last scene).
+        await page.locator("#theia-bottom-content-panel .lm-TabBar-tab", { hasText: /^Terminal$/ }).first().click();
+        await page.locator("#theia-bottom-content-panel .lm-TabBar-toolbar .codicon-add").first().click();
         await page.locator("#theia-bottom-content-panel .lm-TabBar-tab", { hasText: "Terminal 2" }).first().waitFor({ state: "visible", timeout: 30_000 });
         const panel = await probeBottomPanel(page);
         meta.bottomTerminal = panel;
