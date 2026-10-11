@@ -9,6 +9,8 @@
  * import the extension.
  */
 import type { Page } from "@playwright/test";
+// The order is the extension's own rule (pure, Theia-free), so the capture checks against it rather than a copy.
+import { bottomOrder } from "../../packages/theia-extensions/src/browser/shell/bottom-panel";
 
 export type Rects = Array<{ x: number; y: number; w: number; h: number }>;
 export type Regions = Record<string, Rects>;
@@ -711,4 +713,126 @@ export async function probeEditorStrip(page: Page): Promise<EditorStrip> {
       })(),
     };
   });
+}
+
+// ── S6d: the activity bar and the status bar ─────────────────────────────
+
+/** The left activity bar's tiles in the base scene, top to bottom (Lumen's order, D13). */
+const ACTIVITY_TILES = ["explorer-view-container", "search-view-container", "scm-view-container", "spexr-claude", "test-view-container"];
+
+/** Status entries (their ids without Theia's `status-bar-` prefix) that must not be on the bar, with the reason. */
+const HIDDEN_STATUS = ["editor-status-tabbing-config", "editor-language-status-items", "bottom-panel-toggle", "spexr-project", "spexr-resources"];
+
+/** The status bar entries Lumen's bar has, left to right on each side. */
+const STATUS_LEFT = ["spexr-git-branch", "spexr-git-divergence", "spexr-git-sync", "problem-marker-status"];
+const STATUS_RIGHT = ["editor-status-cursor-position", "editor-status-encoding", "editor-status-eol", "editor-status-language"];
+
+/** What {@link probeActivityStatus} read. */
+export interface ActivityStatus {
+  /** The left activity bar's tabs' widget ids, top to bottom. */
+  readonly tiles: string[];
+  /** The status bar's entries' ids, left area then right area, in DOM order (the right area's left to right). */
+  readonly left: string[];
+  readonly right: string[];
+}
+
+/** Read the left activity bar's tiles and the status bar's entries as drawn (a hidden entry is not in the DOM). */
+export async function probeActivityStatus(page: Page): Promise<ActivityStatus> {
+  return page.evaluate(() => {
+    const bars = [...document.querySelectorAll<HTMLElement>(".lm-TabBar.theia-app-sides")].filter((b) => b.getBoundingClientRect().x < 120);
+    const tiles = [...(bars[0]?.querySelectorAll<HTMLElement>(".lm-TabBar-tab") ?? [])].filter((t) => t.getBoundingClientRect().width > 0).map((t) => t.id.replace(/^shell-tab-/, ""))
+      .filter((id) => !id.endsWith("-hidden"));
+    const ids = (area: string): string[] =>
+      [...document.querySelectorAll<HTMLElement>(`#theia-statusBar .area.${area} > .element`)].filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.id.replace(/^status-bar-/, ""));
+    return { tiles, left: ids("left"), right: ids("right") };
+  });
+}
+
+/** Whether `want` appears in `got` in that relative order (other entries between them are not this check's business). */
+function inOrder(got: readonly string[], want: readonly string[]): boolean {
+  const at = want.map((id) => got.indexOf(id));
+  return at.every((i) => i >= 0) && at.every((i, k) => k === 0 || i > at[k - 1]!);
+}
+
+/**
+ * The activity tiles are Explorer, Search, Source Control, Agent, Testing, and
+ * nothing else (Debug and Extensions are off the default bar); the status
+ * bar has Lumen's entries in Lumen's order and none of the hidden ones.
+ */
+export function checkActivityStatus(read: ActivityStatus): string[] {
+  const problems: string[] = [];
+  if (read.tiles.join(",") !== ACTIVITY_TILES.join(",")) problems.push(`activity bar: tiles [${read.tiles.join(", ")}], want [${ACTIVITY_TILES.join(", ")}]`);
+  if (!inOrder(read.left, STATUS_LEFT)) problems.push(`status bar: left [${read.left.join(", ")}], want ${STATUS_LEFT.join(" < ")} in that order`);
+  if (!inOrder(read.right, STATUS_RIGHT)) problems.push(`status bar: right [${read.right.join(", ")}], want ${STATUS_RIGHT.join(" < ")} in that order`);
+  for (const id of HIDDEN_STATUS) if ([...read.left, ...read.right].includes(id)) problems.push(`status bar: ${id} is on the bar, want it hidden`);
+  return problems;
+}
+
+// ── S6e: the bottom panel ────────────────────────────────────────────────
+
+/** What {@link probeBottomPanel} read from the bottom island's first tab bar. */
+export interface BottomPanel {
+  readonly tabs: Array<{ id: string; label: string; severity: string | null }>;
+  readonly strip: Rect | null;
+  /** The Problems chip's box and computed radius, when it has a count. */
+  readonly chip: { box: Rect; radius: string; severity: string | null } | null;
+  /** The current tab's id: the "+" belongs to a terminal's toolbar only. */
+  readonly current: string | null;
+  /** Whether the toolbar holds a "+" and a close ×. */
+  readonly plus: boolean;
+  readonly close: boolean;
+}
+
+/** Read the bottom panel's tabs, its strip, the Problems chip and its buttons. */
+export async function probeBottomPanel(page: Page): Promise<BottomPanel> {
+  return page.evaluate(() => {
+    const box = (el: Element | null): { x: number; y: number; w: number; h: number } | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    };
+    const bar = document.querySelector("#theia-bottom-content-panel .lm-TabBar");
+    const tabs = [...(bar?.querySelectorAll<HTMLElement>(".lm-TabBar-tab") ?? [])]
+      .filter((t) => t.getBoundingClientRect().width > 0 && !t.id.endsWith("-hidden"))
+      .map((t) => ({ id: t.id.replace(/^shell-tab-/, ""), label: t.querySelector(".lm-TabBar-tabLabel")?.textContent?.trim() ?? "", severity: t.getAttribute("data-severity") }));
+    const problems = bar?.querySelector<HTMLElement>("#shell-tab-problems");
+    const chipEl = problems?.querySelector<HTMLElement>(".theia-badge-decorator-horizontal") ?? null;
+    return {
+      tabs,
+      current: bar?.querySelector(".lm-TabBar-tab.lm-mod-current")?.id.replace(/^shell-tab-/, "") ?? null,
+      strip: box(bar?.querySelector(".theia-tabBar-tab-row") ?? bar ?? null),
+      chip: chipEl ? { box: box(chipEl)!, radius: getComputedStyle(chipEl).borderTopLeftRadius, severity: problems?.getAttribute("data-severity") ?? null } : null,
+      plus: !!bar?.querySelector(".lm-TabBar-toolbar .codicon-add"),
+      close: !!bar?.querySelector(".lm-TabBar-toolbar .codicon-close"),
+    };
+  });
+}
+
+/**
+ * The bottom panel: terminals first (titled "Terminal", "Terminal 2", ...),
+ * then Problems, Output and the Agent log where it exists; a 36px strip; the
+ * Problems chip 16px high at r6 with its severity marked; a "+" and a close ×.
+ */
+export function checkBottomPanel(panel: BottomPanel): string[] {
+  const problems: string[] = [];
+  const ids = panel.tabs.map((t) => t.id);
+  const ordered = bottomOrder(ids);
+  if (ids.join(",") !== ordered.join(",")) problems.push(`bottom panel: tabs [${ids.join(", ")}], want terminals, problems, outputView, agent log in that order`);
+  for (const id of ["problems", "outputView"]) if (!ids.includes(id)) problems.push(`bottom panel: no ${id} tab`);
+  const terminals = panel.tabs.filter((t) => t.id.startsWith("terminal-"));
+  if (terminals.length === 0) problems.push("bottom panel: no terminal tab");
+  terminals.forEach((t, i) => {
+    const want = i === 0 ? "Terminal" : `Terminal ${i + 1}`;
+    if (t.label !== want) problems.push(`bottom panel: terminal ${i + 1} is titled "${t.label}", want "${want}"`);
+  });
+  if (!panel.strip) problems.push("bottom panel: no tab strip");
+  else if (!near(panel.strip.h, 36, 1)) problems.push(`bottom panel: tab strip ${panel.strip.h}px, want 36`);
+  if (panel.chip) {
+    if (!near(panel.chip.box.h, 16, 0.5)) problems.push(`bottom panel: the Problems chip is ${panel.chip.box.h}px high, want 16`);
+    if (panel.chip.radius !== "6px") problems.push(`bottom panel: the Problems chip's radius is ${panel.chip.radius}, want 6px`);
+    if (!panel.chip.severity) problems.push("bottom panel: the Problems tab carries no severity mark");
+  }
+  if (panel.current?.startsWith("terminal-") && !panel.plus) problems.push("bottom panel: a terminal is in front and there is no + button");
+  if (!panel.close) problems.push("bottom panel: no close button");
+  return problems;
 }

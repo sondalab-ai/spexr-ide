@@ -179,9 +179,25 @@ describe("the title bar's markup", () => {
   // The crumb drags the window, so a title tooltip on it never shows.
   it("gives the crumb its full path as text for a screen reader, not as a tooltip", () => {
     const crumb = widget.slice(widget.indexOf('<span className="sl-titlebar__crumb"'), widget.indexOf("</div>", widget.indexOf('<span className="sl-titlebar__crumb"')));
-    expect(crumb).not.toMatch(/\btitle=/);
+    // The root is a no-drag button (S6d: the project switch), whose own title shows; the rest of the crumb drags.
+    const rest = crumb.replace(/<button[\s\S]*?<\/button>/, "");
+    expect(rest).not.toMatch(/\btitle=/);
+    expect(crumb).toMatch(/<button[^>]*className="spexr-titlebar__root"[^>]*onClick=\{this\.onSwitchProject\}/);
+    expect(widget).toContain("executeCommand(SWITCH_PROJECT_COMMAND)");
     expect(crumb).toContain('<span aria-hidden="true">');
     expect(crumb).toContain('<span className="spexr-sr-only">{this.crumbName}</span>');
+  });
+
+  it("says the chord once, to a screen reader as the shortcut, not as well in the tooltip it would read as a description", () => {
+    const crumb = widget.slice(widget.indexOf('className="spexr-titlebar__root"'), widget.indexOf("</button>", widget.indexOf('className="spexr-titlebar__root"')));
+    expect(crumb).toContain("aria-keyshortcuts={this.switchKeys?.aria}");
+    expect(crumb).toContain('title="Switch project"');
+    expect(crumb).toContain("aria-label=");
+  });
+
+  it("draws the root's chevron on the title bar's own ground, the canvas, in both themes", () => {
+    expect(rule("#theia-top-panel")).toMatch(/background:\s*var\(--slc-canvas\)/);
+    expect(rule(".spexr-titlebar-host .spexr-titlebar__root:is(:hover, :focus-visible)::after")).toMatch(/background:\s*var\(--slc-canvas\)/);
   });
 
   it("names the avatar after the initials it shows", () => {

@@ -1,13 +1,10 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
 import { type FrontendApplicationContribution } from "@theia/core/lib/browser";
-import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-bar/status-bar";
+import { StatusBar, StatusBarAlignment, type StatusBarEntry } from "@theia/core/lib/browser/status-bar/status-bar";
 import { SpexrGitScmRegistry } from "./git-scm-registry.js";
 import { GitCommands } from "./git-commands-contribution.js";
-import { formatBranchEntry } from "./git-status-bar-format.js";
-import type { GitStatusDto } from "../../common/git-protocol.js";
-import { STATUS_DATA } from "../shell/status-dock.js";
-
-const ENTRY_ID = "spexr-git-branch";
+import { applyGitEntries, planGitEntries } from "./git-status-bar-format.js";
+import { STATUS_BRANCH, STATUS_DIVERGENCE } from "../shell/status-dock.js";
 
 /**
  * Current branch and divergence from upstream; click opens the checkout picker.
@@ -26,6 +23,9 @@ export class GitStatusBarContribution implements FrontendApplicationContribution
   onStart(): void {
     this.registry.onDidChangeStatus(() => this.renderActive());
     this.registry.onDidChangeActive(() => this.renderActive());
+    this.registry.onDidChangeProviders(() => this.renderActive());
+    // The fetch's outcome is its own event: the status one also drives the decorations and the breadcrumb meta.
+    this.registry.onDidChangeFetchState(() => this.renderActive());
     // Subscribing above misses a refresh that already happened before this
     // contribution started (order among FrontendApplicationContributions
     // isn't a contract worth depending on) — render the active repository's
@@ -33,28 +33,22 @@ export class GitStatusBarContribution implements FrontendApplicationContribution
     this.renderActive();
   }
 
+  /**
+   * The branch, its divergence and "synced" for the repository the panel shows.
+   * A refresh failure clears the panel's status, and the entries go with it
+   * instead of showing a status the panel no longer has. "synced" is a click
+   * on Git: Fetch, which does not read the autofetch preference.
+   */
   private renderActive(): void {
-    this.render(this.registry.active?.lastStatus);
-  }
-
-  private render(s: GitStatusDto | undefined): void {
-    if (!s) {
-      // A refresh failure clears the panel's status; mirror that here
-      // instead of leaving a stale branch/ahead-behind entry on display.
-      this.statusBar.removeElement(ENTRY_ID);
-      return;
-    }
-    void this.statusBar.setElement(ENTRY_ID, {
-      text: formatBranchEntry(s),
-      className: STATUS_DATA,
+    const active = this.registry.active;
+    applyGitEntries<StatusBarEntry>(this.statusBar, planGitEntries(active?.lastStatus, active?.fetchOutcome ?? "unknown"), (id, parts) => ({
+      text: parts.text,
       alignment: StatusBarAlignment.LEFT,
-      priority: 200,
-      tooltip: s.mergeInProgress
-        ? "Merge in progress — commit to conclude it"
-        : s.upstream
-          ? `Tracking ${s.upstream}`
-          : "No upstream branch",
-      command: GitCommands.CHECKOUT.id,
-    });
+      tooltip: parts.tooltip,
+      ...(parts.label ? { accessibilityInformation: { label: parts.label } } : {}),
+      ...(id === "branch" ? { className: STATUS_BRANCH, priority: 200, command: GitCommands.CHECKOUT.id } : {}),
+      ...(id === "divergence" ? { className: STATUS_DIVERGENCE, priority: 199, command: GitCommands.CHECKOUT.id } : {}),
+      ...(id === "sync" ? { priority: 190, command: GitCommands.FETCH.id } : {}),
+    }));
   }
 }

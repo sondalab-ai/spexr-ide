@@ -3,7 +3,7 @@ import type { Readiness, ThemeState, WindowSizeOutcome } from "./app";
 import type { LateFontResult } from "./late-font";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
-import type { AgentPaneState, FixtureReport, EditorStrip, FixtureState, LeftIsland, LitRim } from "./checks";
+import type { AgentPaneState, BottomPanel, FixtureReport, EditorStrip, FixtureState, LeftIsland, LitRim } from "./checks";
 import type { LightsCheck } from "./lights";
 import type { EditorProbe, FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
 import type { SceneResult } from "./scenes";
@@ -65,6 +65,9 @@ export interface CaptureMeta {
   leftIsland?: LeftIsland;
   /** S6c: the editor strip as probed in the base scene (its overflow is reported, not asserted). */
   editorStrip?: EditorStrip;
+  /** S6e: the bottom panel as probed with Problems in front, and with a second terminal in front. */
+  bottomPanelProbe?: BottomPanel;
+  bottomTerminal?: BottomPanel;
   /** The left island across views, and the other islands before and after (S6b). */
   leftViews?: { steps: ReadonlyArray<{ step: string; left: number | null; want: number }>; before: { left: number | null; right: number | null; bottom: number | null }; after: { left: number | null; right: number | null; bottom: number | null } };
   /** The toast scene's toast and its stack, keyed like the demo's regions (S5c). */

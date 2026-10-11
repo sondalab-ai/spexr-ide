@@ -26,6 +26,9 @@ export function fieldKeys(caps: KeyCaps | undefined): FieldKeys | undefined {
   return { caps: caps.chords.flat(), ...(caps.aria ? { aria: caps.aria } : {}) };
 }
 
+/** The command the crumb's root runs: Spexr: Switch project (`SpexrCommands.SWITCH_PROJECT`; the id is repeated here to keep this module free of Theia). */
+export const SWITCH_PROJECT_COMMAND = "spexr.project.switch";
+
 /** How many of the active file's folders the crumb names; deeper ones fold into "…". */
 export const CRUMB_FOLDERS = 2;
 
@@ -67,12 +70,14 @@ export function titleCrumb(roots: readonly string[], file?: string, fold: number
 }
 
 /**
- * The crumb's accessible name: every folder, none folded, so a screen reader
- * hears what the ellipsis hides. The crumb sits in the drag region, where a
- * `title` tooltip never shows, so this is its only long form.
+ * The crumb's folders below the root, every one, none folded: what a screen
+ * reader hears after the root button ("src / probe"), so the ellipsis hides
+ * nothing from it. The root is the button's own name, not repeated here. The
+ * crumb sits in the drag region, where a `title` tooltip never shows, so this
+ * is the folders' only long form. Empty when the file sits in the root.
  */
-export function crumbLabel(roots: readonly string[], file?: string): string {
-  return titleCrumb(roots, file, Number.POSITIVE_INFINITY).join(" / ");
+export function crumbFolders(roots: readonly string[], file?: string): string {
+  return titleCrumb(roots, file, Number.POSITIVE_INFINITY).slice(1).join(" / ");
 }
 
 /** The part of a Dark Factory tile the badge reads. */

@@ -435,6 +435,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   min-width: var(--theia-notification-count-width);
   padding-left: 4px;
   padding-right: 4px;
+  border-radius: 6px;
   white-space: nowrap;
 }
 
@@ -781,6 +782,69 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   border-radius: var(--sl-radius-sm);
   font-size: 0.78125rem;
 }
+
+/* THE BOTTOM PANEL (S6e, B1-B4). Its tabs are Terminal, Problems, Output and
+   the Agent log (shell/bottom-panel.ts); a count on a tab is the kit's r6
+   chip, 16px high, in the mono at 10px, as Lumen's ".ide-ptab__n". The
+   Problems chip takes its tone from the worst severity (the contribution
+   marks the tab with data-severity): the warning tone on its 18% wash for
+   warnings alone, the danger tone for any error, the accent. The
+   text is the tone itself on that wash: at least 4.5:1 on the tab's ground
+   in both themes (activity-status-style / bottom-panel-style tests). The
+   panel's buttons ("+", the close ×) are 24px icon buttons. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-badge-decorator-horizontal {
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font: 500 10px/16px var(--sl-font-mono);
+  color: var(--slc-accent-text);
+  background-color: color-mix(in srgb, var(--slc-accent) 12%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab[data-severity="warning"] .theia-badge-decorator-horizontal {
+  color: var(--sl-status-warning);
+  background-color: color-mix(in srgb, var(--sl-status-warning) 18%, transparent);
+}
+
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab[data-severity="error"] .theia-badge-decorator-horizontal {
+  color: var(--sl-status-danger);
+  background-color: color-mix(in srgb, var(--sl-status-danger) 18%, transparent);
+}
+
+#theia-bottom-content-panel .lm-TabBar-toolbar .item:has(> :is(.codicon-add, .codicon-close)) {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  color: var(--slc-text-muted);
+}
+
+/* The glyph's own box fills the 24px button, so the whole button is the hit
+   area, not the 16px glyph inside it. */
+#theia-bottom-content-panel .lm-TabBar-toolbar .item:has(> :is(.codicon-add, .codicon-close)) > div {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+#theia-bottom-content-panel .lm-TabBar-toolbar .item.enabled:has(> :is(.codicon-add, .codicon-close)):hover {
+  background-color: color-mix(in srgb, var(--slc-text) 8%, transparent);
+  color: var(--slc-text);
+}
+
+#theia-bottom-content-panel .lm-TabBar-toolbar .item:has(> :is(.codicon-add, .codicon-close)):focus-within:has(:focus-visible) {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+/* A bottom tab's own ×, as an editor tab's (E3): only on hover or focus. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab:not(:hover, :focus-within) > .lm-TabBar-tabCloseIcon {
+  visibility: hidden;
+}
+
 
 /* The breadcrumbs under the editor's tabs: Lumen's, 16px in at 12px. */
 #theia-main-content-panel .theia-breadcrumbs {
@@ -1317,7 +1381,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   height: 1rem;
   padding: 0 4px;
   font: 600 9px/1rem var(--sl-font-mono);
-  border-radius: 8px;
+  border-radius: 6px;
   box-shadow: 0 0 0 2px var(--slc-canvas);
 }
 
@@ -1696,6 +1760,49 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   flex: none;
 }
 
+/* The crumb's root, the project's name, is the project switch (S6d): it
+   reads as the crumb's own text, and is no-drag so a click reaches it. Its
+   hover and focus ring are the crumb's own colour step. */
+.spexr-titlebar-host .spexr-titlebar__root {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sl-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.spexr-titlebar-host .spexr-titlebar__root {
+  position: relative;
+}
+
+.spexr-titlebar-host .spexr-titlebar__root:hover {
+  color: var(--slc-text);
+}
+
+/* A chevron on hover and focus says the root is a control: it sits over the
+   separator after it, so the crumb does not move (Lumen's has no room for it). */
+.spexr-titlebar-host .spexr-titlebar__root:is(:hover, :focus-visible)::after {
+  content: "\eab4";
+  position: absolute;
+  inset-inline-end: -14px;
+  top: 50%;
+  translate: 0 -50%;
+  padding-inline: 2px;
+  font: normal 12px/1 codicon;
+  color: var(--slc-text-secondary);
+  background: var(--slc-canvas);
+}
+
+.spexr-titlebar-host .spexr-titlebar__root:focus-visible {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: 2px;
+}
+
 /* The menu button keeps its room while the window's style is not known
    yet, and shows nothing: it must not flash in a native window. */
 .spexr-titlebar-host .spexr-titlebar__menu--pending {
@@ -1853,14 +1960,50 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   flex-shrink: 0;
 }
 
-/* Data: the caret's place, the encoding, the line ends, the problem count,
-   and spexr's branch, project and resource meter. Not on the offline bar or
+/* Data (S6d, D15, which reverses S4/S5c's every-fact-in-the-mono rule):
+   the bar's words are the muted sans, the caret's place, the encoding, the
+   line ends and the counts included, as Lumen's. Only two things are set as
+   data, the mono at the primary ink: the branch's name (the one run of text
+   after the branch glyph; the counts that follow stay muted sans) and a
+   fact marked STATUS_DATA (the model's name, S5). Not on the offline bar or
    on an item with a ground of its own, whose label stays theirs. The
    notification count left with its item: the title bar's bell has it. */
-body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > :is(#status-bar-editor-status-cursor-position, #status-bar-editor-status-encoding, #status-bar-editor-status-eol, #status-bar-problem-marker-status, .spexr-status--data):not(.has-background) > span:not(.codicon, .fa) {
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > .spexr-status--data:not(.has-background) > span:not(.codicon, .fa),
+body:not(.theia-mod-offline) #theia-statusBar .area:is(.left, .right) > .spexr-status--branch:not(.has-background) > .codicon:first-child + span {
   font-family: var(--sl-font-mono);
   font-weight: 500;
   color: var(--slc-text);
+}
+
+/* A pill's leading glyph sits at the pill's padding, not 3px past it (Theia's
+   margin on a glyph that precedes text): Lumen's pills are 8px of padding
+   round their content, which put the left side's runs 3px apart per item. */
+#theia-statusBar .area:is(.left, .right) > .element > .codicon:first-child:has(+ span) {
+  margin-inline-start: 0;
+}
+
+/* The divergence ("↑2") is the pill after the branch's, as one fact with it:
+   the branch's pill gives up its end padding and the divergence's text starts
+   4px in (Lumen's "main ↑2" is one item). */
+#theia-statusBar .area.left > .spexr-status--branch:has(+ .spexr-status--divergence) {
+  padding-inline-end: 0;
+}
+
+#theia-statusBar .area.left > .spexr-status--divergence {
+  padding-inline-start: 4px;
+}
+
+/* The problem count's two glyphs are two groups, 12px apart (Lumen's "0" and
+   "2" runs), not Theia's 6. */
+#theia-statusBar #status-bar-problem-marker-status > .codicon ~ .codicon {
+  margin-inline-start: 12px;
+}
+
+/* The warning glyph (the problem count's, and "fetch failed") takes the
+   kit's warning tone, a state indicator at 3:1 on the bar's ground
+   (status-dock-style.test.ts); its number stays the bar's muted ink. */
+#theia-statusBar .area:is(.left, .right) > :is(#status-bar-problem-marker-status, #status-bar-spexr-git-sync):not(.has-background) > .codicon-warning {
+  color: var(--sl-status-warning);
 }
 
 /* Theia pulls a left item with a ground, and an entry it compacts onto its

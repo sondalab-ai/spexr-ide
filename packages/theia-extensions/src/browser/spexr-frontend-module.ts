@@ -13,7 +13,6 @@ import { PreferenceContribution } from "@theia/core/lib/common/preferences/prefe
 import { WebSocketConnectionProvider } from "@theia/core/lib/browser/messaging/ws-connection-provider";
 import { SpexrCommandsContribution } from "./commands/spexr-commands-contribution.js";
 import { SpexrProjectSwitchService } from "./project/spexr-project-switch-service.js";
-import { SpexrProjectStatusBarContribution } from "./project/project-status-bar-contribution.js";
 import { SpexrSpecEditorToolbarContribution } from "./views/spec-editor-toolbar-contribution.js";
 import { SpexrAgentTerminalToolbarContribution } from "./views/agent-terminal-toolbar-contribution.js";
 import { SpexrSpecRelationsContribution } from "./spec/spec-relations-contribution.js";
@@ -109,6 +108,15 @@ import { SpexrBreadcrumbsRenderer } from "./editor/spexr-breadcrumbs-renderer.js
 import { SpexrBreadcrumbMetaService } from "./editor/breadcrumb-meta-service.js";
 import { BreadcrumbRenderer } from "@theia/core/lib/browser/breadcrumbs/breadcrumb-renderer";
 import { BreadcrumbsRendererFactory } from "@theia/core/lib/browser/breadcrumbs/breadcrumbs-renderer";
+import { SpexrDebugContribution, SpexrExtensionsContribution } from "./shell/activity-view-contributions.js";
+import { DebugFrontendApplicationContribution } from "@theia/debug/lib/browser/debug-frontend-application-contribution";
+import { VSXExtensionsContribution } from "@theia/vsx-registry/lib/browser/vsx-extensions-contribution";
+import { SpexrAgentsCountService } from "./titlebar/agents-count-service.js";
+import { SpexrAgentBadgeDecorator } from "./agent/agent-badge-decorator.js";
+import { TabBarDecorator } from "@theia/core/lib/browser/shell/tab-bar-decorator";
+import { StatusBarViewModel } from "@theia/core/lib/browser/status-bar/status-bar-view-model";
+import { SpexrStatusBarViewModel } from "./shell/status-bar-view-model.js";
+import { SpexrBottomPanelContribution, SpexrOutputAttach } from "./shell/bottom-panel-contribution.js";
 import { SpexrSplitToolbarContribution } from "./editor/split-toolbar-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
 import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
@@ -231,6 +239,11 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   // Lumen islands: the shell areas float as the kit's panes on the canvas, and
   // the one that holds the focus is lit (see shell/islands.ts).
   rebind(ApplicationShell).to(SpexrApplicationShell).inSingletonScope();
+  // The status bar keeps Lumen's entries, in Lumen's order (S6d, D14).
+  rebind(StatusBarViewModel).to(SpexrStatusBarViewModel).inSingletonScope();
+  // Debug and Extensions are not in the default activity bar (S6d, D13).
+  rebind(DebugFrontendApplicationContribution).to(SpexrDebugContribution).inSingletonScope();
+  rebind(VSXExtensionsContribution).to(SpexrExtensionsContribution).inSingletonScope();
   bind(SpexrLitIslandContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrLitIslandContribution);
   // The editor island's place, for the palette and the toasts that float above it (S5f).
@@ -307,8 +320,6 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     .inSingletonScope();
 
   bind(SpexrProjectSwitchService).toSelf().inSingletonScope();
-  bind(SpexrProjectStatusBarContribution).toSelf().inSingletonScope();
-  bind(FrontendApplicationContribution).toService(SpexrProjectStatusBarContribution);
 
   bind(SpexrCommandsContribution).toSelf().inSingletonScope();
   bind(CommandContribution).toService(SpexrCommandsContribution);
@@ -406,6 +417,16 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     child.bind(BreadcrumbRenderer).to(SpexrBreadcrumbRenderer).inSingletonScope();
     return child.get(SpexrBreadcrumbsRenderer);
   });
+  bind(SpexrAgentsCountService).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrAgentsCountService);
+  bind(SpexrAgentBadgeDecorator).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrAgentBadgeDecorator);
+  bind(TabBarDecorator).toService(SpexrAgentBadgeDecorator);
+  bind(SpexrBottomPanelContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrBottomPanelContribution);
+  bind(TabBarToolbarContribution).toService(SpexrBottomPanelContribution);
+  bind(CommandContribution).toService(SpexrBottomPanelContribution);
+  bind(SpexrOutputAttach).toSelf().inSingletonScope();
   bind(SpexrSplitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrSplitToolbarContribution);
   bind(CommandContribution).toService(SpexrSplitToolbarContribution);

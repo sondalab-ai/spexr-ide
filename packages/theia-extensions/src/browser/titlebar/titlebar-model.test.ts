@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Key, KeyCode } from "@theia/core/lib/browser/keyboard/keys";
 import type { Keybinding } from "@theia/core/lib/common/keybinding";
 import { boundKeyCaps, type KeyBindings } from "../views/key-caps.js";
@@ -7,7 +9,8 @@ import {
   avatarLabel,
   bellLabel,
   CRUMB_ELLIPSIS,
-  crumbLabel,
+  crumbFolders,
+  SWITCH_PROJECT_COMMAND,
   fieldKeys,
   initialMenuButton,
   initials,
@@ -84,12 +87,22 @@ describe("the agents badge", () => {
   });
 });
 
-describe("crumbLabel", () => {
-  it("names every folder the visible crumb folds away", () => {
-    const ws = "/home/me/probe-engine";
-    expect(crumbLabel([ws], `${ws}/a/b/c/d.ts`)).toBe("probe-engine / a / b / c");
-    expect(crumbLabel([ws])).toBe("probe-engine");
-    expect(crumbLabel([])).toBe("");
+describe("crumbFolders", () => {
+  const ws = "/home/me/probe-engine";
+
+  it("names every folder below the root, none folded, and never the root itself", () => {
+    expect(crumbFolders([ws], `${ws}/a/b/c/d.ts`)).toBe("a / b / c");
+    expect(crumbFolders([ws], `${ws}/README.md`)).toBe("");
+    expect(crumbFolders([ws])).toBe("");
+    expect(crumbFolders([])).toBe("");
+  });
+});
+
+describe("the crumb root's button (S6d)", () => {
+  it("runs the command Spexr registers under that id, bound to Ctrl/Cmd+Alt+P", () => {
+    const own = readFileSync(fileURLToPath(new URL("../commands/spexr-commands-contribution.ts", import.meta.url)), "utf8");
+    expect(own).toContain(`SWITCH_PROJECT: { id: "${SWITCH_PROJECT_COMMAND}"`);
+    expect(own).toMatch(/command: SpexrCommands\.SWITCH_PROJECT\.id,\s*keybinding: "ctrlcmd\+alt\+p"/);
   });
 });
 

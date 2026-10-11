@@ -139,7 +139,7 @@ describe("the layout migrations' one done-list", () => {
     const own = (f: string): string => readFileSync(fileURLToPath(new URL(f, import.meta.url)), "utf8");
     const layout = own("./spexr-shell-layout-contribution.ts");
     expect(layout.indexOf("await clearMigrations(")).toBeGreaterThan(layout.indexOf("await this.detachManagedViews();"));
-    expect(layout.indexOf("await clearMigrations(")).toBeLessThan(layout.indexOf("await this.applyDefaultLayout();\n    await this.defaultLayout.resetSizes();"));
+    expect(layout.indexOf("await clearMigrations(")).toBeLessThan(layout.indexOf("await this.applyDefaultLayout();\n    await this.removeActivityViews();\n    await this.attachOutput();\n    await this.defaultLayout.resetSizes();"));
     const chrome = own("./explorer-chrome-contribution.ts");
     expect(chrome).toMatch(/onDidCreateWidget\(\(\{ factoryId, widget \}\) => \{\s*if \(factoryId === EXPLORER_VIEW_CONTAINER_ID\) this\.attach\(widget as ViewContainer\);/);
   });

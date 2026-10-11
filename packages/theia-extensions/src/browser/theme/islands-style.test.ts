@@ -238,7 +238,7 @@ describe("the activity bars", () => {
     expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides:focus-within`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
   });
 
-  it("draw the kit's count badge 4px into the tile's corner, which clips: mono 9px, a 16px pill ringed in the canvas", () => {
+  it("draw the kit's count badge 4px into the tile's corner, which clips: mono 9px, a 16px badge at r6, ringed in the canvas", () => {
     const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar`);
     // 4px from the tile's top, past Theia's 2px drag-over border (workbench-style.test.ts).
     expect(badge).toMatch(/top:\s*calc\(4px - var\(--theia-dragover-tab-border-width\)\)/);
@@ -247,7 +247,8 @@ describe("the activity bars", () => {
     expect(badge).toMatch(/min-width:\s*20px/);
     expect(badge).toMatch(/height:\s*1rem/);
     expect(badge).toMatch(/font:\s*600 9px\/1rem var\(--sl-font-mono\)/);
-    expect(badge).toMatch(/border-radius:\s*8px/);
+    // r6 (S6d, owner: tags and badges are r6), not a full pill.
+    expect(badge).toMatch(/border-radius:\s*6px/);
     expect(badge).toMatch(/box-shadow:\s*0 0 0 2px var\(--slc-canvas\)/);
     // The fill and its label stay Theia's badge variables, which the theme layer sets to the kit's fill.
     expect(badge).not.toMatch(/background|(^|[^-])color:/);
