@@ -228,6 +228,37 @@ export const INLINE_DIAGNOSTIC = {
 } as const;
 
 /**
+ * A terminal command block (S6l) as Lumen's `.sl-term-block` at 1440x900
+ * (demo-regions.json "term.block": r8, a ring, a top seam in the exit tone,
+ * a header row of the command and a right-aligned `time duration exit` in
+ * the mono at 11.5px, the exit in its tone). xterm's decoration lays the
+ * frame over the terminal's own text, so the command line takes the chip's
+ * place of the demo's header, and the frame grows outward by `frameInset`
+ * instead of padding the text. The ring is the kit's control edge (3:1), not
+ * the demo's 7% white, and the failure ring is the danger tone whole (the
+ * demo's is 35% of it). spexr.css repeats the numbers; command-blocks-style.test.ts
+ * holds them.
+ */
+export const TERMINAL_BLOCK = {
+  radius: 8,
+  /** The ring, in px. */
+  ring: 1,
+  /** The frame sits this far outside the lines it holds. */
+  frameInset: 2,
+  /** The seam on the top edge: 1px high, 44 long (the kit's 2.75rem), 12 in. */
+  seamHeight: 1,
+  seamWidth: 44,
+  seamInset: 12,
+  /** The chip: the mono at the demo's 11.5px, 16px of line, 8px from the right edge, 12px between its parts. */
+  metaSize: 11.5,
+  metaLine: 16,
+  metaInset: 8,
+  metaGap: 12,
+  /** Past this many blocks per terminal, the oldest is let go. */
+  maxBlocks: 200,
+} as const;
+
+/**
  * The command palette (Theia's quick input) as Lumen's, at 1440x900 (S5f).
  * It floats over the editor island: centred on it, 118px from the window's
  * top (the island's tab strip and breadcrumbs, and one gap, below the

@@ -6,6 +6,7 @@ import { browserOptions, watch } from './gen-esbuild.browser.mjs';
 import { nodeOptions } from './gen-esbuild.node.mjs';
 import { electronOptions } from './gen-esbuild.electron.mjs';
 import esbuild from 'esbuild';
+import { cpSync } from 'node:fs';
 
 // onnxruntime-node ships multiple platform-specific .node binaries with the same
 // filename, which makes esbuild fail with "Two output files share the same path".
@@ -15,11 +16,17 @@ import esbuild from 'esbuild';
 // Both are required at runtime from node_modules instead.
 nodeOptions.external = [...(nodeOptions.external ?? []), 'onnxruntime-node', 'sharp'];
 
+// spexr's shell integration scripts (command blocks, S6l) go beside Theia's own in the backend bundle:
+// the injector reads them from `shell-integrations/spexr` next to the bundle.
+const copyShellIntegrations = () =>
+    cpSync('../../packages/theia-extensions/src/node/terminal/shell-integrations/spexr', 'lib/backend/shell-integrations/spexr', { recursive: true });
+
 const browserContext = await esbuild.context(browserOptions);
 const nodeContext = await esbuild.context(nodeOptions);
 const electronContext = await esbuild.context(electronOptions);
 
 if (watch) {
+    copyShellIntegrations();
     await Promise.all([
         browserContext.watch(),
         nodeContext.watch(),
@@ -31,6 +38,7 @@ if (watch) {
         await browserContext.dispose();
         await nodeContext.rebuild();
         await nodeContext.dispose();
+        copyShellIntegrations();
         await electronContext.rebuild();
         await electronContext.dispose();
     } catch {

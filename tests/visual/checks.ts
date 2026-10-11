@@ -742,3 +742,76 @@ export function checkInlineDiagnostics(state: InlineDiagState): string[] {
   if (c.background === "rgba(0, 0, 0, 0)" || c.background === "transparent") problems.push("inline diagnostics: the chip has no wash");
   return problems;
 }
+
+/* ── S6l: terminal command blocks ───────────────────────────────────────── */
+
+/** The command blocks in the bottom panel's terminal, as drawn. */
+export interface TerminalBlocksState {
+  readonly blocks: ReadonlyArray<{
+    readonly exit: string | null;
+    readonly framed: boolean;
+    readonly chip: string;
+    readonly rect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+    readonly chipRect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | null;
+    readonly radius: string;
+    readonly ringShadow: string;
+    readonly seamBackground: string;
+    readonly exitColor: string;
+  }>;
+}
+
+/** Read the command blocks of the bottom panel's terminal. */
+export async function probeTerminalBlocks(page: Page): Promise<TerminalBlocksState> {
+  return page.evaluate(() => {
+    const els = [...document.querySelectorAll<HTMLElement>("#theia-bottom-content-panel .spexr-term-block")].filter((e) => e.getBoundingClientRect().width > 0);
+    const box = (r: DOMRect): { x: number; y: number; w: number; h: number } => ({ x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 });
+    return {
+      blocks: els.map((el) => {
+        const chip = el.querySelector<HTMLElement>(".spexr-term-block__meta");
+        return {
+          exit: el.getAttribute("data-exit"),
+          framed: el.getAttribute("data-frame") === "true",
+          chip: (chip?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          rect: box(el.getBoundingClientRect()),
+          chipRect: chip ? box(chip.getBoundingClientRect()) : null,
+          radius: getComputedStyle(el, "::after").borderTopLeftRadius,
+          ringShadow: getComputedStyle(el, "::after").boxShadow,
+          seamBackground: getComputedStyle(el, "::before").backgroundColor,
+          exitColor: getComputedStyle(el.querySelector(".spexr-term-block__exit") ?? el).color,
+        };
+      }),
+    };
+  });
+}
+
+/**
+ * The bottom terminal against the demo's `term.block` (two blocks, `pnpm test
+ * probe` exit 0 and `pnpm sl-audit` exit 1, each with a chip `14:02:11 2.4 s
+ * exit 0`, r8, a ring, a seam on the top edge in the exit tone): two framed
+ * blocks in that order, a chip of the time, the duration and the exit, the
+ * frame's radius 8, the chip's right edge 8px inside the block's, the failure's
+ * ring in the danger tone and the success's in the control edge, and the
+ * seam in each exit tone. The demo's header row has no counterpart in a
+ * terminal, whose command line carries the chip (deviation recorded in the PR).
+ */
+export function checkTerminalBlocks(state: TerminalBlocksState): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  const framed = state.blocks.filter((b) => b.framed);
+  if (framed.map((b) => b.exit).join() !== "0,1") return [`terminal blocks: framed blocks with exits [${framed.map((b) => b.exit).join(", ")}], want [0, 1] (pnpm test probe, pnpm sl-audit)`];
+  for (const [i, b] of framed.entries()) {
+    const want = i === 0 ? "exit 0" : "exit 1";
+    if (!/^\d{2}:\d{2}:\d{2}( [\d.]+ s| \d+ m \d{2} s)? exit [01]$/.test(b.chip) || !b.chip.endsWith(want)) problems.push(`terminal blocks: block ${i} chip ${JSON.stringify(b.chip)}, want "<time> <duration> ${want}"`);
+    if (b.radius !== "8px") problems.push(`terminal blocks: block ${i} radius ${b.radius}, want 8px`);
+    if (b.chipRect && !near(b.rect.x + b.rect.w - (b.chipRect.x + b.chipRect.w), 8, 2)) problems.push(`terminal blocks: block ${i} chip ends ${b.rect.x + b.rect.w - (b.chipRect.x + b.chipRect.w)}px from the block's right edge, want 8`);
+    if (b.chipRect && !near(b.chipRect.h, 16, 2)) problems.push(`terminal blocks: block ${i} chip is ${b.chipRect.h}px tall, want 16`);
+    if (b.rect.h < 18) problems.push(`terminal blocks: block ${i} is ${b.rect.h}px tall, less than a line`);
+    if (b.seamBackground === "rgba(0, 0, 0, 0)") problems.push(`terminal blocks: block ${i} has no seam`);
+  }
+  if (framed.length === 2) {
+    if (framed[0]!.ringShadow === framed[1]!.ringShadow) problems.push("terminal blocks: the failure's ring is the success's: want the danger tone for exit 1");
+    if (framed[0]!.exitColor === framed[1]!.exitColor) problems.push("terminal blocks: exit 0 and exit 1 are in the same colour");
+    if (framed[1]!.rect.y <= framed[0]!.rect.y + framed[0]!.rect.h - 1) problems.push("terminal blocks: the second block overlaps the first");
+  }
+  return problems;
+}

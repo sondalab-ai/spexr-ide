@@ -2,7 +2,7 @@ import path from "path";
 import type { Readiness, ThemeState, WindowSizeOutcome } from "./app";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
-import type { InlineDiagState, AgentLogState, AgentPaneState, FixtureReport, FixtureState, LitRim, SessionsState } from "./checks";
+import type { TerminalBlocksState, InlineDiagState, AgentLogState, AgentPaneState, FixtureReport, FixtureState, LitRim, SessionsState } from "./checks";
 import type { LightsCheck } from "./lights";
 import type { EditorProbe, FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
 import type { SceneResult } from "./scenes";
@@ -89,6 +89,8 @@ export interface CaptureMeta {
   sessions?: { state: SessionsState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>>; waitedMs: number };
   /** The agent-log scene: what the log shows and where its parts are (S6j). */
   agentLog?: { state: AgentLogState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>> };
+  /** The terminal command blocks in the base scene (S6l). */
+  terminalBlocks?: TerminalBlocksState;
   /** The inline diagnostic chips in the base scene (S6k). */
   inlineDiagnostics?: InlineDiagState;
   /** The scene checks that failed (S5f), by scene; the capture throws after writing them. */

@@ -6,7 +6,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, probeWindowSize, readTheme, sizeW
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { agentSession, liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
-import { DEMO_AGENTS_PILL, DEMO_SESSION_ROWS, SEEDED_DRAFT, checkAgentLog, checkAgentPane, checkInlineDiagnostics, probeInlineDiagnostics, checkSessions, probeAgentLog, probeSessions, checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
+import { DEMO_AGENTS_PILL, DEMO_SESSION_ROWS, SEEDED_DRAFT, checkAgentLog, checkAgentPane, checkInlineDiagnostics, probeInlineDiagnostics, checkTerminalBlocks, probeTerminalBlocks, checkSessions, probeAgentLog, probeSessions, checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
 import { probeProcesses, startLiveStubs, type LiveStubs } from "./stubs";
 import { AGENT_LOG_REGIONS, AGENT_PANE_REGIONS, SESSIONS_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
@@ -195,6 +195,8 @@ for (const theme of THEMES) {
         touchTranscripts(prepared);
         await page.waitForTimeout(2_000);
       }
+      // S6l: the two commands the driver ran are framed (the shell's integration marks them as they finish).
+      await page.locator('#theia-bottom-content-panel .spexr-term-block[data-frame="true"][data-exit="1"]').first().waitFor({ state: "visible", timeout: 60_000 });
       // S6k: the inline diagnostic is drawn after the language server's markers and a pause.
       await page.locator(".spexr-inline-diag").first().waitFor({ state: "visible", timeout: 60_000 });
       await shoot("base", baseAck);
@@ -204,6 +206,8 @@ for (const theme of THEMES) {
         meta.sessions = { state: sessionsState, regions: sessionsRegions, waitedMs: Date.now() - sessionsWait };
         check("sessions", checkSessions(sessionsState, sessionsRegions));
         // S6k: the chip after line 46's code, drawn from the warning the parity driver set.
+        meta.terminalBlocks = await probeTerminalBlocks(page);
+        check("terminal blocks", checkTerminalBlocks(meta.terminalBlocks));
         meta.inlineDiagnostics = await probeInlineDiagnostics(page);
         check("inline diagnostics", checkInlineDiagnostics(meta.inlineDiagnostics));
         writeMeta();

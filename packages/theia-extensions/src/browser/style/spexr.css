@@ -5766,3 +5766,91 @@ code {
   color: var(--slc-danger-text, var(--slc-danger));
   background: color-mix(in srgb, var(--slc-danger) 12%, transparent);
 }
+
+/* ══ TERMINAL COMMAND BLOCKS (S6l, D22) ════════════════════════════════════
+   xterm lays one element per command over its lines (command-blocks.ts):
+   a frame, a seam in the exit tone on its top edge and a chip at the right of
+   the command line with the time, the duration and the exit code. The numbers
+   are TERMINAL_BLOCK in shell/workbench-geometry.ts (command-blocks-style.test.ts
+   holds them). The element never takes the pointer, never fills the lines (the
+   terminal's own ground shows), and the chip is opaque only where it is, so a
+   command line is covered no further than its chip. The ring is the kit's
+   control edge (3:1); a failure's is the danger tone whole. */
+.spexr-term-block {
+  --_spexr-exit: var(--slc-text-muted);
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  font-family: var(--sl-font-mono);
+  font-size: 11.5px;
+}
+
+.spexr-term-block[data-exit="0"] {
+  --_spexr-exit: var(--slc-success-text, var(--slc-success));
+}
+
+.spexr-term-block[data-exit]:not([data-exit="0"], [data-exit="cancelled"]) {
+  --_spexr-exit: var(--slc-danger-text, var(--slc-danger));
+}
+
+.spexr-term-block:not([data-exit]) {
+  --_spexr-exit: var(--slc-accent-text);
+}
+
+.spexr-term-block[data-frame="true"]::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--slc-edge-control);
+  pointer-events: none;
+}
+
+.spexr-term-block[data-frame="true"][data-exit]:not([data-exit="0"], [data-exit="cancelled"])::after {
+  box-shadow: 0 0 0 1px var(--slc-danger);
+}
+
+.spexr-term-block[data-frame="true"]::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 12px;
+  z-index: 1;
+  width: 44px;
+  height: 1px;
+  background-color: var(--_spexr-exit);
+  pointer-events: none;
+}
+
+.spexr-term-block__meta {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 12px;
+  padding-inline: 4px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--slc-text-muted);
+  background-color: var(--slc-surface);
+}
+
+.spexr-term-block__exit {
+  font-weight: 600;
+  color: var(--_spexr-exit);
+}
+
+@media (forced-colors: active) {
+  .spexr-term-block[data-frame="true"]::after {
+    box-shadow: none;
+    outline: 1px solid CanvasText;
+  }
+
+  .spexr-term-block[data-frame="true"]::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}

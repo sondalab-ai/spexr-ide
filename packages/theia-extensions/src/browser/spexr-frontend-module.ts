@@ -70,6 +70,7 @@ import { SpexrAgentsStatusContribution } from "./sessions/agents-status-contribu
 import { AgentLogWidget, AGENT_LOG_VIEW_ID } from "./sessions/agent-log-widget.js";
 import { AgentLogViewContribution } from "./sessions/agent-log-contribution.js";
 import { SpexrInlineDiagnosticsContribution } from "./editor/inline-diagnostics-contribution.js";
+import { SpexrCommandBlocksContribution } from "./terminal/command-blocks-contribution.js";
 import { SpexrDefaultLayoutContribution } from "./shell/default-layout-contribution.js";
 import { SpexrThemeContribution } from "./theme/spexr-theme-contribution.js";
 import { SpexrColorContribution } from "./theme/spexr-color-contribution.js";
@@ -521,6 +522,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   // at a time). The shell layout injects it for Reset Layout.
   bind(SpexrInlineDiagnosticsContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrInlineDiagnosticsContribution);
+  bind(SpexrCommandBlocksContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrCommandBlocksContribution);
   bind(SpexrDefaultLayoutContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(SpexrDefaultLayoutContribution);
 });
