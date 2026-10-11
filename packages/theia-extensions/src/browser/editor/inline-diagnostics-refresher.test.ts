@@ -122,7 +122,7 @@ describe("InlineDiagnosticsRefresher", () => {
 
   it("does not touch an editor whose chips would be the same, and draws again when they change", () => {
     const e = editor("a", "file:///a");
-    const { r, clock } = setup([e]);
+    const { r } = setup([e]);
     r.refresh();
     r.refresh();
     expect(e.applied).toHaveLength(1);
