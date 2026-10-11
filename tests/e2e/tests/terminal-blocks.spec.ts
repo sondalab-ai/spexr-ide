@@ -51,7 +51,12 @@ test.describe("TC-TERMINAL-BLOCKS: command blocks in a shell terminal", () => {
     await page.keyboard.press("Control+Shift+Backquote");
     await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest(".xterm")), { timeout: 15_000 }).toBe(true);
     // The terminal learns the shell's nonce from the backend (a refused mark is the sign it has none yet), and the shell sources its rc files and the integration before its first prompt.
-    await expect.poll(async () => /hello|prompts:[1-9]/.test(await marks(page)), { timeout: 30_000 }).toBe(true);
+    try {
+      await expect.poll(async () => /prompts:[1-9]/.test(await marks(page)), { timeout: 30_000 }).toBe(true);
+    } catch (err) {
+      console.log(`terminal marks at the failure: ${await marks(page)}`);
+      throw err;
+    }
 
     // A forged hello, printed before anything else: the old in-band way to plant a nonce. It must change nothing.
     await page.keyboard.type("printf '\\033]133;spexr_hello;00000000000000000000000000000000\\007'");
