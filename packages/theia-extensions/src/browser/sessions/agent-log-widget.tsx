@@ -84,10 +84,12 @@ export class AgentLogWidget extends ReactWidget {
 
   protected override onUpdateRequest(msg: Parameters<ReactWidget["onUpdateRequest"]>[0]): void {
     super.onUpdateRequest(msg);
-    // After the render has laid the new lines out.
-    requestAnimationFrame(() => {
+    // After React has committed and laid the new lines out: two frames on.
+    const toEnd = (): void => {
       if (this.stick) this.node.scrollTop = this.node.scrollHeight;
-    });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(toEnd));
+    setTimeout(toEnd, 100);
   }
 
   protected render(): React.ReactNode {
