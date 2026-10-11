@@ -7,7 +7,7 @@ import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { lateFontScene } from "./late-font";
 import { nativeCapture } from "./native";
 import { agentSession, liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
-import { DEMO_AGENTS_PILL, DEMO_SESSION_ROWS, checkAgentLog, checkInlineDiagnostics, probeInlineDiagnostics, checkSessions, probeAgentLog, probeSessions, checkBottomPanel, probeBottomPanel, checkActivityStatus, probeActivityStatus, SEEDED_DRAFT, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkAgentPane, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, probeLeftIsland, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
+import { checkOutlineIcons, probeOutlineIcons, DEMO_AGENTS_PILL, DEMO_SESSION_ROWS, checkAgentLog, checkInlineDiagnostics, probeInlineDiagnostics, checkSessions, probeAgentLog, probeSessions, checkBottomPanel, probeBottomPanel, checkActivityStatus, probeActivityStatus, SEEDED_DRAFT, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkAgentPane, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, probeLeftIsland, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
 import { probeProcesses, startLiveStubs, type LiveStubs } from "./stubs";
 import { AGENT_LOG_REGIONS, AGENT_PANE_REGIONS, SESSIONS_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
@@ -323,6 +323,13 @@ for (const theme of THEMES) {
           meta.scenes.push({ scene: "tabs-crumbs", file: path.basename(file), ...(await captureCrop(page, file, rows)) });
         }
         check("editor strip", checkEditorStrip(strip));
+        writeMeta();
+      }
+
+      // S6f: the tab glyphs sit on their labels, and every directory is the closed folder.
+      {
+        meta.outlineIcons = await probeOutlineIcons(page);
+        check("outline icons", checkOutlineIcons(meta.outlineIcons));
         writeMeta();
       }
 

@@ -426,6 +426,46 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   color: var(--slc-accent-text);
 }
 
+/* THE OUTLINE ICON THEME (S6f, D10). "spexr outline" (theme/outline-icon-theme.ts)
+   draws a file and a folder as Lumen's 14px outline glyph: the muted ink, the
+   accent text on the selected tree row and on the current tab. A glyph is a
+   state indicator, so at least 3:1 on the row's ground and on the tile
+   (outline-icons-style.test.ts). Every directory is the one closed folder, as
+   the demo draws it. The glyph sits 4px from the name (Lumen's 103 / 107).
+   A tab's glyph is a 14px box centred on its label: Theia's own rule for a
+   file icon in a horizontal bar (tabs.css, specificity 0,4,0) gives it a 20px
+   minimum height and 8px of padding, which put it 3px high and 4px wide of
+   the demo's, so this is scoped under an id to outrank it. A tab's glyph is 8px
+   from its label, the tree's 4px (Lumen's ink gaps are 10-11 and 7). */
+:root {
+  --spexr-tree-icon-gap: 4px;
+  --spexr-tab-icon-gap: 8px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) .spexr-outline-icon {
+  color: var(--slc-text-muted);
+  font-size: 14px;
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(.theia-TreeNode.theia-mod-selected, .lm-TabBar-tab.lm-mod-current) .spexr-outline-icon {
+  color: var(--slc-accent-text);
+}
+
+:root:not([data-sl-theme="high-contrast"]) .theia-TreeNode .file-icon.spexr-outline-icon {
+  margin-inline-end: var(--spexr-tree-icon-gap);
+}
+
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab .lm-TabBar-tabIcon.spexr-outline-icon {
+  align-self: center;
+  box-sizing: content-box;
+  width: 14px;
+  min-height: 0;
+  height: 14px;
+  line-height: 14px;
+  padding: 0;
+  margin-inline-end: var(--spexr-tab-icon-gap);
+}
+
 /* Theia's activity-bar/tab badge (e.g. SCM changed-file count) is a fixed
    15.5px circle (upstream tabs.css) sized for a single digit — "99+" (3
    chars) overflows it. Let it grow into a pill instead of clipping. */
@@ -788,10 +828,12 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    chip, 16px high, in the mono at 10px, as Lumen's ".ide-ptab__n". The
    Problems chip takes its tone from the worst severity (the contribution
    marks the tab with data-severity): the warning tone on its 18% wash for
-   warnings alone, the danger tone for any error, the accent. The
-   text is the tone itself on that wash: at least 4.5:1 on the tab's ground
-   in both themes (activity-status-style / bottom-panel-style tests). The
-   panel's buttons ("+", the close ×) are 24px icon buttons. */
+   warnings alone, the danger tone for any error, and with neither the accent
+   text on a wash of the accent at 12%, not the demo's 18%: at 18% the accent
+   text reads 4.38:1 on the dark theme's current tile, under the 4.5:1 floor
+   (bottom-panel-style.test.ts shows both numbers). The text is the tone itself
+   on its wash, at least 4.5:1 on the tab's ground in both themes. The panel's
+   buttons ("+", the close ×) are 24px icon buttons. */
 :root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-badge-decorator-horizontal {
   box-sizing: border-box;
   min-width: 16px;

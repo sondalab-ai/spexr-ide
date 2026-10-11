@@ -11,6 +11,7 @@
 import type { Page } from "@playwright/test";
 // The order is the extension's own rule (pure, Theia-free), so the capture checks against it rather than a copy.
 import { bottomOrder } from "../../packages/theia-extensions/src/browser/shell/bottom-panel";
+import { OUTLINE_GLYPH } from "../../packages/theia-extensions/src/browser/theme/outline-icons";
 
 export type Rects = Array<{ x: number; y: number; w: number; h: number }>;
 export type Regions = Record<string, Rects>;
@@ -834,6 +835,73 @@ export function checkBottomPanel(panel: BottomPanel): string[] {
   }
   if (panel.current?.startsWith("terminal-") && !panel.plus) problems.push("bottom panel: a terminal is in front and there is no + button");
   if (!panel.close) problems.push("bottom panel: no close button");
+  return problems;
+}
+
+// ── S6f: the outline icons ───────────────────────────────────────────────
+
+/** What {@link probeOutlineIcons} read: each tab glyph's and label's vertical centres, and each folder row's glyph. */
+export interface OutlineIcons {
+  readonly tabs: Array<{ label: string; iconCentre: number; labelCentre: number; iconHeight: number; minHeight: string; lineHeight: string; gap: number }>;
+  readonly folders: Array<{ expanded: boolean; glyph: string }>;
+}
+
+/** Read the main strip's tab glyphs against their labels, and the tree's folder glyphs (the computed `::before` content). */
+export async function probeOutlineIcons(page: Page): Promise<OutlineIcons> {
+  return page.evaluate(() => {
+    const centre = (el: Element): number => {
+      const r = el.getBoundingClientRect();
+      return r.y + r.height / 2;
+    };
+    const tabs = [...document.querySelectorAll<HTMLElement>("#theia-main-content-panel .lm-TabBar-tab")]
+      .map((tab) => ({ tab, icon: tab.querySelector(".lm-TabBar-tabIcon.spexr-outline-icon"), label: tab.querySelector(".lm-TabBar-tabLabel") }))
+      .filter((t) => t.icon && t.label && t.tab.getBoundingClientRect().width > 0)
+      .map((t) => {
+        const style = getComputedStyle(t.icon!);
+        return {
+          label: t.label!.textContent?.trim() ?? "",
+          iconCentre: centre(t.icon!),
+          labelCentre: centre(t.label!),
+          iconHeight: t.icon!.getBoundingClientRect().height,
+          minHeight: style.minHeight,
+          lineHeight: style.lineHeight,
+          gap: t.label!.getBoundingClientRect().left - t.icon!.getBoundingClientRect().right,
+        };
+      });
+    const folders = [...document.querySelectorAll<HTMLElement>(".theia-TreeNode")]
+      .map((row) => ({ row, icon: row.querySelector(".spexr-outline-icon--folder") }))
+      .filter((r) => r.icon)
+      .map((r) => ({
+        expanded: !!r.row.querySelector(".theia-ExpansionToggle:not(.theia-mod-collapsed)"),
+        glyph: getComputedStyle(r.icon!, "::before").content.replace(/^"|"$/g, ""),
+      }));
+    return { tabs, folders };
+  });
+}
+
+/** The gap between a tab's glyph and its label (WORKBENCH.tabIconGap). */
+const TAB_ICON_GAP = 8;
+
+/**
+ * The tab glyph's centre is within 1px of its label's (it sat 3px high), and
+ * every directory is the one closed folder, an expanded one included (the demo
+ * draws no opened folder).
+ */
+export function checkOutlineIcons(icons: OutlineIcons): string[] {
+  const problems: string[] = [];
+  if (icons.tabs.length === 0) problems.push("outline icons: no tab with an outline glyph on screen");
+  for (const t of icons.tabs) {
+    if (Math.abs(t.iconCentre - t.labelCentre) > 1) problems.push(`outline icons: the glyph of tab "${t.label}" is centred ${(t.iconCentre - t.labelCentre).toFixed(1)}px off its label`);
+    // The centre alone hid Theia's 20px minimum height: the box itself is checked.
+    if (t.iconHeight > 14.5) problems.push(`outline icons: the glyph box of tab "${t.label}" is ${t.iconHeight}px high, want 14 at most`);
+    if (t.minHeight !== "0px") problems.push(`outline icons: the glyph of tab "${t.label}" has min-height ${t.minHeight}, want 0px`);
+    if (t.lineHeight !== `${Math.round(t.iconHeight)}px`) problems.push(`outline icons: the glyph of tab "${t.label}" has line-height ${t.lineHeight}, want its height ${Math.round(t.iconHeight)}px`);
+    if (Math.abs(t.gap - TAB_ICON_GAP) > 0.5) problems.push(`outline icons: the glyph of tab "${t.label}" is ${t.gap.toFixed(1)}px from its label, want ${TAB_ICON_GAP}`);
+  }
+  if (!icons.folders.some((f) => f.expanded)) problems.push("outline icons: no expanded folder on screen to check");
+  for (const f of icons.folders) {
+    if (f.glyph !== OUTLINE_GLYPH.folder) problems.push(`outline icons: a ${f.expanded ? "expanded" : "collapsed"} folder draws ${JSON.stringify(f.glyph)}, want the closed folder ${JSON.stringify(OUTLINE_GLYPH.folder)}`);
+  }
   return problems;
 }
 

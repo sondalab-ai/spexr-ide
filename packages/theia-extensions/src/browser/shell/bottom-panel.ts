@@ -30,6 +30,22 @@ function rank(id: string): number {
   return id.startsWith("terminal-") ? 0 : 4;
 }
 
+/**
+ * Where a widget that just joined the bar goes: the move to make (its id and
+ * the index among the bar's other tabs), or undefined when it already sits
+ * right. It goes before the first tab of higher rank, else last, and no other
+ * tab moves, so a tab the user dragged stays where they put it. Lumino-free:
+ * the contribution applies the move.
+ */
+export function moveForAdded(ids: readonly string[], addedId: string): { id: string; to: number } | undefined {
+  const at = ids.indexOf(addedId);
+  if (at < 0) return undefined;
+  const others = ids.filter((id) => id !== addedId);
+  const higher = others.findIndex((id) => rank(id) > rank(addedId));
+  const to = higher < 0 ? others.length : higher;
+  return to === at ? undefined : { id: addedId, to };
+}
+
 /** The bottom bar's widget ids in Lumen's order. Stable, a fixed point, and indifferent to a tab that is not there. */
 export function bottomOrder(ids: readonly string[]): string[] {
   return ids.map((id, i) => ({ id, i })).sort((a, b) => rank(a.id) - rank(b.id) || a.i - b.i).map((e) => e.id);

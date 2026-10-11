@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AGENT_LOG_VIEW_ID, OUTPUT_VIEW_ID, PROBLEMS_VIEW_ID, bottomOrder, nextTerminalTitle, severityFromStat, titleFor } from "./bottom-panel.js";
+import { AGENT_LOG_VIEW_ID, OUTPUT_VIEW_ID, PROBLEMS_VIEW_ID, bottomOrder, moveForAdded, nextTerminalTitle, severityFromStat, titleFor } from "./bottom-panel.js";
 
 const own = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
 
@@ -97,6 +97,33 @@ describe("the bottom tabs' order (S6e, B1)", () => {
   });
 });
 
+describe("a widget joining the bar (S6e)", () => {
+  it("goes before the first tab of higher rank, and nothing else moves", () => {
+    expect(moveForAdded(["terminal-1", OUTPUT_VIEW_ID, PROBLEMS_VIEW_ID], PROBLEMS_VIEW_ID)).toEqual({ id: PROBLEMS_VIEW_ID, to: 1 });
+    expect(moveForAdded(["terminal-1", PROBLEMS_VIEW_ID, "terminal-2"], "terminal-2")).toEqual({ id: "terminal-2", to: 1 });
+  });
+
+  it("is not moved when it already sits right, and a bar the user rearranged is left as dragged", () => {
+    expect(moveForAdded(["terminal-1", PROBLEMS_VIEW_ID, OUTPUT_VIEW_ID], OUTPUT_VIEW_ID)).toBeUndefined();
+    // The user dragged Output ahead of Problems; a terminal then joins: it goes ahead of the first higher-ranked tab, Output stays ahead of Problems.
+    const dragged = ["terminal-1", OUTPUT_VIEW_ID, PROBLEMS_VIEW_ID, "terminal-2"];
+    expect(moveForAdded(dragged, "terminal-2")).toEqual({ id: "terminal-2", to: 1 });
+    expect(moveForAdded(["terminal-1", OUTPUT_VIEW_ID, PROBLEMS_VIEW_ID], "terminal-1")).toBeUndefined();
+  });
+
+  it("goes last when nothing outranks it, and is ignored when it is not on the bar", () => {
+    expect(moveForAdded([AGENT_LOG_VIEW_ID, "other", PROBLEMS_VIEW_ID], "other")).toEqual({ id: "other", to: 2 });
+    expect(moveForAdded(["terminal-1"], "missing")).toBeUndefined();
+  });
+
+  it("is applied to the new widget alone on add, and the whole bar only after a restore", () => {
+    const source = own("./bottom-panel-contribution.ts");
+    expect(source).toContain("this.placeAdded(widget);");
+    expect(source).toContain("bar.insertTab(move.to, title)");
+    expect(source.slice(source.indexOf("private onAdded"), source.indexOf("private placeAdded"))).not.toContain("enforceOrder");
+  });
+});
+
 describe("the Problems chip's tone (S6e, B3)", () => {
   it("is danger with any error, whatever else there is", () => {
     expect(severityFromStat({ errors: 1, warnings: 3 })).toBe("error");
@@ -123,6 +150,9 @@ describe("the close-panel button (S6e, B4)", () => {
     expect(source).toContain('await this.shell.collapsePanel("bottom");');
     expect(source).toContain("await this.shell.activateWidget(editor.id);");
     expect(source).toContain('nls.localize("spexr/bottom/close"');
+    expect(source).toContain('label: nls.localize("spexr/bottom/closeCommand"');
+    expect(source).toContain("this.toDispose.push(this.shell.onDidAddWidget(");
+    expect(source).toContain("this.toDispose.push(this.problems.onDidChangeMarkers(");
     expect(source).toContain('this.shell.getAreaFor(widget) === "bottom"');
   });
 });
