@@ -16,11 +16,8 @@ import { EditorManager } from "@theia/editor/lib/browser";
 import { NotificationManager } from "@theia/messages/lib/browser/notifications-manager";
 import { NotificationsCommands } from "@theia/messages/lib/browser/notifications-commands";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
-import { SpexrDarkfactoryServiceProxy, type SpexrDarkfactoryService } from "../darkfactory/darkfactory-service-proxy.js";
-import { SpexrDarkfactoryClientDispatcher } from "../darkfactory/darkfactory-client.js";
 import { SpexrGitServiceProxySymbol } from "../scm/git-service-proxy.js";
 import type { SpexrGitService } from "../../common/git-protocol.js";
-import type { AgentTile } from "../../common/darkfactory-protocol.js";
 import { boundKeyCaps, keyPlatform } from "../views/key-caps.js";
 import { trafficLightInset } from "../../common/mac-title-bar.js";
 import {
@@ -35,7 +32,7 @@ import {
   titleCrumb,
   type FieldKeys,
 } from "./titlebar-model.js";
-import { AgentsCount, type AgentsView } from "./agents-count.js";
+import { SpexrAgentsCountService } from "./agents-count-service.js";
 
 /**
  * spexr's title bar: the kit's `.sl-titlebar` (workbench.css, 0.34) in
@@ -73,8 +70,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
   @inject(EditorManager) private readonly editors!: EditorManager;
   @inject(NotificationManager) private readonly notifications!: NotificationManager;
-  @inject(SpexrDarkfactoryServiceProxy) private readonly darkfactory!: SpexrDarkfactoryService;
-  @inject(SpexrDarkfactoryClientDispatcher) private readonly darkfactoryClient!: SpexrDarkfactoryClientDispatcher;
+  @inject(SpexrAgentsCountService) private readonly agentsService!: SpexrAgentsCountService;
   @inject(SpexrGitServiceProxySymbol) private readonly git!: SpexrGitService;
 
   /** The compact menu button: undefined (room kept, nothing drawn) until the window's style is known. */
@@ -84,9 +80,6 @@ export class SpexrTitleBarWidget extends ReactWidget {
   private crumb: string[] = [];
   private crumbName = "";
   private keys: FieldKeys | undefined;
-  private readonly agentsCount = new AgentsCount();
-  private agents = 0;
-  private holdTimer: ReturnType<typeof setTimeout> | undefined;
   private notificationCount = 0;
   private centerOpen = false;
   private rightOpen = false;
@@ -119,14 +112,8 @@ export class SpexrTitleBarWidget extends ReactWidget {
       this.update();
     }));
 
-    this.toDispose.push(this.darkfactoryClient.onTilesChanged$((tiles) => this.showAgents(this.agentsCount.push(tiles, Date.now()))));
-    void this.readTiles();
-    // Dark Factory pushes reach only the newest window, so every other one
-    // reads the last scan when it comes to the front.
-    const onFocus = (): void => void this.readTiles();
-    window.addEventListener("focus", onFocus);
-    this.toDispose.push(Disposable.create(() => window.removeEventListener("focus", onFocus)));
-    this.toDispose.push(Disposable.create(() => clearTimeout(this.holdTimer)));
+    // The count is the window's one (SpexrAgentsCountService), shared with the Agent tile's badge.
+    this.toDispose.push(this.agentsService.onDidChange(() => this.update()));
 
     this.watchRightPanel();
     this.update();
@@ -199,35 +186,6 @@ export class SpexrTitleBarWidget extends ReactWidget {
   }
 
   /**
-   * Read the backend's last scan (currentTiles: no scan, no side effects),
-   * one read at a time; a push that lands meanwhile wins (AgentsCount).
-   */
-  private async readTiles(): Promise<void> {
-    const token = this.agentsCount.startRead();
-    if (token === undefined) return;
-    let tiles: AgentTile[] | undefined;
-    try {
-      tiles = await this.darkfactory.currentTiles();
-    } catch {
-      // The backend is not up yet: the next push or focus reads again.
-    }
-    this.showAgents(this.agentsCount.finishRead(token, tiles, Date.now()));
-  }
-
-  /** Show a count, and look again when the earliest hold runs out, with no new scan. */
-  private showAgents(view: AgentsView | undefined): void {
-    if (!view) return;
-    clearTimeout(this.holdTimer);
-    this.holdTimer = undefined;
-    if (view.nextExpiry !== undefined) {
-      this.holdTimer = setTimeout(() => this.showAgents(this.agentsCount.expire(Date.now())), Math.max(0, view.nextExpiry - Date.now()));
-    }
-    if (this.agents === view.count) return;
-    this.agents = view.count;
-    this.update();
-  }
-
-  /**
    * The right panel's disclosure is expanded while the panel shows. Theia
    * sends no event for a side panel collapsing; its handler hides the dock
    * panel, on every path (the toggle, a drag to zero, Dark Factory's sidebar
@@ -269,7 +227,7 @@ export class SpexrTitleBarWidget extends ReactWidget {
   private readonly onBell = (): void => void this.commands.executeCommand(NotificationsCommands.TOGGLE.id);
 
   protected render(): React.ReactNode {
-    const agents = agentsLabel(this.agents);
+    const agents = agentsLabel(this.agentsService.count);
     const bell = bellLabel(this.notificationCount);
     const monogram = initials(this.userName);
     return (

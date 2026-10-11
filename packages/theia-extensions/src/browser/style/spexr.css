@@ -435,6 +435,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   min-width: var(--theia-notification-count-width);
   padding-left: 4px;
   padding-right: 4px;
+  border-radius: 6px;
   white-space: nowrap;
 }
 
