@@ -377,6 +377,7 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
   bind(SpexrGitToolbarContribution).toSelf().inSingletonScope();
   bind(TabBarToolbarContribution).toService(SpexrGitToolbarContribution);
   bind(SpexrBreadcrumbMetaService).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(SpexrBreadcrumbMetaService);
   bind(SpexrBreadcrumbsRenderer).toSelf();
   // Theia builds each tab bar's breadcrumbs in a child container that binds its own crumb renderer.
   rebind(BreadcrumbsRendererFactory).toFactory((ctx) => () => {

@@ -11,6 +11,7 @@ import {
   SPEXR_GUTTER_OPTIONS,
   gutterLayout,
   withSpexrGutter,
+  withoutOverviewRuler,
 } from "./spexr-editor-gutter.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -106,5 +107,20 @@ describe("the provider that sets the gutter", () => {
     const text = read(require.resolve("@theia/monaco-editor-core/esm/vs/editor/common/config/editorOptions.js"));
     expect(text).toMatch(/'lineDecorationsWidth', 10\)/);
     expect(text).toMatch(/'lineNumbersMinChars', 5,/);
+  });
+});
+
+describe("the overview ruler (S6c, E8, D27)", () => {
+  it("is laid over the options with no lanes, for an editor and a diff editor", () => {
+    expect(withoutOverviewRuler({ wordWrap: "on", overviewRulerLanes: 3 })).toEqual({ wordWrap: "on", overviewRulerLanes: 0 });
+    const ours = read(join(here, "spexr-monaco-editor-provider.ts"));
+    expect(ours).toMatch(/withoutOverviewRuler\(withSpexrGutter\(super\.createMonacoEditorOptions\(model\)\)\)/);
+    expect(ours).toMatch(/withoutOverviewRuler\(withSpexrGutter\(super\.createMonacoDiffEditorOptions\(original, modified\)\)\)/);
+  });
+
+  it("is not a Theia preference, which is why it is not in the desktop defaults; the border is", () => {
+    const schema = read(require.resolve("@theia/editor/lib/common/editor-generated-preference-schema.js"));
+    expect(schema).not.toContain('"editor.overviewRulerLanes"');
+    expect(schema).toContain('"editor.overviewRulerBorder"');
   });
 });

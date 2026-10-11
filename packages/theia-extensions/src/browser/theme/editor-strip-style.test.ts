@@ -26,11 +26,11 @@ function px(block: string, name: string): number {
 const MAIN = ":root:not([data-sl-theme=\"high-contrast\"]) #theia-main-content-panel .lm-TabBar .lm-TabBar-tab";
 
 describe("the editor strip's defaults (S6c, E3, E8)", () => {
-  it("leaves problem marks off tabs, and the overview ruler off the editor", () => {
+  it("leaves problem marks off tabs, and the overview ruler's border off (its lanes go through the editor provider, spexr-editor-gutter.test.ts)", () => {
     expect(preferences["problems.decorations.tabbar.enabled"]).toBe(false);
     // Git's letters reach a tab as tail decorations, which this preference gates (tab-bars.ts renderTailDecorations).
     expect(preferences["workbench.editor.decorations.badges"]).toBe(false);
-    expect(preferences["editor.overviewRulerLanes"]).toBe(0);
+    expect(preferences["editor.overviewRulerLanes"]).toBeUndefined();
     expect(preferences["editor.overviewRulerBorder"]).toBe(false);
   });
 });

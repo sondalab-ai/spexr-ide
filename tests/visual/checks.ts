@@ -305,15 +305,24 @@ export function checkLeftViews(steps: ReadonlyArray<{ step: string; left: number
 
 // ── S6c: the editor strip ────────────────────────────────────────────────
 
+/** The scenes that keep the base layout: no island is resized and no view opened, so the strip's width is the base scene's. */
+const BASE_LAYOUT_SCENES: readonly string[] = ["base", "palette", "toast", "focus-tree", "tabs-crumbs"];
+
 /**
- * The main tab strips need no help from the capture. The scenes' alignment
- * pass scrolls a strip so the current tab comes first; with the pinned tabs
- * in their places (Darkfactory trailing) and the strip wide enough for its
- * tabs, no strip moves, and a scroll here means tabs spilled over or the
- * current tab is not where the demo puts it.
+ * The main tab strips need no help from the capture in the scenes that keep
+ * the base layout. The scenes' alignment pass scrolls a strip so the current
+ * tab comes first; with the pinned tabs in their places (Darkfactory
+ * trailing) a strip that fits does not move, and a scroll here means tabs
+ * spilled over or the current tab is not where the demo puts it. The later
+ * scenes resize the left island (432 for the agent) or open the right
+ * island's views over a strip that also holds the fixture's Welcome and
+ * Specs tabs, which the demo has not, so Theia scrolls it there; their count
+ * is reported in the summary, not asserted.
  */
 export function checkAlignedStrips(scenes: ReadonlyArray<{ scene: string; alignedStrips: number }>): string[] {
-  return scenes.filter((s) => s.alignedStrips !== 0).map((s) => `tab strip: scene ${s.scene} needed ${s.alignedStrips} alignment scroll(s), want 0`);
+  return scenes
+    .filter((s) => BASE_LAYOUT_SCENES.includes(s.scene) && s.alignedStrips !== 0)
+    .map((s) => `tab strip: scene ${s.scene} needed ${s.alignedStrips} alignment scroll(s), want 0`);
 }
 
 /**

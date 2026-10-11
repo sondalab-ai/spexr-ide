@@ -1,5 +1,6 @@
 import { inject, injectable } from "@theia/core/shared/inversify";
 import { Emitter, type Event } from "@theia/core";
+import type { FrontendApplicationContribution } from "@theia/core/lib/browser";
 import { Saveable } from "@theia/core/lib/browser";
 import { EditorManager } from "@theia/editor/lib/browser/editor-manager";
 import { ScmDecorationsService } from "@theia/scm/lib/browser/decorations/scm-decorations-service";
@@ -9,10 +10,12 @@ import { breadcrumbMeta, foldDiffStats, type DiffStats } from "./breadcrumb-mode
  * What the breadcrumb row's right-hand meta reads (S6c, E7): per file URI, the
  * lines added and removed against the committed revision (Theia's DirtyDiff,
  * the gutter's own source) and whether an editor on it holds unsaved edits.
- * It only listens; the diff is computed by Theia for the gutter anyway.
+ * It only listens; the diff is computed by Theia for the gutter anyway. It
+ * starts with the application, because Theia fires a file's first diff as
+ * the editor opens, before any breadcrumb row asks.
  */
 @injectable()
-export class SpexrBreadcrumbMetaService {
+export class SpexrBreadcrumbMetaService implements FrontendApplicationContribution {
   @inject(ScmDecorationsService)
   private readonly decorations!: ScmDecorationsService;
 
@@ -36,7 +39,12 @@ export class SpexrBreadcrumbMetaService {
     return breadcrumbMeta(this.stats.get(uri), this.dirty.get(uri) ?? false);
   }
 
-  /** Subscribes on first use, so a window with no breadcrumbs listens to nothing. */
+  /** Starts listening when the application starts. */
+  onStart(): void {
+    this.start();
+  }
+
+  /** Subscribes once: to the dirty diff's updates, and to each editor's dirty state. */
   private start(): void {
     if (this.started) return;
     this.started = true;
