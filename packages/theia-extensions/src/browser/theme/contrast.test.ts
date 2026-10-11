@@ -241,9 +241,9 @@ describe.each(["light", "dark"] as const)("the selection tile on %s", (theme) =>
   });
 });
 
-// The lit pane's glow falls inward (spexr.css, THE WORKBENCH): the seam at
-// --slc-glow x 40% over the lit rung, strongest along the island's edge, where
-// a row's text can sit. Text there must still read at 4.5:1. Dark had 0.02 to
+// The lit pane's inward glow (the seam at --slc-glow x 40% over the lit rung,
+// replaced by S5f's lit wash, tint and drop; the worst case is kept as a floor), strongest
+// along the island's edge, where a row's text can sit. Text there must still read at 4.5:1. Dark had 0.02 to
 // spare at kit 0.33 (muted 4.52), so a stronger glow would break it unnoticed.
 describe.each(["light", "dark"] as const)("the lit pane's inward glow on %s", (theme) => {
   const components = kitFile("components.css");
@@ -256,9 +256,9 @@ describe.each(["light", "dark"] as const)("the lit pane's inward glow on %s", (t
   const alpha = glow * 0.4;
   const ground = raised.map((c, i) => c * (1 - alpha) + accentText[theme][i]! * alpha) as Rgb;
 
-  it("is drawn at 40% of the kit's glow, from the seam", () => {
+  it("is no longer drawn: S5f replaced the inward glow with the kit's lit wash, tint and drop", () => {
     const spexr = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
-    expect(spexr).toContain("inset 0 0 24px -6px color-mix(in srgb, var(--slc-seam) calc(var(--slc-glow) * 40%), transparent)");
+    expect(spexr).not.toContain("inset 0 0 24px -6px color-mix(in srgb, var(--slc-seam)");
     expect(glow).toBe(theme === "light" ? 0.35 : 0.5);
   });
 

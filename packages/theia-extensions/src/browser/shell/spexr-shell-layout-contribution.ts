@@ -19,6 +19,8 @@ import { SpexrDarkfactorySidebarVisibilityContribution } from "../darkfactory/da
 import { consumeProjectLanding } from "../project/project-landing-intent.js";
 import { SpexrRevealOnRestore, type RevealOnRestoreView } from "./reveal-on-restore.js";
 import { SpexrDefaultLayoutContribution } from "./default-layout-contribution.js";
+import { StorageService } from "@theia/core/lib/browser/storage-service";
+import { SECTIONS_MIGRATION_KEY, clearMigrations } from "./explorer-sections.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
 const PINNED_IDS = [WELCOME_VIEW_ID, SPEC_VIEW_ID, CLAUDE_TERMINAL_ID] as const;
@@ -71,6 +73,9 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
   @inject(TerminalService)
   @optional()
   private readonly terminalService?: TerminalService;
+
+  @inject(StorageService)
+  private readonly storage!: StorageService;
 
   @inject(SpexrDefaultLayoutContribution)
   private readonly defaultLayout!: SpexrDefaultLayoutContribution;
@@ -162,6 +167,9 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       await this.shell.closeMany(mainWidgets, { save: false });
     }
     await this.detachManagedViews();
+    // The default-hidden Explorer sections and Smart Search's move are decided
+    // again on the Explorer the reset builds (explorer-sections.ts).
+    await clearMigrations({ load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) });
     await this.applyDefaultLayout();
     await this.defaultLayout.resetSizes();
   }

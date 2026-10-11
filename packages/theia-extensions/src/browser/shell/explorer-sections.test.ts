@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   HIDDEN_BY_DEFAULT_SECTIONS,
   NPM_SCRIPTS_WIDGET_ID,
   OPEN_EDITORS_WIDGET_ID,
+  SMART_SEARCH_EVICTION_ID,
+  clearMigrations,
   hideSectionsOnce,
+  runMigrationOnce,
   parseMigrated,
   type ExplorerSections,
   type MigrationStore,
@@ -92,5 +96,51 @@ describe("the Explorer's default-hidden sections", () => {
     expect(parseMigrated("theia-open-editors-widget")).toEqual([]);
     expect(parseMigrated({ a: 1 })).toEqual([]);
     expect(parseMigrated([OPEN_EDITORS_WIDGET_ID, 3, null])).toEqual([OPEN_EDITORS_WIDGET_ID]);
+  });
+});
+
+describe("the layout migrations' one done-list", () => {
+  it("runs the Smart Search move once, and records it beside the sections", async () => {
+    const store = memoryStore();
+    let ran = 0;
+    expect(await runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => void ran++)).toBe(true);
+    expect(await runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => void ran++)).toBe(false);
+    expect(ran).toBe(1);
+    await hideSectionsOnce(store, explorer([OPEN_EDITORS_WIDGET_ID]));
+    expect(store.value).toEqual([SMART_SEARCH_EVICTION_ID, OPEN_EDITORS_WIDGET_ID]);
+  });
+
+  it("does not record a move that threw, so the next launch tries again", async () => {
+    const store = memoryStore();
+    await runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => {
+      throw new Error("no");
+    }).catch(() => undefined);
+    expect(store.value).toBeUndefined();
+  });
+
+  it("is emptied by Reset Layout: the Explorer the reset builds has its sections hidden again, and Smart Search is decided again", async () => {
+    const store = memoryStore();
+    await hideSectionsOnce(store, explorer([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]));
+    await runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => undefined);
+    await clearMigrations(store);
+    expect(store.value).toEqual([]);
+    const rebuilt = explorer([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
+    expect(await hideSectionsOnce(store, rebuilt)).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
+    expect(await runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => undefined)).toBe(true);
+  });
+
+  it("never lets two migrations read and write the list at once: both ids survive", async () => {
+    const store = memoryStore();
+    await Promise.all([runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => undefined), hideSectionsOnce(store, explorer([OPEN_EDITORS_WIDGET_ID]))]);
+    expect((store.value as string[]).sort()).toEqual([OPEN_EDITORS_WIDGET_ID, SMART_SEARCH_EVICTION_ID].sort());
+  });
+
+  it("is cleared by Reset Layout before the default layout is rebuilt, and the Explorer's hooks follow each container Theia creates", () => {
+    const own = (f: string): string => readFileSync(fileURLToPath(new URL(f, import.meta.url)), "utf8");
+    const layout = own("./spexr-shell-layout-contribution.ts");
+    expect(layout.indexOf("await clearMigrations(")).toBeGreaterThan(layout.indexOf("await this.detachManagedViews();"));
+    expect(layout.indexOf("await clearMigrations(")).toBeLessThan(layout.indexOf("await this.applyDefaultLayout();\n    await this.defaultLayout.resetSizes();"));
+    const chrome = own("./explorer-chrome-contribution.ts");
+    expect(chrome).toMatch(/onDidCreateWidget\(\(\{ factoryId, widget \}\) => \{\s*if \(factoryId === EXPLORER_VIEW_CONTAINER_ID\) this\.attach\(widget as ViewContainer\);/);
   });
 });

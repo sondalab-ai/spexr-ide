@@ -1325,9 +1325,12 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    Theia hides the header of a container's only visible section and folds
    the section's name into the container's title; the Explorer keeps its
    header, and the project folder's name is its eyebrow, as Lumen's.
-   Theia's section header height is the variable below and, in script,
-   ViewContainerPart.HEADER_HEIGHT (shell/section-header-height.ts). */
-:root {
+   Theia's section header height is the variable below, scoped to the left
+   island (the right and bottom keep Theia's), and, in script,
+   ViewContainerPart.HEADER_HEIGHT (shell/section-header-height.ts), which is
+   one static for every container: it is the collapsed slot's height, so a
+   collapsed section elsewhere is 28px tall too, its 24px header inside it. */
+#theia-left-content-panel {
   --theia-view-container-title-height: 28px;
 }
 
@@ -1362,7 +1365,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   transition: opacity var(--sl-motion-fast) var(--sl-motion-ease);
 }
 
-#theia-left-content-panel .theia-view-container-part-header:is(:hover, :focus-visible) .theia-ExpansionToggle,
+#theia-left-content-panel .theia-view-container-part-header:is(:hover, :focus-within) .theia-ExpansionToggle,
 #theia-left-content-panel .part.collapsed .theia-view-container-part-header .theia-ExpansionToggle {
   opacity: 1;
 }
@@ -1392,7 +1395,10 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* The Explorer's head, Lumen's: its tools are a "+" (New File) and "...",
    24px ghost buttons 8px in from the island's edge; New Folder, Refresh and
-   Collapse All come out while the head is hovered or has the focus. */
+   Collapse All fade in while the head is hovered or has the focus. They keep
+   their place in the layout (opacity and visibility, never display), so the
+   "+" and "..." do not move; a tool that is hidden cannot take the focus, so
+   the head's focus-within shows them as the keyboard reaches the "+". */
 #theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar {
   gap: 4px;
   padding-inline: 0 calc(8px - var(--spexr-island-ring));
@@ -1430,8 +1436,22 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   content: "\ea60";
 }
 
+#theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar .lm-TabBar-toolbar .item:has(> :is(.codicon-new-folder, .codicon-refresh, .codicon-collapse-all)) {
+  transition:
+    opacity var(--sl-motion-fast) var(--sl-motion-ease),
+    visibility var(--sl-motion-fast) var(--sl-motion-ease);
+}
+
 #theia-left-content-panel:has(#explorer-view-container:not(.lm-mod-hidden)) .theia-sidepanel-toolbar:not(:hover, :focus-within) .lm-TabBar-toolbar .item:has(> :is(.codicon-new-folder, .codicon-refresh, .codicon-collapse-all)) {
-  display: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* A tool or a section header reached by the keyboard takes the kit's flush
+   ring (the ring's width inside the box, as the kit's controls). */
+#theia-left-content-panel :is(.theia-sidepanel-toolbar .lm-TabBar-toolbar .item > div, .theia-view-container-part-header):focus-visible {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
 }
 
 /* A changed file's mark in the Explorer (S6b, L7): one letter, mono at 600,

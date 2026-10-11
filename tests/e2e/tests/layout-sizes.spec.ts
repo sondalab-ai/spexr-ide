@@ -12,9 +12,10 @@
  * remembered for that view. This suite runs without the agent CLI, so the
  * agent terminal never starts and the Explorer is the view in front: the
  * seeded 432px is taken to the Explorer's 264px once the layout has settled.
- * The agent terminal's 432px is measured by the visual capture, whose stub
- * CLI starts it (tests/visual, scene checks); the width policy itself by
- * left-island-width.test.ts.
+ * The agent terminal's 432px is not measured here. It is measured by the
+ * visual capture, whose stub CLI starts it (tests/visual/capture.visual.ts,
+ * the "agent-front" scene and `checkLeftViews`), and the width policy itself
+ * is tested by left-island-width.test.ts.
  *
  * The right island is read with a project tab in front: the Darkfactory
  * dashboard, which a launch can leave in front, collapses the right panel
@@ -85,7 +86,13 @@ async function dragLeftSash(page: Page, dx: number): Promise<void> {
 async function showLeftView(page: Page, widgetId: string): Promise<void> {
   const tab = page.locator(`#shell-tab-${widgetId}`);
   await tab.waitFor({ state: "visible", timeout: 15_000 });
-  if (!(await tab.evaluate((el) => el.classList.contains("lm-mod-current")))) await tab.click();
+  // A tab that a synthetic pointer event (activateTab) just touched can swallow
+  // the first click, so the click is tried again while the tile is not current.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await tab.evaluate((el) => el.classList.contains("lm-mod-current"))) break;
+    await tab.click();
+    await page.waitForTimeout(500);
+  }
   await expect(tab).toHaveClass(/lm-mod-current/, { timeout: 10_000 });
 }
 
@@ -99,6 +106,20 @@ test.describe("the default layout's island sizes", () => {
     // The bottom panel can start hidden; it opens at the size it was given.
     if ((await island(page, "bottom")) === null) await runCommand(page, "View: Toggle Bottom Panel");
     await expect.poll(async () => (await island(page, "bottom"))?.h, { timeout: 15_000 }).toBeCloseTo(204, 0);
+  });
+
+  test("switching the left view leaves the right and bottom islands where they are", async ({ page }) => {
+    await showLeftView(page, EXPLORER);
+    await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 15_000 }).toBeCloseTo(264, 0);
+    await expect.poll(() => rightIslandWidth(page), { timeout: 15_000 }).toBeCloseTo(352, 0);
+    const bottom = (await island(page, "bottom"))?.h;
+    for (const view of [SEARCH, EXPLORER, SEARCH]) {
+      await showLeftView(page, view);
+      await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(264, 0);
+    }
+    expect(await rightIslandWidth(page)).toBeCloseTo(352, 0);
+    // The bottom panel can start hidden; only a panel that was showing is compared.
+    if (bottom !== undefined) expect((await island(page, "bottom"))?.h).toBeCloseTo(bottom, 0);
   });
 
   test("the left island's width is each view's own: a drag on the Explorer stays with it", async ({ page }) => {

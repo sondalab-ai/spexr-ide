@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { checkEdge, checkLeftIsland, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
+import { checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
 import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureStable,
@@ -242,6 +242,31 @@ for (const theme of THEMES) {
       await shoot("right-memory");
       meta.rightPanel["memory"] = await probeRegions(page, RIGHT_PANEL_REGIONS);
       writeMeta();
+
+      // S6b: the left island follows the view in front. The agent terminal
+      // (the stub CLI starts it) is 432, the Explorer 264, and back; the right
+      // and bottom islands stay where they were. The Search and SCM views are
+      // shot with their section headers at the 28px the left island sets.
+      {
+        const before = await islandSizes(page);
+        const steps: Array<{ step: string; left: number | null; want: number }> = [];
+        await showLeftView(page, "spexr-claude");
+        steps.push({ step: "agent terminal in front", left: await leftIslandIs(page, 432), want: 432 });
+        await shoot("agent-front");
+        await showLeftView(page, "explorer-view-container");
+        steps.push({ step: "Explorer in front", left: await leftIslandIs(page, 264), want: 264 });
+        await showLeftView(page, "spexr-claude");
+        steps.push({ step: "agent terminal in front again", left: await leftIslandIs(page, 432), want: 432 });
+        await showLeftView(page, "search-view-container");
+        steps.push({ step: "Search in front", left: await leftIslandIs(page, 264), want: 264 });
+        await shoot("left-search");
+        await showLeftView(page, "scm-view-container");
+        steps.push({ step: "SCM in front", left: await leftIslandIs(page, 264), want: 264 });
+        await shoot("left-scm");
+        meta.leftViews = { steps, before, after: await islandSizes(page) };
+        writeMeta();
+        check("left views", checkLeftViews(steps, before, meta.leftViews.after));
+      }
 
       // macOS: the lights one zoom level out, then the bar's room through full
       // screen. Full screen last, because it moves the window to a Space of

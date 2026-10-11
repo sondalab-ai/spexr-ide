@@ -10,7 +10,12 @@ import { ACTIVITY_COLUMN, AGENT_ISLAND, EXPLORER_ISLAND, areaSize } from "./work
  */
 export type LeftWidths = Readonly<Record<string, number>>;
 
-/** Where the widths are kept between launches (Theia's `StorageService`). */
+/**
+ * Where the widths are kept between launches (Theia's `StorageService`). In
+ * Electron that storage is not scoped per workspace (it is the layout cache's
+ * own), so the widths are the profile's: every workspace opens a view at the
+ * width the user last gave it. That is intended.
+ */
 export const LEFT_WIDTHS_STORAGE_KEY = "spexr.leftIsland.widths";
 
 /** The narrowest island worth remembering: below it a drag was a mis-drop, not a choice. */

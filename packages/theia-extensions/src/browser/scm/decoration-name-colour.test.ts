@@ -30,6 +30,6 @@ describe("the file tree's adapter learns decorations it was not told of (S6b, L7
     expect(theia).toMatch(/decorations\(tree\) \{\s*return this\.collectDecorations\(tree\);/);
     const own = readFileSync(fileURLToPath(new URL("./spexr-file-tree-decorator-adapter.ts", import.meta.url)), "utf8");
     expect(own).toMatch(/this\.learnMissing\(tree\);\s*return super\.decorations\(tree\);/);
-    expect(own).toContain("this.updateDecorations(this.decorationsByUri.keys(), missing.values());");
+    expect(own).toContain("this.updateDecorations(this.decorationsByUri.keys(), found.values());");
   });
 });

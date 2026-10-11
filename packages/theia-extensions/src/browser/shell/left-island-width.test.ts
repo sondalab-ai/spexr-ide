@@ -200,6 +200,19 @@ describe("the left island's width controller", () => {
     expect(widths.remembered).toEqual({ [CLAUDE_TERMINAL_ID]: 532 });
   });
 
+  it("never shrinks a width that was remembered, 432 included, through any number of switches", async () => {
+    const panel = new FakePanel(CLAUDE_TERMINAL_ID, ACTIVITY_COLUMN + 432);
+    const widths = new LeftIslandWidth(panel, memoryStore({ [EXPLORER]: 432 }));
+    await widths.attach();
+    for (const view of [EXPLORER, SEARCH, EXPLORER, CLAUDE_TERMINAL_ID, EXPLORER]) {
+      panel.show(view);
+      await settle();
+    }
+    expect(panel.size).toBe(ACTIVITY_COLUMN + 432);
+    expect(widths.remembered[EXPLORER]).toBe(432);
+    expect(leftIslandFor(EXPLORER, { [EXPLORER]: 432 })).toBe(432);
+  });
+
   it("takes a view other than the agent terminal, left at the seeded 432, to its default when it attaches, and does not remember the 432", async () => {
     const panel = new FakePanel(EXPLORER, ACTIVITY_COLUMN + 432);
     const widths = new LeftIslandWidth(panel, memoryStore());
