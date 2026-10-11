@@ -22,14 +22,16 @@ export class SpexrSessionsContribution implements FrontendApplicationContributio
 
   async onDidInitializeLayout(): Promise<void> {
     this.widgetManager.onDidCreateWidget(({ factoryId, widget }) => {
-      if (factoryId === EXPLORER_VIEW_CONTAINER_ID) void this.attach(widget as ViewContainer);
+      void this.attach(factoryId, widget as ViewContainer);
     });
-    await this.attach((await this.widgetManager.getOrCreateWidget(EXPLORER_VIEW_CONTAINER_ID)) as ViewContainer);
+    await this.attach(EXPLORER_VIEW_CONTAINER_ID, (await this.widgetManager.getOrCreateWidget(EXPLORER_VIEW_CONTAINER_ID)) as ViewContainer);
   }
 
-  private async attach(container: ViewContainer): Promise<void> {
+  /** `factoryId` is the container's own: only the Explorer's gets the part. */
+  private async attach(factoryId: string, container: ViewContainer): Promise<void> {
+    if (!shouldAddSessionsPart(factoryId, EXPLORER_VIEW_CONTAINER_ID, false)) return;
     const widget = await this.widgetManager.getOrCreateWidget<SessionsWidget>(SessionsWidget.ID);
-    if (!shouldAddSessionsPart(EXPLORER_VIEW_CONTAINER_ID, EXPLORER_VIEW_CONTAINER_ID, !!container.getPartFor(widget))) return;
+    if (!shouldAddSessionsPart(factoryId, EXPLORER_VIEW_CONTAINER_ID, !!container.getPartFor(widget))) return;
     container.addWidget(widget, { order: SESSIONS_ORDER, canHide: true, initiallyCollapsed: false, weight: SESSIONS.share * 100 });
     // `weight` is not read by the container: the section is capped to its share here.
     const part = container.getPartFor(widget);
