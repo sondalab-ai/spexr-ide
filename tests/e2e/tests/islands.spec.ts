@@ -42,7 +42,7 @@ async function expectLit(page: Page, area: "main" | "left" | "bottom" | "right")
  * collapse the panel only if the Explorer were already the visible view, which
  * the check rules out. The tree is given time to render first, so an Explorer
  * that is in front but not yet in the DOM is not collapsed by mistake. The
- * click lands below the tree's rows, so it opens nothing.
+ * tree is focused rather than clicked, so it opens nothing.
  */
 async function focusExplorer(page: Page): Promise<void> {
   const tree = page.locator("#theia-left-content-panel #files .theia-TreeContainer");
@@ -52,12 +52,8 @@ async function focusExplorer(page: Page): Promise<void> {
     await page.keyboard.press("ControlOrMeta+Shift+KeyE");
     await tree.waitFor({ state: "visible", timeout: 10_000 });
   }
-  const box = await tree.boundingBox();
-  if (!box) throw new Error("the Explorer's tree has no box");
-  // The tree's box can run past its section into the one below (Sessions), which would take the click: stay inside the section.
-  const part = await tree.evaluate((el) => el.closest(".part")?.getBoundingClientRect().bottom ?? null);
-  const bottom = part === null ? box.height : Math.min(box.height, part - box.y);
-  await tree.click({ position: { x: Math.min(40, box.width / 2), y: Math.max(1, bottom - 8) } });
+  // Focused, not clicked: with S6j's Sessions part below, the tree's box and the Sessions body overlap and the body took every click point tried ("subtree intercepts pointer events").
+  await tree.focus();
 }
 
 test.describe("Lumen islands", () => {
