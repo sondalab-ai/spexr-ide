@@ -78,15 +78,26 @@ export class AgentLogWidget extends ReactWidget {
     this.update();
   }
 
+  /** Follow the end: the log may have been read while its tab was hidden, when nothing can scroll. */
+  private toEnd(): void {
+    const el = this.scroller.current;
+    if (el && this.stick) el.scrollTop = el.scrollHeight;
+  }
+
+  private followEnd(): void {
+    // After React has committed and laid the lines out: two frames on, and once more after a pause.
+    requestAnimationFrame(() => requestAnimationFrame(() => this.toEnd()));
+    setTimeout(() => this.toEnd(), 100);
+  }
+
   protected override onUpdateRequest(msg: Parameters<ReactWidget["onUpdateRequest"]>[0]): void {
     super.onUpdateRequest(msg);
-    // After React has committed and laid the new lines out: two frames on.
-    const toEnd = (): void => {
-      const el = this.scroller.current;
-      if (el && this.stick) el.scrollTop = el.scrollHeight;
-    };
-    requestAnimationFrame(() => requestAnimationFrame(toEnd));
-    setTimeout(toEnd, 100);
+    this.followEnd();
+  }
+
+  protected override onAfterShow(msg: Parameters<ReactWidget["onAfterShow"]>[0]): void {
+    super.onAfterShow(msg);
+    this.followEnd();
   }
 
   protected render(): React.ReactNode {
