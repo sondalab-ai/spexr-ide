@@ -10,16 +10,11 @@
 export const PROBLEMS_VIEW_ID = "problems";
 /** The Output view's widget id (`OutputWidget.ID`). */
 export const OUTPUT_VIEW_ID = "outputView";
-/** The Agent log's widget id (sessions/agent-log-widget.tsx, S6j); the order tolerates it being absent. */
+/** The Agent log's widget id (S6j adds the view); the order tolerates it being absent. */
 export const AGENT_LOG_VIEW_ID = "spexr.view.agent-log";
 
 /** What a shell terminal is called: "Terminal", then "Terminal 2", "Terminal 3". */
 export const TERMINAL_TITLE = "Terminal";
-
-/** Whether a title is one of ours, "Terminal" or "Terminal <n>" with n of 2 or more. */
-export function isNumberedTerminalTitle(title: string): boolean {
-  return title === TERMINAL_TITLE || /^Terminal [2-9]$|^Terminal [1-9]\d+$/.test(title);
-}
 
 /** The first title not in `taken`: "Terminal", else "Terminal 2", and so on, so a closed terminal's number is given again. */
 export function nextTerminalTitle(taken: readonly string[]): string {
@@ -40,16 +35,34 @@ export function bottomOrder(ids: readonly string[]): string[] {
   return ids.map((id, i) => ({ id, i })).sort((a, b) => rank(a.id) - rank(b.id) || a.i - b.i).map((e) => e.id);
 }
 
-/** The Problems chip's tone: the worst severity among the markers. Information and hints are neutral. */
+/** What decides whether a terminal is numbered: how it was made, read off the widget. */
+export interface TerminalFacts {
+  /** Theia's terminal kind: "user" for one made by a person, anything else by an extension on their behalf. */
+  readonly kind?: string | undefined;
+  /** The creator's `useServerTitle`: false means it named the terminal itself (a project's, a task's, the wall's). */
+  readonly useServerTitle?: boolean | undefined;
+  /** Theia's `hasUserTitle`: someone named it, or it was numbered already (`setTitle` sets it, and a restored layout keeps it). */
+  readonly hasUserTitle?: boolean | undefined;
+}
+
+/**
+ * The title a terminal is given, or undefined to leave it: only a shell terminal
+ * nobody named (an ordinary user terminal that takes its title from the shell)
+ * is numbered. The wall's, a project's, a task's and a plugin's terminals keep
+ * the names their creators gave them. `taken` is every terminal's label, so the
+ * number is the lowest free one: Theia's own default ("Terminal 4", counting
+ * the agent's and the wall's terminals too) is replaced, not kept.
+ */
+export function titleFor(term: TerminalFacts, taken: readonly string[]): string | undefined {
+  if ((term.kind ?? "user") !== "user") return undefined;
+  if (term.useServerTitle === false) return undefined;
+  if (term.hasUserTitle) return undefined;
+  return nextTerminalTitle(taken);
+}
+
+/** The Problems chip's tone: the worst severity, as the chip's own count (`ProblemManager.getProblemStat`) has it. Information and hints are neutral. */
 export type ProblemSeverity = "error" | "warning" | "none";
 
-/** LSP severities: 1 error, 2 warning, 3 information, 4 hint. A marker with none is an error, as the LSP says. */
-export function problemSeverity(markers: ReadonlyArray<{ severity?: number | undefined }>): ProblemSeverity {
-  let warning = false;
-  for (const m of markers) {
-    const severity = m.severity ?? 1;
-    if (severity === 1) return "error";
-    if (severity === 2) warning = true;
-  }
-  return warning ? "warning" : "none";
+export function severityFromStat(stat: { readonly errors: number; readonly warnings: number }): ProblemSeverity {
+  return stat.errors > 0 ? "error" : stat.warnings > 0 ? "warning" : "none";
 }

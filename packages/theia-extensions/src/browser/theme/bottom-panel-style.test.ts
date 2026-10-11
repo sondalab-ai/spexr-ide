@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import kitNeutrals from "@sondalab/ui-kit/neutrals.json";
 import { WORKBENCH } from "../shell/workbench-geometry.js";
-import { KIT_STATUS_TONES, accentText } from "./spexr-accent.js";
+import { ACCENT, KIT_STATUS_TONES, accentText } from "./spexr-accent.js";
 import { contrastRatio } from "./contrast-util.js";
 
 const css = readFileSync(fileURLToPath(new URL("../style/spexr.css", import.meta.url)), "utf8");
@@ -23,8 +23,9 @@ function px(block: string, name: string): number {
 const CHIP = ':root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-badge-decorator-horizontal';
 
 describe("the bottom panel in spexr.css (S6e)", () => {
-  it("is the table's chip: 16px high and at least, r6, the mono at 10px", () => {
+  it("is the table's chip: 16px high and at least, r6, 4px in, the mono at 10px", () => {
     const chip = rule(CHIP);
+    expect(chip).toMatch(/padding:\s*0 4px/);
     expect(px(chip, "height")).toBe(WORKBENCH.panelChip);
     expect(px(chip, "min-width")).toBe(WORKBENCH.panelChip);
     expect(px(chip, "border-radius")).toBe(6);
@@ -38,6 +39,18 @@ describe("the bottom panel in spexr.css (S6e)", () => {
     const danger = rule(`:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab[data-severity="error"] .theia-badge-decorator-horizontal`);
     expect(danger).toContain("color: var(--sl-status-danger)");
     expect(danger).toContain("color-mix(in srgb, var(--sl-status-danger) 18%, transparent)");
+  });
+
+  it("fills the 24px button with its glyph's box, so the whole button is the hit area, and gives it hover and focus states in the muted ink", () => {
+    const button = ":has(> :is(.codicon-add, .codicon-close))";
+    expect(rule(`#theia-bottom-content-panel .lm-TabBar-toolbar .item${button} > div`)).toMatch(/display:\s*grid;[\s\S]*width:\s*100%;[\s\S]*height:\s*100%/);
+    expect(rule(`#theia-bottom-content-panel .lm-TabBar-toolbar .item${button}`)).toContain("color: var(--slc-text-muted)");
+    expect(css).toContain(`#theia-bottom-content-panel .lm-TabBar-toolbar .item.enabled${button}:hover {`);
+    expect(css).toContain(`.item${button}:focus-within:has(:focus-visible) {`);
+  });
+
+  it("shows a bottom tab's own × only on hover or focus, as an editor tab's", () => {
+    expect(rule(':root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab:not(:hover, :focus-within) > .lm-TabBar-tabCloseIcon')).toContain("visibility: hidden");
   });
 
   it("is the table's 24px panel buttons", () => {
@@ -59,18 +72,25 @@ function wash(top: string, ground: string, pct: number): string {
 // The owner's rule: text at least 4.5:1. The chip's number is the tone on its own wash, over each ground a bottom tab can have.
 describe.each(["dark", "light"] as const)("the chip's number on %s", (theme) => {
   const grounds = ["bg-surface", "bg-surface-raised", "bg-tile"].map((k) => neutrals[theme][k]!);
-  // The tone and its wash in percent, as the CSS writes them: the accent's chip has a lighter wash, since its text reads 4.38:1 on the current tile at 18%.
-  const tones: Array<[string, string, number]> = [
-    ["warning", KIT_STATUS_TONES[theme].warning, 18],
-    ["danger", KIT_STATUS_TONES[theme].danger, 18],
-    ["accent (no severity)", accentText(theme), 12],
+  // The tone, the ink and the wash colour as the CSS writes them: the warning and danger tones are both ink and wash, the accent chip's ink is --slc-accent-text on a wash of --slc-accent. 18% for all, as the demo has them.
+  const tones: Array<[string, string, string, number]> = [
+    ["warning", KIT_STATUS_TONES[theme].warning, KIT_STATUS_TONES[theme].warning, 18],
+    ["danger", KIT_STATUS_TONES[theme].danger, KIT_STATUS_TONES[theme].danger, 18],
+    // 18% fails here on the dark current tile (4.38:1), so the accent chip keeps 12%.
+    ["accent (no severity)", accentText(theme), ACCENT[theme], 12],
   ];
 
-  it.each(tones)("reads %s at 4.5:1 on its wash", (_name, tone, pct) => {
-    for (const ground of grounds) expect(contrastRatio(tone, wash(tone, ground, pct)), `on ${ground}`).toBeGreaterThanOrEqual(4.5);
+  it.each(tones)("reads %s at 4.5:1 on its wash", (_name, ink, washed, pct) => {
+    for (const ground of grounds) expect(contrastRatio(ink, wash(washed, ground, pct)), `on ${ground}`).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("writes those washes in the CSS", () => {
+  it("shows why the accent chip is not 18%: it would fall under the floor on the dark current tile", () => {
+    const tile = neutrals.dark["bg-tile"]!;
+    expect(contrastRatio(accentText("dark"), wash(ACCENT.dark, tile, 18))).toBeLessThan(4.5);
+  });
+
+  it("writes those washes in the CSS: 18% for the severities, 12% for the accent chip", () => {
     expect(rule(CHIP)).toContain("color-mix(in srgb, var(--slc-accent) 12%, transparent)");
+    expect(rule(CHIP)).toContain("color: var(--slc-accent-text)");
   });
 });

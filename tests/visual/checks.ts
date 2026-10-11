@@ -9,6 +9,8 @@
  * import the extension.
  */
 import type { Page } from "@playwright/test";
+// The order is the extension's own rule (pure, Theia-free), so the capture checks against it rather than a copy.
+import { bottomOrder } from "../../packages/theia-extensions/src/browser/shell/bottom-panel";
 
 export type Rects = Array<{ x: number; y: number; w: number; h: number }>;
 export type Regions = Record<string, Rects>;
@@ -502,9 +504,8 @@ export async function probeBottomPanel(page: Page): Promise<BottomPanel> {
  */
 export function checkBottomPanel(panel: BottomPanel): string[] {
   const problems: string[] = [];
-  const rank = (id: string): number => (id === "problems" ? 1 : id === "outputView" ? 2 : id === "spexr.view.agent-log" ? 3 : id.startsWith("terminal-") ? 0 : 4);
   const ids = panel.tabs.map((t) => t.id);
-  const ordered = [...ids].sort((a, b) => rank(a) - rank(b));
+  const ordered = bottomOrder(ids);
   if (ids.join(",") !== ordered.join(",")) problems.push(`bottom panel: tabs [${ids.join(", ")}], want terminals, problems, outputView, agent log in that order`);
   for (const id of ["problems", "outputView"]) if (!ids.includes(id)) problems.push(`bottom panel: no ${id} tab`);
   const terminals = panel.tabs.filter((t) => t.id.startsWith("terminal-"));

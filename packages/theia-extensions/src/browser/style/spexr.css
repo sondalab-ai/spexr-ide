@@ -788,8 +788,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    chip, 16px high, in the mono at 10px, as Lumen's ".ide-ptab__n". The
    Problems chip takes its tone from the worst severity (the contribution
    marks the tab with data-severity): the warning tone on its 18% wash for
-   warnings alone, the danger tone for any error, the accent otherwise (on a 12% wash: the
-   accent's text reads 4.38:1 on the current tile at 18%). The
+   warnings alone, the danger tone for any error, the accent. The
    text is the tone itself on that wash: at least 4.5:1 on the tab's ground
    in both themes (activity-status-style / bottom-panel-style tests). The
    panel's buttons ("+", the close ×) are 24px icon buttons. */
@@ -798,7 +797,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   min-width: 16px;
   height: 16px;
   margin-left: 4px;
-  padding: 0 5px;
+  padding: 0 4px;
   border-radius: 6px;
   font: 500 10px/16px var(--sl-font-mono);
   color: var(--slc-accent-text);
@@ -819,8 +818,33 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   width: 24px;
   height: 24px;
   border-radius: 8px;
-  color: var(--slc-text-secondary);
+  color: var(--slc-text-muted);
 }
+
+/* The glyph's own box fills the 24px button, so the whole button is the hit
+   area, not the 16px glyph inside it. */
+#theia-bottom-content-panel .lm-TabBar-toolbar .item:has(> :is(.codicon-add, .codicon-close)) > div {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+#theia-bottom-content-panel .lm-TabBar-toolbar .item.enabled:has(> :is(.codicon-add, .codicon-close)):hover {
+  background-color: color-mix(in srgb, var(--slc-text) 8%, transparent);
+  color: var(--slc-text);
+}
+
+#theia-bottom-content-panel .lm-TabBar-toolbar .item:has(> :is(.codicon-add, .codicon-close)):focus-within:has(:focus-visible) {
+  outline: var(--sl-focus-ring-width) solid var(--slc-focus);
+  outline-offset: calc(-1 * var(--sl-focus-ring-width));
+}
+
+/* A bottom tab's own ×, as an editor tab's (E3): only on hover or focus. */
+:root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab:not(:hover, :focus-within) > .lm-TabBar-tabCloseIcon {
+  visibility: hidden;
+}
+
 
 /* The breadcrumbs under the editor's tabs: Lumen's, 16px in at 12px. */
 #theia-main-content-panel .theia-breadcrumbs {

@@ -165,6 +165,7 @@ for (const theme of THEMES) {
       // S6e: the bottom panel's tabs, chip and buttons against the table, and its crop.
       {
         const panel = await probeBottomPanel(page);
+        meta.bottomPanelProbe = panel;
         const bar = (await probeRegions(page, [{ key: "bottom", selector: '.spexr-island[data-island="bottom"]' }]))["bottom"]?.[0];
         if (bar) {
           const file = path.join(out, "bottom-panel.png");
@@ -305,6 +306,24 @@ for (const theme of THEMES) {
         meta.leftViews = { steps, before, after: await islandSizes(page) };
         writeMeta();
         check("left views", checkLeftViews(steps, before, meta.leftViews.after));
+      }
+
+      // S6e: a second terminal, in front: the "+" is there, and the titles are "Terminal" and "Terminal 2".
+      {
+        await runCommand(page, "Create New Terminal");
+        await page.locator("#theia-bottom-content-panel .lm-TabBar-tab", { hasText: "Terminal 2" }).first().waitFor({ state: "visible", timeout: 30_000 });
+        const panel = await probeBottomPanel(page);
+        meta.bottomTerminal = panel;
+        const bar = (await probeRegions(page, [{ key: "bottom", selector: '.spexr-island[data-island="bottom"]' }]))["bottom"]?.[0];
+        if (bar) {
+          const file = path.join(out, "bottom-terminal.png");
+          meta.scenes.push({ scene: "bottom-terminal", file: path.basename(file), ...(await captureCrop(page, file, [bar])) });
+        }
+        const found = checkBottomPanel(panel);
+        if (!panel.plus) found.push("bottom panel: the second terminal is in front and there is no + button");
+        if (!panel.tabs.some((t) => t.label === "Terminal 2")) found.push("bottom panel: no tab titled Terminal 2");
+        check("bottom panel (terminal in front)", found);
+        writeMeta();
       }
 
       // macOS: the lights one zoom level out, then the bar's room through full
