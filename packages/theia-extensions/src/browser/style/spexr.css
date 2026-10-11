@@ -796,9 +796,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
      Theia keeps its close glyph: the accent on the current tab, the muted
      ink on the others, and the glyph is a cross only while the tab is
      hovered or has focus. The close slot is always 16px, so a hover does not
-     move the label. A tab bar's tabs are not tab stops (Lumino), so the
-     cross is reached by the pointer; the keyboard closes with the editor's
-     Close command, and a focused tab shows the cross too.
+     move the label. Lumino keeps one tab per bar in the tab order (a
+     roving tabindex), so a focused tab shows the cross as a hovered one does,
+     and the editor's Close command closes it from the keyboard.
    - Tab icon: the muted ink, the accent text on the current tab.
    - Breadcrumbs: a name each, no icon slot, the current symbol in the
      primary ink at 500; the meta ("+14 −3 · not saved") sits at the row's

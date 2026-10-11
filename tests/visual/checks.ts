@@ -320,7 +320,7 @@ export function checkAlignedStrips(scenes: ReadonlyArray<{ scene: string; aligne
  * The strip against the geometry table: a 36px strip with 28px tabs, 32px
  * breadcrumbs under it, no icon in any crumb, the meta at the row's end and
  * the Agents tab last. `strip` is the tab row and its tabs, `crumbs` the
- * breadcrumb row and its items, `meta` the meta's text and box.
+ * breadcrumb row and its items, `meta` the meta's text and the box of its text (not of its padding).
  */
 export interface EditorStrip {
   readonly row: Rect | null;
@@ -328,7 +328,7 @@ export interface EditorStrip {
   readonly crumbsRow: Rect | null;
   readonly crumbIcons: number;
   readonly meta: { text: string; box: Rect } | null;
-  readonly tabLabels: string[];
+  readonly tabIds: string[];
 }
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -343,8 +343,8 @@ export function checkEditorStrip(strip: EditorStrip): string[] {
   if (strip.meta && strip.crumbsRow && !near(strip.meta.box.x + strip.meta.box.w, strip.crumbsRow.x + strip.crumbsRow.w - 16, 2)) {
     problems.push(`editor strip: the meta ends at ${strip.meta.box.x + strip.meta.box.w}, want ${strip.crumbsRow.x + strip.crumbsRow.w - 16}`);
   }
-  const agents = strip.tabLabels.findIndex((l) => /^Agent/.test(l));
-  if (agents >= 0 && agents !== strip.tabLabels.length - 1) problems.push(`editor strip: the Agents tab is ${agents + 1} of ${strip.tabLabels.length}, want last`);
+  const wall = strip.tabIds.indexOf("shell-tab-spexr.view.darkfactory");
+  if (wall >= 0 && wall !== strip.tabIds.length - 1) problems.push(`editor strip: the Agents tab (Darkfactory) is ${wall + 1} of ${strip.tabIds.length}, want last`);
   return problems;
 }
 
@@ -358,13 +358,19 @@ export async function probeEditorStrip(page: Page): Promise<EditorStrip> {
     };
     const bar = document.querySelector("#theia-main-content-panel .lm-TabBar");
     const meta = bar?.querySelector(".spexr-breadcrumbs-meta") ?? null;
+    const textBox = (el: Element): { x: number; y: number; w: number; h: number } => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const r = range.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    };
     return {
       row: box(bar?.querySelector(".theia-tabBar-tab-row") ?? null),
       tabs: [...(bar?.querySelectorAll(".lm-TabBar-tab") ?? [])].map((t) => box(t)!).filter((b) => b.w > 0),
       crumbsRow: box(bar?.querySelector(".theia-tabBar-breadcrumb-row") ?? null),
       crumbIcons: bar?.querySelectorAll(".theia-breadcrumb-item > [class*='codicon'], .theia-breadcrumb-item > .file-icon").length ?? 0,
-      meta: meta ? { text: meta.textContent ?? "", box: box(meta)! } : null,
-      tabLabels: [...(bar?.querySelectorAll(".lm-TabBar-tab .lm-TabBar-tabLabel") ?? [])].map((l) => l.textContent?.trim() ?? ""),
+      meta: meta ? { text: meta.textContent ?? "", box: textBox(meta) } : null,
+      tabIds: [...(bar?.querySelectorAll(".lm-TabBar-tab") ?? [])].map((t) => t.id),
     };
   });
 }

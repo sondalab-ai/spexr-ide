@@ -53,6 +53,7 @@
           "workbench.tree.indent": 16,
           "problems.decorations.enabled": false,
           "problems.decorations.tabbar.enabled": false,
+          "workbench.editor.decorations.badges": false,
           "editor.overviewRulerLanes": 0,
           "editor.overviewRulerBorder": false,
           "workspace.preserveWindow": true

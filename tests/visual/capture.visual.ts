@@ -149,8 +149,7 @@ for (const theme of THEMES) {
       check("left island", checkLeftIsland(meta.leftIsland));
       writeMeta();
 
-      // S6c: the editor strip against the table, its crop for the side-by-side,
-      // and no scene so far needed the tab strips scrolled into place.
+      // S6c: the editor strip against the table, and its crop for the side-by-side.
       {
         const strip = await probeEditorStrip(page);
         const rows = [strip.row, strip.crumbsRow].filter((r): r is NonNullable<typeof r> => !!r);
@@ -159,7 +158,6 @@ for (const theme of THEMES) {
           meta.scenes.push({ scene: "tabs-crumbs", file: path.basename(file), ...(await captureCrop(page, file, rows)) });
         }
         check("editor strip", checkEditorStrip(strip));
-        check("aligned strips", checkAlignedStrips(meta.scenes));
         writeMeta();
       }
 
@@ -298,6 +296,8 @@ for (const theme of THEMES) {
       // macOS the system's traffic lights sitting in the bar's room and on
       // its centre, at 100% and one zoom level out. Everything else is for
       // looking at.
+      // S6c: no scene, the later ones included, needed a tab strip scrolled into place.
+      check("aligned strips", checkAlignedStrips(meta.scenes));
       const problems = Object.entries(meta.sceneProblems ?? {}).map(([scene, found]) => `${scene}: ${found.join("; ")}`);
       if (OS === "mac") {
         problems.push(

@@ -28,6 +28,8 @@ const MAIN = ":root:not([data-sl-theme=\"high-contrast\"]) #theia-main-content-p
 describe("the editor strip's defaults (S6c, E3, E8)", () => {
   it("leaves problem marks off tabs, and the overview ruler off the editor", () => {
     expect(preferences["problems.decorations.tabbar.enabled"]).toBe(false);
+    // Git's letters reach a tab as tail decorations, which this preference gates (tab-bars.ts renderTailDecorations).
+    expect(preferences["workbench.editor.decorations.badges"]).toBe(false);
     expect(preferences["editor.overviewRulerLanes"]).toBe(0);
     expect(preferences["editor.overviewRulerBorder"]).toBe(false);
   });
@@ -101,5 +103,14 @@ describe.each(["dark", "light"] as const)("the editor strip's inks on %s", (them
   it("holds the dirty dot, a state indicator, at 3:1: muted on every tab ground, the accent on the current tile", () => {
     for (const ground of GROUNDS) expect(contrastRatio(n("text-muted"), n(ground)), `muted on ${ground}`).toBeGreaterThanOrEqual(3);
     expect(contrastRatio(neutrals.accent[theme], n("bg-tile")), "accent on tile").toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("the Agents tab's place (S6c, E1)", () => {
+  it("is opened at restore without being brought to the front, and pinned last", () => {
+    const view = read("../darkfactory/darkfactory-view-contribution.ts");
+    expect(view).toMatch(/override async openView/);
+    expect(view).toMatch(/args\.reveal && !args\.activate \? \{ \.\.\.args, reveal: false \}/);
+    expect(read("../shell/spexr-shell-layout-contribution.ts")).toContain("TRAILING_PINNED_IDS = [DARKFACTORY_VIEW_ID]");
   });
 });
