@@ -42,6 +42,10 @@ export const WORKBENCH = {
   activityBadgeMinWidth: 20,
   /** A status item's padding at the sides: the kit's and Lumen's 8. */
   statusItemPadding: 8,
+  /** A count chip on a bottom panel tab (Problems): 16 high, r6 (Lumen's 14.5 high, r8). */
+  panelChip: 16,
+  /** A bottom panel button ("+", the close ×): 24 (Lumen's 26). */
+  panelButton: 24,
   /** A tile tab's padding at the sides: 12 (Lumen 11.2). */
   tabPaddingInline: 12,
   /** A tab's close slot, where the dirty dot and the hover cross sit: 16, always reserved so a hover moves nothing. */

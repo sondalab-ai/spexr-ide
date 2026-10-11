@@ -451,3 +451,70 @@ export function checkActivityStatus(read: ActivityStatus): string[] {
   for (const id of HIDDEN_STATUS) if ([...read.left, ...read.right].includes(id)) problems.push(`status bar: ${id} is on the bar, want it hidden`);
   return problems;
 }
+
+// ── S6e: the bottom panel ────────────────────────────────────────────────
+
+/** What {@link probeBottomPanel} read from the bottom island's first tab bar. */
+export interface BottomPanel {
+  readonly tabs: Array<{ id: string; label: string; severity: string | null }>;
+  readonly strip: Rect | null;
+  /** The Problems chip's box and computed radius, when it has a count. */
+  readonly chip: { box: Rect; radius: string; severity: string | null } | null;
+  /** Whether the toolbar holds a "+" and a close ×. */
+  readonly plus: boolean;
+  readonly close: boolean;
+}
+
+/** Read the bottom panel's tabs, its strip, the Problems chip and its buttons. */
+export async function probeBottomPanel(page: Page): Promise<BottomPanel> {
+  return page.evaluate(() => {
+    const box = (el: Element | null): { x: number; y: number; w: number; h: number } | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    };
+    const bar = document.querySelector("#theia-bottom-content-panel .lm-TabBar");
+    const tabs = [...(bar?.querySelectorAll<HTMLElement>(".lm-TabBar-tab") ?? [])]
+      .filter((t) => t.getBoundingClientRect().width > 0 && !t.id.endsWith("-hidden"))
+      .map((t) => ({ id: t.id.replace(/^shell-tab-/, ""), label: t.querySelector(".lm-TabBar-tabLabel")?.textContent?.trim() ?? "", severity: t.getAttribute("data-severity") }));
+    const problems = bar?.querySelector<HTMLElement>("#shell-tab-problems");
+    const chipEl = problems?.querySelector<HTMLElement>(".theia-badge-decorator-horizontal") ?? null;
+    return {
+      tabs,
+      strip: box(bar?.querySelector(".theia-tabBar-tab-row") ?? bar ?? null),
+      chip: chipEl ? { box: box(chipEl)!, radius: getComputedStyle(chipEl).borderTopLeftRadius, severity: problems?.getAttribute("data-severity") ?? null } : null,
+      plus: !!bar?.querySelector(".lm-TabBar-toolbar .codicon-add"),
+      close: !!bar?.querySelector(".lm-TabBar-toolbar .codicon-close"),
+    };
+  });
+}
+
+/**
+ * The bottom panel: terminals first (titled "Terminal", "Terminal 2", ...),
+ * then Problems, Output and the Agent log where it exists; a 36px strip; the
+ * Problems chip 16px high at r6 with its severity marked; a "+" and a close ×.
+ */
+export function checkBottomPanel(panel: BottomPanel): string[] {
+  const problems: string[] = [];
+  const rank = (id: string): number => (id === "problems" ? 1 : id === "outputView" ? 2 : id === "spexr.view.agent-log" ? 3 : id.startsWith("terminal-") ? 0 : 4);
+  const ids = panel.tabs.map((t) => t.id);
+  const ordered = [...ids].sort((a, b) => rank(a) - rank(b));
+  if (ids.join(",") !== ordered.join(",")) problems.push(`bottom panel: tabs [${ids.join(", ")}], want terminals, problems, outputView, agent log in that order`);
+  for (const id of ["problems", "outputView"]) if (!ids.includes(id)) problems.push(`bottom panel: no ${id} tab`);
+  const terminals = panel.tabs.filter((t) => t.id.startsWith("terminal-"));
+  if (terminals.length === 0) problems.push("bottom panel: no terminal tab");
+  terminals.forEach((t, i) => {
+    const want = i === 0 ? "Terminal" : `Terminal ${i + 1}`;
+    if (t.label !== want) problems.push(`bottom panel: terminal ${i + 1} is titled "${t.label}", want "${want}"`);
+  });
+  if (!panel.strip) problems.push("bottom panel: no tab strip");
+  else if (!near(panel.strip.h, 36, 1)) problems.push(`bottom panel: tab strip ${panel.strip.h}px, want 36`);
+  if (panel.chip) {
+    if (!near(panel.chip.box.h, 16, 0.5)) problems.push(`bottom panel: the Problems chip is ${panel.chip.box.h}px high, want 16`);
+    if (panel.chip.radius !== "6px") problems.push(`bottom panel: the Problems chip's radius is ${panel.chip.radius}, want 6px`);
+    if (!panel.chip.severity) problems.push("bottom panel: the Problems tab carries no severity mark");
+  }
+  if (!panel.plus) problems.push("bottom panel: no + button");
+  if (!panel.close) problems.push("bottom panel: no close button");
+  return problems;
+}

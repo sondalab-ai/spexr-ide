@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { checkActivityStatus, probeActivityStatus, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
+import { checkBottomPanel, probeBottomPanel, checkActivityStatus, probeActivityStatus, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
 import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureCrop,
@@ -159,6 +159,18 @@ for (const theme of THEMES) {
           meta.scenes.push({ scene: "tabs-crumbs", file: path.basename(file), ...(await captureCrop(page, file, rows)) });
         }
         check("editor strip", checkEditorStrip(strip));
+        writeMeta();
+      }
+
+      // S6e: the bottom panel's tabs, chip and buttons against the table, and its crop.
+      {
+        const panel = await probeBottomPanel(page);
+        const bar = (await probeRegions(page, [{ key: "bottom", selector: '.spexr-island[data-island="bottom"]' }]))["bottom"]?.[0];
+        if (bar) {
+          const file = path.join(out, "bottom-panel.png");
+          meta.scenes.push({ scene: "bottom-panel", file: path.basename(file), ...(await captureCrop(page, file, [bar])) });
+        }
+        check("bottom panel", checkBottomPanel(panel));
         writeMeta();
       }
 

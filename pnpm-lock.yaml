@@ -345,6 +345,9 @@ importers:
       '@theia/outline-view':
         specifier: ^1.75.0
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@theia/output':
+        specifier: ^1.75.0
+        version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       '@theia/preferences':
         specifier: ^1.75.0
         version: 1.75.0(@theia/electron@1.75.0(electron@42.10.1))(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
