@@ -45,23 +45,24 @@ function isUnder(path: string, root: string): boolean {
 }
 
 /**
- * The crumb: the workspace root holding the active file, the file's folders
- * below that root (the last `fold`, {@link CRUMB_FOLDERS} by default, deeper
- * ones folded into {@link CRUMB_ELLIPSIS}), then the file. With no active
+ * The crumb (T1, D12): the workspace root holding the active file, then the
+ * file's folders below that root (the last `fold`, {@link CRUMB_FOLDERS} by
+ * default, deeper ones folded into {@link CRUMB_ELLIPSIS}). Folders only: the
+ * file's own name is the editor tab's and the breadcrumbs'. With no active
  * file, the first root's name alone. A file outside every root shows its own
- * folder and name, never a root it does not belong to. Paths are URI paths
- * (forward slashes).
+ * folder, never a root it does not belong to. Paths are URI paths (forward
+ * slashes).
  */
 export function titleCrumb(roots: readonly string[], file?: string, fold: number = CRUMB_FOLDERS): string[] {
   if (!file) return roots[0] ? [baseName(roots[0])] : [];
   const root = roots.filter((r) => isUnder(file, r)).sort((a, b) => b.length - a.length)[0];
   const segments = file.split("/").filter(Boolean);
-  const name = segments.pop() ?? file;
-  if (!root) return segments.length ? [segments[segments.length - 1]!, name] : [name];
+  segments.pop();
+  if (!root) return segments.length ? [segments[segments.length - 1]!] : [];
   const rootDepth = root.split("/").filter(Boolean).length;
   const folders = segments.slice(rootDepth);
   const shown = folders.length > fold ? [CRUMB_ELLIPSIS, ...folders.slice(-fold)] : folders;
-  return [baseName(root), ...shown, name];
+  return [baseName(root), ...shown];
 }
 
 /**

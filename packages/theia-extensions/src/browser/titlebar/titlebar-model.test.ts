@@ -19,13 +19,13 @@ import {
 describe("titleCrumb", () => {
   const ws = "/home/me/probe-engine";
 
-  it("names the root, the active file's folders and the file", () => {
-    expect(titleCrumb([ws], `${ws}/src/probe/resolve.ts`)).toEqual(["probe-engine", "src", "probe", "resolve.ts"]);
-    expect(titleCrumb([ws], `${ws}/README.md`)).toEqual(["probe-engine", "README.md"]);
+  it("names the root and the active file's folders, never the file", () => {
+    expect(titleCrumb([ws], `${ws}/src/probe/resolve.ts`)).toEqual(["probe-engine", "src", "probe"]);
+    expect(titleCrumb([ws], `${ws}/README.md`)).toEqual(["probe-engine"]);
   });
 
   it("folds folders past the last two into an ellipsis", () => {
-    expect(titleCrumb([ws], `${ws}/a/b/c/d.ts`)).toEqual(["probe-engine", CRUMB_ELLIPSIS, "b", "c", "d.ts"]);
+    expect(titleCrumb([ws], `${ws}/a/b/c/d.ts`)).toEqual(["probe-engine", CRUMB_ELLIPSIS, "b", "c"]);
   });
 
   it("is the first root alone with no active editor, and empty with no workspace", () => {
@@ -35,12 +35,12 @@ describe("titleCrumb", () => {
   });
 
   it("picks the deepest root holding the file in a multi-root workspace", () => {
-    expect(titleCrumb([ws, `${ws}/packages/core`], `${ws}/packages/core/src/a.ts`)).toEqual(["core", "src", "a.ts"]);
+    expect(titleCrumb([ws, `${ws}/packages/core`], `${ws}/packages/core/src/a.ts`)).toEqual(["core", "src"]);
   });
 
   it("never claims a root the file is not in, a sibling with the same prefix included", () => {
-    expect(titleCrumb([ws], "/home/me/probe-engine-2/src/x.ts")).toEqual(["src", "x.ts"]);
-    expect(titleCrumb([ws], "/Untitled-1")).toEqual(["Untitled-1"]);
+    expect(titleCrumb([ws], "/home/me/probe-engine-2/src/x.ts")).toEqual(["src"]);
+    expect(titleCrumb([ws], "/Untitled-1")).toEqual([]);
   });
 });
 
@@ -86,7 +86,7 @@ describe("the agents badge", () => {
 describe("crumbLabel", () => {
   it("names every folder the visible crumb folds away", () => {
     const ws = "/home/me/probe-engine";
-    expect(crumbLabel([ws], `${ws}/a/b/c/d.ts`)).toBe("probe-engine / a / b / c / d.ts");
+    expect(crumbLabel([ws], `${ws}/a/b/c/d.ts`)).toBe("probe-engine / a / b / c");
     expect(crumbLabel([ws])).toBe("probe-engine");
     expect(crumbLabel([])).toBe("");
   });
