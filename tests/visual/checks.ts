@@ -302,3 +302,69 @@ export function checkLeftViews(steps: ReadonlyArray<{ step: string; left: number
   }
   return problems;
 }
+
+// ── S6c: the editor strip ────────────────────────────────────────────────
+
+/**
+ * The main tab strips need no help from the capture. The scenes' alignment
+ * pass scrolls a strip so the current tab comes first; with the pinned tabs
+ * in their places (Darkfactory trailing) and the strip wide enough for its
+ * tabs, no strip moves, and a scroll here means tabs spilled over or the
+ * current tab is not where the demo puts it.
+ */
+export function checkAlignedStrips(scenes: ReadonlyArray<{ scene: string; alignedStrips: number }>): string[] {
+  return scenes.filter((s) => s.alignedStrips !== 0).map((s) => `tab strip: scene ${s.scene} needed ${s.alignedStrips} alignment scroll(s), want 0`);
+}
+
+/**
+ * The strip against the geometry table: a 36px strip with 28px tabs, 32px
+ * breadcrumbs under it, no icon in any crumb, the meta at the row's end and
+ * the Agents tab last. `strip` is the tab row and its tabs, `crumbs` the
+ * breadcrumb row and its items, `meta` the meta's text and box.
+ */
+export interface EditorStrip {
+  readonly row: Rect | null;
+  readonly tabs: Rects;
+  readonly crumbsRow: Rect | null;
+  readonly crumbIcons: number;
+  readonly meta: { text: string; box: Rect } | null;
+  readonly tabLabels: string[];
+}
+type Rect = { x: number; y: number; w: number; h: number };
+
+export function checkEditorStrip(strip: EditorStrip): string[] {
+  const problems: string[] = [];
+  if (!strip.row) return ["editor strip: no tab row"];
+  if (!near(strip.row.h, 36, 1)) problems.push(`editor strip: tab row ${strip.row.h}px, want 36`);
+  for (const [i, tab] of strip.tabs.entries()) if (!near(tab.h, 28, 1)) problems.push(`editor strip: tab ${i} is ${tab.h}px tall, want 28`);
+  if (!strip.crumbsRow) problems.push("editor strip: no breadcrumb row");
+  else if (!near(strip.crumbsRow.h, 32, 1)) problems.push(`editor strip: breadcrumb row ${strip.crumbsRow.h}px, want 32`);
+  if (strip.crumbIcons !== 0) problems.push(`editor strip: ${strip.crumbIcons} breadcrumb icon(s), want none`);
+  if (strip.meta && strip.crumbsRow && !near(strip.meta.box.x + strip.meta.box.w, strip.crumbsRow.x + strip.crumbsRow.w - 16, 2)) {
+    problems.push(`editor strip: the meta ends at ${strip.meta.box.x + strip.meta.box.w}, want ${strip.crumbsRow.x + strip.crumbsRow.w - 16}`);
+  }
+  const agents = strip.tabLabels.findIndex((l) => /^Agent/.test(l));
+  if (agents >= 0 && agents !== strip.tabLabels.length - 1) problems.push(`editor strip: the Agents tab is ${agents + 1} of ${strip.tabLabels.length}, want last`);
+  return problems;
+}
+
+/** Read {@link EditorStrip} from the main island's first tab bar. */
+export async function probeEditorStrip(page: Page): Promise<EditorStrip> {
+  return page.evaluate(() => {
+    const box = (el: Element | null): { x: number; y: number; w: number; h: number } | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    };
+    const bar = document.querySelector("#theia-main-content-panel .lm-TabBar");
+    const meta = bar?.querySelector(".spexr-breadcrumbs-meta") ?? null;
+    return {
+      row: box(bar?.querySelector(".theia-tabBar-tab-row") ?? null),
+      tabs: [...(bar?.querySelectorAll(".lm-TabBar-tab") ?? [])].map((t) => box(t)!).filter((b) => b.w > 0),
+      crumbsRow: box(bar?.querySelector(".theia-tabBar-breadcrumb-row") ?? null),
+      crumbIcons: bar?.querySelectorAll(".theia-breadcrumb-item > [class*='codicon'], .theia-breadcrumb-item > .file-icon").length ?? 0,
+      meta: meta ? { text: meta.textContent ?? "", box: box(meta)! } : null,
+      tabLabels: [...(bar?.querySelectorAll(".lm-TabBar-tab .lm-TabBar-tabLabel") ?? [])].map((l) => l.textContent?.trim() ?? ""),
+    };
+  });
+}

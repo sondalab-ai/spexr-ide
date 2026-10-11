@@ -5,9 +5,10 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
+import { checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
 import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
+  captureCrop,
   captureStable,
   bottomPanelTop,
   firstVisibleLine,
@@ -147,6 +148,20 @@ for (const theme of THEMES) {
       meta.leftIsland = await probeLeftIsland(page);
       check("left island", checkLeftIsland(meta.leftIsland));
       writeMeta();
+
+      // S6c: the editor strip against the table, its crop for the side-by-side,
+      // and no scene so far needed the tab strips scrolled into place.
+      {
+        const strip = await probeEditorStrip(page);
+        const rows = [strip.row, strip.crumbsRow].filter((r): r is NonNullable<typeof r> => !!r);
+        if (rows.length) {
+          const file = path.join(out, "tabs-crumbs.png");
+          meta.scenes.push({ scene: "tabs-crumbs", file: path.basename(file), ...(await captureCrop(page, file, rows)) });
+        }
+        check("editor strip", checkEditorStrip(strip));
+        check("aligned strips", checkAlignedStrips(meta.scenes));
+        writeMeta();
+      }
 
       // palette: the command palette open on a query that finds several
       // commands, some with a shortcut, the first one selected. Placed against
