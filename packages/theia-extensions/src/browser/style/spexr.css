@@ -5744,7 +5744,8 @@ code {
    the code. INLINE_DIAGNOSTIC in shell/workbench-geometry.ts holds the
    numbers (inline-diagnostics-style.test.ts). Monaco injects the text, so it
    is only ever text. */
-.spexr-inline-diag {
+/* The monaco-editor prefix outweighs Monaco's token classes (.mtki, .mtkb: italics, bold) on the same span. */
+.monaco-editor .spexr-inline-diag {
   margin-left: 24px;
   padding: 0 8px;
   border-radius: 4px;

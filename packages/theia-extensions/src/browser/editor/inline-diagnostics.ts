@@ -21,6 +21,8 @@ export interface InlineDiagnostic {
   readonly tone: InlineTone;
   /** One line of plain text, cut with an ellipsis to fit. */
   readonly text: string;
+  /** The whole message, for the hover (shown as plain text). */
+  readonly full: string;
 }
 
 /** The longest message ever shown, however wide the editor is. */
@@ -30,27 +32,79 @@ export const INLINE_CHROME_COLS = 6;
 /** Fewest message columns worth showing: with less room the line is left alone. */
 export const INLINE_MIN_COLS = 10;
 
-/** The tone of an LSP severity: only errors and warnings are shown inline. */
+/**
+ * The tone of an LSP severity: only errors and warnings are shown inline. A
+ * marker with no severity is an error, which is what LSP says a client may
+ * assume.
+ */
 export function toneOf(severity: number | undefined): InlineTone | undefined {
-  return severity === 1 ? "error" : severity === 2 ? "warning" : undefined;
+  return severity === undefined || severity === 1 ? "error" : severity === 2 ? "warning" : undefined;
+}
+
+/** Control characters and the bidirectional overrides (U+202A-202E, U+2066-2069), which a message must not carry into the editor. */
+const UNSAFE = /[\p{Cc}\u202a-\u202e\u2066-\u2069]/gu;
+
+/** Whether a code point is drawn two columns wide: CJK, Hangul, fullwidth forms, emoji. */
+export function isWide(cp: number): boolean {
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) ||
+    (cp >= 0x2e80 && cp <= 0xa4cf) ||
+    (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) ||
+    (cp >= 0xfe30 && cp <= 0xfe6f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f300 && cp <= 0x1faff) ||
+    (cp >= 0x20000 && cp <= 0x3fffd)
+  );
 }
 
 /**
- * A message as one line of at most `max` characters: its first line, spaces
- * collapsed, cut with an ellipsis. The text is only ever drawn as text, never
- * as markup, so nothing in a message can be anything else.
+ * The columns a line of code takes: a tab goes to the next multiple of
+ * `tabSize`, a wide character is two columns. Used where the editor cannot
+ * measure the rendered line (the chip's room is then an estimate).
+ */
+export function displayWidth(text: string, tabSize: number): number {
+  let col = 0;
+  for (const ch of text) {
+    if (ch === "\t") col += tabSize - (col % tabSize);
+    else col += isWide(ch.codePointAt(0)!) ? 2 : 1;
+  }
+  return col;
+}
+
+/**
+ * A message as the hover shows it: a plain-text code block, fenced with more
+ * backticks than any run in the message, so nothing in it can close the block
+ * and nothing is read as Markdown.
+ */
+export function plainTextBlock(message: string): string {
+  const longest = Math.max(0, ...(message.match(/`+/g) ?? []).map((r) => r.length));
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${fence}text\n${message.replace(UNSAFE_KEEP_NEWLINE, "")}\n${fence}`;
+}
+const UNSAFE_KEEP_NEWLINE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+
+/**
+ * A message as one line of at most `max` characters: its first line after
+ * trimming, spaces collapsed, control characters and bidi overrides taken
+ * out, cut by code points (never inside a surrogate pair) with an ellipsis.
+ * The text is only ever drawn as text, never as markup.
  */
 export function truncateMessage(message: string, max: number): string {
-  const one = (message.split(/\r?\n/)[0] ?? "").replace(/\s+/g, " ").trim();
   if (max < 1) return "";
-  if (one.length <= max) return one;
-  return `${one.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+  const first = (message.trim().split(/\r?\n/)[0] ?? "").replace(UNSAFE, " ").replace(/\s+/g, " ").trim();
+  const chars = Array.from(first);
+  if (chars.length <= max) return first;
+  return `${chars.slice(0, Math.max(0, max - 1)).join("").trimEnd()}\u2026`;
 }
 
 export interface InlineLayout {
   /** How many columns of code a line of the editor holds before it wraps. */
   readonly columns: number;
-  /** The length of a 1-based line, in characters. */
+  /** The lines the file has: a marker past it (stale, or a file that shrank) is not drawn. */
+  readonly lineCount: number;
+  /** The columns a 1-based line takes (tabs expanded, wide characters counted twice). */
   lineLength(line: number): number;
 }
 
@@ -65,16 +119,17 @@ export function inlineDiagnostics(markers: readonly InlineMarker[], layout: Inli
   const best = new Map<number, { tone: InlineTone; message: string; severity: number }>();
   for (const m of markers) {
     const tone = toneOf(m.severity);
-    if (!tone || m.line < 1 || !m.message.trim()) continue;
+    if (!tone || m.line < 1 || m.line > layout.lineCount || !m.message.trim()) continue;
+    const severity = m.severity ?? 1;
     const held = best.get(m.line);
-    if (!held || m.severity! < held.severity) best.set(m.line, { tone, message: m.message, severity: m.severity! });
+    if (!held || severity < held.severity) best.set(m.line, { tone, message: m.message, severity });
   }
   const out: InlineDiagnostic[] = [];
   for (const [line, { tone, message }] of [...best].sort((a, b) => a[0] - b[0])) {
     const room = layout.columns - layout.lineLength(line) - INLINE_CHROME_COLS;
     if (room < INLINE_MIN_COLS) continue;
     const text = truncateMessage(message, Math.min(INLINE_MAX_CHARS, room));
-    if (text) out.push({ line, tone, text });
+    if (text) out.push({ line, tone, text, full: message });
   }
   return out;
 }
