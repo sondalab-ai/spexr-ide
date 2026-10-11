@@ -1,0 +1,40 @@
+{
+  "name": "parity-driver",
+  "displayName": "Parity driver (visual fixture)",
+  "description": "Fixture-only extension for tests/visual: sets up each screenshot scene. Never shipped.",
+  "publisher": "spexr-visual",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:parity.probe",
+    "onCommand:parity.base",
+    "onCommand:parity.toast",
+    "onCommand:parity.focusTree",
+    "onCommand:parity.lateOpenA",
+    "onCommand:parity.lateOpenB",
+    "onCommand:parity.lateShowA",
+    "onCommand:parity.shell",
+    "onCommand:parity.shell2",
+    "onCommand:parity.cleanup"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "parity.probe", "title": "Probe environment", "category": "Parity" },
+      { "command": "parity.base", "title": "Base scene", "category": "Parity" },
+      { "command": "parity.toast", "title": "Toast scene", "category": "Parity" },
+      { "command": "parity.focusTree", "title": "Focus tree scene", "category": "Parity" },
+      { "command": "parity.lateOpenA", "title": "Late font: open terminal A", "category": "Parity" },
+      { "command": "parity.lateOpenB", "title": "Late font: open terminal B", "category": "Parity" },
+      { "command": "parity.lateShowA", "title": "Late font: show terminal A", "category": "Parity" },
+      { "command": "parity.shell", "title": "Shell: first command", "category": "Parity" },
+      { "command": "parity.shell2", "title": "Shell: second command", "category": "Parity" },
+      { "command": "parity.cleanup", "title": "Save fixture files", "category": "Parity" }
+    ]
+  }
+}

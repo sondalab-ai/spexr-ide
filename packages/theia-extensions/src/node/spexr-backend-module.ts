@@ -16,6 +16,9 @@ import { DescriptionGeneratorToken, type DescriptionGenerator } from "./search/d
 import { WorkerDescriptionGenerator } from "./search/worker-description-generator.js";
 import { SpexrSearchBackendService } from "./search/spexr-search-backend-service.js";
 import { DARKFACTORY_SERVICE_PATH, type SpexrDarkfactoryClient } from "../common/darkfactory-protocol.js";
+import { AGENT_PANE_SERVICE_PATH, type AgentPaneClient, type AgentPaneService } from "../common/agent-pane-protocol.js";
+import { AgentPaneBackendService } from "./darkfactory/agent-pane-service.js";
+import { ToolCounter } from "./darkfactory/tool-count.js";
 import { SpexrDarkfactoryBackendService } from "./darkfactory/spexr-darkfactory-backend-service.js";
 import { RESOURCE_SERVICE_PATH } from "../common/resource-protocol.js";
 import { SpexrResourceBackendService } from "./resources/spexr-resource-backend-service.js";
@@ -23,6 +26,10 @@ import { POWER_SERVICE_PATH, type SpexrPowerService } from "../common/power-prot
 import { SpexrPowerBackendService, followPowerSaving } from "./power/spexr-power-backend-service.js";
 import { SCHEDULE_SERVICE_PATH, type SpexrScheduleClient } from "../common/schedule/schedule-protocol.js";
 import { SpexrScheduleBackendService } from "./schedule/spexr-schedule-backend-service.js";
+import { ShellIntegrationInjector } from "@theia/terminal/lib/node/shell-integration-injector";
+import { SpexrShellIntegrationInjector } from "./terminal/spexr-shell-integration-injector.js";
+import { SpexrTerminalBlocksBackend } from "./terminal/spexr-terminal-blocks-service.js";
+import { TERMINAL_BLOCKS_SERVICE_PATH } from "../common/terminal-blocks-protocol.js";
 import { SchedulePty } from "./schedule/schedule-pty.js";
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -80,10 +87,13 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     })
     .inSingletonScope();
 
+  // One counter for the wall and the agent pane: a transcript is scanned once.
+  const toolCounter = new ToolCounter();
   bind(SpexrDarkfactoryBackendService)
     .toDynamicValue(
       (ctx) =>
         new SpexrDarkfactoryBackendService({
+          toolCounter,
           generator: ctx.container.get<DescriptionGenerator>(DescriptionGeneratorToken),
           embed: (texts) => ctx.container.get<Embedder>(EmbedderToken).embed(texts),
         }),
@@ -97,6 +107,29 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
         return service;
       });
     })
+    .inSingletonScope();
+
+  // The pane's service holds watchers and timers for one follow, so each
+  // connection gets its own and releases it when the connection closes. Only
+  // the interface's methods are exposed over RPC.
+  bind(ConnectionHandler)
+    .toDynamicValue(
+      () =>
+        new RpcConnectionHandler<AgentPaneClient>(AGENT_PANE_SERVICE_PATH, (client) => {
+          const service = new AgentPaneBackendService({ counter: toolCounter });
+          service.setClient(client);
+          client.onDidCloseConnection(() => service.dispose());
+          const exposed: AgentPaneService = { follow: (binding) => service.follow(binding), stop: () => service.stop(), readLog: (sessionId) => service.readLog(sessionId) };
+          return exposed;
+        }),
+    )
+    .inSingletonScope();
+
+  // Command blocks (S6l): Theia's shell integration with spexr's finished-mark chained after it.
+  bind(SpexrTerminalBlocksBackend).toSelf().inSingletonScope();
+  rebind(ShellIntegrationInjector).to(SpexrShellIntegrationInjector).inSingletonScope();
+  bind(ConnectionHandler)
+    .toDynamicValue((ctx) => new RpcConnectionHandler(TERMINAL_BLOCKS_SERVICE_PATH, () => ctx.container.get(SpexrTerminalBlocksBackend)))
     .inSingletonScope();
 
   bind(SchedulePty).toSelf().inSingletonScope();

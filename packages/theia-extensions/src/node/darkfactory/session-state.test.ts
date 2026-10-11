@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { classifySession } from "./session-state.js";
+import { asksUser, classifySession, lastTurn } from "./session-state.js";
 
 const NOW = 1_000_000_000_000;
 const LIVE = new Set(["/p"]);
@@ -139,5 +139,36 @@ describe("classifySession — no live process", () => {
 
   test("null liveDirs (scan failed) never yields working", () => {
     expect(classifySession("/p", NOW - 1_000, true, null, NOW, userMsg).state).toBe("idle");
+  });
+});
+
+describe("tools that ask for permission", () => {
+  const call = (name: string): Array<{ message: { role: string; content: unknown } }> => [
+    { message: { role: "user", content: "go" } },
+    { message: { role: "assistant", content: [{ type: "tool_use", id: "t", name, input: {} }] } },
+  ];
+  test.each(["Bash", "Edit", "Write", "WebFetch", "AskUserQuestion"])("%s waits on the user for the wall and the pane alike", (name) => {
+    expect(lastTurn(call(name))).toBe("permission");
+    expect(lastTurn(call(name), "pane")).toBe("permission");
+  });
+
+  test.each(["NotebookEdit", "WebSearch", "ExitPlanMode", "mcp__github__create_issue"])("%s waits on the user in the pane's label only: the wall and the runner keep their set", (name) => {
+    expect(lastTurn(call(name))).toBe("acting");
+    expect(lastTurn(call(name), "pane")).toBe("permission");
+  });
+
+  test("does not count a read-only built-in", () => {
+    expect(lastTurn(call("Read"), "pane")).toBe("acting");
+  });
+
+  test("a question to the user is waiting in every mode, auto-approve included, for the wall's classifier too", () => {
+    expect(asksUser(call("AskUserQuestion"))).toBe(true);
+    expect(asksUser(call("Bash"))).toBe(false);
+    expect(asksUser([])).toBe(false);
+    const live = new Set(["/p"]);
+    const asked = classifySession("/p", NOW, true, live, NOW + 5_000, call("AskUserQuestion"), "auto");
+    expect(asked).toEqual({ state: "idle", needsYou: true, needsYouCertain: true });
+    const bash = classifySession("/p", NOW, true, live, NOW + 5_000, call("Bash"), "auto");
+    expect(bash.state).toBe("working");
   });
 });

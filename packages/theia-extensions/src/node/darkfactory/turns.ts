@@ -5,6 +5,7 @@ import type { FollowEvent } from "../../common/darkfactory-protocol.js";
 /** One transcript entry, loosely typed (`isMeta` and `message` are read). */
 export interface TurnEntry {
   isMeta?: boolean;
+  timestamp?: string;
   message?: { role?: string; content?: unknown };
 }
 
@@ -154,17 +155,19 @@ export function buildFollowEvents(entries: TurnEntry[], maxEvents: number): Foll
   for (const e of entries) {
     const msg = e.message;
     const content = msg?.content;
+    const parsed = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
+    const at = Number.isNaN(parsed) ? {} : { atMs: parsed };
 
     if (msg?.role === "assistant") {
       if (Array.isArray(content)) {
         for (const b of content) {
           const block = b as { type?: string; text?: string; name?: string; input?: Record<string, unknown> };
-          if (block.type === "text" && block.text?.trim()) events.push({ kind: "assistant", text: collapse(block.text) });
-          else if (block.type === "tool_use" && block.name) events.push({ kind: "tool", text: toolText(block.name, block.input) });
+          if (block.type === "text" && block.text?.trim()) events.push({ kind: "assistant", text: collapse(block.text), ...at });
+          else if (block.type === "tool_use" && block.name) events.push({ kind: "tool", text: toolText(block.name, block.input), ...at });
         }
       } else {
         const t = textOf(content);
-        if (t) events.push({ kind: "assistant", text: t });
+        if (t) events.push({ kind: "assistant", text: t, ...at });
       }
       continue;
     }
@@ -176,11 +179,11 @@ export function buildFollowEvents(entries: TurnEntry[], maxEvents: number): Foll
           if (block.type !== "tool_result") continue;
           const isError = block.is_error === true;
           const snip = collapse(resultText(block.content)).slice(0, isError ? 400 : 200);
-          if (snip) events.push({ kind: isError ? "error" : "result", text: snip });
+          if (snip) events.push({ kind: isError ? "error" : "result", text: snip, ...at });
         }
       } else {
         const t = textOf(content);
-        if (t && isGenuinePrompt(e.isMeta === true, t)) events.push({ kind: "prompt", text: t.slice(0, 2000) });
+        if (t && isGenuinePrompt(e.isMeta === true, t)) events.push({ kind: "prompt", text: t.slice(0, 2000), ...at });
       }
     }
   }

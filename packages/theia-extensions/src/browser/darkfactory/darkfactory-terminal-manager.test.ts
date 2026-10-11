@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SpexrDarkfactoryTerminalManager } from "./darkfactory-terminal-manager.js";
+
+// The manager's inject token comes from a module that loads Lumino, which reads `document` at import; the tests set `trust` by hand.
+vi.mock("@theia/workspace/lib/browser/workspace-trust-service", () => ({ WorkspaceTrustService: class WorkspaceTrustService {} }));
 
 const UUID = "0f8f1a2b-3c4d-5e6f-9a0b-1c2d3e4f5a6b";
 const SES = "ses_abc123XYZ";
@@ -71,7 +74,7 @@ function fakeTerminal(onClose: (id: number) => void = () => {}): FakeTerminal {
   return term;
 }
 
-function makeManager(prefs: Record<string, unknown> = {}): {
+function makeManager(prefs: Record<string, unknown> = {}, trusted = true): {
   manager: SpexrDarkfactoryTerminalManager;
   calls: NewTerminalCall[];
   terms: FakeTerminal[];
@@ -93,6 +96,7 @@ function makeManager(prefs: Record<string, unknown> = {}): {
   // Stands in for both reads the manager makes: `get` for scalars, and
   // `inspect` for the launch profiles, whose scopes are read one by one so an
   // empty outer array cannot erase an inner one.
+  (manager as unknown as { trust: unknown }).trust = { getWorkspaceTrust: async () => trusted };
   (manager as unknown as { preferences: unknown }).preferences = {
     get: (key: string) => prefs[key] ?? "",
     inspect: (key: string) => ({ preferenceName: key, globalValue: prefs[key] }),
@@ -416,5 +420,30 @@ describe("SpexrDarkfactoryTerminalManager across a window reload", () => {
     await Promise.resolve();
     manager.rekey("launch-1", UUID);
     expect(manager.terminalInfo(UUID)).toEqual({ terminalId: 3, processId: 4242 });
+  });
+});
+
+describe("SpexrDarkfactoryTerminalManager workspace trust", () => {
+  it("starts no session in a workspace that is not trusted: a resume, a new session or a fork", async () => {
+    const { manager, calls } = makeManager({}, false);
+    expect(await manager.openEmbedded(UUID, "/Users/x/proj", "", false)).toBeUndefined();
+    expect(await manager.openEmbedded(UUID, "/Users/x/proj", "", true)).toBeUndefined();
+    expect(await manager.openNew("k", "claude", "/Users/x/proj", "")).toBeUndefined();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("re-attaches no terminal in a workspace that is not trusted, and does not even look for the process", async () => {
+    const { manager, calls } = makeManager({}, false);
+    let looked = false;
+    (manager as unknown as { shellServer: unknown }).shellServer = { getProcessId: async () => ((looked = true), 4242) };
+    expect(await manager.reattach("k", { terminalId: 7, processId: 4242 }, "/Users/x/proj")).toBeUndefined();
+    expect(looked).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("starts as before in a trusted workspace", async () => {
+    const { manager, calls } = makeManager({}, true);
+    expect(await manager.openEmbedded(UUID, "/Users/x/proj", "", false)).toBeDefined();
+    expect(calls).toHaveLength(1);
   });
 });

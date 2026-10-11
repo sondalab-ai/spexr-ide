@@ -1,0 +1,35 @@
+#!/bin/sh
+# tests/visual fixture: not pnpm. Prints the two outputs the Lumen demo's
+# terminal shows (showcase/screens.js), in ANSI, and records that it ran:
+# <ack dir>/pnpm-<script>.json holds the exit code, so the capture can tell the
+# command ran without reading a WebGL canvas. The ack dir is a sibling of this
+# stub's directory (<root>/bin, <root>/ack), so no environment is needed.
+ack="$(cd "$(dirname "$0")/.." && pwd)/ack"
+ok="$(printf '\033[32m')" err="$(printf '\033[31m')" warn="$(printf '\033[33m')"
+dim="$(printf '\033[2m')" bold="$(printf '\033[1m')" off="$(printf '\033[0m')"
+
+record() {
+  mkdir -p "$ack"
+  printf '{"ok":true,"script":"%s","exit":%s}\n' "$1" "$2" > "$ack/.pnpm-$1.tmp"
+  mv "$ack/.pnpm-$1.tmp" "$ack/pnpm-$1.json"
+}
+
+case "$1 $2" in
+  "test probe")
+    printf '%s✓%s resolve › returns the cached answer %s(3 ms)%s\n' "$ok" "$off" "$dim" "$off"
+    printf '%s✓%s resolve › re-runs a stale probe and keeps evidence %s(41 ms)%s\n' "$ok" "$off" "$dim" "$off"
+    printf '%s✓%s cache › write is awaited before return %s(2 ms)%s\n' "$ok" "$off" "$dim" "$off"
+    printf '%sTests%s  %s14 passed%s, 14 total\n' "$bold" "$off" "$ok" "$off"
+    record test-probe 0
+    exit 0
+    ;;
+  "sl-audit "*|"sl-audit")
+    printf '%sR%s  components.css:412  raw colour literal outside the role vars\n' "$err" "$off"
+    printf '%sA%s  resolve.ts:46  floating promise in a hot path\n' "$warn" "$off"
+    printf '%s1 finding blocks the build.%s %sRun with --fix to rewrite literals.%s\n' "$bold" "$off" "$dim" "$off"
+    record sl-audit 1
+    exit 1
+    ;;
+esac
+echo "pnpm (visual fixture stub): no script '$*'" >&2
+exit 1

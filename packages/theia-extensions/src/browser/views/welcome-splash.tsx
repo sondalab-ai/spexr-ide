@@ -2,6 +2,7 @@ import * as React from "react";
 import { Tip } from "@spexr/ui-kit";
 import type { ReleaseNote } from "../../common/changelog.js";
 import { httpsHref } from "./external-link.js";
+import type { KeyCaps } from "./key-caps.js";
 
 /**
  * The action cards and What's New are glass panes under the kit's drifting
@@ -15,6 +16,8 @@ export interface WelcomeSplashProps {
   readonly onNewProject: () => void;
   readonly onOpenFolder: () => void;
   readonly onFocusAgent: () => void;
+  /** The keys bound to the agent's focus command, if any (the welcome widget reads the keybinding registry). */
+  readonly agentShortcut?: KeyCaps | undefined;
   /** True when a workspace is open but has no specs yet. */
   readonly emptyProject?: boolean;
   readonly onStartFirstSpec?: () => void;
@@ -26,7 +29,7 @@ interface ActionCard {
   readonly id: string;
   readonly title: string;
   readonly description: string;
-  readonly shortcut?: string;
+  readonly shortcut?: KeyCaps;
   readonly onClick: () => void;
   readonly primary?: boolean;
 }
@@ -159,6 +162,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
   onNewProject,
   onOpenFolder,
   onFocusAgent,
+  agentShortcut,
   emptyProject,
   onStartFirstSpec,
   releaseNote,
@@ -196,7 +200,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
       id: "agent",
       title: "Talk to the agent",
       description: "Focus the Claude session in the left panel and start a conversation.",
-      shortcut: "⌘⇧A",
+      ...(agentShortcut ? { shortcut: agentShortcut } : {}),
       onClick: onFocusAgent,
     },
   ];
@@ -225,13 +229,24 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
             type="button"
             className={`spexr-welcome-card ${CURTAIN_CARD} sl-fx-press${card.primary ? " spexr-welcome-card--primary" : ""}`}
             data-sl-fx-live="on"
+            aria-keyshortcuts={card.shortcut?.aria}
             onClick={card.onClick}
           >
             <span className="spexr-welcome-card__title">{card.title}</span>
             <span className="spexr-welcome-card__desc">{card.description}</span>
             {card.shortcut ? (
-              <span className="sl-kbd spexr-welcome-card__kbd" aria-hidden>
-                {card.shortcut}
+              // One cap per key (the kit's .sl-kbd); the button names the
+              // shortcut in aria-keyshortcuts, so the caps stay out of its name.
+              <span className="spexr-welcome-card__keys" aria-hidden>
+                {card.shortcut.chords.map((keys, chord) => (
+                  <span key={chord} className="spexr-welcome-card__chord">
+                    {keys.map((key, index) => (
+                      <kbd key={index} className="sl-kbd">
+                        {key}
+                      </kbd>
+                    ))}
+                  </span>
+                ))}
               </span>
             ) : null}
           </button>

@@ -24,4 +24,16 @@ export const SpexrRevealOnRestore = Symbol("SpexrRevealOnRestore");
 /** The subset of `AbstractViewContribution` this registry actually needs. */
 export interface RevealOnRestoreView {
   openView(options?: { activate?: boolean; reveal?: boolean }): Promise<unknown>;
+  /**
+   * The view is attached at a restore but not brought to the front of its tab
+   * bar: it is a destination the user picks, not what a window opens on (the
+   * Darkfactory wall, S6c). An explicit `openView({ reveal: true })` elsewhere
+   * still raises it.
+   */
+  readonly attachBehind?: boolean;
+}
+
+/** The options a restore opens a registered view with. */
+export function restoreOptions(view: Pick<RevealOnRestoreView, "attachBehind">): { activate: false; reveal: boolean } {
+  return { activate: false, reveal: !view.attachBehind };
 }

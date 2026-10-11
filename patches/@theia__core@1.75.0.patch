@@ -1,8 +1,21 @@
 diff --git a/lib/browser/tree/tree-widget.js b/lib/browser/tree/tree-widget.js
-index 7f99e31752e4b7b48d25f68aa3f9cb260190f719..0f6b862d44c1e32d101af1844f7c6e88654be005 100644
+index 7f99e31752e4b7b48d25f68aa3f9cb260190f719..854922afd6786eaef77f85db72a5ea136ae16e7a 100644
 --- a/lib/browser/tree/tree-widget.js
 +++ b/lib/browser/tree/tree-widget.js
-@@ -1370,8 +1370,11 @@ exports.TreeWidget = TreeWidget = TreeWidget_1 = tslib_1.__decorate([
+@@ -1293,7 +1293,11 @@ let TreeWidget = TreeWidget_1 = class TreeWidget extends react_widget_1.ReactWid
+         if (depth === 1) {
+             return this.props.leftPadding;
+         }
+-        return depth * this.treeIndent;
++        // SPEXR patch: one indent per level below the first. Theia's
++        // depth * indent stepped from depth 1 (leftPadding) to depth 2 by twice the
++        // indent whenever the indent differs from leftPadding (8); at the defaults
++        // the two agree, so only a wider `workbench.tree.indent` changes anything.
++        return depth > 1 ? this.props.leftPadding + (depth - 1) * this.treeIndent : depth * this.treeIndent;
+     }
+ };
+ exports.TreeWidget = TreeWidget;
+@@ -1370,8 +1374,11 @@ exports.TreeWidget = TreeWidget = TreeWidget_1 = tslib_1.__decorate([
          render() {
              const { rows, width, height, scrollToRow, renderNodeRow, onAtBottomStateChangeEmitter, ...other } = this.props;
              return (0, jsx_runtime_1.jsx)(react_virtuoso_1.Virtuoso, { ref: (list) => {
@@ -15,3 +28,25 @@ index 7f99e31752e4b7b48d25f68aa3f9cb260190f719..0f6b862d44c1e32d101af1844f7c6e88
                  }, atBottomStateChange: (atBottom) => {
                      onAtBottomStateChangeEmitter?.fire(atBottom);
                  }, atBottomThreshold: exports.SCROLL_BOTTOM_THRESHOLD, totalCount: rows.length, itemContent: index => renderNodeRow(rows[index]), width: width, height: height, 
+diff --git a/lib/browser/view-container.js b/lib/browser/view-container.js
+index 43a0adca204b4c898109a85dc91b88ca61ed0e04..41790423fc6cf1eef939d7d9cd3c92d5a29f6927 100644
+--- a/lib/browser/view-container.js
++++ b/lib/browser/view-container.js
+@@ -1224,6 +1224,17 @@ class ViewContainerLayout extends widgets_1.SplitLayout {
+             this.parent.fit();
+         }
+     }
++    /**
++     * SPEXR patch: lay each part out on whole pixels. Weighted part sizes are
++     * fractional, so a part could start half a pixel down and blur every 1px
++     * line inside it (a tree row's ring, a header's rule). Both edges are
++     * rounded, so neighbouring parts and their handles still meet exactly.
++     */
++    updateItemPosition(i, isHorizontal, left, top, height, width, size) {
++        const start = Math.round(isHorizontal ? left : top);
++        const end = Math.round((isHorizontal ? left : top) + size);
++        super.updateItemPosition(i, isHorizontal, isHorizontal ? start : left, isHorizontal ? top : start, height, width, end - start);
++    }
+     getPartSize(part) {
+         if (part.collapsed || part.isHidden) {
+             return part.uncollapsedSize;

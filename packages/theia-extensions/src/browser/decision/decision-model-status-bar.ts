@@ -2,7 +2,8 @@ import { injectable, inject } from "@theia/core/shared/inversify";
 import { StatusBar, StatusBarAlignment } from "@theia/core/lib/browser/status-bar/status-bar";
 import type { DecisionModelStatus, SpexrDecisionService } from "../../common/decision-protocol.js";
 import { SpexrDecisionServiceProxy } from "./decision-service-proxy.js";
-import { downloadStatusText } from "./download-status-text.js";
+import { downloadStatusLive, downloadStatusText } from "./download-status-text.js";
+import { statusClass } from "../shell/status-dock.js";
 
 const ENTRY_ID = "spexr-decision-model-download";
 const POLL_MS = 3000;
@@ -52,6 +53,7 @@ export class SpexrDecisionModelStatusBar {
     }
     void this.statusBar.setElement(ENTRY_ID, {
       text,
+      className: statusClass({ live: downloadStatusLive(s) }),
       alignment: StatusBarAlignment.LEFT,
       priority: 90,
       tooltip:

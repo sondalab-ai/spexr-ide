@@ -3,6 +3,14 @@ import { FileUri } from "@theia/core/lib/common/file-uri";
 import { IShellTerminalServer } from "@theia/terminal/lib/common/shell-terminal-protocol";
 import { ProcessManager } from "@theia/process/lib/node/process-manager";
 import { TerminalProcess } from "@theia/process/lib/node/terminal-process";
+import { bracketedPaste } from "../../common/terminal-paste.js";
+import { PtyScreen, pasteInto, type PasteOutcome } from "./pty-screen.js";
+
+export { bracketedPaste };
+
+/** A task pty's size at launch; the headless screen starts at the same. */
+const LAUNCH_COLS = 120;
+const LAUNCH_ROWS = 40;
 
 /**
  * The terminal server merges the backend's environment into every pty. A SPEXR
@@ -16,31 +24,6 @@ export function withoutClaudeSessionMarkers(env: NodeJS.ProcessEnv): Record<stri
   return cleared;
 }
 
-/** Wait between a paste and the Enter that submits it, so the TUI has taken the paste in (probe, 2026-09-27). */
-export const PASTE_ENTER_DELAY_MS = 100;
-
-/**
- * `text` as one bracketed paste. CR becomes LF, and every other control
- * character but LF and tab is dropped first — above all ESC, so `ESC[201~`
- * cannot end the paste early and turn the rest into keystrokes. The text can
- * carry a check's output, which comes from code the agent wrote.
- */
-export function bracketedPaste(text: string): string {
-  const clean = text.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
-  return `\x1b[200~${clean}\x1b[201~`;
-}
-
-/** Paste `text`, then press Enter once the TUI has taken the paste in. */
-export async function pasteInto(
-  write: (data: string) => void,
-  text: string,
-  sleep: (ms: number) => Promise<void>,
-): Promise<void> {
-  write(bracketedPaste(text));
-  await sleep(PASTE_ENTER_DELAY_MS);
-  write("\r");
-}
-
 /**
  * Backend ptys for scheduled tasks, through the same terminal server the
  * frontend's terminals use: a window attaches to one by its terminal id.
@@ -50,15 +33,46 @@ export class SchedulePty {
   @inject(IShellTerminalServer) private readonly terminals!: IShellTerminalServer;
   @inject(ProcessManager) private readonly processes!: ProcessManager;
 
+  /** Each task pty's screen, kept for the idle-prompt gate on the follow-up's Enter (pty-screen.ts). */
+  private readonly screens = new Map<number, PtyScreen>();
+
+  /**
+   * Keep a headless copy of a pty's screen: a reader of its own on the output,
+   * so Theia's terminal stream is not touched; resized whenever the pty is
+   * (Theia resizes it as a card attaches); disposed with the pty.
+   */
+  private followOutput(terminalId: number, cols: number, rows: number): void {
+    const p = this.processes.get(terminalId);
+    if (!(p instanceof TerminalProcess)) return;
+    const screen = new PtyScreen(cols, rows);
+    this.screens.set(terminalId, screen);
+    p.createOutputStream().on("data", (chunk: unknown) => screen.write(String(chunk)));
+    const resize = p.resize.bind(p);
+    p.resize = (c: number, r: number) => {
+      resize(c, r);
+      screen.resize(c, r);
+    };
+    p.onExit(() => {
+      screen.dispose();
+      this.screens.delete(terminalId);
+    });
+  }
+
+  /** The task's pty shows Claude Code's idle input prompt; false when it cannot tell (fails closed). */
+  private async idle(terminalId: number): Promise<boolean> {
+    return (await this.screens.get(terminalId)?.isIdle()) === true;
+  }
+
   async launch(line: string, cwd: string): Promise<{ terminalId: number; processId: number }> {
     const terminalId = await this.terminals.create({
       args: ["-i", "-l", "-c", line],
       rootURI: FileUri.create(cwd).toString(),
-      cols: 120,
-      rows: 40,
+      cols: LAUNCH_COLS,
+      rows: LAUNCH_ROWS,
       env: withoutClaudeSessionMarkers(process.env),
     });
     if (terminalId < 0) throw new Error("The terminal server could not start the session.");
+    this.followOutput(terminalId, LAUNCH_COLS, LAUNCH_ROWS);
     return { terminalId, processId: await this.terminals.getProcessId(terminalId) };
   }
 
@@ -67,12 +81,17 @@ export class SchedulePty {
     if (p instanceof TerminalProcess) p.write(data);
   }
 
-  /** Paste a follow-up into a task's TUI and submit it as one prompt. */
-  paste(terminalId: number, text: string): Promise<void> {
+  /**
+   * Paste a follow-up into a task's TUI and submit it as one prompt, only
+   * while the pty shows an idle input prompt (before the paste and before the
+   * Enter): the outcome says when nothing, or no Enter, was written.
+   */
+  paste(terminalId: number, text: string): Promise<PasteOutcome> {
     return pasteInto(
       (data) => this.write(terminalId, data),
       text,
       (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      () => this.idle(terminalId),
     );
   }
 

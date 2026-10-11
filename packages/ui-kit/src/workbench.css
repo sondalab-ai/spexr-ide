@@ -1,0 +1,2 @@
+/* Re-exports the Sondalab workbench layer (.sl-pane, .sl-activitybar, .sl-tree, ...). */
+@import "@sondalab/ui-kit/workbench.css";

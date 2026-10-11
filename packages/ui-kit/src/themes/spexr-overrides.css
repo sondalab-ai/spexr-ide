@@ -3,16 +3,17 @@
  *
  * The Sondalab kit ships the shared grammar (type, spacing, neutrals, status,
  * 3-theme machinery) and its default amber/teal accent. SPEXR keeps its own
- * signature: the indigo accent, the IDE-specific roles (agent / hljs), and a
- * coding mono for the editor. These are product tokens, not brand tokens,
+ * signature: the indigo accent, the IDE-specific roles (agent / hljs), and the
+ * code face role. These are product tokens, not brand tokens,
  * so they live here instead of in the vendored (generated) files.
  */
 
 :root {
-  /* Editor / code contexts keep a coding mono (owner, 2026-10-02): JetBrains
-     Mono, then the kit's Geist Mono. The kit's mono (--sl-font-mono, Geist
-     Mono) carries labels and data but is not forced into code here. */
-  --sl-font-code: "JetBrains Mono", "Geist Mono", "SF Mono", "Menlo", "Consolas", monospace;
+  /* Code contexts use the kit's mono, Geist Mono, like the editor and the
+     terminal (editor.fontFamily, terminal.integrated.fontFamily). The owner
+     chose JetBrains Mono here on 2026-10-02 and reversed it on 2026-10-05,
+     for parity with the Lumen demo. */
+  --sl-font-code: var(--sl-font-mono);
 
   /* Syntax highlight — adopt the shared DS atom-one palette (--sl-code-*, which
      flips per [data-sl-theme]). Mapped once here; hljs stays undefined in HC,
@@ -46,8 +47,11 @@
   --sl-accent-active: #3645d4;
   --sl-accent-subtle: #eef0ff;
   --sl-focus-ring: #5b6cff;
-  /* The accent's depth companion: where the kit's light recedes to. */
-  --sl-accent-depth: #7a3fd0;
+  /* The accent's depth companion: where the kit's light recedes to. The
+     accent turned 24 degrees toward violet and, on paper, one shade step
+     deeper (the kit's --slc-shade-step), as the kit's own depth is darker on
+     light than on dark. Derived, so it follows the accent. */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) calc(l - var(--slc-shade-step, 0.075)) c calc(h + 24));
 }
 
 [data-sl-theme="dark"] {
@@ -56,30 +60,28 @@
   --sl-accent-active: #6b78f0;
   --sl-accent-subtle: #1c1f3a;
   --sl-focus-ring: #8b96ff;
-  --sl-accent-depth: #b58cff;
+  /* The same companion on ink: the accent turned 24 degrees toward violet. */
+  --sl-accent-depth: oklch(from var(--sl-accent-default) l c calc(h + 24));
 }
 
 [data-sl-theme="high-contrast"] {
   /* Accent is NOT overridden: the Sondalab HC accent (#ffff00) already matches
      SPEXR's HC. Only the wider HC focus ring is restored; the agent roles read
-     the kit's HC values (the same black, #0a0a0a, #1a1a00 and yellow as before).
-     hljs is intentionally left undefined in HC, as it was before the migration. */
+     the kit's HC roles (the same black surfaces, user bubble and yellow rail as
+     before). hljs is intentionally left undefined in HC, as it was before the migration. */
   --sl-focus-ring-width: 3px;
 }
 
-/* FILLED INDIGO (owner, 2026-10-01; one registered fill since kit 0.28). The
-   primary is a deeper indigo than the accent so its label can be white on
-   both themes: 5.41:1 on the fill, 6.47 on hover, 8.03 pressed. One literal,
-   registered in the kit's accent registry; hover and press are derived from
-   it, so there are no hand-tuned steps to drift. The accent itself
-   (#5b6cff / #8b96ff) still drives links, tags, the agent rail and the focus
-   ring. Scoped to the button: --slc-* resolve at :root, so binding them here
-   re-derives only the primary's fill, edge and label. High contrast keeps the
-   kit's own primary. */
-:is([data-sl-theme="light"], [data-sl-theme="dark"]) .sl-btn--primary {
-  --slc-accent: #4c58e9;
-  --slc-accent-hover: color-mix(in srgb, var(--slc-accent) 89%, black);
-  --slc-accent-active: color-mix(in srgb, var(--slc-accent) 76%, black);
-  --slc-edge-accent: oklch(from var(--slc-accent) calc(l - var(--slc-shade-step, 0.075)) c h);
-  --slc-on-accent: #ffffff;
-}
+/* FILLED INDIGO (owner, 2026-10-01). White on the #5b6cff accent read
+   4.17:1, so every accent fill that carries a label -- the primary, a checked
+   check, radio or switch, a count badge -- is the deeper registered fill:
+   white on it reads 5.41:1, 6.67 hovered, 8.21 pressed. It is not set here.
+   Since kit 0.35 the kit's products.css sets --slc-accent-fill per theme
+   from the accent registry's fill, under data-sl-product="spexr" on the
+   theme element, so a fill changed in the registry reaches spexr at its next
+   kit upgrade; the kit derives the label, hover, press and edge from it. A
+   rule here at (0,2,0) would load after products.css and win over it, and
+   one any lighter would lose to it silently, so spexr sets the fill nowhere
+   (theia-chrome-css.test.ts). The accent (#5b6cff / #8b96ff) still drives
+   links, tags, the agent rail, selection and the focus ring. High contrast
+   keeps its own yellow: the kit resets the fill there. */

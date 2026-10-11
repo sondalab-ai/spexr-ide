@@ -172,3 +172,33 @@ describe("runSessionIndex", () => {
     expect(index.ids()).toEqual(["ok"]);
   });
 });
+
+describe("runSessionIndex tool counts", () => {
+  it("brings the counter up to date for every listed session, and says when a count moved", async () => {
+    const { mkdtempSync, writeFileSync, appendFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { ToolCounter } = await import("./tool-count.js");
+    const dir = mkdtempSync(join(tmpdir(), "spexr-indexer-"));
+    try {
+      const use = JSON.stringify({ message: { role: "assistant", content: [{ type: "tool_use", id: "a", name: "Read" }] } }) + "\n";
+      const path = join(dir, "a.jsonl");
+      writeFileSync(path, use + use);
+      const counter = new ToolCounter();
+      const moved = vi.fn();
+      const listed = { ...session("a", 1, "goal"), transcriptPath: path };
+      const run = (): Promise<void> => runSessionIndex({ index: new SessionIndex(), embed, list: async () => [listed], save: async () => {}, counter, onToolCounts: moved });
+      await run();
+      expect(counter.cached(path)).toBe(2);
+      expect(moved).toHaveBeenCalledTimes(1);
+      await run();
+      expect(moved).toHaveBeenCalledTimes(1);
+      appendFileSync(path, use);
+      await run();
+      expect(counter.cached(path)).toBe(3);
+      expect(moved).toHaveBeenCalledTimes(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

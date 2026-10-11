@@ -24,7 +24,7 @@
       // predate the second key).
       theme = localStorage.getItem('spexr.theme')
         || localStorage.getItem('spexr.theme.last')
-        || ({ light: 'light', dark: 'dark', 'hc-theia': 'high-contrast' })[localStorage.getItem('theme')];
+        || ({ light: 'light', dark: 'dark', 'spexr-light': 'light', 'spexr-dark': 'dark', 'hc-theia': 'high-contrast' })[localStorage.getItem('theme')];
     } catch (e) { /* storage blocked */ }
     if (theme !== 'light' && theme !== 'dark' && theme !== 'high-contrast') {
       // Last resort. Note this is NOT the OS setting during startup: in Electron

@@ -97,12 +97,6 @@ export const SPEXR_TIPS: readonly SpexrTip[] = [
     body: "The agent never commits or pushes — repo interaction stays with you. Review the diff, then commit when ready.",
   },
   {
-    id: "shortcut-agent",
-    category: "shortcut",
-    title: "⌘⇧A toggles the agent panel",
-    body: "Use ctrl/cmd + shift + A to focus the agent chat from anywhere in the IDE.",
-  },
-  {
     id: "shortcut-spec",
     category: "shortcut",
     title: "⌘⇧S opens the spec panel",

@@ -1,0 +1,16 @@
+{
+  "name": "@spexr/visual",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Screenshots of spexr for Lumen parity, taken in CI only; plus a local measurement of the kit demo.",
+  "scripts": {
+    "capture": "node run.mjs",
+    "measure-demo": "node measure-demo.mjs",
+    "lint": "eslint \"*.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.0.0"
+  }
+}

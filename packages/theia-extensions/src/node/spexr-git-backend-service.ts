@@ -2,6 +2,7 @@ import { injectable, unmanaged } from "@theia/core/shared/inversify";
 import { isAbsolute, resolve as resolvePath, join } from "node:path";
 import { existsSync, statSync, watch, type FSWatcher } from "node:fs";
 import { rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from "simple-git";
 import type {
   SpexrGitService,
@@ -21,6 +22,15 @@ import type {
 import type { DescriptionGenerator } from "./search/description-format.js";
 import { buildCommitPrompt, cleanCommitSubject, commitPrefix, type StagedFile } from "./commit-message-format.js";
 
+/** Whether `path` is a directory that exists; false for a file or a missing path. */
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 const BLAME_HEADER = /^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/;
 
 /** Coalesce a burst of git-dir writes (one operation touches several files). */
@@ -39,6 +49,16 @@ const MAX_COMMIT_DIFF_CHARS = 512_000;
  * process behind on every tick.
  */
 const BACKGROUND_FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * How long a fetch by hand may go without output before it is killed: longer,
+ * since the user may be answering an authentication prompt. Shorter than the
+ * frontend's own limit, so git is gone before the fetch queue is freed.
+ */
+const MANUAL_FETCH_TIMEOUT_MS = 120_000;
+
+/** How long `git config --get user.name` may go without output before it is killed. */
+const USER_NAME_TIMEOUT_MS = 5_000;
 
 /**
  * The simple-git checks an inherited environment can trip. Passing any
@@ -74,6 +94,8 @@ export interface GitBackendDeps {
   watchDir?: (dir: string, recursive: boolean, onChange: () => void) => FSWatcher;
   /** Local model behind {@link SpexrGitBackendService.generateCommitMessage}; absent means no generation. */
   generator?: DescriptionGenerator;
+  /** Overrides {@link USER_NAME_TIMEOUT_MS}; tests shorten it. */
+  userNameTimeoutMs?: number;
 }
 
 /**
@@ -287,11 +309,13 @@ export class SpexrGitBackendService implements SpexrGitService {
 
   /** Absent when the backend module could not supply one; generation then no-ops. */
   private readonly generator: DescriptionGenerator | undefined;
+  private readonly userNameTimeoutMs: number;
 
   constructor(@unmanaged() deps: GitBackendDeps = {}) {
     this.watchDir =
       deps.watchDir ?? ((dir, recursive, onChange) => watch(dir, { recursive }, onChange));
     this.generator = deps.generator;
+    this.userNameTimeoutMs = deps.userNameTimeoutMs ?? USER_NAME_TIMEOUT_MS;
   }
 
   setClient(client: SpexrGitClient): void {
@@ -708,7 +732,11 @@ export class SpexrGitBackendService implements SpexrGitService {
   }
 
   async fetch(root: string): Promise<void> {
-    await this.git(root).fetch();
+    // Its own client, as the background fetch's: the shared one has no timeout, and a fetch stalled on an
+    // unreachable remote would hold every other operation on the repository behind it.
+    await simpleGit(root, { maxConcurrentProcesses: 1, timeout: { block: MANUAL_FETCH_TIMEOUT_MS }, unsafe: INHERITED_ENV_UNSAFE })
+      .env({ ...process.env, GIT_OPTIONAL_LOCKS: "0" })
+      .fetch();
   }
 
   async backgroundFetch(root: string): Promise<void> {
@@ -789,6 +817,22 @@ export class SpexrGitBackendService implements SpexrGitService {
       const origin = remotes.find((r) => r.name === "origin") ?? remotes[0];
       const url = origin?.refs?.fetch;
       return url ? normalizeRemoteUrl(url) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async getUserName(root?: string): Promise<string | undefined> {
+    const dir = root && isDirectory(root) ? root : homedir();
+    try {
+      // Not `this.git(dir)`: that client runs one process at a time for the
+      // root, so a `git config` hung on a config file (a FIFO, a stalled
+      // network mount) would hold every other git operation there. This one
+      // is its own, and is killed after a silence.
+      const git = simpleGit(dir, { maxConcurrentProcesses: 1, timeout: { block: this.userNameTimeoutMs }, unsafe: INHERITED_ENV_UNSAFE });
+      // `--get` exits 1 when the key is unset, which simple-git raises.
+      const name = (await git.raw(["config", "--get", "user.name"])).trim();
+      return name || undefined;
     } catch {
       return undefined;
     }

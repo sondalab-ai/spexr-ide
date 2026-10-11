@@ -1,5 +1,6 @@
 import { injectable } from "@theia/core/shared/inversify";
 import { AbstractViewContribution } from "@theia/core/lib/browser";
+import { nls } from "@theia/core/lib/common/nls";
 import type { SpexrMemoryWidget } from "./memory-widget.js";
 
 export const MEMORY_VIEW_ID = "spexr.view.memory";
@@ -9,7 +10,7 @@ export class SpexrMemoryViewContribution extends AbstractViewContribution<SpexrM
   constructor() {
     super({
       widgetId: MEMORY_VIEW_ID,
-      widgetName: "Memory",
+      widgetName: nls.localize("spexr/memory/title", "Memory"),
       defaultWidgetOptions: {
         area: "right",
         rank: 1,

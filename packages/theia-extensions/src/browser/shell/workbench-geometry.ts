@@ -1,0 +1,549 @@
+import { ISLAND_GAP } from "./islands.js";
+
+/**
+ * Lumen's workbench geometry in spexr: the Lumen IDE demo at 1440×900
+ * (tests/visual/reference/demo-regions.json) on the kit's 4px grid (owner,
+ * 2026-10-05). Where the demo sits between two grid steps, the kit's own
+ * value for that piece decides (ui-kit 0.34 README, "For spexr"): a 28px
+ * status bar with 20px items (Lumen 30 / 22), 24px tree rows (26), 36px
+ * activity items 8px apart (38, 6 apart: the same 44px pitch). Radii and type
+ * sizes are shape, not spacing, so Lumen's own are kept.
+ *
+ * spexr.css repeats these numbers (CSS cannot read them from here); the style
+ * guards (theme/workbench-style.test.ts) hold the two together, so a value
+ * changes here and in spexr.css in one edit.
+ */
+export const WORKBENCH = {
+  /** The title bar (S5b-1), Lumen's 44. */
+  titleBar: 44,
+  /** The status bar: the kit's 28 (Lumen 30). */
+  statusBar: 28,
+  /** A status item, a pill 4px inside the bar: the kit's 20 (Lumen 22). */
+  statusItem: 20,
+  /** The activity bar's column: Lumen's 52. */
+  activityBar: 52,
+  /** An activity item: the kit's 36 (Lumen 38), r9. */
+  activityItem: 36,
+  /** Between two activity items: the kit's 8 (Lumen 6), so the pitch stays Lumen's 44. */
+  activityGap: 8,
+  /** The first activity item's distance from the bar's top: Lumen's 4. */
+  activityTop: 4,
+  /** The bar's foot (settings, accounts): its last tile's distance from the bar's bottom, Lumen's 8. */
+  activityBottom: 8,
+  /** A tab strip, the editor's and the bottom island's: 36 (Lumen 38). */
+  tabStrip: 36,
+  /** A tile tab: the kit's 28, the editor's r7 and the bottom's r6 (Lumen 28 and 26). */
+  tab: 28,
+  /** The breadcrumbs under the editor's tabs: 32 (Lumen 30), so the code starts where Lumen's does (38 + 30 = 36 + 32). */
+  breadcrumbs: 32,
+  /** The activity bar's count badge (the Agent tile's running agents, Source Control's changes): the kit's 16 high, r6 (Lumen's pill is 16 high). */
+  activityBadge: 16,
+  /** The count badge's least width: the kit's 20, so one digit is not a circle. */
+  activityBadgeMinWidth: 20,
+  /** A status item's padding at the sides: the kit's and Lumen's 8. */
+  statusItemPadding: 8,
+  /** A count chip on a bottom panel tab (Problems): 16 high, r6 (Lumen's 14.5 high, r8). */
+  panelChip: 16,
+  /** A bottom panel button ("+", the close ×): 24 (Lumen's 26). */
+  panelButton: 24,
+  /** The gap round a file or folder glyph in a tree row or a tab (the outline icon theme): Lumen's 4. The glyph's own 14px is a type size. */
+  treeIconGap: 4,
+  /** The gap between a tab's glyph and its label (the outline icon theme): Lumen's 8, apart from the tree's 4. */
+  tabIconGap: 8,
+  /** A tile tab's padding at the sides: 12 (Lumen 11.2). */
+  tabPaddingInline: 12,
+  /** A tab's close slot, where the dirty dot and the hover cross sit: 16, always reserved so a hover moves nothing. */
+  tabCloseSlot: 16,
+  /** The split button in the strip: 24, the head tool's size (Lumen 26). */
+  tabSplitButton: 24,
+  /** The breadcrumbs' padding at the sides, and the meta's distance from the row's end: Lumen's 16. */
+  breadcrumbsInset: 16,
+  /** A file tree's row: the kit's 24 (Lumen 26). */
+  treeRow: 24,
+  /** A tree level's indent: Lumen's 16. */
+  treeIndent: 16,
+  /** A side island's head (Explorer): Lumen's 40. */
+  paneHead: 40,
+  /** A head's tool button (the Explorer's "+" and "..."): the kit's 24 (Lumen 26). */
+  paneTool: 24,
+  /** A head's distance from its last tool to the island's edge: Lumen's 8. */
+  paneToolInset: 8,
+  /** A section's eyebrow header in a side island: 28 (Lumen's 29.6: 9.6 + a 15.2 line + 4.8), its text 8px below the top and 4px above the foot. */
+  sectionHead: 28,
+  /** A section eyebrow's, and a tree row's git letter's, distance from the island's edge (Lumen 14.4 and 15.2). */
+  sectionInset: 16,
+  /** The git letter in a tree row ("M", "U"): the demo's 10.5px mono at 600, rounded to the grid. The one type size in this table. */
+  gitLetter: 12,
+  /** A toast's distance from the window's bottom edge: Lumen's 48. */
+  toastOffset: 48,
+} as const;
+
+/**
+ * The editor strip's shapes (S6c): a dot and a type size, which are shape and
+ * not spacing, so they keep Lumen's own numbers and sit off the 4px grid, as
+ * the kit's 6px tab dot does.
+ */
+export const EDITOR_STRIP_SHAPE = {
+  /** The dirty dot on a tab: the kit's `.sl-tabs__dot`, Lumen's 6. */
+  tabDot: 6,
+  /** The breadcrumb meta ("+14 −3 · not saved"), in the mono: Lumen's 11px. */
+  breadcrumbsMetaSize: 11,
+} as const;
+
+/**
+ * The right island's views (Memory, Experts, TODO) as Lumen's agent pane at
+ * 1440x900 (S5e), on the same 4px grid: the demo's 13.6 / 15.2 / 3.2 / 23.2
+ * head and its 32.4px tool rows become whole steps. Radii and type sizes are
+ * shape, so Lumen's own are kept (card r8, 16px/600 title at -0.025em, 12px
+ * names in the mono). spexr.css repeats these numbers; right-panel-style.test.ts
+ * holds the two together.
+ */
+export const RIGHT_PANEL = {
+  /** The head's padding above the eyebrow and below the title (Lumen 13.6). */
+  headPaddingBlock: 12,
+  /** The head's, and the body's, padding at the sides (Lumen 16, the body's 14.4). */
+  inline: 16,
+  /** The eyebrow's line (Lumen 15.2). */
+  eyebrowLine: 16,
+  /** Between the eyebrow and the title (Lumen 3.2). */
+  eyebrowGap: 4,
+  /** The title's size, Lumen's 16 at weight 600. */
+  titleSize: 16,
+  /** The title's line (Lumen 23.2). */
+  titleLine: 24,
+  /** The body's padding: the panel's content starts 16px in (Lumen 14.4). */
+  bodyPadding: 16,
+  /** A card of rows, Lumen's tool list: r8. */
+  cardRadius: 8,
+  /** A row's height at least: its 8px padding round one 16px line (Lumen 32.4). */
+  rowMinHeight: 32,
+  /** A row's padding above and below its line (Lumen 6.4). */
+  rowPaddingBlock: 8,
+  /** A row's padding at the sides (Lumen 9.6). */
+  rowPaddingInline: 12,
+  /** A row's name, in the mono: 12px at weight 500, on a 16px line. */
+  nameSize: 12,
+  nameLine: 16,
+} as const;
+
+/**
+ * The rank that puts the pane first in the right activity bar. Theia reads a
+ * rank only when it is truthy (`if (options.rank)` in the side panel handler),
+ * so 0 would be ignored and the tile appended last; a fraction is truthy and
+ * sorts before Memory's 1, Experts' 2 and TODO's 3.
+ */
+export const AGENT_PANE_RANK = 0.5;
+
+/**
+ * The agent pane (S6h) as Lumen's right pane at 1440x900, on the same 4px
+ * grid as {@link RIGHT_PANEL}, whose head, card and row it reuses. The demo's
+ * values (showcase/screens.css and lab/directions-2/dir-lumen.css, measured in
+ * tests/visual/reference/demo-regions.json) round as the owner's rule says:
+ * 14.4 and 9.6 become 16 and 8, a 1.6 line of 11.5px code becomes 20px. Radii
+ * and type sizes are shape, so Lumen's are kept (the prompt r8 with an r4
+ * corner, the tag r6, prose at 13.5/1.55). spexr.css repeats these numbers,
+ * which CSS cannot read from here; agent-pane-style.test.ts holds the two together.
+ */
+export const AGENT_PANE = {
+  /** The log's padding, and the gap between its blocks (Lumen 14.4). */
+  logPadding: 16,
+  logGap: 16,
+  /** The prompt card: padding (Lumen 9.6 / 12), r8 with an r4 corner (Lumen 10 / 3). */
+  promptPaddingBlock: 8,
+  promptPaddingInline: 12,
+  promptRadius: 8,
+  promptCorner: 4,
+  /** The agent's prose and the prompt: 13.5px on a 1.55 line. */
+  proseSize: 13.5,
+  proseLeading: 1.55,
+  /** A tool row's duration, in the mono (Lumen 10.5). */
+  metaSize: 10.5,
+  /** The diff card's code (Lumen 11.5px on a 1.6 line, 18.4px), and its caption and rows' padding. */
+  diffSize: 11.5,
+  diffLine: 20,
+  diffPaddingBlock: 4,
+  diffInline: 12,
+  captionPaddingBlock: 4,
+  /** The plan's checks are apart by this (Lumen 6.4), and its labels are 13px. */
+  planGap: 8,
+  planLabelSize: 13,
+  /** The model tag: Lumen's mono 11.5px at r6, set on the kit's tag in spexr.css (the kit's own tag is 11.5px with a 6px radius at 0.36.2 too; the rule keeps it so). */
+  modelSize: 11.5,
+  modelRadius: 6,
+  /** The tool card folds all but this many rows (Lumen shows four), and scrolls past this height once expanded. */
+  toolRows: 4,
+  /** The composer: 12px off the island's edges (Lumen .75rem), 8px of padding and between its rows (Lumen .5rem), r12. */
+  composerMargin: 12,
+  composerPadding: 8,
+  composerGap: 8,
+  composerRadius: 12,
+  /** Its field: two rows of the prose's 13.5/1.55, 2px above and below, 4px in (Lumen 3.2 / 4.8). */
+  fieldRows: 2,
+  fieldPaddingBlock: 2,
+  fieldPaddingInline: 4,
+  /** The file chip's radius: r6. */
+  chipRadius: 6,
+  toolListMaxHeight: 384,
+  /** A long prompt is held to this many lines. */
+  promptLines: 6,
+  /** The fold's touch target. */
+  foldMinHeight: 24,
+} as const;
+
+/**
+ * The Sessions part of the Explorer (S6j) as Lumen's `.ide-sessions` at
+ * 1440x900 (tests/visual/reference/demo-regions.json: "sessions.row" 249.63 x
+ * 46.38 at r6, padding 4.8 / 9.6, a 13px name on 18.85 over an 11px mono meta
+ * on 15.95, rows 48.37 apart; the list's own padding 7.2). On the 4px grid a
+ * row is 48 (padding 4, a 20px name line, 4 between, a 16px meta line) with
+ * no gap, so the pitch is 48 against Lumen's 48.37 and a row is 1.6px
+ * shorter. Radii and type sizes are shape, so Lumen's are kept. spexr.css
+ * repeats the numbers; sessions-style.test.ts holds them.
+ */
+export const SESSIONS = {
+  /** A row's height: 4 + 20 + 4 + 16 + 4 (Lumen 46.38). */
+  rowHeight: 48,
+  rowPaddingBlock: 4,
+  /** A row's padding at the sides (Lumen 9.6). */
+  rowPaddingInline: 8,
+  /** The list's padding at the sides (Lumen 7.2). */
+  listPaddingInline: 8,
+  /** Between two rows: none, the rows are 48 apart as Lumen's are 48.37. */
+  rowGap: 0,
+  rowRadius: 6,
+  nameSize: 13,
+  nameLine: 20,
+  /** The meta line, in the mono (Lumen 11 on 15.95). */
+  metaSize: 11,
+  metaLine: 16,
+  metaGap: 4,
+  /** The part's most share of the Explorer container: three rows and a head are about a fifth of a 900px window. */
+  share: 0.3,
+} as const;
+
+/**
+ * The status bar's agents pill and model item (S6j) as Lumen's
+ * `.ide-status__agents` and `.ide-status__model` (22px high at r6, 8px of
+ * padding, a 6px accent dot 8px in; the kit's item is 20, {@link WORKBENCH.statusItem}).
+ * The pill is ringed on the control edge, which Lumen's ring (a 11% white
+ * shadow) is not: the owner's boundary rule is 3:1.
+ */
+export const AGENTS_PILL = {
+  /** The pill's dot: Lumen's 6. */
+  dot: 6,
+  /** The pill's radius. */
+  radius: 6,
+} as const;
+
+/**
+ * The Agent log, the bottom panel's view of the followed session's events
+ * (S6j). Lumen draws only its tab, so the body is spexr's: the follow
+ * transcript's mono at the small step on a 20px line, a 16px gutter, and the
+ * time in a fixed column before each line so the lines align. The panel's own
+ * head and tab strip are {@link WORKBENCH.tabStrip}. agent-log-style.test.ts
+ * holds the numbers.
+ */
+export const AGENT_LOG = {
+  padding: 16,
+  line: 20,
+  /** The time column: `14:03:27` is eight characters of the mono. */
+  timeChars: 8,
+  gap: 12,
+} as const;
+
+/**
+ * The editor's inline diagnostic chip (S6k) as Lumen's `.ide-diag` at 1440x900
+ * (tests/visual/reference/demo-regions.json "code.diag": 189.45 x 16 at 24px
+ * after the code, padding 0 8, Geist 12px, r5, the warning text on a 12% wash
+ * of the warning). On the grid the radius is 4 (Lumen 5); the rest is Lumen's
+ * own, already on it. spexr.css repeats the numbers; inline-diagnostics-style.test.ts
+ * holds them.
+ */
+export const INLINE_DIAGNOSTIC = {
+  /** Between the end of the code and the chip. */
+  marginLeft: 24,
+  paddingInline: 8,
+  radius: 4,
+  fontSize: 12,
+  /** The wash under the text, as a share of the tone. */
+  washPercent: 12,
+} as const;
+
+/**
+ * A terminal command block (S6l) as Lumen's `.sl-term-block` at 1440x900
+ * (demo-regions.json "term.block": r8, a ring, a top seam in the exit tone,
+ * a header row of the command and a right-aligned `time duration exit` in
+ * the mono at 11.5px, the exit in its tone). xterm's decoration lays the
+ * frame over the terminal's own text, so the command line takes the chip's
+ * place of the demo's header, and the frame grows outward by `frameInset`
+ * instead of padding the text. The ring is the kit's control edge (3:1), not
+ * the demo's 7% white, and the failure ring is the danger tone whole (the
+ * demo's is 35% of it). spexr.css repeats the numbers; command-blocks-style.test.ts
+ * holds them.
+ */
+export const TERMINAL_BLOCK = {
+  radius: 8,
+  /** The ring, in px. */
+  ring: 1,
+  /** The frame is this far outside the lines it holds at the sides, and flush with them above and below (an inset ring: no bleed into the neighbouring rows). */
+  frameOutsetX: 2,
+  frameOutsetY: 0,
+  /** The seam on the top edge, the kit's: 2px high with a rounded bottom, 44 long (2.75rem), 12 in. */
+  seamHeight: 2,
+  seamWidth: 44,
+  seamInset: 12,
+  /** The chip: the code face at the demo's 11.5px, 16px of line, 8px from the right edge, 12px between its parts, and a 16px fade where the command goes under it. */
+  metaFade: 16,
+  metaSize: 11.5,
+  metaLine: 16,
+  metaInset: 8,
+  metaGap: 12,
+  /** Past this many blocks per terminal, the oldest is let go. */
+  maxBlocks: 200,
+} as const;
+
+/**
+ * The command palette (Theia's quick input) as Lumen's, at 1440x900 (S5f).
+ * It floats over the editor island: centred on it, 118px from the window's
+ * top (the island's tab strip and breadcrumbs, and one gap, below the
+ * title bar: where the demo's first line of code starts), 580px wide as the
+ * kit's. A row is the kit's 36px (Lumen's is 38). spexr.css repeats these
+ * numbers and patches/@theia__monaco-editor-core@1.108.201.patch gives Monaco's
+ * list its row heights from the same three; palette-style.test.ts holds them
+ * together.
+ */
+export const PALETTE = {
+  /** The widget's width: the kit's and Lumen's. */
+  width: 580,
+  /** The widget's top edge, from the window's top: the title bar, the editor's tab strip and breadcrumbs, and one island gap. */
+  top: WORKBENCH.titleBar + WORKBENCH.tabStrip + WORKBENCH.breadcrumbs + ISLAND_GAP,
+  /** An entry's row: the kit's 36 (Lumen 38). */
+  row: 36,
+  /** An entry with a detail line under its label: two lines in a 4px grid step more than a row. */
+  detailRow: 48,
+  /** A group's heading row (Monaco's separator): Lumen's 27.75 on the grid. */
+  group: 28,
+  /** The input's head: the kit's 52 (Lumen 54). */
+  head: 52,
+  /** The kit's field in the head: the one control height. */
+  field: 32,
+  /** The list's padding above its first row, and at the sides and below (the kit's 4 / 8 / 8). */
+  listTop: 4,
+  listInline: 8,
+  listBottom: 8,
+  /** A row's padding at the sides, and its gap from the glyph to the label (the kit's 12 / 12). */
+  rowInline: 12,
+  rowGap: 12,
+  /** Between two keycaps (the kit's 4; Lumen's 3). */
+  keyGap: 4,
+  /** The palette's radius: the kit's large radius (Lumen's 14). */
+  radius: 14,
+  /** A row's radius: the kit's medium radius (Lumen's 8). */
+  rowRadius: 8,
+} as const;
+
+/**
+ * A toast as Lumen's, at 1440x900 (S5f): 360px wide, its right edge 8px inside
+ * the editor island's, its bottom {@link WORKBENCH.toastOffset} above the
+ * window's. The kit's 0.34 toast: r12, padding 12 / 12 / 16 / 16, a 24px mark
+ * and a 32px dismiss, 12px apart. spexr.css repeats the numbers and
+ * toasts-style.test.ts holds them.
+ */
+export const TOAST = {
+  width: 360,
+  /** From the editor island's right edge, inward (Lumen 8: the demo's 1068 against the island's 1076). */
+  inset: 8,
+  radius: 12,
+  paddingTop: 12,
+  paddingEnd: 12,
+  paddingBottom: 16,
+  paddingStart: 16,
+  mark: 24,
+  dismiss: 32,
+  gap: 12,
+} as const;
+
+/** A shell area Theia can resize. */
+export type ShellArea = "left" | "right" | "bottom";
+
+export const SHELL_AREAS: readonly ShellArea[] = ["left", "right", "bottom"];
+
+/**
+ * The column an activity bar takes: the bar, and the island gap between it
+ * and its island (spexr.css pads the column on the island's side, so the gap
+ * is inside what Theia measures as the side's size).
+ */
+export const ACTIVITY_COLUMN = WORKBENCH.activityBar + ISLAND_GAP;
+
+/**
+ * Theia's size for an area whose island is `island` px across (or tall), the
+ * number `ApplicationShell.resize` takes. Theia measures an area from the
+ * window's edge to the area's split handle (`SidePanelHandler.getPanelSize`,
+ * `ApplicationShell.getBottomPanelSize`):
+ * - left: the activity column and the island, up to the handle's offset;
+ * - right: the handle (the gap to the main island), the island and the column;
+ * - bottom: the handle and the island.
+ */
+export function areaSize(area: ShellArea, island: number): number {
+  switch (area) {
+    case "left":
+      return ACTIVITY_COLUMN + island;
+    case "right":
+      return ISLAND_GAP + island + ACTIVITY_COLUMN;
+    case "bottom":
+      return ISLAND_GAP + island;
+  }
+}
+
+/** Lumen's Explorer island (px): the left island of a default layout with the Explorer in front. */
+export const EXPLORER_ISLAND = 264;
+
+/**
+ * The agent terminal's island (px), and its floor: the 432px the left island
+ * had when the floor was Theia's 480 with a 48px activity bar. A 264px agent
+ * terminal would be about 33 columns.
+ */
+export const AGENT_ISLAND = 432;
+
+/** The right island (px), Lumen's agent pane: spec/memory/experts default to it, and never go narrower. */
+export const RIGHT_ISLAND = 352;
+
+/** The bottom island (px), Lumen's panel. */
+export const BOTTOM_ISLAND = 204;
+
+/**
+ * The islands of a default layout: Lumen's, with the left island the agent
+ * terminal's when it is the left view in front, the Explorer's otherwise.
+ */
+export function defaultIslands(agentInFront: boolean): Record<ShellArea, number> {
+  return { left: agentInFront ? AGENT_ISLAND : EXPLORER_ISLAND, right: RIGHT_ISLAND, bottom: BOTTOM_ISLAND };
+}
+
+/** {@link defaultIslands} as Theia's sizes ({@link areaSize}). */
+export function defaultSizes(agentInFront: boolean): Record<ShellArea, number> {
+  const islands = defaultIslands(agentInFront);
+  return { left: areaSize("left", islands.left), right: areaSize("right", islands.right), bottom: areaSize("bottom", islands.bottom) };
+}
+
+/**
+ * The part of Theia's `ApplicationShell` the default layout touches;
+ * structural, so a fake shell tests it. `getLayoutData` is the public way to
+ * read each area's size back: a showing area's measured size, a hidden one's
+ * stored size.
+ */
+export interface SizingShell {
+  readonly pendingUpdates: Promise<unknown>;
+  resize(size: number, area: ShellArea): void;
+  getLayoutData(): { readonly [K in "leftPanel" | "rightPanel" | "bottomPanel"]?: { readonly size?: number | undefined } };
+}
+
+/** Where the default layout reports: a warning, and the layout's settled mark. */
+export interface LayoutReporter {
+  warn(message: string, ...detail: unknown[]): void;
+  markSettled(): void;
+}
+
+const LAYOUT_DATA_KEY: Record<ShellArea, "leftPanel" | "rightPanel" | "bottomPanel"> = { left: "leftPanel", right: "rightPanel", bottom: "bottomPanel" };
+
+/**
+ * spexr's default layout sizes, decided once, and the mark that the layout
+ * has settled.
+ *
+ * - {@link seed} runs from `initializeLayout`, which Theia calls only when it
+ *   had no stored layout to restore (the first open of a workspace, or after
+ *   the stored layout was dropped), before the shell is ready. Theia keeps a
+ *   size given to a collapsed side or a hidden bottom panel as the size it
+ *   opens at, so those open at their final size; a panel another
+ *   contribution's `initializeLayout` already opened is resized instantly.
+ *   The left island is decided there: the agent terminal's when it will be
+ *   in front, so its floor never moves it.
+ * - {@link settle} runs from the last `onDidInitializeLayout`: it reads the
+ *   seeded sizes back, warns where one did not land, and marks the layout
+ *   settled, whatever happened, on every launch.
+ * - {@link reset} is Reset Layout: the default sizes again, applied now.
+ *
+ * Nothing here throws, and nothing waits on Theia for longer than `waitMs`:
+ * a stalled panel move is a warning, and the mark is still set.
+ */
+export class DefaultLayout {
+  private seeded: Record<ShellArea, number> | undefined;
+
+  /**
+   * @param reporter Where warnings and the settled mark go.
+   * @param waitMs   The longest wait for Theia's pending panel moves; a move
+   *   that never ends must not hold the settled mark back.
+   */
+  constructor(
+    private readonly reporter: LayoutReporter,
+    private readonly waitMs = 5_000,
+  ) {}
+
+  /** Size every area for a layout spexr makes itself. */
+  seed(shell: SizingShell, agentInFront: boolean): void {
+    const sizes = defaultSizes(agentInFront);
+    try {
+      for (const area of SHELL_AREAS) shell.resize(sizes[area], area);
+      this.seeded = sizes;
+    } catch (err) {
+      this.reporter.warn("[spexr] the default layout's sizes could not be set", err);
+    }
+  }
+
+  /** Check the seeded sizes landed, then mark the layout settled. */
+  async settle(shell: SizingShell): Promise<void> {
+    try {
+      if (this.seeded && (await this.waitForMoves(shell))) this.check(shell, this.seeded);
+    } catch (err) {
+      this.reporter.warn("[spexr] the default layout's sizes could not be read back", err);
+    } finally {
+      this.seeded = undefined;
+      this.reporter.markSettled();
+    }
+  }
+
+  /** Reset Layout: apply the default sizes now, the left island by the view in front. */
+  async reset(shell: SizingShell, agentInFront: boolean): Promise<void> {
+    const sizes = defaultSizes(agentInFront);
+    try {
+      await this.waitForMoves(shell);
+      for (const area of SHELL_AREAS) shell.resize(sizes[area], area);
+      if (await this.waitForMoves(shell)) this.check(shell, sizes);
+    } catch (err) {
+      this.reporter.warn("[spexr] Reset Layout's sizes could not be set", err);
+    }
+  }
+
+  /**
+   * Wait for Theia's pending panel moves, at most `waitMs`. Resolves whether
+   * they ended; a timeout is warned about.
+   */
+  private async waitForMoves(shell: SizingShell): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), this.waitMs);
+    });
+    try {
+      const ended = await Promise.race([shell.pendingUpdates.then(() => true as const), timeout]);
+      if (!ended) this.reporter.warn(`[spexr] Theia's panel moves did not end within ${this.waitMs}ms; the sizes are not checked`);
+      return ended;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** The areas whose size, read back, is more than a pixel off; each is warned about. */
+  private check(shell: SizingShell, sizes: Readonly<Record<ShellArea, number>>): ShellArea[] {
+    const data = shell.getLayoutData();
+    const off = SHELL_AREAS.filter((area) => {
+      const size = data[LAYOUT_DATA_KEY[area]]?.size;
+      return size !== undefined && Math.abs(size - sizes[area]) > 1;
+    });
+    if (off.length > 0) {
+      this.reporter.warn(
+        "[spexr] the default layout's sizes did not land",
+        Object.fromEntries(off.map((area) => [area, { asked: sizes[area], got: data[LAYOUT_DATA_KEY[area]]?.size }])),
+      );
+    }
+    return off;
+  }
+}

@@ -73,7 +73,8 @@
       "adm-zip": "^0.6.0"
     },
     "patchedDependencies": {
-      "@theia/core@1.75.0": "patches/@theia__core@1.75.0.patch"
+      "@theia/core@1.75.0": "patches/@theia__core@1.75.0.patch",
+      "@theia/monaco-editor-core@1.108.201": "patches/@theia__monaco-editor-core@1.108.201.patch"
     }
   }
 }

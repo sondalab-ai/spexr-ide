@@ -7,6 +7,8 @@ import {
   SpexrDarkfactoryBackendService,
   defaultOpencodeDataDir,
   forEachConcurrent,
+  type DarkfactoryDeps,
+  type NameStore,
 } from "./spexr-darkfactory-backend-service.js";
 import { stitchBoundedLines } from "./bounded-read.js";
 import { configDirs as discoverConfigDirs } from "./config-dirs.js";
@@ -36,54 +38,69 @@ afterAll(async () => {
   await rm(namesDir, { recursive: true, force: true });
 });
 
-function svc(over: Partial<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]> = {}) {
+type ServiceOptions = NonNullable<ConstructorParameters<typeof SpexrDarkfactoryBackendService>[0]>;
+
+/** The one working Claude session svc() lists by default: s1 in /Users/x/src/proj. */
+const defaultTranscripts: NonNullable<ServiceOptions["listTranscripts"]> = () =>
+  Promise.resolve([
+    {
+      harness: claudeHarness,
+      ref: {
+        sessionId: "s1",
+        projectPath: "",
+        mtimeMs: NOW - 5_000,
+        loadEntries: async () => [
+          { type: "mode", mode: "normal" },
+          {
+            cwd: "/Users/x/src/proj",
+            type: "assistant",
+            message: {
+              role: "assistant",
+              content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }],
+            },
+          },
+          {
+            type: "user",
+            message: {
+              role: "user",
+              content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+            },
+          },
+        ],
+      },
+      claude: {
+        sessionId: "s1",
+        transcriptPath: "/PD/-proj/s1.jsonl",
+        configDir: "/Users/x/.claude",
+        mtimeMs: NOW - 5_000,
+        readLines: () =>
+          Promise.resolve([
+            `{"type":"mode","mode":"normal"}`,
+            `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
+            `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
+          ]),
+      },
+    },
+  ]);
+
+function svc(over: Partial<ServiceOptions> = {}) {
   return new SpexrDarkfactoryBackendService({
     now: () => NOW,
     resumableConfigDir: "/Users/x/.claude",
-    listTranscripts: () =>
-      Promise.resolve([
-        {
-          harness: claudeHarness,
-          ref: {
-            sessionId: "s1",
-            projectPath: "",
-            mtimeMs: NOW - 5_000,
-            loadEntries: async () => [
-              { type: "mode", mode: "normal" },
-              {
-                cwd: "/Users/x/src/proj",
-                type: "assistant",
-                message: {
-                  role: "assistant",
-                  content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.ts" } }],
-                },
-              },
-              {
-                type: "user",
-                message: {
-                  role: "user",
-                  content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
-                },
-              },
-            ],
-          },
-          claude: {
-            sessionId: "s1",
-            transcriptPath: "/PD/-proj/s1.jsonl",
-            configDir: "/Users/x/.claude",
-            mtimeMs: NOW - 5_000,
-            readLines: () =>
-              Promise.resolve([
-                `{"type":"mode","mode":"normal"}`,
-                `{"cwd":"/Users/x/src/proj","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/auth.ts"}}]}}`,
-                `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
-              ]),
-          },
-        },
-      ]),
+    listTranscripts: defaultTranscripts,
     liveProjectDirs: () => Promise.resolve(new Set(["/Users/x/src/proj"])),
     ...over,
   });
+}
+
+/**
+ * Keep the first crawl (S6g: it runs without an encoder too, to count tool
+ * calls) out of a poll-counting test: it lists the transcripts once at
+ * FIRST_CRAWL_DELAY_MS, which the poll's own scan count must not include.
+ */
+function withoutCrawl<T extends SpexrDarkfactoryBackendService>(s: T): T {
+  vi.spyOn(s, "indexNow").mockResolvedValue(undefined);
+  return s;
 }
 
 describe("SpexrDarkfactoryBackendService v2", () => {
@@ -99,6 +116,114 @@ describe("SpexrDarkfactoryBackendService v2", () => {
       tool: "Edit",
     });
     expect(typeof tiles[0]!.accentId).toBe("number");
+  });
+
+  it("gives a working session's tile its exact tool count: absent on the first scan, then pushed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-count-"));
+    const transcriptPath = join(dir, "s1.jsonl");
+    const use = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Bash","input":{}}]}}`;
+    await writeFile(transcriptPath, [use, use, use, ""].join("\n"));
+    try {
+      const pushed: AgentTile[][] = [];
+      const s = svc({
+        configDirs: [],
+        listTranscripts: async () => (await defaultTranscripts()).map((u) => ({ ...u, claude: { ...u.claude!, transcriptPath } })),
+      });
+      s.setClient({ ...fakeClient, onTilesChanged: (tiles) => pushed.push(tiles) });
+      expect((await s.listTiles())[0]!.toolCount).toBeUndefined();
+      await vi.waitFor(() => expect(pushed.some((tiles) => tiles[0]?.toolCount === 3)).toBe(true), { timeout: 2000 });
+      expect((await s.listTiles())[0]!.toolCount).toBe(3);
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("counts tool calls on a crawl with no encoder, so idle and done tiles carry their count", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "spexr-df-count-"));
+    const transcriptPath = join(dir, "s1.jsonl");
+    const use = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Bash","input":{}}]}}`;
+    await writeFile(transcriptPath, [use, use, ""].join("\n"));
+    try {
+      const s = svc({
+        configDirs: [],
+        liveProjectDirs: () => Promise.resolve(new Set<string>()),
+        listTranscripts: async () => (await defaultTranscripts()).map((u) => ({ ...u, claude: { ...u.claude!, transcriptPath } })),
+      });
+      await s.indexNow();
+      expect((await s.listTiles())[0]).toMatchObject({ state: "idle", toolCount: 2 });
+      s.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("currentTiles starts one push before the first scan, and no other while it runs", async () => {
+    let scans = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const pushed: AgentTile[][] = [];
+    const s = svc({
+      configDirs: [],
+      detect: () => false,
+      listTranscripts: async () => {
+        scans++;
+        await gate;
+        return defaultTranscripts();
+      },
+    });
+    s.setClient({ ...fakeClient, onTilesChanged: (tiles) => pushed.push(tiles) });
+    expect(await s.currentTiles()).toEqual([]);
+    expect(await s.currentTiles()).toEqual([]);
+    expect(scans).toBe(1);
+    release();
+    await vi.waitFor(() => expect(pushed).toHaveLength(1), { timeout: 1000 });
+    expect(pushed[0]).toHaveLength(1);
+    expect(await s.currentTiles()).toEqual(pushed[0]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(scans).toBe(1);
+    s.dispose();
+  });
+
+  it("currentTiles keeps the newest scan when an older one finishes last", async () => {
+    let calls = 0;
+    let releaseOlder!: () => void;
+    const olderGate = new Promise<void>((r) => (releaseOlder = r));
+    const s = svc({
+      listTranscripts: async () => {
+        calls++;
+        if (calls === 1) {
+          await olderGate;
+          return defaultTranscripts();
+        }
+        return [];
+      },
+    });
+    const older = s.listTiles();
+    expect(await s.listTiles()).toEqual([]);
+    releaseOlder();
+    expect(await older).toHaveLength(1);
+    expect(await s.currentTiles()).toEqual([]);
+  });
+
+  it("currentTiles hands back the last completed scan, without scanning or announcing one", async () => {
+    let transcriptReads = 0;
+    const unscanned = svc({
+      listTranscripts: () => {
+        transcriptReads++;
+        return Promise.resolve([]);
+      },
+    });
+    expect(await unscanned.currentTiles()).toEqual([]);
+    expect(transcriptReads).toBe(0);
+
+    const s = svc();
+    const tiles = await s.listTiles();
+    const announced: AgentTile[][] = [];
+    s.onScanned((t) => announced.push(t));
+    expect(await s.currentTiles()).toEqual(tiles);
+    expect(await s.currentTiles()).toEqual(tiles);
+    expect(announced).toHaveLength(0);
   });
 
   it("planFocus returns readonly-follow for a working session, resume-terminal for an idle one", async () => {
@@ -547,7 +672,29 @@ function fakeWatch(
   };
 }
 
-const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {} };
+const fakeClient: SpexrDarkfactoryClient = { onTilesChanged: () => {}, onFollowChunk: () => {}, onSessionIndexProgress: () => {} };
+
+type NameStoreDeps = Required<Pick<DarkfactoryDeps, "sessionNameStore" | "projectNameStore">>;
+
+/**
+ * In-memory name stores for the fake-timer tests. The default stores read a
+ * file, which is real I/O `advanceTimersByTimeAsync` cannot drive: on a busy
+ * runner the first scan was still in flight at the next tick, the poll skips a
+ * tick while a scan runs, and the test counted one scan where it expected two.
+ */
+function memoryNameStores(): NameStoreDeps {
+  const store = (): NameStore => {
+    let saved = new Map<string, string>();
+    return {
+      load: () => Promise.resolve(new Map(saved)),
+      save: (names) => {
+        saved = new Map(names);
+        return Promise.resolve();
+      },
+    };
+  };
+  return { sessionNameStore: store(), projectNameStore: store() };
+}
 
 describe("wall watcher", () => {
   it("watches the opencode data dir alongside the Claude config dirs when opencode is installed", async () => {
@@ -719,15 +866,16 @@ describe("wall polling", () => {
     vi.useFakeTimers();
     try {
       let scans = 0;
-      const s = svc({
+      const s = withoutCrawl(svc({
         configDirs: [],
         detect: () => false,
         watchDir: fakeWatch([]),
+        ...memoryNameStores(),
         listTranscripts: async () => {
           scans++;
           return [];
         },
-      });
+      }));
       s.setClient(fakeClient);
       expect(scans).toBe(0); // arming the watchers alone does not scan
       await vi.advanceTimersByTimeAsync(20_000); // POLL_INTERVAL_MS
@@ -746,16 +894,17 @@ describe("wall polling", () => {
 describe("requestScans (the plant schedule's shared scan ticker)", () => {
   const counting = () => {
     const c = { scans: 0, gate: undefined as Promise<void> | undefined };
-    const s = svc({
+    const s = withoutCrawl(svc({
       configDirs: [],
       detect: () => false,
       watchDir: fakeWatch([]),
+      ...memoryNameStores(),
       listTranscripts: async () => {
         c.scans++;
         await c.gate;
         return [];
       },
-    });
+    }));
     return { s, c };
   };
 
@@ -843,15 +992,16 @@ describe("setPollingPaused", () => {
     vi.useFakeTimers();
     try {
       let scans = 0;
-      const s = svc({
+      const s = withoutCrawl(svc({
         configDirs: [],
         detect: () => false,
         watchDir: fakeWatch([]),
+        ...memoryNameStores(),
         listTranscripts: async () => {
           scans++;
           return [];
         },
-      });
+      }));
       s.setClient(fakeClient);
       s.setPollingPaused(true);
       await vi.advanceTimersByTimeAsync(40_000);

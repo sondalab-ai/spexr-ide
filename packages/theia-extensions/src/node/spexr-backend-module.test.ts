@@ -3,6 +3,7 @@ import { Container } from "@theia/core/shared/inversify";
 import { messagingBackendModule } from "@theia/core/lib/node/messaging/messaging-backend-module";
 import { FrontendConnectionService } from "@theia/core/lib/node/messaging/frontend-connection-service";
 import { ILogger } from "@theia/core/lib/common";
+import { ShellIntegrationInjector } from "@theia/terminal/lib/node/shell-integration-injector";
 import { WebsocketEndpoint } from "@theia/core/lib/node/messaging/websocket-endpoint";
 import spexrBackendModule from "./spexr-backend-module.js";
 import { SpexrWebsocketFrontendConnectionService } from "./spexr-frontend-connection-service.js";
@@ -14,6 +15,8 @@ import { SpexrWebsocketFrontendConnectionService } from "./spexr-frontend-connec
 function loadedContainer() {
   const container = new Container();
   container.load(messagingBackendModule);
+  // Bound by Theia's terminal backend module, which the generated backend loads before ours; ours rebinds it (S6l).
+  container.bind(ShellIntegrationInjector).toConstantValue({} as ShellIntegrationInjector);
   container.load(spexrBackendModule);
   container.bind(ILogger).toConstantValue({ info: () => {} });
   container.rebind(WebsocketEndpoint).toConstantValue({ registerConnectionHandler: () => {} });

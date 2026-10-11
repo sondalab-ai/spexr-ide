@@ -1,3 +1,4 @@
+import { AGENT_LEFT_RANK } from "../shell/activity-views.js";
 import { injectable, inject, optional } from "@theia/core/shared/inversify";
 import { Disposable, DisposableCollection } from "@theia/core";
 import { Deferred } from "@theia/core/lib/common/promise-util";
@@ -23,7 +24,13 @@ import {
   SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE,
 } from "../preferences/spexr-preferences.js";
 import { readLaunchProfiles } from "../preferences/launch-profiles.js";
+import { Emitter, type Event } from "@theia/core/lib/common/event";
+import { generateUuid } from "@theia/core/lib/common/uuid";
 import { rememberedRoot } from "./agent-root.js";
+import { agentSessionKey, launchLine, withSessionId } from "./session-launch.js";
+import { bracketedPaste } from "../../common/terminal-paste.js";
+import { lastRows, parseModeFooter, type ModeReading } from "../agent-pane/agent-mode-footer.js";
+import { WorkspaceTrustService } from "@theia/workspace/lib/browser/workspace-trust-service";
 import {
   AMBIGUOUS_ACCOUNT,
   availableAccounts,
@@ -32,18 +39,15 @@ import {
   isHomeRelative,
   launchPlanFor,
   resolveAccount,
-  shellQuoteConfigDir,
   type ClaudeLaunchProfile,
   type LaunchPlan,
   type ResolvedAccount,
 } from "../../common/claude-launch-profiles.js";
 
-export const CLAUDE_TERMINAL_ID = "spexr-claude";
+import { CLAUDE_TERMINAL_ID } from "./claude-terminal-id.js";
 
-/** Wrap an argument in single quotes for safe inclusion in a shell command. */
-function shellQuote(arg: string): string {
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
+export { CLAUDE_TERMINAL_ID };
+
 
 /** Quiet period after the last PTY output that signals the TUI finished rendering. */
 const READY_IDLE_MS = 1_200;
@@ -82,6 +86,9 @@ export class ClaudeTerminalManager {
   @inject(StorageService)
   private readonly storage!: StorageService;
 
+  @inject(WorkspaceTrustService)
+  private readonly trust!: WorkspaceTrustService;
+
   @optional()
   @inject(SpexrAgentServiceProxy)
   private readonly agentService!: SpexrAgentService | undefined;
@@ -104,6 +111,11 @@ export class ClaudeTerminalManager {
    * terminal restored after a reload is still running in that folder.
    */
   private agentRoot: string | undefined;
+  /** The id the running agent's Claude was started with (`--session-id`). */
+  private sessionId: string | undefined;
+  private readonly sessionChanged = new Emitter<void>();
+  /** Fires when the running agent's session id changes: a launch, or the terminal going away. */
+  readonly onDidChangeSession: Event<void> = this.sessionChanged.event;
   private agentRootLoaded = false;
 
   /** Folder the running terminal was launched in; undefined when none runs. */
@@ -136,7 +148,8 @@ export class ClaudeTerminalManager {
     const existing = this.terminalService.getById(CLAUDE_TERMINAL_ID);
     if (existing) {
       // A terminal restored from the saved layout runs in the remembered folder.
-      if (target === this.agentRootUri() && (await isTerminalLive(existing))) {
+      // Only in a trusted workspace: an adopted terminal is a running agent the composer and the flows then write to.
+      if (target === this.agentRootUri() && (await this.isTrusted()) && (await isTerminalLive(existing))) {
         this.widget = existing;
         this.runningRoot = target;
         existing.setTitle(this.title(undefined, target));
@@ -257,6 +270,31 @@ export class ClaudeTerminalManager {
     }
   }
 
+  /** The id the running agent's Claude was started with, for the agent pane; undefined before a launch. */
+  currentSessionId(): string | undefined {
+    return this.sessionId;
+  }
+
+  /** The id the last launch for a workspace used, kept across restarts. */
+  async storedSessionId(rootUri: string): Promise<string | undefined> {
+    try {
+      return await this.storage.getData<string>(agentSessionKey(rootUri));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The pane followed the session to its successor (/clear, /resume): that is the agent's session now, and a reload follows it. */
+  adoptSessionId(rootUri: string, sessionId: string): void {
+    this.rememberSessionId(rootUri, sessionId);
+  }
+
+  private rememberSessionId(rootUri: string, sessionId: string): void {
+    this.sessionId = sessionId;
+    this.sessionChanged.fire();
+    void this.storage.setData(agentSessionKey(rootUri), sessionId).catch(() => {});
+  }
+
   private rememberAgentRoot(rootUri: string): void {
     this.agentRoot = rootUri;
     void this.storage.setData(this.agentRootKey(), rootUri).catch(() => {});
@@ -289,6 +327,10 @@ export class ClaudeTerminalManager {
     const adopted = this.terminalService.getById(CLAUDE_TERMINAL_ID);
     adopted?.dispose();
     this.widget = undefined;
+    if (this.sessionId !== undefined) {
+      this.sessionId = undefined;
+      this.sessionChanged.fire();
+    }
     this.currentExpertId = undefined;
     this.runningRoot = undefined;
   }
@@ -309,6 +351,11 @@ export class ClaudeTerminalManager {
       void this.messages.info("SPEXR: open a workspace to start the Claude session.");
       return false;
     }
+    // Restricted Mode: the agent runs tools in the folder, so nothing starts until the workspace is trusted.
+    if (!(await this.isTrusted())) {
+      void this.messages.info("Trust this workspace to start the agent.");
+      return false;
+    }
     if (!this.agentService) return false;
 
     // Remembered first: the account and launch settings below are read
@@ -320,8 +367,12 @@ export class ClaudeTerminalManager {
       const account = await this.chooseAccount();
       if (!account) return false; // the account prompt was dismissed
       await this.linkMemory(workspaceRoot, account.configDir.trim() || undefined);
-      const shellArgs = await this.buildShellArgs(workspaceRoot, expert?.id);
+      // A fresh id per launch: Claude refuses `--session-id` for one that already exists.
+      const sessionId = generateUuid();
+      const { args: shellArgs, applied } = withSessionId(await this.buildShellArgs(workspaceRoot, expert?.id), sessionId);
       await this.launch(workspaceRoot, account, shellArgs, expert, root.resource.toString());
+      // Only an id the launch carried is the session's; one that was left out must not be followed.
+      if (applied) this.rememberSessionId(root.resource.toString(), sessionId);
       this.currentExpertId = expert?.id;
       this.runningRoot = root.resource.toString();
       return true;
@@ -348,12 +399,7 @@ export class ClaudeTerminalManager {
    * itself, so the variable is unset and left to it.
    */
   private resolveShell(plan: LaunchPlan, shellArgs: string[]): { shellArgs: string[] } {
-    const bin = plan.unquoted ? plan.command : shellQuote(plan.command);
-    const account = plan.exportConfigDir
-      ? `export CLAUDE_CONFIG_DIR=${shellQuoteConfigDir(plan.exportConfigDir)}`
-      : "unset CLAUDE_CONFIG_DIR";
-    const line = `${account}; ${[bin, ...shellArgs.map(shellQuote)].join(" ")}`;
-    return { shellArgs: ["-i", "-l", "-c", line] };
+    return { shellArgs: ["-i", "-l", "-c", launchLine(plan, shellArgs)] };
   }
 
   private async buildShellArgs(workspaceRoot: string, expertId?: string): Promise<string[]> {
@@ -489,7 +535,7 @@ export class ClaudeTerminalManager {
     // reconnected to the backend on wake from standby.
     evictOnAttachFailure(term, () => this.disposeCurrent());
     this.placement = "left";
-    await this.shell.addWidget(term, { area: "left", rank: 1 });
+    await this.shell.addWidget(term, { area: "left", rank: AGENT_LEFT_RANK });
     await this.reveal();
   }
 
@@ -549,15 +595,60 @@ export class ClaudeTerminalManager {
     if (!term) return;
     await this.shell.revealWidget(term.id);
     await this.shell.activateWidget(term.id);
-    if (this.placement === "left") this.expandLeftPanel();
+    if (this.placement === "left") await this.expandLeftPanel();
+  }
+
+  /** Whether a Claude session is running in the agent terminal now. */
+  isRunning(): boolean {
+    return !!this.widget && isReusableTerminal(this.widget);
+  }
+
+  private agentTerminal(): TerminalWidget {
+    const term = this.widget;
+    if (!term || !isReusableTerminal(term)) throw new Error("the agent is not running");
+    return term;
   }
 
   /**
-   * Send text to the terminal's stdin (e.g. a prompt followed by a newline).
-   * No-op when no terminal has been launched yet.
+   * Put text in the agent's TUI input as one bracketed paste, the markers
+   * written out here whatever mode the TUI is in, and nothing after it: the
+   * person presses Enter in the terminal. This is the only input the composer
+   * gives the agent; there is no Enter and no Shift+Tab (agent-pane-send.ts).
    */
-  send(text: string): void {
-    this.widget?.sendText(text);
+  pasteIntoAgent(text: string): void {
+    this.agentTerminal().sendText(bracketedPaste(text));
+  }
+
+  /**
+   * The permission mode Claude Code's footer shows, read from the last
+   * non-blank rows of the terminal's buffer; undefined when the agent is not
+   * running, and `unknown` when no footer is on screen (the default mode draws
+   * none, and a dialog can cover it). Best-effort: see agent-mode-footer.ts.
+   */
+  agentModeFooter(): ModeReading | undefined {
+    const term = this.widget;
+    if (!term || !isReusableTerminal(term)) return undefined;
+    try {
+      const { buffer } = term;
+      const tail = Math.min(buffer.length, 40);
+      return parseModeFooter(lastRows(buffer.getLines(buffer.length - tail, tail, true)));
+    } catch {
+      return { kind: "unknown" };
+    }
+  }
+
+  /** Whether Theia trusts the workspace (always, when workspace trust is off). */
+  async isTrusted(): Promise<boolean> {
+    try {
+      return await this.trust.getWorkspaceTrust();
+    } catch {
+      return false;
+    }
+  }
+
+  /** Fires when workspace trust changes. */
+  get onDidChangeTrust(): Event<boolean> {
+    return this.trust.onDidChangeWorkspaceTrust;
   }
 
   /** Returns the current placement of the widget. */
@@ -582,14 +673,18 @@ export class ClaudeTerminalManager {
       await this.shell.activateWidget(term.id);
       this.placement = "main";
     } else {
-      await this.shell.addWidget(term, { area: "left", rank: 1 });
+      await this.shell.addWidget(term, { area: "left", rank: AGENT_LEFT_RANK });
       this.placement = "left";
       await this.reveal();
     }
   }
 
-  private expandLeftPanel(): void {
-    expandLeftPanelWithMinWidth(this.shell);
+  /**
+   * The agent terminal's floor, awaited: the resize is then issued before
+   * `reveal` resolves, so a later sizing (a first launch's) lands after it.
+   */
+  private expandLeftPanel(): Promise<void> {
+    return expandLeftPanelWithMinWidth(this.shell);
   }
 
   private storedAccount(): string {

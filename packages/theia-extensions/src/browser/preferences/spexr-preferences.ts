@@ -61,6 +61,18 @@ export const SPEXR_CLAUDE_LAUNCH_PROFILES_DETECTED_PREFERENCE =
 export const SPEXR_EXPERTS_ACTIVE_ID_PREFERENCE = "spexr.experts.activeId";
 
 /**
+ * Key for the editor's inline diagnostics: each warning and error of an open
+ * file as a small chip after its line (editor/inline-diagnostics.ts).
+ */
+export const SPEXR_EDITOR_INLINE_DIAGNOSTICS_PREFERENCE = "spexr.editor.inlineDiagnostics";
+
+/**
+ * Key for the terminal's command blocks: each command of a bash or zsh shell
+ * framed, with its time, duration and exit code (terminal/command-blocks.ts).
+ */
+export const SPEXR_TERMINAL_COMMAND_BLOCKS_PREFERENCE = "spexr.terminal.commandBlocks";
+
+/**
  * Toggle for locally-generated AI file descriptions in search results.
  * On by default. Off shows heuristic descriptions only and skips the local model.
  */
@@ -93,6 +105,13 @@ export const SPEXR_SEARCH_GEN_DTYPE_PREFERENCE = "spexr.search.generationModelDt
  * authentication attempt is unwelcome.
  */
 export const SPEXR_GIT_AUTOFETCH_PREFERENCE = "spexr.git.autofetch";
+
+/**
+ * Whether the status bar shows SPEXR's memory and CPU meter. Off by default
+ * (S6d, D14): Lumen's bar does not carry it, and the meter polls the backend
+ * while it is on.
+ */
+export const SPEXR_STATUS_RESOURCES_PREFERENCE = "spexr.statusBar.resources";
 
 /**
  * Which backdrop the Spec and Dark Factory panels draw: the Game of Life, or
@@ -305,6 +324,13 @@ const SpexrPreferencesSchema: PreferenceSchema = {
         "tree and never prompts for credentials. Turn off on a metered connection, or " +
         "where an unattended authentication attempt is unwelcome.",
     },
+    [SPEXR_STATUS_RESOURCES_PREFERENCE]: {
+      type: "boolean",
+      default: false,
+      description:
+        "Show SPEXR's own memory and CPU use in the status bar, with a per-group breakdown on hover. " +
+        "Off by default: the meter polls the backend every few seconds while it is shown.",
+    },
     [SPEXR_BACKDROP_KIND_PREFERENCE]: {
       type: "string",
       enum: ["life", "photo"],
@@ -363,6 +389,17 @@ const SpexrPreferencesSchema: PreferenceSchema = {
       description:
         "Internal: set once the user has been asked whether to add `.spexr/` to their " +
         "global git ignore, so the consent prompt is shown only once.",
+    },
+    [SPEXR_EDITOR_INLINE_DIAGNOSTICS_PREFERENCE]: {
+      type: "boolean",
+      default: true,
+      description: "Show each warning and error of an open file as a chip after its line.",
+    },
+    [SPEXR_TERMINAL_COMMAND_BLOCKS_PREFERENCE]: {
+      type: "boolean",
+      default: true,
+      description:
+        "Frame each command of a bash or zsh terminal with its time, duration and exit code. Needs terminal.integrated.enableCommandHistory (on by default in SPEXR); applies to terminals opened after it is changed.",
     },
     [SPEXR_SEARCH_AI_DESCRIPTIONS_PREFERENCE]: {
       type: "boolean",

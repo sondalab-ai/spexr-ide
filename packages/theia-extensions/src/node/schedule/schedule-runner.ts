@@ -10,6 +10,7 @@ import {
 } from "../../common/schedule/schedule-types.js";
 import { validateSchedule } from "../../common/schedule/schedule-validate.js";
 import { buildLaunchLine } from "../../common/harness/launch-line.js";
+import type { PasteOutcome } from "./pty-screen.js";
 import { buildTaskArgs } from "../../common/schedule/task-args.js";
 import { startRun, step, workspacePlan, type Effect, type EngineEvent } from "./schedule-engine.js";
 import type { ScheduleFile } from "./schedule-store.js";
@@ -28,8 +29,12 @@ export interface RunnerPorts {
   now(): number;
   save(file: ScheduleFile): Promise<void>;
   publish(file: ScheduleFile): void;
-  /** Bracketed paste, then Enter, into a task's pty. */
-  paste(terminalId: number, text: string): Promise<void>;
+  /**
+   * Bracketed paste, then Enter, into a task's pty, only on an idle input
+   * prompt (pty-screen.ts): anything but "submitted" means the follow-up did
+   * not go in (or was left unsubmitted) and the task needs the user.
+   */
+  paste(terminalId: number, text: string): Promise<PasteOutcome>;
   /** Queued backend-wide; resolves undefined when `stillWanted` said no once the check's turn came. */
   check(req: CheckRequest, stillWanted: () => boolean): Promise<CheckResult | undefined>;
   /** End a pty, only while it still runs `processId` (R13, R14). */
@@ -257,7 +262,16 @@ export class ScheduleRunner {
         // Re-armed first: the reply to this paste counts even if it lands between
         // two reads, and the reply still on screen never counts twice (R1).
         this.watches.get(`${scheduleId}/${e.task}`)?.arm();
-        await this.ports.paste(e.terminalId, e.text).catch((err) => console.error("[schedule] pasting the follow-up failed", err));
+        {
+          const outcome = await this.ports.paste(e.terminalId, e.text).catch((err) => {
+            console.error("[schedule] pasting the follow-up failed", err);
+            return undefined;
+          });
+          // Fails closed: no idle prompt on screen (a dialog, an unknown layout, or nothing readable) means no Enter, and the person is asked to look.
+          if (outcome === "not-idle" || outcome === "left-in-input") {
+            await this.dispatch(scheduleId, { type: "needs-you", task: e.task }, runId);
+          }
+        }
         return;
       case "check":
         await this.check(scheduleId, runId, e);

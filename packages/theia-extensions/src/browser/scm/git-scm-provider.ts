@@ -1,3 +1,4 @@
+import { FetchCoordinator, applyStatus, type FetchOutcome } from "./fetch-state.js";
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { Emitter, DisposableCollection } from "@theia/core";
 import type { Event } from "@theia/core";
@@ -283,8 +284,12 @@ export class SpexrGitScmProvider implements ScmProvider {
     if (!this.rootFsPath) return;
     try {
       const status = await this.gitService.getStatus(this.rootFsPath);
-      if (sameStatus(this._lastStatus, status)) return;
-      this._lastStatus = status;
+      // Another branch's fetches say nothing about this one: the outcome is unknown again, once the status is the new branch's (applyStatus).
+      const stored = applyStatus(this._lastStatus, status, sameStatus, {
+        store: (next) => void (this._lastStatus = next),
+        resetFetch: () => this.fetches.reset(),
+      });
+      if (!stored) return;
       this._onDidChangeStatusEmitter.fire(status);
       const root = this.rootFsPath;
 
@@ -424,11 +429,37 @@ export class SpexrGitScmProvider implements ScmProvider {
     return result;
   }
 
+  /**
+   * Fetch by hand: queued, shared by a second click, with a timeout, and
+   * recorded apart from the background ones (fetch-state.ts). Unlike the
+   * background fetch it may ask for credentials: a user-initiated fetch can show
+   * an authentication prompt, which is why it is the one the "synced" item runs.
+   */
   async fetch(): Promise<void> {
     if (!this.rootFsPath) return;
-    await this.gitService.fetch(this.rootFsPath);
+    await this.fetches.manualFetch();
     await this.refresh();
   }
+
+  /**
+   * Whether the last fetches failed (offline, no remote, credentials nobody can
+   * be asked for), as the status bar's "synced" reads it. "unknown" before any
+   * fetch and after a branch switch. A background failure does not undo a newer
+   * manual success (fetch-state.ts).
+   */
+  get fetchOutcome(): FetchOutcome {
+    return this.fetches.outcome;
+  }
+
+  private readonly _onDidChangeFetchStateEmitter = new Emitter<void>();
+  /** The fetches' outcome changed. Apart from {@link onDidChangeStatus}, which drives the decorations and the breadcrumb meta, and has nothing to do with it. */
+  readonly onDidChangeFetchState: Event<void> = this._onDidChangeFetchStateEmitter.event;
+
+  private readonly fetches = new FetchCoordinator({
+    runManual: () => (this.rootFsPath ? this.gitService.fetch(this.rootFsPath) : Promise.resolve()),
+    runBackground: () => (this.rootFsPath ? this.gitService.backgroundFetch(this.rootFsPath) : Promise.resolve()),
+    changed: () => this._onDidChangeFetchStateEmitter.fire(),
+  });
 
   /**
    * Move the remote-tracking branches so `behind` reflects the remote, without
@@ -439,11 +470,7 @@ export class SpexrGitScmProvider implements ScmProvider {
    */
   async backgroundFetch(): Promise<void> {
     if (!this.rootFsPath) return;
-    try {
-      await this.gitService.backgroundFetch(this.rootFsPath);
-    } catch {
-      /* offline, no remote, credentials nobody can be asked for */
-    }
+    await this.fetches.backgroundFetch();
     await this.refresh();
   }
 
@@ -509,6 +536,7 @@ export class SpexrGitScmProvider implements ScmProvider {
     this._onDidChangeEmitter.dispose();
     this._onDidChangeCommitTemplateEmitter.dispose();
     this._onDidChangeStatusEmitter.dispose();
+    this._onDidChangeFetchStateEmitter.dispose();
     for (const group of this.allGroups) group.dispose();
   }
 }

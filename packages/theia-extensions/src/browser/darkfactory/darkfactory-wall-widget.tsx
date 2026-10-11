@@ -1,6 +1,7 @@
 import * as React from "@theia/core/shared/react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
+import type { Message } from "@theia/core/shared/@lumino/messaging";
 import URI from "@theia/core/lib/common/uri";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
@@ -81,8 +82,12 @@ import { SessionSearchState } from "./session-search.js";
 import { addTrashed, partitionTrashed, readTrashed, removeTrashed, writeTrashed } from "./trash.js";
 import type { HarnessId } from "../../common/harness/harness-types.js";
 import { DARKFACTORY_VIEW_ID } from "./darkfactory-view-id.js";
+import { AGENTS_TAB_ICON, agentsTabLabel } from "./agents-tab-title.js";
 import { Backdrop } from "../backdrop/backdrop.js";
 import { WorkingHold } from "./working-hold.js";
+
+/** Why a scheduled run is refused in Restricted Mode. */
+const SCHEDULE_UNTRUSTED = "Trust this workspace to run scheduled tasks.";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
 const CARD_LIMIT = 10;
@@ -207,6 +212,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * landed: the backend can only follow a session it has scanned.
    */
   private pendingRestore: StoredPin[] | undefined;
+  /** A session asked to be opened (the Sessions part) before the wall had its tile: opened when the scan brings it. */
+  private pendingOpen: string | undefined;
 
   /**
    * Sessions started from the launcher, still keyed by a placeholder: a new
@@ -281,11 +288,15 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   @postConstruct()
   protected init(): void {
     this.id = SpexrDarkfactoryWidget.ID;
-    this.title.label = "Darkfactory";
+    this.title.label = agentsTabLabel();
     this.title.caption = "All agent sessions at work";
     this.title.closable = true;
-    this.title.iconClass = "codicon codicon-server-process";
+    this.title.iconClass = AGENTS_TAB_ICON;
     this.addClass("spexr-darkfactory");
+    // Focusable from script, not a tab stop: activating the tab moves the
+    // focus into the wall (onActivateRequest), so the shell's focus tracker
+    // sees it, its island is lit, and the keyboard lands on the wall.
+    this.node.tabIndex = -1;
     // Capture phase: an embedded terminal's own wheel listener would otherwise
     // consume the event before the wall ever sees it.
     this.node.addEventListener("wheel", this.onWheel, { capture: true, passive: false });
@@ -329,6 +340,18 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   }
 
   /**
+   * Takes the focus when the shell activates the wall (its tab is selected,
+   * or a command reveals it with activation). Without it the shell warned that
+   * the widget did not accept focus, the focus tracker never fired, and the
+   * lit island stayed on the pane that had the focus before.
+   */
+  protected override onActivateRequest(msg: Message): void {
+    super.onActivateRequest(msg);
+    // The wall keeps its own scroll position: focusing must not scroll it.
+    this.node.focus({ preventScroll: true });
+  }
+
+  /**
    * Lift a session into an expanded card (toggles off if already expanded). A
    * resumable (idle, own config dir) session opens an interactive terminal in the
    * card; a live-elsewhere session opens a read-only follow with a Fork & continue
@@ -348,6 +371,22 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         /* ignore */
       })
       .then(() => this.savePins());
+  }
+
+  /**
+   * Open a session as an expanded card, as a click on its tile does; nothing
+   * when its card is already open. A session the wall has no tile for yet is
+   * opened when the next scan brings it.
+   */
+  openSession(sessionId: string, waitForScan = true): void {
+    const tile = this.tiles.find((t) => t.sessionId === sessionId);
+    if (!tile) {
+      // Kept for one scan only: a session the next scan does not bring is not coming.
+      this.pendingOpen = waitForScan ? sessionId : undefined;
+      return;
+    }
+    this.pendingOpen = undefined;
+    if (!this.pinned.includes(sessionId)) this.pin(tile);
   }
 
   private async openPinned(tile: AgentTile): Promise<void> {
@@ -685,6 +724,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * shows a client-side one.
    */
   private async runSchedule(schedule: Schedule): Promise<ValidationProblem[]> {
+    // The backend launches the tasks unattended and cannot ask Theia about trust: this is the one entry, so it asks here.
+    if (!(await this.terminals.trusted())) return [{ field: "run", message: SCHEDULE_UNTRUSTED }];
     const launches = Object.fromEntries(
       schedule.tasks.map((t) => [t.id, this.terminals.resolveLaunch(t.harness, t.configDir ?? "", t.project)]),
     );
@@ -700,6 +741,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private async retryTask(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
     const task = this.scheduleSnapshot.schedules.find((s) => s.id === scheduleId)?.tasks.find((t) => t.id === taskId);
     if (!task) return [{ field: "run", message: "Unknown task." }];
+    if (!(await this.terminals.trusted())) return [{ field: "run", message: SCHEDULE_UNTRUSTED }];
     const launch = this.terminals.resolveLaunch(task.harness, task.configDir ?? "", task.project);
     const problems = await this.schedules.retry(scheduleId, taskId, launch);
     this.refreshSchedules();
@@ -974,6 +1016,11 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
     }
     this.adoptLaunched(tiles);
     this.adoptForks(tiles);
+    if (this.pendingOpen) {
+      const asked = this.pendingOpen;
+      this.pendingOpen = undefined;
+      this.openSession(asked, false);
+    }
     this.savePins();
     const restore = this.pendingRestore;
     this.pendingRestore = undefined;
@@ -1326,6 +1373,27 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
         )}
       </section>
     );
+  }
+
+  /**
+   * The tab reads "Agents", or "Agent · <name>" while a session is lifted into
+   * a card (the newest one), named as the card is (the user's name, else the
+   * AI headline, else the first sentence), cut to a tab's width. Written only
+   * on change, so an update never re-announces an unchanged title.
+   */
+  private syncTabLabel(): void {
+    const newest = this.pinned[0];
+    const tile = newest ? this.tiles.find((t) => t.sessionId === newest) : undefined;
+    const summary = tile ? this.summaries.get(tile.sessionId) : undefined;
+    const headline = summary && !summary.loading && summary.summary ? summary.summary.overview || summary.summary.now : "";
+    const label = agentsTabLabel(tile ? defaultSessionName(tile, headline) : undefined);
+    if (this.title.label !== label) this.title.label = label;
+  }
+
+  /** The tab's name follows the wall's state after each render, not during one (a title change inside render re-enters the shell). */
+  protected override onUpdateRequest(msg: Message): void {
+    super.onUpdateRequest(msg);
+    this.syncTabLabel();
   }
 
   protected render(): React.ReactNode {

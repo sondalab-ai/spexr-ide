@@ -51,3 +51,10 @@ tests/e2e/dist/
 
 # VS Code builtin extensions, downloaded by `theia download:plugins`
 plugins/
+
+# tests/visual: captures and run state are CI artifacts. The fixture extension
+# under fixtures/plugins/ is source, not downloaded builtins, so it is
+# re-included after the `plugins/` rules above.
+tests/visual/out/
+tests/visual/.run/
+!tests/visual/fixtures/plugins/
