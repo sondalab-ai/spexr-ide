@@ -6,9 +6,9 @@ import { CONTENT, closeApp, hasWebgl2, launch, probeWindowSize, readTheme, sizeW
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { agentSession, liveAgentDirs, prepareRun, touchTranscripts, type Os, type PreparedRun, type Theme } from "./prepare";
-import { SEEDED_DRAFT, checkAgentPane, checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
+import { DEMO_AGENTS_PILL, DEMO_SESSION_ROWS, SEEDED_DRAFT, checkAgentLog, checkAgentPane, checkSessions, probeAgentLog, probeSessions, checkEdge, checkFixture, checkLitRim, checkPalette, checkToast, edgePoints, probeAgentPane, probeFixtureState, probeLitRim, samplePixels } from "./checks";
 import { probeProcesses, startLiveStubs, type LiveStubs } from "./stubs";
-import { AGENT_PANE_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
+import { AGENT_LOG_REGIONS, AGENT_PANE_REGIONS, SESSIONS_REGIONS, EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureStable,
   bottomPanelTop,
@@ -183,7 +183,26 @@ for (const theme of THEMES) {
         field.dispatchEvent(new Event("input", { bubbles: true }));
       }, SEEDED_DRAFT);
       await page.waitForFunction((text) => document.querySelector<HTMLTextAreaElement>("#theia-right-content-panel .spexr-agent-composer__input")?.value === text, SEEDED_DRAFT);
+      // S6j: the Sessions part and the status bar's two agent items. The rows' tool
+      // counts and the pill's total land with the backend's indexer crawl, so
+      // they are waited for; what is still missing then is the check's to report.
+      const sessionsWait = Date.now();
+      const sessionsReady = async (): Promise<boolean> => {
+        const s = await probeSessions(page);
+        return JSON.stringify(s.rows.map((r) => [r.name, r.meta])) === JSON.stringify(DEMO_SESSION_ROWS) && s.pill === DEMO_AGENTS_PILL && s.model !== null;
+      };
+      while (!(await sessionsReady()) && Date.now() - sessionsWait < 120_000) {
+        touchTranscripts(prepared);
+        await page.waitForTimeout(2_000);
+      }
       await shoot("base", baseAck);
+      {
+        const sessionsState = await probeSessions(page);
+        const sessionsRegions = await probeRegions(page, SESSIONS_REGIONS);
+        meta.sessions = { state: sessionsState, regions: sessionsRegions, waitedMs: Date.now() - sessionsWait };
+        check("sessions", checkSessions(sessionsState, sessionsRegions));
+        writeMeta();
+      }
       fixtureState = await probeFixtureState(page);
       const execText = (cmd: string, args: string[]): string => execFileSync(cmd, args, { encoding: "utf8", timeout: 10_000 });
       const stubSet = stubs[stubs.length - 1]!;
@@ -283,6 +302,24 @@ for (const theme of THEMES) {
       writeMeta();
       await page.evaluate(() => (document.querySelector(".monaco-editor textarea") as HTMLElement | null)?.focus());
       await page.waitForFunction(() => document.querySelector<HTMLElement>('.spexr-island[data-island="main"]')?.hasAttribute("data-lit") === true && !document.querySelector<HTMLElement>('.spexr-island[data-island="right"]')?.hasAttribute("data-lit"), undefined, { timeout: 15_000 });
+
+      // S6j: agent-log. The bottom panel's Agent log tab in front, with the
+      // events of the agent's own session, each with its time. A click raises
+      // the tab and lights the bottom island; the terminal's tab is put back
+      // and focus returns to the editor, whose island the later scenes expect lit.
+      await page.locator("#theia-bottom-content-panel .lm-TabBar-tab", { hasText: "Agent log" }).click();
+      await page.locator(".spexr-agent-log .spexr-df-term__line").first().waitFor({ state: "visible", timeout: 30_000 });
+      await shoot("agent-log");
+      {
+        const logState = await probeAgentLog(page);
+        const logRegions = await probeRegions(page, AGENT_LOG_REGIONS);
+        meta.agentLog = { state: logState, regions: logRegions };
+        check("agent log", checkAgentLog(logState, logRegions));
+        writeMeta();
+      }
+      await page.locator("#theia-bottom-content-panel .lm-TabBar-tab", { hasText: "bash" }).click();
+      await page.evaluate(() => (document.querySelector(".monaco-editor textarea") as HTMLElement | null)?.focus());
+      await page.waitForFunction(() => document.querySelector<HTMLElement>('.spexr-island[data-island="main"]')?.hasAttribute("data-lit") === true && !document.querySelector<HTMLElement>('.spexr-island[data-island="bottom"]')?.hasAttribute("data-lit"), undefined, { timeout: 15_000 });
 
       // palette: the command palette open on a query that finds several
       // commands, some with a shortcut, the first one selected. Placed against

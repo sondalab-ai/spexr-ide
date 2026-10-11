@@ -2,7 +2,7 @@ import path from "path";
 import type { Readiness, ThemeState, WindowSizeOutcome } from "./app";
 import type { NativeShot } from "./native";
 import type { Os, Theme } from "./prepare";
-import type { AgentPaneState, FixtureReport, FixtureState, LitRim } from "./checks";
+import type { AgentLogState, AgentPaneState, FixtureReport, FixtureState, LitRim, SessionsState } from "./checks";
 import type { LightsCheck } from "./lights";
 import type { EditorProbe, FullScreenProbe, LogProbes, MainProbes, PageProbes, ZoomProbe } from "./probes";
 import type { SceneResult } from "./scenes";
@@ -85,6 +85,10 @@ export interface CaptureMeta {
     focus?: { state: AgentPaneState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>> };
     sessionId?: string;
   };
+  /** The Sessions part and the status bar's agent items in the base scene (S6j). */
+  sessions?: { state: SessionsState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>>; waitedMs: number };
+  /** The agent-log scene: what the log shows and where its parts are (S6j). */
+  agentLog?: { state: AgentLogState; regions: Record<string, Array<{ x: number; y: number; w: number; h: number }>> };
   /** The scene checks that failed (S5f), by scene; the capture throws after writing them. */
   sceneProblems?: Record<string, string[]>;
   error?: string;

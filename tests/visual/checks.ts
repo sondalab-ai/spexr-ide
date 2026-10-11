@@ -488,3 +488,145 @@ function checkComposer(state: AgentPaneState, regions: Regions, pane: Rects[numb
   if (c.focused !== focused) problems.push(`composer: focus-within is ${c.focused}, want ${focused}`);
   return problems;
 }
+
+/* ── S6j: sessions, the status items and the Agent log ──────────────────── */
+
+/** What the Sessions part and the status bar's two agent items say, read from the page. */
+export interface SessionsState {
+  readonly rows: ReadonlyArray<{ readonly name: string; readonly meta: string; readonly selected: boolean; readonly tabStop: boolean }>;
+  /** The pill's words; null when it is not drawn. */
+  readonly pill: string | null;
+  /** The model item's words; null when it is not drawn. */
+  readonly model: string | null;
+}
+
+/** Read the Sessions rows, the agents pill and the model item. */
+export async function probeSessions(page: Page): Promise<SessionsState> {
+  return page.evaluate(() => {
+    const words = (el: Element | null): string | null => (el ? (el.textContent ?? "").replace(/\s+/g, " ").trim() : null);
+    return {
+      rows: [...document.querySelectorAll<HTMLElement>(".spexr-sessions__row")].map((r) => ({
+        name: words(r.querySelector(".spexr-sessions__name")) ?? "",
+        meta: words(r.querySelector(".spexr-sessions__meta")) ?? "",
+        selected: r.getAttribute("aria-selected") === "true",
+        tabStop: r.tabIndex === 0,
+      })),
+      pill: words(document.getElementById("status-bar-spexr-agents-pill")),
+      model: words(document.getElementById("status-bar-spexr-agent-model")),
+    };
+  });
+}
+
+/** The demo's three session rows (showcase/screens.js), as the fixture's sessions produce them. */
+export const DEMO_SESSION_ROWS = [
+  ["Refactor the audit", "running · 14 tools"],
+  ["Prism light theme", "done · 1h · 212 tools"],
+  ["Edge in shade", "done · 3h · 58 tools"],
+] as const;
+
+/** The demo's pill words: 14 + 198 tool calls over the two live agents. */
+export const DEMO_AGENTS_PILL = "2 agents · 212 tools";
+
+/**
+ * The left island's Sessions part and the status bar's agent items against the
+ * demo (reference/demo-regions.json `sessions.*`, `status.agents`,
+ * `status.model`), on the 4px grid (SESSIONS, AGENTS_PILL in workbench-geometry.ts):
+ * the three rows by their words, "Refactor the audit" selected, one tab stop; a
+ * row 48px high (the demo's 46.38) and 48 apart (48.37), inset 8px in the part;
+ * the pill reading 2 agents · 212 tools at the kit's 20px (the demo's 22), and the
+ * model item reading Opus and a rate within the 500 tok/s cap (the demo's 1.2k is
+ * not what Claude streams: the fixture says about 86), the two centred in the bar.
+ */
+export function checkSessions(state: SessionsState, regions: Regions): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  const got = state.rows.map((r) => [r.name, r.meta]);
+  if (JSON.stringify(got) !== JSON.stringify(DEMO_SESSION_ROWS)) problems.push(`sessions: rows ${JSON.stringify(got)}, want ${JSON.stringify(DEMO_SESSION_ROWS)}`);
+  const selected = state.rows.filter((r) => r.selected);
+  if (selected.length !== 1 || selected[0]!.name !== "Refactor the audit") problems.push(`sessions: selected ${JSON.stringify(selected.map((r) => r.name))}, want only "Refactor the audit"`);
+  if (state.rows.filter((r) => r.tabStop).length !== 1) problems.push("sessions: the list must have exactly one tab stop");
+
+  const part = regions["sess.part"]?.[0];
+  const rows = regions["sess.row"] ?? [];
+  if (!part || rows.length !== state.rows.length) problems.push(`sessions: ${rows.length} of ${state.rows.length} rows are on screen (the part must show all three)`);
+  else {
+    for (const [i, r] of rows.entries()) {
+      if (!near(r.h, 48, 2)) problems.push(`sessions: row ${i} is ${r.h}px tall, want 48 (the demo's 46.38)`);
+      if (!near(r.x - part.x, 8, 1)) problems.push(`sessions: row ${i} is ${r.x - part.x}px in from the part, want 8 (the demo's 7.2)`);
+      if (i > 0 && !near(r.y - rows[i - 1]!.y, 48, 1)) problems.push(`sessions: rows ${i - 1} and ${i} are ${r.y - rows[i - 1]!.y}px apart, want 48 (the demo's 48.37)`);
+    }
+    const names = regions["sess.name"] ?? [];
+    const metas = regions["sess.meta"] ?? [];
+    if (names[0] && metas[0] && !near(metas[0].y - names[0].y, 24, 1)) problems.push(`sessions: the meta sits ${metas[0].y - names[0].y}px under the name's top, want 24 (a 20px line and 4)`);
+    if (metas[0] && !near(metas[0].h, 16, 1)) problems.push(`sessions: the meta line is ${metas[0].h}px, want 16`);
+  }
+
+  if (state.pill !== DEMO_AGENTS_PILL) problems.push(`status: the agents pill reads ${JSON.stringify(state.pill)}, want ${JSON.stringify(DEMO_AGENTS_PILL)}`);
+  if (!/^Opus · \d{1,3} tok\/s$/.test(state.model ?? "")) problems.push(`status: the model item reads ${JSON.stringify(state.model)}, want "Opus · <n> tok/s"`);
+  else if (Number(/\d+/.exec(state.model!)![0]) > 500) problems.push(`status: the model item reads ${state.model}, above the 500 tok/s cap`);
+  const bar = regions["status.bar"]?.[0];
+  for (const key of ["status.pill", "status.model"]) {
+    const box = regions[key]?.[0];
+    if (!box || !bar) {
+      problems.push(`status: no ${key} box on screen`);
+      continue;
+    }
+    if (!near(box.h, 20, 1)) problems.push(`status: ${key} is ${box.h}px tall, want 20 (the demo's 22)`);
+    if (!near(box.y + box.h / 2, bar.y + bar.h / 2, 1.5)) problems.push(`status: ${key} is centred ${box.y + box.h / 2 - (bar.y + bar.h / 2)}px off the bar's middle`);
+  }
+  const pill = regions["status.pill"]?.[0];
+  const model = regions["status.model"]?.[0];
+  if (pill && model && pill.x + pill.w > model.x) problems.push("status: the pill and the model item overlap, or the model item is not to the right of the pill");
+  return problems;
+}
+
+/** What the Agent log shows. */
+export interface AgentLogState {
+  /** The log's tab in the bottom panel is the current one. */
+  readonly current: boolean;
+  readonly lines: ReadonlyArray<{ readonly kind: string; readonly time: string | null; readonly text: string }>;
+}
+
+/** Read the Agent log's lines. */
+export async function probeAgentLog(page: Page): Promise<AgentLogState> {
+  return page.evaluate(() => ({
+    current: !!document.querySelector(".spexr-agent-log") && document.querySelector<HTMLElement>(".spexr-agent-log-widget")?.classList.contains("lm-mod-hidden") === false,
+    lines: [...document.querySelectorAll<HTMLElement>(".spexr-agent-log .spexr-df-term__line")].map((l) => ({
+      kind: l.getAttribute("data-kind") ?? "",
+      time: (l.querySelector(".spexr-df-term__time")?.textContent ?? "").trim() || null,
+      text: (l.querySelector(".spexr-df-term__text")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+    })),
+  }));
+}
+
+/**
+ * The Agent log of "Refactor the audit" (the fixture's agent): its events
+ * with a clock time before each (the zone is the machine's, so the shape is
+ * checked, not the hour), the prompt first, the running `pnpm sl-audit` call
+ * among them; a 16px gutter, 20px lines at least, and the time column aligned.
+ */
+export function checkAgentLog(state: AgentLogState, regions: Regions): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
+  if (!state.current) problems.push("agent log: its tab is not the one in front");
+  if (state.lines.length < 10) problems.push(`agent log: ${state.lines.length} lines, want 10 at least (the audit's calls and replies)`);
+  const untimed = state.lines.filter((l) => !l.time || !/^\d{2}:\d{2}:\d{2}$/.test(l.time));
+  if (untimed.length) problems.push(`agent log: ${untimed.length} line(s) without a clock time, the first: ${JSON.stringify(untimed[0])}`);
+  const first = state.lines[0];
+  if (first?.kind !== "prompt" || !first.text.startsWith("Make cache.write awaited")) problems.push(`agent log: the first line is ${JSON.stringify(first)}, want the prompt "Make cache.write awaited…"`);
+  if (!state.lines.some((l) => l.kind === "tool" && /pnpm sl-audit/.test(l.text))) problems.push("agent log: no call line for pnpm sl-audit");
+  for (const kind of ["prompt", "assistant", "tool", "result"]) {
+    if (!state.lines.some((l) => l.kind === kind)) problems.push(`agent log: no ${kind} line`);
+  }
+  const panel = regions["log.panel"]?.[0];
+  const body = regions["log.body"]?.[0];
+  const lines = regions["log.line"] ?? [];
+  if (!panel || !body) problems.push("agent log: the log is not on screen");
+  else {
+    if (lines[0] && !near(lines[0].x - body.x, 16, 1)) problems.push(`agent log: the lines start ${lines[0].x - body.x}px in, want 16`);
+    if (lines.some((l) => l.h < 19)) problems.push(`agent log: a line is ${Math.min(...lines.map((l) => l.h))}px tall, want 20 at least`);
+  }
+  const xs = (regions["log.time"] ?? []).map((t) => t.x);
+  if (xs.length && Math.max(...xs) - Math.min(...xs) > 0.5) problems.push(`agent log: the time column is not aligned (x ${Math.min(...xs)} to ${Math.max(...xs)})`);
+  return problems;
+}
