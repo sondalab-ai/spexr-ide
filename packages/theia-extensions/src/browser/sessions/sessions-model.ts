@@ -1,5 +1,6 @@
 import type { AgentPaneSnapshot } from "../../common/agent-pane-protocol.js";
 import type { AgentTile } from "../../common/darkfactory-protocol.js";
+import type { HarnessId } from "../../common/harness/harness-types.js";
 import { STALE_MS } from "../../common/session-timing.js";
 import { defaultSessionName, sortTiles } from "../darkfactory/darkfactory-format.js";
 import { normalizeProjectPath } from "../project/project-switch-targets.js";
@@ -8,8 +9,11 @@ import { modelFamily } from "../agent-pane/agent-pane-format.js";
 /** The most rows the Sessions part lists; it scrolls in a small window, and older sessions live on the wall. */
 export const SESSION_ROWS_MAX = 12;
 
-/** A session's state as its row says it. */
-/** `done` is every session that is not working: Dark Factory's `idle` is a session with no process, which the list calls done as the demo does. */
+/**
+ * A session's state as its row says it. `done` is every session that is not
+ * working: Dark Factory's `idle` is a session with no process, which the list
+ * calls done as the demo does.
+ */
 export type SessionRowState = "running" | "waiting" | "done";
 
 export interface SessionRow {
@@ -18,8 +22,14 @@ export interface SessionRow {
   readonly state: SessionRowState;
   /** `state · age · n tools`: the age is left out while the session runs. */
   readonly meta: string;
-  /** The row for the session the agent terminal started: the one the composer can type into. */
-  readonly own: boolean;
+  /** Which agent CLI wrote it: only a Claude session can be followed in the pane. */
+  readonly harness: HarnessId;
+}
+
+/** The rows shown, and how many more sessions of the workspace the cap left out. */
+export interface SessionRows {
+  readonly rows: SessionRow[];
+  readonly more: number;
 }
 
 /** A span of time as the list writes it: `now`, `5m`, `1h`, `3d`. */
@@ -54,36 +64,51 @@ export function rowMeta(tile: AgentTile, now: number): string {
   return parts.join(" · ");
 }
 
+/** Whether a session's project is one of the workspace's roots or lies inside one. */
+export function inWorkspace(projectPath: string, roots: readonly string[]): boolean {
+  const path = normalizeProjectPath(projectPath);
+  return roots.some((root) => {
+    const r = normalizeProjectPath(root);
+    return path === r || path.startsWith(`${r}/`);
+  });
+}
+
 /**
- * The workspace's sessions as rows: this folder's tiles only, needs-you and
- * working first and then the most recent, capped at {@link SESSION_ROWS_MAX}.
- * `ownSessionId` marks the row of the agent terminal's own session.
+ * The workspace's sessions as rows: the tiles of every root and its subfolders,
+ * needs-you and working first and then the most recent, capped at
+ * {@link SESSION_ROWS_MAX}. The session the pane follows is always shown and
+ * selected: past the cap it is pinned at the end. `more` counts what the cap
+ * left out (the list says "N more" and opens the wall).
  */
 export function sessionRows(
   tiles: readonly AgentTile[],
-  workspacePath: string | undefined,
+  roots: readonly string[],
   now: number,
-  ownSessionId?: string,
+  followedId?: string,
   /** The name the agent pane's head gives the session it follows: it reads the names file afresh, which a scan may not have yet. */
   followedTitle?: { readonly sessionId: string; readonly title?: string | undefined },
-): SessionRow[] {
-  if (!workspacePath) return [];
-  const here = normalizeProjectPath(workspacePath);
-  const mine = tiles.filter((t) => normalizeProjectPath(t.projectPath) === here);
-  return sortTiles(mine)
-    .slice(0, SESSION_ROWS_MAX)
-    .map((t) => ({
-      sessionId: t.sessionId,
-      name: (t.customName?.trim() ? undefined : followedTitle?.sessionId === t.sessionId ? followedTitle.title : undefined) || defaultSessionName(t) || t.sessionId.slice(0, 8),
-      state: rowState(t),
-      meta: rowMeta(t, now),
-      own: t.sessionId === ownSessionId,
-    }));
+): SessionRows {
+  if (roots.length === 0) return { rows: [], more: 0 };
+  const sorted = sortTiles(tiles.filter((t) => inWorkspace(t.projectPath, roots)));
+  const shown = sorted.slice(0, SESSION_ROWS_MAX);
+  const followed = followedId && !shown.some((t) => t.sessionId === followedId) ? sorted.find((t) => t.sessionId === followedId) : undefined;
+  if (followed) shown.push(followed);
+  const rows = shown.map((t) => ({
+    sessionId: t.sessionId,
+    name: (t.customName?.trim() ? undefined : followedTitle?.sessionId === t.sessionId ? followedTitle.title : undefined) || defaultSessionName(t) || t.sessionId.slice(0, 8),
+    state: rowState(t),
+    meta: rowMeta(t, now),
+    harness: t.harness,
+  }));
+  return { rows, more: sorted.length - shown.length };
 }
 
-/** The row to move to with an arrow key from `current`; the ends stay put. */
-export function stepRow(rows: readonly SessionRow[], current: string | undefined, delta: 1 | -1): string | undefined {
+/** The row an arrow key, Home or End moves focus to from `current`; the ends stay put. Nothing is followed by moving. */
+export function focusTarget(rows: readonly SessionRow[], current: string | undefined, key: "ArrowDown" | "ArrowUp" | "Home" | "End"): string | undefined {
   if (rows.length === 0) return undefined;
+  if (key === "Home") return rows[0]!.sessionId;
+  if (key === "End") return rows[rows.length - 1]!.sessionId;
+  const delta = key === "ArrowDown" ? 1 : -1;
   const at = rows.findIndex((r) => r.sessionId === current);
   const next = at === -1 ? (delta > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, at + delta));
   return rows[next]!.sessionId;
@@ -139,4 +164,14 @@ export function modelItem(snapshot: Pick<AgentPaneSnapshot, "model" | "tokPerSec
   const family = modelFamily(snapshot.model);
   if (!family) return undefined;
   return { family, text: `${family} · ${formatTokPerSec(snapshot.tokPerSec)} tok/s` };
+}
+
+/**
+ * Whether the Sessions part must be added to a view container that was just
+ * created: it is the Explorer's, and it does not hold the part already. Reset
+ * Layout and a restored layout both build a fresh container, and the part
+ * would otherwise be lost with the old one.
+ */
+export function shouldAddSessionsPart(factoryId: string, explorerFactoryId: string, hasPart: boolean): boolean {
+  return factoryId === explorerFactoryId && !hasPart;
 }

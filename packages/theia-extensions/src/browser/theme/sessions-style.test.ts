@@ -100,13 +100,36 @@ describe("the sessions part's sources", () => {
     expect(src).toMatch(/className="sl-list__row spexr-sessions__row"/);
     expect(src).toMatch(/role="option"/);
     expect(src).toMatch(/aria-selected=\{r\.sessionId === selected\}/);
+    // Arrow keys, Home and End move focus only: following is a click or Enter.
+    expect(src).toMatch(/focusTarget\(rows, current, event\.key\)/);
+    expect(/onKeyDown\(event[\s\S]*?\n  }/.exec(src)![0]).not.toMatch(/select\(|requestView/);
+    expect(src).not.toMatch(/querySelector/);
     expect(src).toMatch(/tabIndex=\{r\.sessionId === stop \? 0 : -1\}/);
     expect(src).not.toMatch(/style=\{\{/);
   });
 
+  it("opens the Agents wall from the pill and from the list's \"N more\", and trust-gates opening a session inside the command", () => {
+    expect(read("../sessions/agents-status-contribution.ts")).toMatch(/command: DARKFACTORY_OPEN_COMMAND\.id/);
+    expect(read("../sessions/sessions-widget.tsx")).toMatch(/executeCommand\(DARKFACTORY_OPEN_COMMAND\.id\)/);
+    const view = read("../darkfactory/darkfactory-view-contribution.ts");
+    const open = /registerCommand\(DARKFACTORY_OPEN_SESSION_COMMAND[\s\S]*?\n    \}\);/.exec(view)![0];
+    expect(open.indexOf("getWorkspaceTrust()")).toBeGreaterThan(-1);
+    expect(open.indexOf("getWorkspaceTrust()")).toBeLessThan(open.indexOf("openView"));
+  });
+
+  it("sends a session of another CLI to the wall, and only a Claude session to the pane", () => {
+    const src = read("../sessions/sessions-widget.tsx");
+    expect(src).toMatch(/row\.harness !== "claude"[\s\S]*?DARKFACTORY_OPEN_SESSION_COMMAND\.id[\s\S]*?return;[\s\S]*?requestView/);
+  });
+
   it("shows the log with the time before each line, through the follow transcript", () => {
     expect(read("../sessions/agent-log-widget.tsx")).toMatch(/<FollowTranscript events=\{this\.events\} showTime \/>/);
-    expect(read("../darkfactory/agent-tile.tsx")).toMatch(/\{showTime && e\.atMs !== undefined && \(/);
+    const tile = read("../darkfactory/agent-tile.tsx");
+    expect(tile).toMatch(/e\.atMs !== undefined \?\s*\(\s*<time className="spexr-df-term__time"/);
+    // A line with no stamp keeps the column; a new day gets a separator; rows are keyed on the stamp and the index.
+    expect(tile).toMatch(/<span className="spexr-df-term__time" aria-hidden="true" \/>/);
+    expect(tile).toMatch(/role="separator"/);
+    expect(tile).toMatch(/key=\{`\$\{e\.atMs \?\? "-"\}:\$\{i\}`\}/);
   });
 
   it("caps the rate at 500 tok/s on the backend, where the fixture's 86 and the demo's 1.2k are told apart", () => {

@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import {
   relativeTime,
   formatClock,
+  dayKey,
+  formatDay,
   stateLabel,
   sortTiles,
   permissionLabel,
@@ -504,5 +506,18 @@ describe("formatClock", () => {
     const at = new Date(2026, 9, 9, 4, 3, 7).getTime();
     expect(formatClock(at)).toBe("04:03:07");
     expect(formatClock(new Date(2026, 9, 9, 23, 59, 59).getTime())).toBe("23:59:59");
+  });
+});
+
+describe("dayKey / formatDay", () => {
+  test("change at midnight, not at 24 hours", () => {
+    const late = new Date(2026, 9, 9, 23, 59, 59).getTime();
+    const early = new Date(2026, 9, 10, 0, 0, 1).getTime();
+    expect(dayKey(late)).not.toBe(dayKey(early));
+    expect(dayKey(late)).toBe(dayKey(new Date(2026, 9, 9, 0, 0, 0).getTime()));
+  });
+
+  test("formatDay names the weekday, the day and the month", () => {
+    expect(formatDay(new Date(2026, 9, 9, 12).getTime())).toBe("Fri 9 Oct");
   });
 });

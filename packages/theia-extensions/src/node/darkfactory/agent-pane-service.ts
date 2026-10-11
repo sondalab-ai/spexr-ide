@@ -222,9 +222,9 @@ export class AgentPaneBackendService implements AgentPaneService {
     this.maxOtherMtime = 0;
   }
 
-  async readLog(): Promise<FollowEvent[]> {
-    if (!this.binding || !this.transcript) return [];
-    await this.refresh();
+  async readLog(sessionId: string): Promise<FollowEvent[]> {
+    // Read from what the watcher keeps up to date: a read is not a reason to read the file again.
+    if (this.binding?.sessionId !== sessionId || !this.transcript) return [];
     // A subagent's calls and words are not the session's own.
     const own = this.entries.filter((e) => !e.isSidechain) as TurnEntry[];
     return buildFollowEvents(own, PANE_LOG_EVENTS);
@@ -361,10 +361,11 @@ export class AgentPaneBackendService implements AgentPaneService {
       this.raw.splice(0, this.raw.length - MAX_ENTRIES);
     }
 
-    // A read-only look never moves on: the folder is not scanned for a successor.
-    const scan = b.readOnly ? undefined : await this.scanFolder(file);
+    // The folder is always scanned: whether this transcript is the project's newest decides whether it is live
+    // (classifySession). Only the move to a successor is a read-only look's to skip: it never leaves its session.
+    const scan = await this.scanFolder(file);
     const next = await this.snapshot(b, file, epoch);
-    const successor = scan ? await this.findSuccessor(b, file, scan) : undefined;
+    const successor = scan && !b.readOnly ? await this.findSuccessor(b, file, scan) : undefined;
     if (epoch !== this.epoch) return;
     // Moving on: the old session's last picture (it is no longer the folder's newest) is not worth pushing.
     if (!successor) {

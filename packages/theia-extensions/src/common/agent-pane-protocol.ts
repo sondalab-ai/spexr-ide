@@ -155,10 +155,11 @@ export interface AgentPaneService {
   /** Stop following. */
   stop(): Promise<void>;
   /**
-   * The followed session's last {@link PANE_LOG_EVENTS} events with their
-   * times, the Agent log's lines. Empty when nothing is followed.
+   * `sessionId`'s last {@link PANE_LOG_EVENTS} events with their times, the
+   * Agent log's lines. Empty when that is not the session being followed (the
+   * follow moved on while the read was on its way) or nothing is followed.
    */
-  readLog(): Promise<FollowEvent[]>;
+  readLog(sessionId: string): Promise<FollowEvent[]>;
 }
 
 export interface AgentPaneClient {

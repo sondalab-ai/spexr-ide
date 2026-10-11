@@ -25,6 +25,31 @@ describe("buildFollowEvents", () => {
     expect(buildFollowEvents(entries, 10)[0]).toEqual({ kind: "tool", text: "git commit -m 'x' && git push" });
   });
 
+  it("stamps each event with the time of its entry, and leaves the stamp out of an entry that has none or an unreadable one", () => {
+    const at = "2026-10-09T13:58:06.000Z";
+    const entries = [
+      { timestamp: at, message: { role: "user", content: "stamped" } },
+      { message: { role: "assistant", content: [{ type: "text", text: "no stamp" }] } },
+      { timestamp: "not a date", message: { role: "assistant", content: [{ type: "text", text: "bad stamp" }] } },
+      { timestamp: "2026-10-09T13:58:09.000Z", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "ls" } }] } },
+    ];
+    const events = buildFollowEvents(entries, 10);
+    expect(events).toEqual([
+      { kind: "prompt", text: "stamped", atMs: Date.parse(at) },
+      { kind: "assistant", text: "no stamp" },
+      { kind: "assistant", text: "bad stamp" },
+      { kind: "tool", text: "ls", atMs: Date.parse("2026-10-09T13:58:09.000Z") },
+    ]);
+    expect("atMs" in events[1]!).toBe(false);
+    expect("atMs" in events[2]!).toBe(false);
+  });
+
+  it("stamps every event of one entry with that entry's time", () => {
+    const stamp = "2026-10-09T13:58:07.000Z";
+    const entries = [{ timestamp: stamp, message: { role: "assistant", content: [{ type: "text", text: "On it." }, { type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] } }];
+    expect(buildFollowEvents(entries, 10).map((e) => e.atMs)).toEqual([Date.parse(stamp), Date.parse(stamp)]);
+  });
+
   it("drops injected/meta prompts and caps to the last N events", () => {
     const entries = [
       { isMeta: true, message: { role: "user", content: "<reminder>" } },

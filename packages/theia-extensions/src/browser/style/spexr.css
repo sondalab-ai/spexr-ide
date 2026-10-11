@@ -5638,6 +5638,25 @@ code {
   color: var(--slc-accent-text);
 }
 
+.spexr-sessions__more {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--slc-text-muted);
+  font: inherit;
+  font-size: var(--sl-text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.spexr-sessions__more:hover {
+  color: var(--slc-text);
+}
+
 .spexr-sessions__empty {
   margin: 0;
   padding: 8px 16px;
@@ -5700,6 +5719,15 @@ code {
 
 .spexr-agent-log .spexr-df-term--empty {
   color: var(--slc-text-muted);
+}
+
+/* Where the day changes in the agent log: a muted, centred date between the lines. */
+.spexr-agent-log .spexr-df-term__day {
+  margin-block: 8px;
+  color: var(--slc-text-muted);
+  font-size: var(--sl-text-xs);
+  line-height: 16px;
+  text-align: center;
 }
 
 .spexr-df-term__time {

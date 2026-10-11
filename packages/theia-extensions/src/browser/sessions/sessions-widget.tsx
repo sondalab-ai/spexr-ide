@@ -2,12 +2,14 @@ import * as React from "react";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ReactWidget, type Message } from "@theia/core/lib/browser";
 import { nls } from "@theia/core/lib/common/nls";
+import { CommandService } from "@theia/core/lib/common/command";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { AgentFollowHub } from "../agent-pane/agent-follow-hub.js";
 import { AgentPaneViewContribution } from "../agent-pane/agent-pane-view-contribution.js";
 import { ClaudeTerminalManager } from "../agent/claude-terminal-manager.js";
 import { AgentTilesFeed } from "./agent-tiles-feed.js";
-import { sessionRows, stepRow, viewTarget, type SessionRow } from "./sessions-model.js";
+import { DARKFACTORY_OPEN_COMMAND, DARKFACTORY_OPEN_SESSION_COMMAND } from "../darkfactory/darkfactory-open-session.js";
+import { focusTarget, sessionRows, viewTarget, type SessionRow } from "./sessions-model.js";
 
 /** How often the ages in the rows are written again: they move by the minute. */
 const AGE_REFRESH_MS = 60_000;
@@ -30,9 +32,11 @@ export class SessionsWidget extends ReactWidget {
   @inject(AgentPaneViewContribution) private readonly paneView!: AgentPaneViewContribution;
   @inject(ClaudeTerminalManager) private readonly terminal!: ClaudeTerminalManager;
   @inject(WorkspaceService) private readonly workspace!: WorkspaceService;
+  @inject(CommandService) private readonly commands!: CommandService;
 
   private ticker: ReturnType<typeof setInterval> | undefined;
-  private readonly listRef = React.createRef<HTMLDivElement>();
+  /** The row buttons by session id, for moving focus without searching the DOM. */
+  private readonly buttons = new Map<string, HTMLButtonElement>();
 
   constructor() {
     super();
@@ -63,31 +67,37 @@ export class SessionsWidget extends ReactWidget {
     super.onBeforeDetach(msg);
   }
 
-  private rows(): SessionRow[] {
-    const root = this.workspace.tryGetRoots()[0]?.resource.path.fsPath();
+  private rows(): { rows: SessionRow[]; more: number } {
+    const roots = this.workspace.tryGetRoots().map((r) => r.resource.path.fsPath());
     const { followed, snapshot } = this.hub.current;
-    return sessionRows(this.feed.tiles(), root, Date.now(), this.terminal.currentSessionId(), followed && snapshot?.sessionId === followed ? { sessionId: followed, title: snapshot.title } : undefined);
+    return sessionRows(this.feed.tiles(), roots, Date.now(), followed, followed && snapshot?.sessionId === followed ? { sessionId: followed, title: snapshot.title } : undefined);
   }
 
-  /** Point the agent pane at a session, opening the pane when it is closed. */
+  /**
+   * Follow a session: a Claude session points the agent pane at it (read-only,
+   * opening the pane when it is closed); a session of another CLI cannot be
+   * followed there, so it opens on the wall as its tile does.
+   */
   private select(row: SessionRow): void {
+    if (row.harness !== "claude") {
+      void this.commands.executeCommand(DARKFACTORY_OPEN_SESSION_COMMAND.id, row.sessionId);
+      return;
+    }
     this.hub.requestView(viewTarget(row.sessionId, this.terminal.currentSessionId()));
     void this.paneView.openView({ activate: false, reveal: true });
   }
 
-  private onKeyDown(event: React.KeyboardEvent, rows: readonly SessionRow[], selected: string | undefined): void {
-    const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-    if (!delta) return;
+  /** Arrow keys, Home and End move focus between the rows; Enter or a click is what follows. */
+  private onKeyDown(event: React.KeyboardEvent, rows: readonly SessionRow[]): void {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
-    const next = stepRow(rows, selected, delta);
-    const row = rows.find((r) => r.sessionId === next);
-    if (!row || row.sessionId === selected) return;
-    this.select(row);
-    this.listRef.current?.querySelector<HTMLElement>(`[data-session-id="${row.sessionId}"]`)?.focus();
+    const current = rows.find((r) => this.buttons.get(r.sessionId) === document.activeElement)?.sessionId;
+    const next = focusTarget(rows, current, event.key);
+    if (next) this.buttons.get(next)?.focus();
   }
 
   protected render(): React.ReactNode {
-    const rows = this.rows();
+    const { rows, more } = this.rows();
     const selected = this.hub.current.followed;
     if (rows.length === 0) {
       return <p className="spexr-sessions__empty">{nls.localize("spexr/sessions/empty", "No sessions in this workspace yet.")}</p>;
@@ -95,22 +105,20 @@ export class SessionsWidget extends ReactWidget {
     // One tab stop for the list: the selected row, or the first when none is.
     const stop = rows.some((r) => r.sessionId === selected) ? selected : rows[0]!.sessionId;
     return (
-      <div
-        ref={this.listRef}
-        className="sl-list spexr-sessions"
-        role="listbox"
-        aria-label={nls.localize("spexr/sessions/title", "Sessions")}
-        onKeyDown={(e) => this.onKeyDown(e, rows, selected)}
-      >
+      <>
+      <div className="sl-list spexr-sessions" role="listbox" aria-label={nls.localize("spexr/sessions/title", "Sessions")} onKeyDown={(e) => this.onKeyDown(e, rows)}>
         {rows.map((r) => (
           <button
             key={r.sessionId}
+            ref={(el) => {
+              if (el) this.buttons.set(r.sessionId, el);
+              else this.buttons.delete(r.sessionId);
+            }}
             type="button"
             className="sl-list__row spexr-sessions__row"
             role="option"
             aria-selected={r.sessionId === selected}
             tabIndex={r.sessionId === stop ? 0 : -1}
-            data-session-id={r.sessionId}
             data-state={r.state}
             onClick={() => this.select(r)}
           >
@@ -119,6 +127,12 @@ export class SessionsWidget extends ReactWidget {
           </button>
         ))}
       </div>
+      {more > 0 ? (
+        <button type="button" className="spexr-sessions__more" onClick={() => void this.commands.executeCommand(DARKFACTORY_OPEN_COMMAND.id)}>
+          {nls.localize("spexr/sessions/more", "{0} more in the Agents wall", more)}
+        </button>
+      ) : null}
+      </>
     );
   }
 }

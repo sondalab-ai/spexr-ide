@@ -20,6 +20,17 @@ export function formatClock(ms: number): string {
   return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
 }
 
+/** The local calendar day of a time, as a key that changes at midnight. */
+export function dayKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+/** The separator the agent log draws when the day changes: `Fri 9 Oct`. */
+export function formatDay(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
 /** Human label for a session state. */
 export function stateLabel(state: AgentState): string {
   return state === "working" ? "Working" : state === "idle" ? "Idle" : "Done";

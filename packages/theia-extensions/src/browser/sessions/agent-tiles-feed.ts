@@ -17,6 +17,8 @@ export class AgentTilesFeed {
   @inject(SpexrDarkfactoryServiceProxy) private readonly service!: SpexrDarkfactoryService;
   @inject(SpexrDarkfactoryClientDispatcher) private readonly client!: SpexrDarkfactoryClientDispatcher;
 
+  // To be replaced by SpexrAgentsCountService (lane B, S6d), the one shared count of the title pill and the
+  // activity badge, when the stacks meet; this feed keeps its own AgentsCount until then so S6j stands alone.
   private readonly count = new AgentsCount();
   private readonly changed = new Emitter<void>();
   readonly onDidChange: Event<void> = this.changed.event;
