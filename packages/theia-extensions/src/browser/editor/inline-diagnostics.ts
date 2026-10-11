@@ -41,8 +41,13 @@ export function toneOf(severity: number | undefined): InlineTone | undefined {
   return severity === undefined || severity === 1 ? "error" : severity === 2 ? "warning" : undefined;
 }
 
-/** Control characters and the bidirectional overrides (U+202A-202E, U+2066-2069), which a message must not carry into the editor. */
-const UNSAFE = /[\p{Cc}\u202a-\u202e\u2066-\u2069]/gu;
+/**
+ * What a message must not carry into the editor: control characters, the
+ * bidirectional overrides and marks (U+202A-202E, U+2066-2069, LRM, RLM, ALM),
+ * the zero-width characters (U+200B-200D, U+2060, U+FEFF) and the line and
+ * paragraph separators (U+2028, U+2029).
+ */
+const UNSAFE = /[\p{Cc}\u202a-\u202e\u2066-\u2069\u200b-\u200f\u061c\u2028\u2029\u2060\ufeff]/gu;
 
 /** Whether a code point is drawn two columns wide: CJK, Hangul, fullwidth forms, emoji. */
 export function isWide(cp: number): boolean {
@@ -62,13 +67,16 @@ export function isWide(cp: number): boolean {
 /**
  * The columns a line of code takes: a tab goes to the next multiple of
  * `tabSize`, a wide character is two columns. Used where the editor cannot
- * measure the rendered line (the chip's room is then an estimate).
+ * measure the rendered line (the chip's room is then an estimate). With `cap`
+ * the scan stops at that many columns (the editor's width).
  */
-export function displayWidth(text: string, tabSize: number): number {
+export function displayWidth(text: string, tabSize: number, cap = Infinity): number {
   let col = 0;
   for (const ch of text) {
     if (ch === "\t") col += tabSize - (col % tabSize);
     else col += isWide(ch.codePointAt(0)!) ? 2 : 1;
+    // A line already wider than the editor leaves no room whatever its length: the scan stops there.
+    if (col >= cap) return col;
   }
   return col;
 }
@@ -78,25 +86,47 @@ export function displayWidth(text: string, tabSize: number): number {
  * backticks than any run in the message, so nothing in it can close the block
  * and nothing is read as Markdown.
  */
+export const HOVER_MAX_CHARS = 2000;
+
 export function plainTextBlock(message: string): string {
+  const shown = Array.from(message);
+  message = shown.length > HOVER_MAX_CHARS ? `${shown.slice(0, HOVER_MAX_CHARS).join("")}\u2026` : message;
   const longest = Math.max(0, ...(message.match(/`+/g) ?? []).map((r) => r.length));
   const fence = "`".repeat(Math.max(3, longest + 1));
   return `${fence}text\n${message.replace(UNSAFE_KEEP_NEWLINE, "")}\n${fence}`;
 }
 const UNSAFE_KEEP_NEWLINE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
 
+/** Within this many columns of the cut, a space is a better place to end than the middle of a word. */
+const WORD_WINDOW = 8;
+
 /**
- * A message as one line of at most `max` characters: its first line after
- * trimming, spaces collapsed, control characters and bidi overrides taken
- * out, cut by code points (never inside a surrogate pair) with an ellipsis.
- * The text is only ever drawn as text, never as markup.
+ * A message as one line of at most `max` columns: its first line after
+ * trimming, spaces collapsed, unsafe characters (UNSAFE) taken out, cut with an
+ * ellipsis. Width is counted as the editor counts it: a wide character (CJK,
+ * emoji) is two columns, and a cut is by code points, never inside a
+ * surrogate pair. The cut falls on a space when one lies within the last
+ * {@link WORD_WINDOW} columns. The text is only ever drawn as text, never as markup.
  */
 export function truncateMessage(message: string, max: number): string {
   if (max < 1) return "";
   const first = (message.trim().split(/\r?\n/)[0] ?? "").replace(UNSAFE, " ").replace(/\s+/g, " ").trim();
   const chars = Array.from(first);
-  if (chars.length <= max) return first;
-  return `${chars.slice(0, Math.max(0, max - 1)).join("").trimEnd()}\u2026`;
+  const width = (cs: readonly string[]): number => cs.reduce((n, c) => n + (isWide(c.codePointAt(0)!) ? 2 : 1), 0);
+  if (width(chars) <= max) return first;
+  // Room for the ellipsis (one column).
+  let keep = 0;
+  let used = 0;
+  while (keep < chars.length) {
+    const w = isWide(chars[keep]!.codePointAt(0)!) ? 2 : 1;
+    if (used + w > max - 1) break;
+    used += w;
+    keep++;
+  }
+  let cut = chars.slice(0, keep);
+  const space = cut.lastIndexOf(" ");
+  if (space > 0 && width(cut.slice(space)) <= WORD_WINDOW) cut = cut.slice(0, space);
+  return `${cut.join("").trimEnd()}\u2026`;
 }
 
 export interface InlineLayout {

@@ -33,8 +33,8 @@ const REAL: Timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearT
 export const REFRESH_MS = 200;
 export const MAX_WAIT_MS = 1000;
 
-/** A key that changes when what would be drawn changes. */
-const keyOf = (shown: readonly InlineDiagnostic[]): string => shown.map((d) => `${d.line}:${d.tone}:${d.text}`).join("\n");
+/** A key that changes when what would be drawn changes: the chip, and the whole message of the hover (a change past the cut still redraws). */
+const keyOf = (shown: readonly InlineDiagnostic[]): string => shown.map((d) => `${d.line}:${d.tone}:${d.text}:${d.full}`).join("\n");
 
 /**
  * Keeps the editors' inline diagnostics up to date without work the screen

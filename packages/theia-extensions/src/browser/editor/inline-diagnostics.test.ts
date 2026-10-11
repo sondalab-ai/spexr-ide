@@ -18,8 +18,9 @@ describe("truncateMessage", () => {
 
   it("cuts a long one with an ellipsis, within the limit", () => {
     const cut = truncateMessage("Promise returned from cache.write is not awaited here", 20);
-    expect(cut).toBe("Promise returned fr…");
-    expect(cut).toHaveLength(20);
+    // 19 columns of text fit; the last space is within 8 columns of the cut, so it ends there.
+    expect(cut).toBe("Promise returned…");
+    expect(cut.length).toBeLessThanOrEqual(20);
     expect(truncateMessage("abc def ghi", 4)).toBe("abc…");
   });
 
@@ -130,18 +131,45 @@ describe("the marker-to-chip step on awkward input", () => {
     expect(truncateMessage("\n\n  the real message\nsecond", 80)).toBe("the real message");
   });
 
-  it("cuts non-ASCII by code points: never inside a surrogate pair, and an emoji counts once", () => {
-    const text = "\u{1f600}".repeat(10);
-    const cut = truncateMessage(text, 4);
-    expect(Array.from(cut)).toHaveLength(4);
+  it("counts a wide character (CJK, emoji) as two columns and never cuts inside a surrogate pair", () => {
+    const text = "\u{1f600}".repeat(10); // 20 columns
+    const cut = truncateMessage(text, 7); // room for 3 emoji (6 columns) and the ellipsis
+    expect(cut).toBe("\u{1f600}".repeat(3) + "\u2026");
+    expect(truncateMessage("Ünïcödé", 80)).toBe("Ünïcödé");
+  });
+
+  it("fits a CJK message to the columns it has: 20 columns hold 9 characters and the ellipsis", () => {
+    const cjk = "日本語のメッセージが長すぎる場合は省略されます";
+    const cut = truncateMessage(cjk, 20);
+    expect(displayWidth(cut, 4)).toBeLessThanOrEqual(20);
+    expect(Array.from(cut).length).toBe(10);
     expect(cut.endsWith("\u2026")).toBe(true);
-    expect(cut.slice(0, -1)).toBe("\u{1f600}".repeat(3));
-    expect(truncateMessage("Ünïcödé 日本語", 80)).toBe("Ünïcödé 日本語");
+    expect(truncateMessage("日本語", 6)).toBe("日本語");
+    expect(truncateMessage("日本語", 5)).toBe("日本\u2026");
+  });
+
+  it("ends on a space when one lies within the last 8 columns, and mid-word when none does", () => {
+    expect(truncateMessage("Promise returned from cache.write is not awaited", 24)).toBe("Promise returned from\u2026");
+    expect(truncateMessage("Pneumonoultramicroscopicsilicovolcanoconiosis", 12)).toBe("Pneumonoult\u2026");
+    expect(truncateMessage("aaaa bbbbbbbbbbbbbbbbbbbb", 16)).toBe("aaaa bbbbbbbbbb\u2026");
+  });
+
+  it("takes the zero-width characters, the marks and the line separators out", () => {
+    expect(truncateMessage("a\u200bb\u200cc\u200dd\u2060e\ufefff", 80)).toBe("a b c d e f");
+    expect(truncateMessage("x\u200ey\u200fz\u061cw", 80)).toBe("x y z w");
+    expect(truncateMessage("one\u2028two\u2029three", 80)).toBe("one two three");
   });
 
   it("takes control characters and bidi overrides out of the chip", () => {
     expect(truncateMessage("a\u0007b\u202ec\u2066d\u2069e", 80)).toBe("a b c d e");
     expect(truncateMessage("x\u001b[31my", 80)).toBe("x [31my");
+  });
+
+  it("caps the hover's text at about 2000 characters", () => {
+    const block = plainTextBlock("x".repeat(5000));
+    expect(block.length).toBeLessThan(2100);
+    expect(block.endsWith("\u2026\n```")).toBe(true);
+    expect(plainTextBlock("y".repeat(2000))).not.toContain("\u2026");
   });
 
   it("keeps the whole message for the hover, and fences it so nothing in it ends the block", () => {
@@ -161,6 +189,12 @@ describe("displayWidth", () => {
     expect(displayWidth("日本", 4)).toBe(4);
     expect(displayWidth("a\u{1f600}", 4)).toBe(3);
     expect(isWide("a".codePointAt(0)!)).toBe(false);
+  });
+
+  it("stops scanning at the cap: a line already as wide as the editor is not read to its end", () => {
+    expect(displayWidth("x".repeat(100_000), 4, 120)).toBe(120);
+    expect(displayWidth("abc", 4, 120)).toBe(3);
+    expect(displayWidth("日".repeat(100), 4, 50)).toBe(50);
   });
 
   it("is what makes a line of tabs or CJK leave less room for the chip", () => {
