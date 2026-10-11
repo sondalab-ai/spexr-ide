@@ -152,6 +152,7 @@ for (const theme of THEMES) {
       // S6c: the editor strip against the table, and its crop for the side-by-side.
       {
         const strip = await probeEditorStrip(page);
+        meta.editorStrip = strip;
         const rows = [strip.row, strip.crumbsRow].filter((r): r is NonNullable<typeof r> => !!r);
         if (rows.length) {
           const file = path.join(out, "tabs-crumbs.png");
@@ -296,7 +297,7 @@ for (const theme of THEMES) {
       // macOS the system's traffic lights sitting in the bar's room and on
       // its centre, at 100% and one zoom level out. Everything else is for
       // looking at.
-      // S6c: no scene, the later ones included, needed a tab strip scrolled into place.
+      // S6c: no scene but the exempt ones (checks.ts) needed a tab strip scrolled into place.
       check("aligned strips", checkAlignedStrips(meta.scenes));
       const problems = Object.entries(meta.sceneProblems ?? {}).map(([scene, found]) => `${scene}: ${found.join("; ")}`);
       if (OS === "mac") {

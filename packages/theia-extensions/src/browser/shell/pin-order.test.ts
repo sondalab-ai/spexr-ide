@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pinnedOrder } from "./pin-order.js";
+import { restoreOptions } from "./reveal-on-restore.js";
 
 const LEAD = ["welcome", "spec", "agent"];
 const TRAIL = ["darkfactory"];
@@ -30,5 +31,12 @@ describe("the pinned tabs' order", () => {
 
   it("puts an id named in both lists at the front only", () => {
     expect(pinnedOrder(["a", "p"], ["p"], ["p"])).toEqual(["p", "a"]);
+  });
+});
+
+describe("the options a restore opens a view with (E1)", () => {
+  it("reveals a registered view, and only attaches one that asks to stay behind", () => {
+    expect(restoreOptions({})).toEqual({ activate: false, reveal: true });
+    expect(restoreOptions({ attachBehind: true })).toEqual({ activate: false, reveal: false });
   });
 });

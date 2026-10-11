@@ -100,31 +100,82 @@ describe("the editor strip in spexr.css", () => {
 type Theme = "dark" | "light";
 const neutrals = kitNeutrals.products.spexr as unknown as Record<Theme, Record<string, string>> & { accent: Record<Theme, string> };
 
-// The owner's rules: text at least 4.5:1, a state indicator at least 3:1.
+/** The kit neutral a role var names, as neutrals.json keys it (the roles the strip's rules use). */
+function neutral(theme: Theme, role: string): string {
+  const key = {
+    "slc-text": "text-primary",
+    "slc-text-secondary": "text-secondary",
+    "slc-text-muted": "text-muted",
+    "slc-surface": "bg-surface",
+    "slc-raised": "bg-surface-raised",
+    "slc-tile": "bg-tile",
+  }[role];
+  expect(key, `no neutral for --${role}`).toBeDefined();
+  return neutrals[theme][key!]!;
+}
+
+/** The role a rule's `property:` names as `var(--role)`, read off the CSS the strip ships. */
+function roleOf(selector: string, property: string): string {
+  const m = new RegExp(`(?:^|[\\s;{])${property}:\\s*var\\(--([a-z-]+)\\)`).exec(rule(selector));
+  expect(m, `${property} in ${selector}`).not.toBeNull();
+  return m![1]!;
+}
+
+/** A colour mixed `pct`% of `top` over `ground`, as `color-mix(in srgb, top pct%, transparent)` over it. */
+function wash(top: string, ground: string, pct: number): string {
+  const c = (hex: string, i: number): number => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16);
+  return `#${[0, 1, 2].map((i) => Math.round(c(ground, i) + (c(top, i) - c(ground, i)) * (pct / 100)).toString(16).padStart(2, "0")).join("")}`;
+}
+
+// The owner's rules: text at least 4.5:1, a state indicator or boundary at least 3:1. Each ink is the role the CSS above names.
 describe.each(["dark", "light"] as const)("the editor strip's inks on %s", (theme) => {
-  const n = (key: string): string => neutrals[theme][key]!;
-  // Grounds: an unfocused tab sits on the island's surface or raised fill, the current tab is a tile; the breadcrumbs lie on raised.
-  const GROUNDS = ["bg-surface", "bg-surface-raised", "bg-tile"] as const;
+  const n = (role: string): string => neutral(theme, role);
+  // The unfocused tabs and the crumbs sit on the island's surface or raised fill (the lit tint is the glow at 7%, which does not move the ratio past the margin below), the current tab is a tile.
+  const PLAIN = ["slc-surface", "slc-raised"] as const;
+  const TILE = ["slc-surface", "slc-raised", "slc-tile"] as const;
 
-  it("reads the breadcrumb meta and the crumbs (muted ink) at 4.5:1 on the island's grounds", () => {
-    for (const ground of ["bg-surface", "bg-surface-raised"] as const) expect(contrastRatio(n("text-muted"), n(ground)), ground).toBeGreaterThanOrEqual(4.5);
+  it("reads the crumbs, the meta and a resting tab's label at 4.5:1 on the island's grounds", () => {
+    const crumb = roleOf("#theia-main-content-panel .theia-breadcrumbs .theia-breadcrumb-item", "color");
+    const meta = roleOf("#theia-main-content-panel .spexr-breadcrumbs-meta", "color");
+    const tab = roleOf(":root:not([data-sl-theme=\"high-contrast\"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab", "color");
+    for (const role of [crumb, meta, tab]) for (const ground of PLAIN) expect(contrastRatio(n(role), n(ground)), `--${role} on ${ground}`).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("reads the current crumb and tab label (primary ink) at 4.5:1", () => {
-    for (const ground of GROUNDS) expect(contrastRatio(n("text-primary"), n(ground)), ground).toBeGreaterThanOrEqual(4.5);
+  it("reads the current crumb and the current tab's label at 4.5:1", () => {
+    const current = roleOf("#theia-main-content-panel .theia-breadcrumbs .theia-breadcrumb-item:last-of-type", "color");
+    for (const ground of TILE) expect(contrastRatio(n(current), n(ground)), `--${current} on ${ground}`).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("holds the dirty dot, a state indicator, at 3:1: muted on every tab ground, the accent on the current tile", () => {
-    for (const ground of GROUNDS) expect(contrastRatio(n("text-muted"), n(ground)), `muted on ${ground}`).toBeGreaterThanOrEqual(3);
-    expect(contrastRatio(neutrals.accent[theme], n("bg-tile")), "accent on tile").toBeGreaterThanOrEqual(3);
+  it("reads a hovered tab's label and a hovered crumb's at 4.5:1 on the hover wash", () => {
+    const hover = roleOf(":root:not([data-sl-theme=\"high-contrast\"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab:hover", "color");
+    const crumbHover = roleOf("#theia-main-content-panel .theia-breadcrumbs .theia-breadcrumb-item:hover", "color");
+    for (const ground of PLAIN) for (const role of [hover, crumbHover]) expect(contrastRatio(n(role), wash(n("slc-text"), n(ground), 5)), `--${role} on the wash over ${ground}`).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("holds the hover cross at 3:1, on the tab's ground under the cross's own 8% wash", () => {
+    const cross = roleOf(`${MAIN}:is(:hover, :focus-within) > .lm-TabBar-tabCloseIcon::before`, "color");
+    for (const ground of TILE) expect(contrastRatio(n(cross), wash(n("slc-text"), wash(n("slc-text"), n(ground), 5), 8)), `--${cross} on ${ground}`).toBeGreaterThanOrEqual(3);
+  });
+
+  it("holds the dirty dot, a state indicator, at 3:1: the muted role on every tab ground, the accent on the current tile", () => {
+    const muted = /--spexr-tab-dot:\s*var\(--([a-z-]+)\)/.exec(rule(`${MAIN}.theia-mod-dirty`))![1]!;
+    const accent = /--spexr-tab-dot:\s*var\(--([a-z-]+)\)/.exec(rule(`${MAIN}.theia-mod-dirty.lm-mod-current`))![1]!;
+    expect(accent).toBe("slc-accent");
+    for (const ground of TILE) expect(contrastRatio(n(muted), n(ground)), `--${muted} on ${ground}`).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(neutrals.accent[theme], n("slc-tile")), "accent on tile").toBeGreaterThanOrEqual(3);
+  });
+
+  it("holds the current tab's seam at 3:1 on the tile: the muted ink in a group without focus, as in the focused one's accent role", () => {
+    expect(contrastRatio(n("slc-text-muted"), n("slc-tile")), "muted seam on tile").toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(neutrals.accent[theme], n("slc-tile")), "accent seam on tile").toBeGreaterThanOrEqual(3);
   });
 });
 
 describe("the Agents tab's place (S6c, E1)", () => {
-  it("is opened at restore without being brought to the front, and pinned last", () => {
-    const view = read("../darkfactory/darkfactory-view-contribution.ts");
-    expect(view).toMatch(/override async openView/);
-    expect(view).toMatch(/args\.reveal && !args\.activate \? \{ \.\.\.args, reveal: false \}/);
+  it("is attached behind the editors at a restore, by an opt-out the registry reads, and pinned last", () => {
+    expect(read("../darkfactory/darkfactory-view-contribution.ts")).toContain("readonly attachBehind = true;");
+    expect(read("../darkfactory/darkfactory-view-contribution.ts")).not.toContain("override async openView");
+    expect(read("../shell/spexr-shell-layout-contribution.ts")).toContain("view.openView(restoreOptions(view))");
     expect(read("../shell/spexr-shell-layout-contribution.ts")).toContain("TRAILING_PINNED_IDS = [DARKFACTORY_VIEW_ID]");
   });
 });

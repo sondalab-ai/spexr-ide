@@ -17,7 +17,7 @@ export interface SceneResult {
   /** Infinite animations paused at t=0 before the capture. */
   readonly pausedLoops: number;
   /** Main tab strips scrolled by script so the current tab comes first; the PNG is not untouched spexr there. */
-  readonly alignedStrips: number;
+  readonly alignedStrips: number | null;
   /** What the fixture extension reported, when the scene goes through it. */
   readonly ack?: SceneAck;
 }
@@ -331,5 +331,5 @@ export async function captureCrop(
   const bottom = Math.max(...rows.map((r) => r.y + r.h));
   const clip = { x: Math.floor(x), y: Math.floor(y), width: Math.ceil(right) - Math.floor(x), height: Math.ceil(bottom) - Math.floor(y) };
   fs.writeFileSync(file, await page.screenshot({ animations: "allow", clip }));
-  return { attempts: 1, stable: true, lastDiff: null, pausedLoops: 0, alignedStrips: 0 };
+  return { attempts: 1, stable: true, lastDiff: null, pausedLoops: 0, alignedStrips: null };
 }
