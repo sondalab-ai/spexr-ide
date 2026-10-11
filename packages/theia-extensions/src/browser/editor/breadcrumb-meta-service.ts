@@ -10,6 +10,7 @@ import { breadcrumbMeta } from "./breadcrumb-model.js";
 import { BreadcrumbStats } from "./breadcrumb-stats.js";
 import { headSignature, repoRootFor } from "./diff-budget.js";
 import { diffStats } from "./diff-stats.js";
+import { HeadShaCache } from "./head-sha-cache.js";
 import { UriWatchers } from "./uri-watchers.js";
 
 /** How long an edit settles before the diff is read again. */
@@ -48,7 +49,14 @@ export class SpexrBreadcrumbMetaService implements FrontendApplicationContributi
   private readonly dirty = new Map<string, boolean>();
   private readonly changed = new Emitter<string>();
   private readonly toDispose = new DisposableCollection();
-  private readonly shas = new Map<string, string>();
+  private readonly shas = new HeadShaCache(async (root) => {
+    try {
+      return (await this.git.getLog(root, 1))[0]?.hash ?? "";
+    } catch {
+      // No commit yet, or git failed: the signature then rests on the status alone.
+      return "";
+    }
+  });
   private stats!: BreadcrumbStats;
 
   /** Fires with the URI whose meta changed. */
@@ -65,7 +73,7 @@ export class SpexrBreadcrumbMetaService implements FrontendApplicationContributi
   onStart(): void {
     this.stats = new BreadcrumbStats({
       roots: () => this.registry.all.map((p) => p.root).filter((r): r is string => !!r),
-      signature: async (root, rel) => headSignature(this.registry.all.find((p) => p.root === root)?.lastStatus, rel, await this.headSha(root)),
+      signature: async (root, rel) => headSignature(this.registry.all.find((p) => p.root === root)?.lastStatus, rel, await this.shas.get(root)),
       readHead: (root, rel) => this.git.getFileAtRevision(root, rel, "HEAD"),
       diff: diffStats,
     });
@@ -73,7 +81,7 @@ export class SpexrBreadcrumbMetaService implements FrontendApplicationContributi
     this.toDispose.push(this.editors.onCreated((widget) => this.watch(widget)));
     this.toDispose.push(
       this.registry.onDidChangeStatus(() => {
-        // Any status event may follow a commit, a reset or a rebase: HEAD's sha is read again at the next refresh.
+        // Any status event may follow a commit, a reset or a rebase: HEAD's sha is read afresh.
         this.shas.clear();
         this.watchers.uris().forEach((uri) => this.refreshUri(uri));
       }),
@@ -83,20 +91,6 @@ export class SpexrBreadcrumbMetaService implements FrontendApplicationContributi
   onStop(): void {
     for (const uri of this.watchers.uris()) for (const widget of this.watchers.widgets(uri)) this.unwatch(uri, widget);
     this.toDispose.dispose();
-  }
-
-  /** HEAD's sha in a repository, read once after each status event (the log's newest entry; "" when there is none). */
-  private async headSha(root: string): Promise<string> {
-    const known = this.shas.get(root);
-    if (known !== undefined) return known;
-    let sha = "";
-    try {
-      sha = (await this.git.getLog(root, 1))[0]?.hash ?? "";
-    } catch {
-      // No commit yet, or git failed: the signature then rests on the status alone.
-    }
-    this.shas.set(root, sha);
-    return sha;
   }
 
   /** Follows an editor: its own subscriptions (so closing it leaves the others' alone), and the file's shared state. */
