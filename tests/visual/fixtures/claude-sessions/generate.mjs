@@ -241,12 +241,14 @@ function todos(items) {
   todo(plan("completed", "completed", "in_progress"), 450);
 
   // The last response: prose, then the audit, which has not answered yet. Its
-  // 1,260 output tokens over the 1.05 s since the previous result make ~1.2k tok/s.
+  // 90 output tokens over the 1.05 s since the previous result make ~86 tok/s,
+  // a rate a model really has (the demo's 1.2k is not one; the pane reports
+  // what the transcript says).
   const audit = s.use("Bash", { command: "pnpm sl-audit", description: "Run the audit" });
   s.respond([
     { type: "text", text: "All 14 tests pass and the p95 holds. Running the audit for the last finding." },
     audit.block,
-  ], { outputTokens: 1260, gaps: [1020, 30] });
+  ], { outputTokens: 90, gaps: [1020, 30] });
 
   if (s.tools !== 14) throw new Error(`refactor: ${s.tools} tools, want 14`);
   s.write("refactor-the-audit.jsonl");

@@ -130,15 +130,15 @@ describe("Refactor the audit", () => {
     expect(last.input.command).toBe("pnpm sl-audit");
   });
 
-  it("answers about 1.2k tokens a second on its last response", () => {
+  it("answers about 86 tokens a second on its last response", () => {
     const final = entries.filter((e) => e.message?.role === "assistant").slice(-2);
     const id = final[1]!.message.id;
     expect(final[0]!.message.id).toBe(id);
     const before = entries.filter((e) => e.message?.role === "user").pop()!;
     const seconds = (Date.parse(final[1]!.timestamp) - Date.parse(before.timestamp)) / 1000;
     const rate = final[1]!.message.usage.output_tokens / seconds;
-    expect(rate).toBeGreaterThan(1150);
-    expect(rate).toBeLessThan(1250);
+    expect(rate).toBeGreaterThan(80);
+    expect(rate).toBeLessThan(92);
   });
 });
 

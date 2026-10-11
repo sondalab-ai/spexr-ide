@@ -83,9 +83,9 @@ describe("buildAgentPaneSnapshot on the parity fixture", () => {
     ]);
   });
 
-  it("reads about 1.2k tokens a second off the last response", () => {
-    expect(snap.tokPerSec).toBeGreaterThan(1150);
-    expect(snap.tokPerSec).toBeLessThan(1250);
+  it("reads about 86 tokens a second off the last response (a realistic rate, not the demo's 1.2k)", () => {
+    expect(snap.tokPerSec).toBeGreaterThan(80);
+    expect(snap.tokPerSec).toBeLessThan(92);
   });
 
   it("reads the permission mode from the standalone record", () => {
@@ -118,7 +118,7 @@ describe("tolerance", () => {
   it("does not need originalFile or structuredPatch on an Edit result", () => {
     const entries = [prompt("go"), call("t1", "Edit", { file_path: "/a/b.ts" }), result("t1", "updated", { filePath: "/a/b.ts" })];
     const s = buildAgentPaneSnapshot(entries, { sessionId: "x" });
-    expect(s.turn!.tools).toEqual([{ id: "t1", name: "Edit", verb: "Edit", target: "b.ts", state: "done", durationMs: 200 }]);
+    expect(s.turn!.tools).toEqual([{ id: "t1", name: "Edit", verb: "Edit", target: "b.ts", path: "/a/b.ts", state: "done", durationMs: 200 }]);
     expect(s.turn!.diff).toBeUndefined();
   });
 
@@ -275,13 +275,15 @@ describe("review regressions", () => {
   it("keeps a response's rate sane when its blocks are apart (a parallel tool call, its results, another block)", () => {
     const entries = [user(0, "go"), msg("m", 1, [use("a")]), toolResult(1.001, "a"), msg("m", 1.002, [use("b")]), toolResult(1.003, "b")];
     const rate = tokPerSecOf(entries);
-    expect(rate === undefined || rate <= 2000).toBe(true);
+    expect(rate === undefined || rate <= 500).toBe(true);
     // The group is read across the gap: from the prompt to the response's last block.
     expect(tokPerSecOf([user(0, "go"), msg("m", 1, [use("a")]), toolResult(1.5, "a"), msg("m", 2, [use("b")], 400)])).toBe(200);
   });
 
-  it("drops a rate no model reaches", () => {
+  it("drops a rate no model reaches: over 500 tokens a second", () => {
     expect(tokPerSecOf([user(0, "go"), msg("m", 0.01, [{ type: "text", text: "x" }], 5000)])).toBeUndefined();
+    expect(tokPerSecOf([user(0, "go"), msg("m", 1, [{ type: "text", text: "x" }], 600)])).toBeUndefined();
+    expect(tokPerSecOf([user(0, "go"), msg("m", 1, [{ type: "text", text: "x" }], 400)])).toBe(400);
   });
 
   it("ignores a subagent's response when timing the session's", () => {
@@ -358,5 +360,22 @@ describe("review regressions", () => {
     const b = buildAgentPaneSnapshot([...entries, toolResult(2, "a")], { sessionId: "x" });
     expect(a.turn!.prose).toBeUndefined();
     expect(diffSnapshots(a, b)).toMatchObject({ kind: "delta", delta: { tools: [{ id: "a", state: "done" }] } });
+  });
+});
+
+describe("a tool's path", () => {
+  const at = (cwd: string, file: string): PaneEntry[] => [
+    { timestamp: "2026-10-09T10:00:00Z", message: { role: "user", content: "go" } },
+    { timestamp: "2026-10-09T10:00:01Z", cwd, message: { id: "m", role: "assistant", content: [{ type: "tool_use", id: "t", name: "Read", input: { file_path: file } }] } },
+  ];
+
+  it("is relative to the directory the call was made in when the file is inside it, and absolute otherwise", () => {
+    expect(buildAgentPaneSnapshot(at("/w/proj", "/w/proj/src/probe/cache.ts"), { sessionId: "x" }).turn!.tools![0]).toMatchObject({ target: "cache.ts", path: "src/probe/cache.ts" });
+    expect(buildAgentPaneSnapshot(at("/w/proj", "/etc/hosts"), { sessionId: "x" }).turn!.tools![0]).toMatchObject({ target: "hosts", path: "/etc/hosts" });
+    expect(buildAgentPaneSnapshot(at("/w/proj", "/w/proj-other/a.ts"), { sessionId: "x" }).turn!.tools![0]!.path).toBe("/w/proj-other/a.ts");
+  });
+
+  it("is left out when it is the target, as for a bare name or a command", () => {
+    expect(buildAgentPaneSnapshot(at("/w/proj", "a.ts"), { sessionId: "x" }).turn!.tools![0]!.path).toBeUndefined();
   });
 });

@@ -20,8 +20,10 @@ export interface PaneTool {
   name?: string;
   /** What the pane says: `Read`, `Edit`, `Run`. */
   verb?: string;
-  /** The file, command or pattern the verb acts on. */
+  /** The file, command or pattern the verb acts on; a file by its name. */
   target?: string;
+  /** The file's path, relative to the workspace when it lies inside it: the full name behind `target`. */
+  path?: string;
   state: PaneToolState;
   /**
    * Result time minus call time. A tool that waited on a permission prompt
