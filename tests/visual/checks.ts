@@ -561,7 +561,7 @@ export function checkLeftIsland(island: LeftIsland): string[] {
   if (!island.explorerShown) problems.push("left island: the Explorer is not in front in the base scene");
   if (island.width === null) problems.push("left island: not laid out");
   else if (!near(island.width, EXPLORER_ISLAND, 1)) problems.push(`left island: ${island.width}px wide, want ${EXPLORER_ISLAND} (the Explorer in front)`);
-  if (island.sectionHeads.length !== 1 || island.sectionHeads[0] !== "probe-engine") problems.push(`left island: the Explorer's visible section headers are [${island.sectionHeads.join(", ")}], want [probe-engine]`);
+  if (island.sectionHeads.join("|") !== "probe-engine|Sessions") problems.push(`left island: the Explorer's visible section headers are [${island.sectionHeads.join(", ")}], want [probe-engine, Sessions] (the workspace folder, then S6j's Sessions part)`);
   if (island.smartSearchInExplorer !== 0) problems.push(`left island: ${island.smartSearchInExplorer} Smart Search widget(s) inside the Explorer, want none (it is in the Search view)`);
   return problems;
 }
