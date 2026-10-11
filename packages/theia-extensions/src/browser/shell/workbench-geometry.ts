@@ -36,6 +36,14 @@ export const WORKBENCH = {
   tab: 28,
   /** The breadcrumbs under the editor's tabs: 32 (Lumen 30), so the code starts where Lumen's does (38 + 30 = 36 + 32). */
   breadcrumbs: 32,
+  /** A tile tab's padding at the sides: 12 (Lumen 11.2). */
+  tabPaddingInline: 12,
+  /** A tab's close slot, where the dirty dot and the hover cross sit: 16, always reserved so a hover moves nothing. */
+  tabCloseSlot: 16,
+  /** The split button in the strip: 24, the head tool's size (Lumen 26). */
+  tabSplitButton: 24,
+  /** The breadcrumbs' padding at the sides, and the meta's distance from the row's end: Lumen's 16. */
+  breadcrumbsInset: 16,
   /** A file tree's row: the kit's 24 (Lumen 26). */
   treeRow: 24,
   /** A tree level's indent: Lumen's 16. */
@@ -54,6 +62,18 @@ export const WORKBENCH = {
   gitLetter: 12,
   /** A toast's distance from the window's bottom edge: Lumen's 48. */
   toastOffset: 48,
+} as const;
+
+/**
+ * The editor strip's shapes (S6c): a dot and a type size, which are shape and
+ * not spacing, so they keep Lumen's own numbers and sit off the 4px grid, as
+ * the kit's 6px tab dot does.
+ */
+export const EDITOR_STRIP_SHAPE = {
+  /** The dirty dot on a tab: the kit's `.sl-tabs__dot`, Lumen's 6. */
+  tabDot: 6,
+  /** The breadcrumb meta ("+14 −3 · not saved"), in the mono: Lumen's 11px. */
+  breadcrumbsMetaSize: 11,
 } as const;
 
 /**
