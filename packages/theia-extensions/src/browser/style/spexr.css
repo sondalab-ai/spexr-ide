@@ -821,10 +821,12 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    chip, 16px high, in the mono at 10px, as Lumen's ".ide-ptab__n". The
    Problems chip takes its tone from the worst severity (the contribution
    marks the tab with data-severity): the warning tone on its 18% wash for
-   warnings alone, the danger tone for any error, the accent. The
-   text is the tone itself on that wash: at least 4.5:1 on the tab's ground
-   in both themes (activity-status-style / bottom-panel-style tests). The
-   panel's buttons ("+", the close ×) are 24px icon buttons. */
+   warnings alone, the danger tone for any error, and with neither the accent
+   text on a wash of the accent at 12%, not the demo's 18%: at 18% the accent
+   text reads 4.38:1 on the dark theme's current tile, under the 4.5:1 floor
+   (bottom-panel-style.test.ts shows both numbers). The text is the tone itself
+   on its wash, at least 4.5:1 on the tab's ground in both themes. The panel's
+   buttons ("+", the close ×) are 24px icon buttons. */
 :root:not([data-sl-theme="high-contrast"]) #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab .theia-badge-decorator-horizontal {
   box-sizing: border-box;
   min-width: 16px;

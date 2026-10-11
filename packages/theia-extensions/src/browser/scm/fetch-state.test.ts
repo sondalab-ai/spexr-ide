@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { BACKGROUND_FETCH_TIMEOUT_MS, FetchCoordinator, FetchQueue, MANUAL_FETCH_TIMEOUT_MS, withTimeout, type FetchDeps } from "./fetch-state.js";
+import { BACKGROUND_FETCH_TIMEOUT_MS, FetchCoordinator, MANUAL_SUCCESS_TICKS, MANUAL_SUCCESS_TTL_MS, applyStatus, FetchQueue, MANUAL_FETCH_TIMEOUT_MS, withTimeout, type FetchDeps } from "./fetch-state.js";
 
 const own = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
 
 /** A coordinator over fakes: `manual` and `background` are what the two fetches do, `events` counts announcements. */
-function make(over: Partial<{ manual: () => Promise<void>; background: () => Promise<void>; timeouts: FetchDeps["timeouts"] }> = {}) {
+function make(over: Partial<{ manual: () => Promise<void>; background: () => Promise<void>; timeouts: FetchDeps["timeouts"]; now: () => number }> = {}) {
   const state = { events: 0, manual: async () => undefined, background: async () => undefined, ...over } as { events: number; manual: () => Promise<void>; background: () => Promise<void> };
   const fetches = new FetchCoordinator({
     runManual: () => state.manual(),
     runBackground: () => state.background(),
     changed: () => void state.events++,
     ...(over.timeouts ? { timeouts: over.timeouts } : {}),
+    ...(over.now ? { now: over.now } : {}),
   });
   return { fetches, state };
 }
@@ -48,6 +49,38 @@ describe("the fetch outcome (S6d, S3)", () => {
     await fetches.backgroundFetch();
     expect(fetches.outcome).toBe("ok");
     expect(state.events).toBe(2); // failed, then ok: the ticks announced nothing
+  });
+
+  it("spends a manual success after enough failed background ticks, so \"synced\" does not outlive the network", async () => {
+    const { fetches } = make({ background: fails });
+    await fetches.manualFetch();
+    for (let tick = 1; tick < MANUAL_SUCCESS_TICKS; tick++) {
+      await fetches.backgroundFetch();
+      expect(fetches.outcome).toBe("ok");
+    }
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("failed");
+  });
+
+  it("spends a manual success after its time as well, at the next background failure", async () => {
+    let clock = 0;
+    const { fetches } = make({ background: fails, now: () => clock });
+    await fetches.manualFetch();
+    clock = MANUAL_SUCCESS_TTL_MS - 1;
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("ok");
+    clock = MANUAL_SUCCESS_TTL_MS;
+    await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("failed");
+  });
+
+  it("starts the count again with each manual success", async () => {
+    const { fetches } = make({ background: fails });
+    await fetches.manualFetch();
+    for (let i = 0; i < MANUAL_SUCCESS_TICKS - 1; i++) await fetches.backgroundFetch();
+    await fetches.manualFetch();
+    for (let i = 0; i < MANUAL_SUCCESS_TICKS - 1; i++) await fetches.backgroundFetch();
+    expect(fetches.outcome).toBe("ok");
   });
 
   it("lets a background success end the override, so a later background failure counts again", async () => {
@@ -182,5 +215,32 @@ describe("withTimeout", () => {
       failure = (err as Error).message;
     }
     expect(failure).toBe("Fetch timed out after 0 s");
+  });
+});
+
+describe("a status arriving (S6d)", () => {
+  const same = (a: { branch: string; n: number } | undefined, b: { branch: string; n: number }): boolean => a?.branch === b.branch && a.n === b.n;
+
+  it("stores the new status first and resets the fetch outcome after it, so a listener sees the new branch", () => {
+    const log: string[] = [];
+    let held: { branch: string; n: number } | undefined = { branch: "main", n: 1 };
+    const stored = applyStatus(held, { branch: "dev", n: 1 }, same, {
+      store: (next) => {
+        held = next;
+        log.push(`store ${next.branch}`);
+      },
+      resetFetch: () => log.push(`reset, held is ${held?.branch}`),
+    });
+    expect(stored).toBe(true);
+    expect(log).toEqual(["store dev", "reset, held is dev"]);
+  });
+
+  it("does not reset for a change on the same branch, nor for the first status, and does nothing for an identical one", () => {
+    const log: string[] = [];
+    const hooks = { store: () => void log.push("store"), resetFetch: () => void log.push("reset") };
+    expect(applyStatus({ branch: "main", n: 1 }, { branch: "main", n: 2 }, same, hooks)).toBe(true);
+    expect(applyStatus(undefined, { branch: "main", n: 1 }, same, hooks)).toBe(true);
+    expect(applyStatus({ branch: "main", n: 1 }, { branch: "main", n: 1 }, same, hooks)).toBe(false);
+    expect(log).toEqual(["store", "store"]);
   });
 });
