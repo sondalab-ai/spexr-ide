@@ -86,7 +86,7 @@ export class SpexrInlineDiagnosticsContribution implements FrontendApplicationCo
     return {
       columns,
       lineCount: model?.getLineCount() ?? 0,
-      lineLength: (line) => (model && line <= model.getLineCount() ? displayWidth(model.getLineContent(line), tabSize) : 0),
+      lineLength: (line) => (model && line <= model.getLineCount() ? displayWidth(model.getLineContent(line), tabSize, columns) : 0),
     };
   }
 

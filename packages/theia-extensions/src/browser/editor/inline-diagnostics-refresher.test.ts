@@ -84,26 +84,20 @@ describe("InlineDiagnosticsRefresher", () => {
     expect(e.applied).toHaveLength(1);
   });
 
-  it("never waits longer than MAX_WAIT_MS from the first change of a burst, however it keeps coming", () => {
+  it("never waits longer than MAX_WAIT_MS from the first change of a burst, however it keeps coming, and goes on refreshing through a long burst", () => {
     const e = editor("a", "file:///a");
     const { r, clock } = setup([e]);
+    const appliedAt: number[] = [];
+    e.apply = () => void appliedAt.push(clock.t);
+    // A burst that never pauses for REFRESH_MS: a change every 150ms for 6s, each one changing what would be drawn.
     for (let i = 0; i < 40; i++) {
+      e.messages = [`warning ${i}`];
       r.schedule();
       clock.advance(150);
     }
-    expect(e.applied.length).toBeGreaterThanOrEqual(1);
-    expect(clock.t).toBeLessThanOrEqual(6000);
-    // The first refresh came by the ceiling, not after the burst ended.
-    const first = new Clock();
-    const e2 = editor("b", "file:///b");
-    const s2 = new InlineDiagnosticsRefresher({ editors: () => [e2], enabled: () => true, warn: () => undefined }, first);
-    let appliedAt: number | undefined;
-    e2.apply = () => void (appliedAt ??= first.t);
-    for (let i = 0; i < 20; i++) {
-      s2.schedule();
-      first.advance(150);
-    }
-    expect(appliedAt).toBeLessThanOrEqual(MAX_WAIT_MS);
+    expect(appliedAt[0]).toBeLessThanOrEqual(MAX_WAIT_MS);
+    expect(appliedAt.length).toBeGreaterThanOrEqual(5);
+    for (let i = 1; i < appliedAt.length; i++) expect(appliedAt[i]! - appliedAt[i - 1]!).toBeLessThanOrEqual(MAX_WAIT_MS + 150);
   });
 
   it("decorates only the editors showing, and skips a marker change for a file no editor shows", () => {
@@ -129,6 +123,20 @@ describe("InlineDiagnosticsRefresher", () => {
     e.messages = ["a warning", "another"];
     r.refresh();
     expect(e.applied).toHaveLength(2);
+  });
+
+  it("draws again when only the part of a message past the chip's cut changed: the hover has the whole of it", () => {
+    const e = editor("a", "file:///a", ["Promise returned from cache.write is not awaited here, at all: first version"]);
+    e.layout = () => ({ columns: 40, lineCount: 50, lineLength: () => 5 });
+    const { r } = setup([e]);
+    r.refresh();
+    expect(e.applied).toHaveLength(1);
+    // The chip's text is the same (cut well before the change); the hover's is not.
+    e.messages = ["Promise returned from cache.write is not awaited here, at all: second version"];
+    r.refresh();
+    expect(e.applied).toHaveLength(2);
+    expect(e.applied[1]![0]!.text).toBe(e.applied[0]![0]!.text);
+    expect(e.applied[1]![0]!.full).toContain("second version");
   });
 
   it("clears the editors when the preference goes off, and draws them again when it comes back (fake timers)", () => {
