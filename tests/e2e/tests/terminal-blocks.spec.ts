@@ -17,9 +17,13 @@ interface BlockRead {
   readonly chip: string;
 }
 
-/** The marks the terminal met (data-spexr-blocks), for the failure message. */
+/** The marks the terminal that holds the focus met (data-spexr-blocks on its element), for the checks and the failure message. */
 async function marks(page: Page): Promise<string> {
-  return page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-spexr-blocks]")].map((e) => e.getAttribute("data-spexr-blocks")).join(" | "));
+  return page.evaluate(() => {
+    const own = document.activeElement?.closest("[data-spexr-blocks]");
+    const all = [...document.querySelectorAll<HTMLElement>("[data-spexr-blocks]")];
+    return (own ? [own as HTMLElement] : all).map((e) => e.getAttribute("data-spexr-blocks")).join(" | ");
+  });
 }
 
 /** The blocks in the terminal that holds the focus. */
