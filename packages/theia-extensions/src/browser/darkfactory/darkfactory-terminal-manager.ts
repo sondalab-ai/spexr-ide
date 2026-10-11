@@ -1,6 +1,7 @@
 import { injectable, inject } from "@theia/core/shared/inversify";
 import { PreferenceService } from "@theia/core/lib/common/preferences/preference-service";
 import { TerminalService } from "@theia/terminal/lib/browser/base/terminal-service";
+import { WorkspaceTrustService } from "@theia/workspace/lib/browser/workspace-trust-service";
 import { IShellTerminalServer } from "@theia/terminal/lib/common/shell-terminal-protocol";
 import type { TerminalWidget } from "@theia/terminal/lib/browser/base/terminal-widget";
 import {
@@ -70,6 +71,7 @@ export class SpexrDarkfactoryTerminalManager {
   @inject(TerminalService) private readonly terminalService!: TerminalService;
   @inject(PreferenceService) private readonly preferences!: PreferenceService;
   @inject(IShellTerminalServer) private readonly shellServer!: IShellTerminalServer;
+  @inject(WorkspaceTrustService) private readonly trust!: WorkspaceTrustService;
 
   private readonly widgets = new Map<string, TerminalWidget>();
   /** Key → OS process id of its terminal, recorded once the process has started. */
@@ -156,6 +158,19 @@ export class SpexrDarkfactoryTerminalManager {
     return this.create(sessionId, harness, harness.buildResumeArgs(sessionId, fork), projectPath, configDir);
   }
 
+  /**
+   * Whether Theia trusts the workspace. A session starts the agent CLI, which
+   * reads the folder's own instructions, settings and hooks, so none is started
+   * or re-attached in Restricted Mode.
+   */
+  async trusted(): Promise<boolean> {
+    try {
+      return await this.trust.getWorkspaceTrust();
+    } catch {
+      return false;
+    }
+  }
+
   private async create(
     key: string,
     harness: HarnessCore,
@@ -164,6 +179,7 @@ export class SpexrDarkfactoryTerminalManager {
     configDir: string,
   ): Promise<TerminalWidget | undefined> {
     if (!projectPath) return undefined;
+    if (!(await this.trusted())) return undefined;
     const dir = harness.id === "claude" ? this.resolveConfigDir(configDir, projectPath) : "";
     const plan = this.launchPlan(harness, dir, projectPath);
     const term = await this.terminalService.newTerminal({
@@ -248,6 +264,7 @@ export class SpexrDarkfactoryTerminalManager {
   ): Promise<TerminalWidget | undefined> {
     const existing = this.live(key);
     if (existing) return existing;
+    if (!(await this.trusted())) return undefined;
     const processId = await this.shellServer.getProcessId(stored.terminalId).catch(() => -1);
     if (processId !== stored.processId) return undefined;
     const term = await this.terminalService.newTerminal({

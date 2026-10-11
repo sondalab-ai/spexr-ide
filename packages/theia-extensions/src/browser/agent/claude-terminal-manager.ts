@@ -147,7 +147,8 @@ export class ClaudeTerminalManager {
     const existing = this.terminalService.getById(CLAUDE_TERMINAL_ID);
     if (existing) {
       // A terminal restored from the saved layout runs in the remembered folder.
-      if (target === this.agentRootUri() && (await isTerminalLive(existing))) {
+      // Only in a trusted workspace: an adopted terminal is a running agent the composer and the flows then write to.
+      if (target === this.agentRootUri() && (await this.isTrusted()) && (await isTerminalLive(existing))) {
         this.widget = existing;
         this.runningRoot = target;
         existing.setTitle(this.title(undefined, target));
@@ -594,14 +595,6 @@ export class ClaudeTerminalManager {
     await this.shell.revealWidget(term.id);
     await this.shell.activateWidget(term.id);
     if (this.placement === "left") await this.expandLeftPanel();
-  }
-
-  /**
-   * Send text to the terminal's stdin (e.g. a prompt followed by a newline).
-   * No-op when no terminal has been launched yet.
-   */
-  send(text: string): void {
-    this.widget?.sendText(text);
   }
 
   /** Whether a Claude session is running in the agent terminal now. */

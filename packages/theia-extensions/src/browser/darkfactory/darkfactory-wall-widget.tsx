@@ -86,6 +86,9 @@ import { Backdrop } from "../backdrop/backdrop.js";
 import { WorkingHold } from "./working-hold.js";
 
 /** How many top-priority sessions render as full cards; the rest are condensed rows. */
+/** Why a scheduled run is refused in Restricted Mode. */
+const SCHEDULE_UNTRUSTED = "Trust this workspace to run scheduled tasks.";
+
 const CARD_LIMIT = 10;
 
 /**
@@ -702,6 +705,8 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
    * shows a client-side one.
    */
   private async runSchedule(schedule: Schedule): Promise<ValidationProblem[]> {
+    // The backend launches the tasks unattended and cannot ask Theia about trust: this is the one entry, so it asks here.
+    if (!(await this.terminals.trusted())) return [{ field: "run", message: SCHEDULE_UNTRUSTED }];
     const launches = Object.fromEntries(
       schedule.tasks.map((t) => [t.id, this.terminals.resolveLaunch(t.harness, t.configDir ?? "", t.project)]),
     );
@@ -717,6 +722,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
   private async retryTask(scheduleId: string, taskId: string): Promise<ValidationProblem[]> {
     const task = this.scheduleSnapshot.schedules.find((s) => s.id === scheduleId)?.tasks.find((t) => t.id === taskId);
     if (!task) return [{ field: "run", message: "Unknown task." }];
+    if (!(await this.terminals.trusted())) return [{ field: "run", message: SCHEDULE_UNTRUSTED }];
     const launch = this.terminals.resolveLaunch(task.harness, task.configDir ?? "", task.project);
     const problems = await this.schedules.retry(scheduleId, taskId, launch);
     this.refreshSchedules();

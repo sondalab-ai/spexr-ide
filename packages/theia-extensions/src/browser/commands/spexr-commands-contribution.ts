@@ -546,7 +546,7 @@ export class SpexrCommandsContribution
       if (!folder) return;
       await this.applyStepExpert(step, uri);
       await this.claudeTerminal.ensureStarted(folder.root);
-      await this.sendAndSubmit(prompt.body);
+      await this.pasteToAgent(prompt.body);
       await this.claudeTerminal.reveal();
       await this.persistStep(uri, step);
       this.messages.info(`Sent ${WORKFLOW_STEP_LABEL[step]} prompt for ${spec.frontmatter.slug}.`);
@@ -1163,7 +1163,7 @@ export class SpexrCommandsContribution
       } else {
         await this.claudeTerminal.ensureStarted(rootUri);
       }
-      await this.sendAndSubmit(buildTodoHandoff(item));
+      await this.pasteToAgent(buildTodoHandoff(item));
       await this.claudeTerminal.reveal();
       this.messages.info(expert ? `Sent to ${expert.name}${note}.` : "Sent to the agent.");
     } catch (err) {
@@ -1386,22 +1386,28 @@ export class SpexrCommandsContribution
   }
 
   private async sendKickoff(prompt: string): Promise<void> {
-    await this.sendAndSubmit(prompt);
+    await this.pasteToAgent(prompt);
   }
 
   /**
-   * Type a prompt into the running session and submit it.
+   * Put a prompt in the running agent's input, for the person to send.
    *
-   * The claude TUI treats a single stdin chunk as a paste, so a trailing newline
-   * only inserts a line break instead of submitting. Send the text, then the
-   * Enter keystroke ("\r") separately once the paste has been processed, so the
-   * prompt actually runs without the user pressing Enter.
+   * The prompt is built from workspace content (a spec, a TODO, a check's
+   * output), which a cloned repository controls. So it goes in as one bracketed
+   * paste through the shared sanitiser (common/terminal-paste.ts: no escape
+   * can become a key, such as Shift+Tab) and is never followed by an Enter:
+   * the person reads it and presses Enter in the terminal, which is brought
+   * forward. Nothing is pasted in a workspace that is not trusted.
    */
-  private async sendAndSubmit(prompt: string): Promise<void> {
+  private async pasteToAgent(prompt: string): Promise<void> {
     await this.claudeTerminal.whenReady();
-    this.claudeTerminal.send(prompt);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    this.claudeTerminal.send("\r");
+    if (!(await this.claudeTerminal.isTrusted())) {
+      this.messages.info("Trust this workspace to send prompts to the agent.");
+      return;
+    }
+    this.claudeTerminal.pasteIntoAgent(prompt);
+    await this.claudeTerminal.reveal();
+    this.messages.info("Pasted into the agent: press Enter in the terminal to send.");
   }
 
   private async deactivateExpert(): Promise<void> {
@@ -1456,7 +1462,7 @@ export class SpexrCommandsContribution
       const folder = await this.agentFolderForSpec(uri);
       if (!folder) return;
       await this.claudeTerminal.ensureStarted(folder.root);
-      await this.sendAndSubmit(payload);
+      await this.pasteToAgent(payload);
       await this.claudeTerminal.reveal();
       this.messages.info(`Sent ${slug} to agent.`);
     } catch (err) {
@@ -1518,7 +1524,7 @@ export class SpexrCommandsContribution
       const folder = await this.agentFolderForSpec(uri);
       if (!folder) return;
       await this.claudeTerminal.ensureStarted(folder.root);
-      await this.sendAndSubmit(prompt);
+      await this.pasteToAgent(prompt);
       await this.claudeTerminal.reveal();
       this.messages.info(`Started retrospective for ${spec.frontmatter.slug}.`);
     } catch (err) {
@@ -1555,7 +1561,7 @@ export class SpexrCommandsContribution
       const folder = await this.agentFolderForSpec(uri);
       if (!folder) return;
       await this.claudeTerminal.ensureStarted(folder.root);
-      await this.sendAndSubmit(prompt);
+      await this.pasteToAgent(prompt);
       await this.claudeTerminal.reveal();
       const count = findings.length;
       this.messages.info(`Sent ${count} ${slug} finding${count === 1 ? "" : "s"} to agent.`);
