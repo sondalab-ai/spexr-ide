@@ -165,9 +165,15 @@ describe.each(["dark", "light"] as const)("the editor strip's inks on %s", (them
     expect(contrastRatio(neutrals.accent[theme], n("slc-tile")), "accent on tile").toBeGreaterThanOrEqual(3);
   });
 
-  it("holds the current tab's seam at 3:1 on the tile: the muted ink in a group without focus, as in the focused one's accent role", () => {
-    expect(contrastRatio(n("slc-text-muted"), n("slc-tile")), "muted seam on tile").toBeGreaterThanOrEqual(3);
-    expect(contrastRatio(neutrals.accent[theme], n("slc-tile")), "accent seam on tile").toBeGreaterThanOrEqual(3);
+  it("holds the current tab's seam at 3:1 on the tile: the ink the strip sets, muted in a group without the light and the seam role in the lit one", () => {
+    const seam = (selector: string): string => /--spexr-seam-ink:\s*var\(--([a-z-]+)\)/.exec(rule(selector))![1]!;
+    const resting = seam(':root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel .lm-TabBar');
+    const lit = seam(':root:not([data-sl-theme="high-contrast"]) #theia-main-content-panel.spexr-island[data-lit] .lm-TabBar.theia-tabBar-active');
+    expect(resting).toBe("slc-text-muted");
+    expect(lit).toBe("slc-seam");
+    // --slc-seam is the accent (the kit's seam role).
+    const ink = (role: string): string => (role === "slc-seam" ? neutrals.accent[theme] : n(role));
+    for (const role of [resting, lit]) expect(contrastRatio(ink(role), n("slc-tile")), `--${role} on the tile`).toBeGreaterThanOrEqual(3);
   });
 });
 

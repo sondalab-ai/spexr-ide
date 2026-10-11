@@ -39,37 +39,10 @@ export function visibleCrumbs<T extends { readonly label: string; readonly type:
   return crumbs.filter((crumb, i) => !(isOutlineEllipsis(crumb.label) && crumbs.slice(0, i).some((earlier) => earlier.type === crumb.type)));
 }
 
-/** A line range as the dirty diff reports it: `start` inclusive, `end` exclusive. */
-export interface LineSpan {
-  readonly start: number;
-  readonly end: number;
-}
-
-/** The part of a dirty-diff change the fold reads. */
-export interface DiffChange {
-  readonly previousRange: LineSpan;
-  readonly currentRange: LineSpan;
-}
-
 /** Lines added and removed against the committed revision. */
 export interface DiffStats {
   readonly added: number;
   readonly removed: number;
-}
-
-/**
- * Folds a dirty diff into lines added and removed, as `git diff --numstat`:
- * the current side's lines are added, the previous side's removed, so a
- * modified line counts once in each.
- */
-export function foldDiffStats(changes: readonly DiffChange[]): DiffStats {
-  let added = 0;
-  let removed = 0;
-  for (const change of changes) {
-    added += Math.max(0, change.currentRange.end - change.currentRange.start);
-    removed += Math.max(0, change.previousRange.end - change.previousRange.start);
-  }
-  return { added, removed };
 }
 
 /** The text appended after the stat when the editor holds unsaved edits. */

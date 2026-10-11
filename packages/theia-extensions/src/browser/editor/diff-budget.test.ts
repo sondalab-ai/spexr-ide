@@ -3,8 +3,8 @@ import { DIFF_BUDGET, headSignature, isNotInHead, linesOf, planDiff, repoRootFor
 
 const lines = (n: number, tag = "x"): string => Array.from({ length: n }, (_, i) => `${tag}${i}`).join("\n");
 
-describe("the diff budget (E7)", () => {
-  it("cuts the lines the texts share at their ends, which changes no count", () => {
+describe("the diff plan and its budget (E7)", () => {
+  it("cuts the lines the texts share at their ends, which changes no count of a line diff", () => {
     expect(trimCommon(["a", "b", "c", "d"], ["a", "X", "c", "d"])).toEqual({ previous: ["b"], current: ["X"] });
     expect(trimCommon(["a", "a"], ["a", "a", "a"])).toEqual({ previous: [], current: ["a"] });
     expect(trimCommon([], [])).toEqual({ previous: [], current: [] });
@@ -17,10 +17,10 @@ describe("the diff budget (E7)", () => {
     expect(planDiff("", lines(3000))).toEqual({ kind: "stats", stats: { added: 3000, removed: 0 } });
   });
 
-  it("diffs only the region that differs, so a one-line edit in a long file is cheap", () => {
+  it("hands on only the lines that differ, so a one-line edit in a long file is cheap", () => {
     const head = lines(10_000);
     const edited = head.replace("x5000\n", "CHANGED\n");
-    expect(planDiff(head, edited)).toEqual({ kind: "diff", previous: "x5000", current: "CHANGED" });
+    expect(planDiff(head, edited)).toEqual({ kind: "diff", previous: ["x5000"], current: ["CHANGED"] });
   });
 
   it("skips a rewrite over the line budget, which would block the UI thread", () => {
@@ -96,6 +96,16 @@ describe("the head signature", () => {
     const a = headSignature(status({ files: [{ path: "a.ts", unstagedState: "M" }] }), "a.ts");
     const b = headSignature(status({ files: [{ path: "a.ts", unstagedState: "M" }, { path: "other.ts", unstagedState: "M" }] }), "a.ts");
     expect(a).toBe(b);
-    expect(headSignature(undefined, "a.ts")).toBe("none");
+    expect(headSignature(undefined, "a.ts")).toBe("none|");
+  });
+});
+
+describe("the head signature carries HEAD's sha", () => {
+  const status = { branch: "main", ahead: 0, behind: 0, files: [] };
+
+  it("changes with a commit, a reset or a rebase that moves nothing else (no upstream, same branch, same file status)", () => {
+    expect(headSignature(status, "a.ts", "aaa")).not.toBe(headSignature(status, "a.ts", "bbb"));
+    expect(headSignature(undefined, "a.ts", "aaa")).not.toBe(headSignature(undefined, "a.ts", "bbb"));
+    expect(headSignature(status, "a.ts", "aaa")).toBe(headSignature(status, "a.ts", "aaa"));
   });
 });

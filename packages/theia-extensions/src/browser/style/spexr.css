@@ -876,12 +876,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 #theia-main-content-panel .theia-tabBar-breadcrumb-row .theia-breadcrumbs {
-  background-color: transparent;
-}
-
-#theia-main-content-panel .theia-tabBar-breadcrumb-row .theia-breadcrumbs {
   flex: 1 1 auto;
   min-width: 0;
+  background-color: transparent;
 }
 
 #theia-main-content-panel .theia-breadcrumbs .theia-breadcrumb-item::before {

@@ -6,7 +6,7 @@ function make(over: Partial<StatsDeps> = {}) {
   const state = { reads: 0, sig: "s1", heads: new Map<string, string>([["a.ts", "one\ntwo\n"]]) };
   const deps: StatsDeps = {
     roots: () => ["/repo"],
-    signature: () => state.sig,
+    signature: async () => state.sig,
     readHead: async (_root, rel) => {
       state.reads++;
       const text = state.heads.get(rel);
@@ -32,6 +32,20 @@ describe("the breadcrumb stats (E7)", () => {
     expect(state.reads).toBe(2);
   });
 
+  it("does not diff again for the same signature and text, as repeated status events ask", async () => {
+    let diffs = 0;
+    const { stats, state } = make({ diff: () => (diffs++, { added: 1, removed: 0 }) });
+    await stats.refresh("u", "/repo/a.ts", "same text");
+    await stats.refresh("u", "/repo/a.ts", "same text");
+    await stats.refresh("u", "/repo/a.ts", "same text");
+    expect(diffs).toBe(1);
+    await stats.refresh("u", "/repo/a.ts", "edited text");
+    expect(diffs).toBe(2);
+    state.sig = "s2";
+    await stats.refresh("u", "/repo/a.ts", "edited text");
+    expect(diffs).toBe(3);
+  });
+
   it("reports whether the stat changed", async () => {
     const { stats } = make();
     expect(await stats.refresh("u", "/repo/a.ts", "a\nb")).toBe(true);
@@ -45,10 +59,11 @@ describe("the breadcrumb stats (E7)", () => {
     let calls = 0;
     const { stats } = make({
       readHead: () => (++calls === 1 ? slow : Promise.resolve("fresh head")),
-      signature: () => `call-${calls}`,
+      signature: async () => `call-${calls}`,
       diff: (previous) => ({ added: previous === "fresh head" ? 1 : 99, removed: 0 }),
     });
     const first = stats.refresh("u", "/repo/a.ts", "x");
+    await new Promise((resolve) => setTimeout(resolve, 0)); // the first is now waiting on HEAD
     const second = stats.refresh("u", "/repo/a.ts", "x");
     expect(await second).toBe(true);
     release("old head");
