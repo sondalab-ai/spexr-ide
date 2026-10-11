@@ -409,7 +409,8 @@ export interface ActivityStatus {
 export async function probeActivityStatus(page: Page): Promise<ActivityStatus> {
   return page.evaluate(() => {
     const bars = [...document.querySelectorAll<HTMLElement>(".lm-TabBar.theia-app-sides")].filter((b) => b.getBoundingClientRect().x < 120);
-    const tiles = [...(bars[0]?.querySelectorAll<HTMLElement>(".lm-TabBar-tab") ?? [])].filter((t) => t.getBoundingClientRect().width > 0).map((t) => t.id.replace(/^shell-tab-/, ""));
+    const tiles = [...(bars[0]?.querySelectorAll<HTMLElement>(".lm-TabBar-tab") ?? [])].filter((t) => t.getBoundingClientRect().width > 0).map((t) => t.id.replace(/^shell-tab-/, ""))
+      .filter((id) => !id.endsWith("-hidden"));
     const ids = (area: string): string[] =>
       [...document.querySelectorAll<HTMLElement>(`#theia-statusBar .area.${area} > .element`)].filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.id.replace(/^status-bar-/, ""));
     return { tiles, left: ids("left"), right: ids("right") };
