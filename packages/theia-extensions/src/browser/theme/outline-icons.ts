@@ -2,10 +2,10 @@
  * The "spexr outline" icon theme's mapping (S6f, D10): Lumen draws a file and
  * a folder as a 14px outline glyph in the muted ink, the accent on the current
  * tab and the selected row. Two codicons stand for them, `file` and `folder`
- * (`folder-opened` takes the folder's place while it is expanded, in the style
- * sheet, since a label provider is not told the tree's state).
+ * (every directory is the one closed folder, as the demo draws it).
  *
- * Free of Theia, so the mapping is tested in plain node.
+ * Free of Theia's browser classes (it needs only the common `URI`), so the
+ * mapping is tested in plain node.
  */
 
 import URI from "@theia/core/lib/common/uri";
@@ -20,14 +20,14 @@ export type OutlineKind = "file" | "folder";
  * The codicon glyphs the two classes draw, pinned here (the codicon font is a
  * transitive dependency, not one to read the stylesheet of): the capture checks
  * the computed glyph against these, so a directory that is not the closed
- * folder (an expanded one swapped for `folder-opened`, \ueaf7) is seen.
+ * folder (the opened one is \ueaf7) is seen.
  */
 export const OUTLINE_GLYPH = { file: "\uea7b", folder: "\uea83" } as const;
 
-/** The class every glyph of the theme carries: the style sheet's hook for its size, ink and the opened folder. */
+/** The class every glyph of the theme carries: the style sheet's hook for its size and ink. */
 export const OUTLINE_ICON_CLASS = "spexr-outline-icon";
 
-/** The class that marks a folder's glyph, which the style sheet swaps for the opened one. */
+/** The class that marks a folder's glyph, which the capture finds the tree's folder rows by. */
 export const OUTLINE_FOLDER_CLASS = "spexr-outline-icon--folder";
 
 /**

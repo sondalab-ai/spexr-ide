@@ -435,9 +435,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    A tab's glyph is a 14px box centred on its label: Theia's own rule for a
    file icon in a horizontal bar (tabs.css, specificity 0,4,0) gives it a 20px
    minimum height and 8px of padding, which put it 3px high and 4px wide of
-   the demo's, so this is scoped under an id to outrank it. */
+   the demo's, so this is scoped under an id to outrank it. A tab's glyph is 8px
+   from its label, the tree's 4px (Lumen's ink gaps are 10-11 and 7). */
 :root {
   --spexr-tree-icon-gap: 4px;
+  --spexr-tab-icon-gap: 8px;
 }
 
 :root:not([data-sl-theme="high-contrast"]) .spexr-outline-icon {
@@ -461,7 +463,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   height: 14px;
   line-height: 14px;
   padding: 0;
-  margin-inline-end: var(--spexr-tree-icon-gap);
+  margin-inline-end: var(--spexr-tab-icon-gap);
 }
 
 /* Theia's activity-bar/tab badge (e.g. SCM changed-file count) is a fixed

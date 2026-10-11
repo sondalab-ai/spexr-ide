@@ -39,13 +39,26 @@ describe("the outline icons in spexr.css (S6f)", () => {
     expect(rule(`${NOT_HC} .theia-TreeNode .file-icon.spexr-outline-icon`)).toContain("margin-inline-end: var(--spexr-tree-icon-gap)");
   });
 
+  it("gives a tab's glyph its own gap, apart from the tree's", () => {
+    expect(css).toContain(`  --spexr-tab-icon-gap: ${WORKBENCH.tabIconGap}px;`);
+    expect(WORKBENCH.tabIconGap).toBeGreaterThan(WORKBENCH.treeIconGap);
+  });
+
+  it("puts the font-size rule and the box rule under the same not-high-contrast guard", () => {
+    for (const selector of [`${NOT_HC} .spexr-outline-icon`, `${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab .lm-TabBar-tabIcon.spexr-outline-icon`]) {
+      expect(css, selector).toContain(`${selector} {`);
+    }
+    // No rule of the theme's box sits outside the guard.
+    expect(css).not.toMatch(/\n(?!:root:not)[^\n{]*\.lm-TabBar-tabIcon\.spexr-outline-icon[^\n{]*\{/);
+  });
+
   it("is a 14px box centred on its label in a tab, outranking Theia's 20px minimum height and 8px of padding", () => {
     const tab = rule(`${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab .lm-TabBar-tabIcon.spexr-outline-icon`);
     expect(tab).toMatch(/width:\s*14px/);
     expect(tab).toMatch(/height:\s*14px/);
     expect(tab).toMatch(/min-height:\s*0/);
     expect(tab).toMatch(/padding:\s*0/);
-    expect(tab).toContain("margin-inline-end: var(--spexr-tree-icon-gap)");
+    expect(tab).toContain("margin-inline-end: var(--spexr-tab-icon-gap)");
     // Theia's rule has the weight (0,4,0); an id in ours outranks it.
     const theia = readFileSync(fileURLToPath(new URL("../../../../../node_modules/@theia/core/src/browser/style/tabs.css", import.meta.url)), "utf8");
     expect(theia).toMatch(/\.lm-TabBar\[data-orientation="horizontal"\] \.lm-TabBar-tabIcon\.file-icon/);
