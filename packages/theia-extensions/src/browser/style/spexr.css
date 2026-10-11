@@ -5656,13 +5656,16 @@ code {
   color: var(--slc-text);
 }
 
-/* Theia and Lumino clip a bottom-panel widget (overflow: hidden, by id and by class): the log scrolls. */
-#theia-bottom-content-panel .spexr-agent-log-widget.lm-Widget {
-  overflow: auto;
+.spexr-agent-log-widget {
   background: var(--sl-bg-surface);
 }
 
+/* The widget's own box is clipped by Theia and Lumino whatever its rule says, so the
+   scroller is the log inside it: as tall as the widget, scrolling past it. */
 .spexr-agent-log {
+  box-sizing: border-box;
+  height: 100%;
+  overflow-y: auto;
   padding: 16px;
 }
 

@@ -593,7 +593,7 @@ export interface AgentLogState {
 export async function probeAgentLog(page: Page): Promise<AgentLogState> {
   return page.evaluate(() => ({
     scroller: (() => {
-      const el = document.querySelector<HTMLElement>(".spexr-agent-log-widget");
+      const el = document.querySelector<HTMLElement>(".spexr-agent-log");
       if (!el) return null;
       const box = el.getBoundingClientRect();
       const last = [...el.querySelectorAll<HTMLElement>(".spexr-df-term__line")].pop()?.getBoundingClientRect();

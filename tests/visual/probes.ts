@@ -701,10 +701,10 @@ export const SESSIONS_REGIONS: readonly ShellRegion[] = [
   { key: "status.model", selector: "#status-bar-spexr-agent-model" },
 ];
 
-/** The Agent log (S6j): the panel, its scroller (whose edge the 16px gutter is measured from) and its lines. */
+/** The Agent log (S6j): the panel, its scroller (the log: the gutter is its padding) and its lines. */
 export const AGENT_LOG_REGIONS: readonly ShellRegion[] = [
   { key: "log.panel", selector: "#theia-bottom-content-panel" },
-  { key: "log.body", selector: ".spexr-agent-log-widget" },
+  { key: "log.body", selector: ".spexr-agent-log" },
   { key: "log.line", selector: ".spexr-agent-log .spexr-df-term__line" },
   { key: "log.time", selector: ".spexr-agent-log .spexr-df-term__time" },
 ];

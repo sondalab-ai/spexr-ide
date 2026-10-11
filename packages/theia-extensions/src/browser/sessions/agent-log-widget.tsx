@@ -35,6 +35,7 @@ export class AgentLogWidget extends ReactWidget {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private reads = 0;
   private stick = true;
+  private readonly scroller = React.createRef<HTMLDivElement>();
 
   constructor() {
     super();
@@ -50,11 +51,6 @@ export class AgentLogWidget extends ReactWidget {
   protected init(): void {
     this.toDispose.push(this.hub.onDidChange(() => this.schedule()));
     this.toDispose.push({ dispose: () => clearTimeout(this.timer) });
-    const onScroll = (): void => {
-      this.stick = this.node.scrollHeight - this.node.scrollTop - this.node.clientHeight <= STICK_PX;
-    };
-    this.node.addEventListener("scroll", onScroll);
-    this.toDispose.push({ dispose: () => this.node.removeEventListener("scroll", onScroll) });
     this.schedule();
   }
 
@@ -86,10 +82,8 @@ export class AgentLogWidget extends ReactWidget {
     super.onUpdateRequest(msg);
     // After React has committed and laid the new lines out: two frames on.
     const toEnd = (): void => {
-      if (!this.stick) return;
-      this.node.scrollTop = this.node.scrollHeight;
-      // The scroller may not be the widget's node: bring the last line into view whichever box scrolls.
-      this.node.querySelector(".spexr-df-term__line:last-child")?.scrollIntoView({ block: "end" });
+      const el = this.scroller.current;
+      if (el && this.stick) el.scrollTop = el.scrollHeight;
     };
     requestAnimationFrame(() => requestAnimationFrame(toEnd));
     setTimeout(toEnd, 100);
@@ -97,7 +91,14 @@ export class AgentLogWidget extends ReactWidget {
 
   protected render(): React.ReactNode {
     return (
-      <div className="spexr-agent-log">
+      <div
+        ref={this.scroller}
+        className="spexr-agent-log"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          this.stick = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
+        }}
+      >
         <FollowTranscript events={this.events} showTime />
       </div>
     );
