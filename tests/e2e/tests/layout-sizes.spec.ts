@@ -145,21 +145,26 @@ test.describe("the default layout's island sizes", () => {
     await dragLeftSash(page, 100);
     await expect.poll(async () => (await island(page, "left"))?.w, { timeout: 10_000 }).toBeCloseTo(364, 0);
     // The width is saved shortly after the drag (left-island-width.ts), not only at unload: wait for it in storage.
+    // Storage keys are per workspace (a prefix of the workspace URI) and the profile is shared by the tests, so
+    // the key of an earlier test's workspace may be there too: any key holding the dragged width will do.
     await expect
       .poll(
         () =>
           page.evaluate((view) => {
-            const key = Object.keys(window.localStorage).find((k) => k.endsWith(":spexr.leftIsland.widths"));
-            if (!key) return null;
-            try {
-              return (JSON.parse(window.localStorage.getItem(key) ?? "null") as Record<string, number> | null)?.[view] ?? null;
-            } catch {
-              return null;
-            }
+            const widths = Object.keys(window.localStorage)
+              .filter((k) => k.endsWith(":spexr.leftIsland.widths"))
+              .map((k) => {
+                try {
+                  return (JSON.parse(window.localStorage.getItem(k) ?? "null") as Record<string, number> | null)?.[view] ?? null;
+                } catch {
+                  return null;
+                }
+              });
+            return widths.includes(364);
           }, EXPLORER),
         { timeout: 10_000 },
       )
-      .toBe(364);
+      .toBe(true);
 
     // Theia stores the layout on unload and restores it on load.
     await page.reload();
