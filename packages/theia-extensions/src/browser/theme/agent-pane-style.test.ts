@@ -187,7 +187,7 @@ describe("the agent pane's sources", () => {
   it("builds the composer from the kit's parts: a pressed chip, a ghost Plan and a primary Send, both small, with a keycap", () => {
     const src = read("../agent-pane/agent-pane-composer.tsx");
     expect(src).toMatch(/className="sl-chip spexr-agent-composer__chip" aria-pressed=\{p\.chipPressed\}/);
-    expect(src).toMatch(/className="sl-btn sl-btn--ghost sl-btn--sm" aria-pressed=\{p\.planPressed\}/);
+    expect(src).toMatch(/className="sl-btn sl-btn--ghost sl-btn--sm"\s+aria-pressed=\{p\.planPressed\}/);
     expect(src).toMatch(/type="submit" className="sl-btn sl-btn--primary sl-btn--sm"/);
     expect(src).toMatch(/<kbd className="sl-kbd"[^>]*>\{"\u23ce"\}<\/kbd>/);
     expect(src).toMatch(/Trust this workspace to start the agent/);
