@@ -65,3 +65,29 @@ export function withSpexrBlocks<T extends ShellLaunch>(original: T, injected: T,
   }
   return injected;
 }
+
+/** The shells Theia's integration knows. */
+export type IntegratedShell = "bash" | "zsh" | undefined;
+
+/**
+ * What Theia's injector does, for when it did nothing because it did not find
+ * its own scripts: Theia only copies them next to its code in a bundled build,
+ * and a development run (compiled `lib`, no bundle) has them in the package's
+ * `src`. `dir` is where `bash/` and `zsh/` of Theia's scripts are.
+ *
+ * - bash: `--rcfile <its script>`, with the login flag taken out of the arguments (it conflicts with --rcfile);
+ * - zsh: its ZDOTDIR, THEIA_ZSH_DIR, and the user's ZDOTDIR to put back.
+ */
+export function theiaInjection<T extends ShellLaunch>(options: T, shell: IntegratedShell, dir: string, processZdotdir: string | undefined): T {
+  if (shell === "bash") {
+    const strip = (a: string | string[] | undefined): string[] | undefined => (typeof a === "string" ? a.trim().split(/\s+/) : a)?.filter((x) => x !== "-l" && x !== "--login");
+    return { ...options, args: ["--rcfile", `${dir}/bash/bash-integration.bash`, ...(strip(options.args) ?? [])] };
+  }
+  if (shell === "zsh") {
+    return {
+      ...options,
+      env: { ...options.env, ZDOTDIR: `${dir}/zsh/zdotdir/`, THEIA_ZSH_DIR: `${dir}/zsh`, THEIA_ORIGINAL_ZDOTDIR: options.env?.ZDOTDIR ?? processZdotdir ?? "" },
+    };
+  }
+  return options;
+}
