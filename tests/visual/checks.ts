@@ -11,6 +11,7 @@
 import type { Page } from "@playwright/test";
 // The order is the extension's own rule (pure, Theia-free), so the capture checks against it rather than a copy.
 import { bottomOrder } from "../../packages/theia-extensions/src/browser/shell/bottom-panel";
+import { OUTLINE_GLYPH } from "../../packages/theia-extensions/src/browser/theme/outline-icons";
 
 export type Rects = Array<{ x: number; y: number; w: number; h: number }>;
 export type Regions = Record<string, Rects>;
@@ -523,5 +524,53 @@ export function checkBottomPanel(panel: BottomPanel): string[] {
   }
   if (panel.current?.startsWith("terminal-") && !panel.plus) problems.push("bottom panel: a terminal is in front and there is no + button");
   if (!panel.close) problems.push("bottom panel: no close button");
+  return problems;
+}
+
+// ── S6f: the outline icons ───────────────────────────────────────────────
+
+/** What {@link probeOutlineIcons} read: each tab glyph's and label's vertical centres, and each folder row's glyph. */
+export interface OutlineIcons {
+  readonly tabs: Array<{ label: string; iconCentre: number; labelCentre: number }>;
+  readonly folders: Array<{ expanded: boolean; glyph: string }>;
+}
+
+/** Read the main strip's tab glyphs against their labels, and the tree's folder glyphs (the computed `::before` content). */
+export async function probeOutlineIcons(page: Page): Promise<OutlineIcons> {
+  return page.evaluate(() => {
+    const centre = (el: Element): number => {
+      const r = el.getBoundingClientRect();
+      return r.y + r.height / 2;
+    };
+    const tabs = [...document.querySelectorAll<HTMLElement>("#theia-main-content-panel .lm-TabBar-tab")]
+      .map((tab) => ({ tab, icon: tab.querySelector(".lm-TabBar-tabIcon.spexr-outline-icon"), label: tab.querySelector(".lm-TabBar-tabLabel") }))
+      .filter((t) => t.icon && t.label && t.tab.getBoundingClientRect().width > 0)
+      .map((t) => ({ label: t.label!.textContent?.trim() ?? "", iconCentre: centre(t.icon!), labelCentre: centre(t.label!) }));
+    const folders = [...document.querySelectorAll<HTMLElement>(".theia-TreeNode")]
+      .map((row) => ({ row, icon: row.querySelector(".spexr-outline-icon--folder") }))
+      .filter((r) => r.icon)
+      .map((r) => ({
+        expanded: !!r.row.querySelector(".theia-ExpansionToggle:not(.theia-mod-collapsed)"),
+        glyph: getComputedStyle(r.icon!, "::before").content.replace(/^"|"$/g, ""),
+      }));
+    return { tabs, folders };
+  });
+}
+
+/**
+ * The tab glyph's centre is within 1px of its label's (it sat 3px high), and
+ * every directory is the one closed folder, an expanded one included (the demo
+ * draws no opened folder).
+ */
+export function checkOutlineIcons(icons: OutlineIcons): string[] {
+  const problems: string[] = [];
+  if (icons.tabs.length === 0) problems.push("outline icons: no tab with an outline glyph on screen");
+  for (const t of icons.tabs) {
+    if (Math.abs(t.iconCentre - t.labelCentre) > 1) problems.push(`outline icons: the glyph of tab "${t.label}" is centred ${(t.iconCentre - t.labelCentre).toFixed(1)}px off its label`);
+  }
+  if (!icons.folders.some((f) => f.expanded)) problems.push("outline icons: no expanded folder on screen to check");
+  for (const f of icons.folders) {
+    if (f.glyph !== OUTLINE_GLYPH.folder) problems.push(`outline icons: a ${f.expanded ? "expanded" : "collapsed"} folder draws ${JSON.stringify(f.glyph)}, want the closed folder ${JSON.stringify(OUTLINE_GLYPH.folder)}`);
+  }
   return problems;
 }

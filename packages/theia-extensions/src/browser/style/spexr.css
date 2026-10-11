@@ -430,9 +430,16 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    draws a file and a folder as Lumen's 14px outline glyph: the muted ink, the
    accent text on the selected tree row and on the current tab. A glyph is a
    state indicator, so at least 3:1 on the row's ground and on the tile
-   (outline-icons-style.test.ts). A folder takes the opened glyph while its
-   row is expanded (a label provider is not told the tree's state). The glyph
-   sits 4px from the twisty and 4px from the name (Lumen's 89 / 103 / 107). */
+   (outline-icons-style.test.ts). Every directory is the one closed folder, as
+   the demo draws it. The glyph sits 4px from the name (Lumen's 103 / 107).
+   A tab's glyph is a 14px box centred on its label: Theia's own rule for a
+   file icon in a horizontal bar (tabs.css, specificity 0,4,0) gives it a 20px
+   minimum height and 8px of padding, which put it 3px high and 4px wide of
+   the demo's, so this is scoped under an id to outrank it. */
+:root {
+  --spexr-tree-icon-gap: 4px;
+}
+
 :root:not([data-sl-theme="high-contrast"]) .spexr-outline-icon {
   color: var(--slc-text-muted);
   font-size: 14px;
@@ -442,21 +449,19 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   color: var(--slc-accent-text);
 }
 
-.theia-TreeNode:has(> .theia-ExpansionToggle:not(.theia-mod-collapsed)) .spexr-outline-icon--folder::before {
-  content: "\eaf7";
+:root:not([data-sl-theme="high-contrast"]) .theia-TreeNode .file-icon.spexr-outline-icon {
+  margin-inline-end: var(--spexr-tree-icon-gap);
 }
 
-#theia-main-content-panel .lm-TabBar-tabIcon.spexr-outline-icon,
-.theia-TreeNode .file-icon.spexr-outline-icon {
-  margin-inline-end: 4px;
-}
-
-/* A tab's glyph is centred on its label (Theia's own icon box sat above it). */
-.lm-TabBar-tab .lm-TabBar-tabIcon.spexr-outline-icon {
+:root:not([data-sl-theme="high-contrast"]) :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab .lm-TabBar-tabIcon.spexr-outline-icon {
   align-self: center;
+  box-sizing: content-box;
   width: 14px;
+  min-height: 0;
   height: 14px;
   line-height: 14px;
+  padding: 0;
+  margin-inline-end: var(--spexr-tree-icon-gap);
 }
 
 /* Theia's activity-bar/tab badge (e.g. SCM changed-file count) is a fixed

@@ -28,14 +28,29 @@ describe("the outline icons in spexr.css (S6f)", () => {
     expect(sel).toMatch(/color:\s*var\(--slc-accent-text\)/);
   });
 
-  it("swaps a folder's glyph for the opened one while its row is expanded", () => {
-    const opened = rule(".theia-TreeNode:has(> .theia-ExpansionToggle:not(.theia-mod-collapsed)) .spexr-outline-icon--folder::before");
-    expect(opened).toContain('content: "\\eaf7"');
+  it("draws every directory as the one closed folder, as the demo does: no opened-folder swap", () => {
+    expect(css).not.toContain(".spexr-outline-icon--folder::before");
+    expect(css).not.toContain("folder-opened");
+    expect(css).not.toContain("\\eaf7");
   });
 
-  it("is the table's 4px from the name", () => {
-    const gap = rule("#theia-main-content-panel .lm-TabBar-tabIcon.spexr-outline-icon,\n.theia-TreeNode .file-icon.spexr-outline-icon");
-    expect(gap).toContain(`margin-inline-end: ${WORKBENCH.treeIconGap}px`);
+  it("is the table's gap from the name, through one variable the tree and the tab read", () => {
+    expect(css).toContain(`  --spexr-tree-icon-gap: ${WORKBENCH.treeIconGap}px;`);
+    expect(rule(`${NOT_HC} .theia-TreeNode .file-icon.spexr-outline-icon`)).toContain("margin-inline-end: var(--spexr-tree-icon-gap)");
+  });
+
+  it("is a 14px box centred on its label in a tab, outranking Theia's 20px minimum height and 8px of padding", () => {
+    const tab = rule(`${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel) .lm-TabBar .lm-TabBar-tab .lm-TabBar-tabIcon.spexr-outline-icon`);
+    expect(tab).toMatch(/width:\s*14px/);
+    expect(tab).toMatch(/height:\s*14px/);
+    expect(tab).toMatch(/min-height:\s*0/);
+    expect(tab).toMatch(/padding:\s*0/);
+    expect(tab).toContain("margin-inline-end: var(--spexr-tree-icon-gap)");
+    // Theia's rule has the weight (0,4,0); an id in ours outranks it.
+    const theia = readFileSync(fileURLToPath(new URL("../../../../../node_modules/@theia/core/src/browser/style/tabs.css", import.meta.url)), "utf8");
+    expect(theia).toMatch(/\.lm-TabBar\[data-orientation="horizontal"\] \.lm-TabBar-tabIcon\.file-icon/);
+    // Both the font-size and the box sit under the same high-contrast guard.
+    expect(css.indexOf(`${NOT_HC} :is(#theia-main-content-panel, #theia-bottom-content-panel)`)).toBeGreaterThan(0);
   });
 });
 
@@ -46,7 +61,7 @@ const neutrals = kitNeutrals.products.spexr as unknown as Record<Theme, Record<s
 describe.each(["dark", "light"] as const)("the outline glyph's ink on %s", (theme) => {
   const n = (key: string): string => neutrals[theme][key]!;
 
-  it("holds the muted glyph at 3:1 on the island's surface, the raised fill and a hovered row", () => {
+  it("holds the muted glyph at 3:1 on the island's surface and the raised fill", () => {
     for (const ground of ["bg-surface", "bg-surface-raised"]) expect(contrastRatio(n("text-muted"), n(ground)), ground).toBeGreaterThanOrEqual(3);
   });
 

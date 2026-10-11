@@ -5,7 +5,7 @@ import { CONTENT, closeApp, hasWebgl2, launch, readTheme, sizeWindow, waitForRea
 import { OUT_ROOT, provenance, type CaptureMeta } from "./meta";
 import { nativeCapture } from "./native";
 import { prepareRun, type Os, type Theme } from "./prepare";
-import { checkBottomPanel, probeBottomPanel, checkActivityStatus, probeActivityStatus, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
+import { checkOutlineIcons, probeOutlineIcons, checkBottomPanel, probeBottomPanel, checkActivityStatus, probeActivityStatus, checkAlignedStrips, checkEditorStrip, probeEditorStrip, checkEdge, checkLeftIsland, checkLeftViews, islandSizes, leftIslandIs, showLeftView, checkLitRim, checkPalette, checkToast, edgePoints, probeLeftIsland, probeLitRim, samplePixels } from "./checks";
 import { EDITOR_REGIONS, PALETTE_REGIONS, RIGHT_PANEL_REGIONS, TOAST_REGIONS, probeEditor, probeEditorPadding, probeFullScreen, probeLights, probeLog, probeMain, probePage, probeRegions, probeZoom } from "./probes";
 import {
   captureCrop,
@@ -159,6 +159,13 @@ for (const theme of THEMES) {
           meta.scenes.push({ scene: "tabs-crumbs", file: path.basename(file), ...(await captureCrop(page, file, rows)) });
         }
         check("editor strip", checkEditorStrip(strip));
+        writeMeta();
+      }
+
+      // S6f: the tab glyphs sit on their labels, and every directory is the closed folder.
+      {
+        meta.outlineIcons = await probeOutlineIcons(page);
+        check("outline icons", checkOutlineIcons(meta.outlineIcons));
         writeMeta();
       }
 

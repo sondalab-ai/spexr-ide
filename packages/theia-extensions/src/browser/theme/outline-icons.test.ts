@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { OUTLINE_FOLDER_CLASS, OUTLINE_ICON_CLASS, OUTLINE_ICON_THEME_ID, outlineIconClass, outlineKindOf } from "./outline-icons.js";
+import URI from "@theia/core/lib/common/uri";
+import { OUTLINE_FOLDER_CLASS, OUTLINE_GLYPH, OUTLINE_ICON_CLASS, OUTLINE_ICON_THEME_ID, handlesElement, outlineCanHandle, outlineIconClass, outlineKindOf } from "./outline-icons.js";
 
 const own = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
 
@@ -29,16 +30,57 @@ describe("the outline icon theme's mapping (S6f, D10)", () => {
   });
 });
 
-describe("the theme as Theia sees it", () => {
-  const theme = own("./outline-icon-theme.ts");
+describe("what the theme draws (S6f)", () => {
+  it("is a file or folder on disk: a file: URI, a file: stat, an icon reference with a file: URI or none", () => {
+    expect(handlesElement({ kind: "uri", scheme: "file" })).toBe(true);
+    expect(handlesElement({ kind: "fileStat", scheme: "file" })).toBe(true);
+    expect(handlesElement({ kind: "iconReference" })).toBe(true);
+    expect(handlesElement({ kind: "iconReference", scheme: "file" })).toBe(true);
+  });
 
-  it("is a file icon theme and a label provider in one, answering only while it is active", () => {
-    expect(theme).toContain("implements IconTheme, LabelProviderContribution, IconThemeContribution");
-    expect(theme).toContain("if (this.toDeactivate.disposed) return 0;");
-    expect(theme).toContain("element instanceof URI || URIIconReference.is(element) || FileStat.is(element)");
-    expect(theme).toContain("Number.MAX_SAFE_INTEGER - 1024");
-    expect(theme).toContain("readonly hasFileIcons = true;");
-    expect(theme).toContain("readonly hasFolderIcons = true;");
+  it("is not a diff, untitled, git or AI-variable URI, nor an element that is none of these", () => {
+    for (const scheme of ["diff", "untitled", "git", "ai-variable", "vscode-remote"]) {
+      expect(handlesElement({ kind: "uri", scheme }), scheme).toBe(false);
+      expect(handlesElement({ kind: "fileStat", scheme }), scheme).toBe(false);
+      expect(handlesElement({ kind: "iconReference", scheme }), scheme).toBe(false);
+    }
+    expect(handlesElement({ kind: "other" })).toBe(false);
+  });
+
+  it("pins the glyphs the two codicon classes draw", () => {
+    expect(OUTLINE_GLYPH.file).toBe("\uea7b");
+    expect(OUTLINE_GLYPH.folder).toBe("\uea83");
+  });
+});
+
+describe("the theme's answer (S6f)", () => {
+  const file = new URI("file:///ws/src/resolve.ts");
+  const folder = { kind: "uriIconReference", id: "folder" };
+
+  it("answers for nothing until it is the active theme, and then only for files and folders on disk", () => {
+    expect(outlineCanHandle(file, false)).toBe(0);
+    expect(outlineCanHandle(file, true)).toBeGreaterThan(0);
+    expect(outlineCanHandle(folder, true)).toBeGreaterThan(0);
+    expect(outlineCanHandle({ kind: "uriIconReference", id: "file", uri: file }, true)).toBeGreaterThan(0);
+    expect(outlineCanHandle({ resource: file, isDirectory: true }, true)).toBeGreaterThan(0);
+  });
+
+  it("leaves a diff tab's icon, an untitled file and an AI variable to their own providers", () => {
+    // A diff URI is `diff:` with both sides in its query (DiffUris.encode).
+    expect(outlineCanHandle(new URI("diff:?left=file%3A%2F%2F%2Fws%2Fa.ts&right=file%3A%2F%2F%2Fws%2Fb.ts"), true)).toBe(0);
+    expect(outlineCanHandle(new URI("untitled:Untitled-1"), true)).toBe(0);
+    expect(outlineCanHandle(new URI("ai-variable:/ctx/selection"), true)).toBe(0);
+    expect(outlineCanHandle({ kind: "uriIconReference", id: "file", uri: new URI("git:/ws/a.ts") }, true)).toBe(0);
+    expect(outlineCanHandle({ resource: new URI("untitled:x"), isDirectory: false }, true)).toBe(0);
+    expect(outlineCanHandle({ some: "node" }, true)).toBe(0);
+  });
+
+  it("is the theme's own answer: the class delegates, and is a file icon theme and a label provider in one", () => {
+    const source = own("./outline-icon-theme.ts");
+    expect(source).toContain("return outlineCanHandle(element, !this.toDeactivate.disposed);");
+    expect(source).toContain("implements IconTheme, LabelProviderContribution, IconThemeContribution");
+    expect(source).toContain("readonly hasFileIcons = true;");
+    expect(source).toContain("readonly hasFolderIcons = true;");
   });
 
   it("is the default theme, and the others stay registered: it is added beside Theia's, not instead", () => {
@@ -50,10 +92,7 @@ describe("the theme as Theia sees it", () => {
     expect(module).not.toMatch(/unbind\(IconThemeContribution|rebind\(IconThemeContribution/);
   });
 
-  it("names the codicons the class strings use, and the glyphs the style sheet swaps in", () => {
-    const codicons = readFileSync(fileURLToPath(new URL("../../../../../node_modules/@vscode/codicons/dist/codicon.css", import.meta.url)), "utf8");
-    expect(codicons).toContain('.codicon-file:before { content: "\\ea7b" }');
-    expect(codicons).toContain('.codicon-folder:before { content: "\\ea83" }');
-    expect(codicons).toContain('.codicon-folder-opened:before { content: "\\eaf7" }');
+  it("agrees with the diff URI Theia builds", () => {
+    expect(readFileSync(fileURLToPath(new URL("../../../../../node_modules/@theia/core/src/browser/diff-uris.ts", import.meta.url)), "utf8")).toContain("withScheme(DIFF_SCHEME)");
   });
 });
