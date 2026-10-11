@@ -30,6 +30,9 @@ function scripts(): SpexrScripts {
 @injectable()
 export class SpexrShellIntegrationInjector extends ShellIntegrationInjector {
   override injectShellIntegration(options: ShellProcessOptions): ShellProcessOptions {
-    return withSpexrBlocks(options, super.injectShellIntegration(options), scripts());
+    const injected = withSpexrBlocks(options, super.injectShellIntegration(options), scripts());
+    // One line per terminal in the backend log: whether the blocks' scripts went in, and for which shell.
+    console.info(`[spexr] shell integration for ${options.shell ?? "the default shell"}: ${injected === options ? "none" : "theia + spexr command blocks"}`);
+    return injected;
   }
 }

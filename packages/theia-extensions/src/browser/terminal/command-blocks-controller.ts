@@ -61,6 +61,8 @@ export class TerminalBlocks {
   /** The prompt marker no command has used yet: let go when the next prompt replaces it. */
   private idlePrompt: XtermMarker | undefined;
   private lastCols: number;
+  /** How many of each mark were met, for a support question ("why no blocks?") and the visual run's diagnosis. */
+  readonly stats = { prompts: 0, started: 0, hello: 0, finished: 0, rejected: 0, drawn: 0 };
 
   constructor(
     private readonly term: XtermLike,
@@ -97,6 +99,7 @@ export class TerminalBlocks {
 
   private onMark(payload: string): boolean {
     if (payload === "prompt_started") {
+      this.stats.prompts++;
       const marker = this.term.registerMarker(0);
       if (marker) {
         this.idlePrompt?.dispose();
@@ -106,6 +109,7 @@ export class TerminalBlocks {
       return false;
     }
     if (payload.startsWith("command_started")) {
+      this.stats.started++;
       const run = this.tracker.commandStarted(this.now());
       // The prompt's marker now belongs to this command's decorations.
       if (run.prompt === this.idlePrompt) this.idlePrompt = undefined;
@@ -116,6 +120,9 @@ export class TerminalBlocks {
     const { baseY, cursorY, cursorX } = this.term.buffer.active;
     const result = this.tracker.mark(payload, baseY + cursorY, cursorX);
     if (result?.kind === "finished") this.drawFinished(result.block);
+    if (result?.kind === "hello") this.stats.hello++;
+    else if (result?.kind === "finished") this.stats.finished++;
+    else this.stats.rejected++;
     // Whatever begins with `spexr_`, believed or not, is not Theia's to see.
     return true;
   }
@@ -138,6 +145,7 @@ export class TerminalBlocks {
     const deco = this.term.registerDecoration({ marker, x: 0, width: this.term.cols, height: block.lines, layer: "top" });
     if (!deco) return;
     this.fill(deco, finishedMeta(block), true);
+    this.stats.drawn++;
     this.drawn.push({ deco, block, framed: true });
     while (this.drawn.length > MAX_BLOCKS) this.drawn.shift()?.deco.dispose();
   }

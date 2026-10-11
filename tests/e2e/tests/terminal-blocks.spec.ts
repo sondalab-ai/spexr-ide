@@ -17,6 +17,11 @@ interface BlockRead {
   readonly chip: string;
 }
 
+/** The marks the terminal met (data-spexr-blocks), for the failure message. */
+async function marks(page: Page): Promise<string> {
+  return page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-spexr-blocks]")].map((e) => e.getAttribute("data-spexr-blocks")).join(" | "));
+}
+
 /** The blocks in the terminal that holds the focus. */
 async function blocks(page: Page): Promise<BlockRead[]> {
   return page.evaluate(() => {
@@ -45,6 +50,7 @@ test.describe("TC-TERMINAL-BLOCKS: command blocks in a shell terminal", () => {
     await page.keyboard.press("Enter");
     await expect.poll(async () => (await blocks(page)).filter((b) => b.framed === "true").map((b) => b.exit), { timeout: 30_000 }).toEqual(["0", "1"]);
 
+    console.log(`terminal marks: ${await marks(page)}`);
     const finished = (await blocks(page)).filter((b) => b.framed === "true");
     expect(finished[0]!.chip).toMatch(/^\d{2}:\d{2}:\d{2}.*exit 0$/);
     expect(finished[1]!.chip).toMatch(/^\d{2}:\d{2}:\d{2}.*exit 1$/);

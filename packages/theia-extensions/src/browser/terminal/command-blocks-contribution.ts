@@ -67,6 +67,11 @@ export class SpexrCommandBlocksContribution implements FrontendApplicationContri
       const dispose = new DisposableCollection();
       const blocks = new TerminalBlocks(xterm);
       dispose.push({ dispose: () => blocks.dispose() });
+      // The marks met so far, readable on the terminal's element: the answer to "why are there no blocks here?".
+      const report = (): void => void widget.node.setAttribute("data-spexr-blocks", Object.entries(blocks.stats).map(([k, v]) => `${k}:${v}`).join(" "));
+      report();
+      const timer = setInterval(report, 1000);
+      dispose.push({ dispose: () => clearInterval(timer) });
       dispose.push(widget.onDidDispose(() => this.detach(widget)));
       this.attached.set(widget, { blocks, dispose });
     } catch (err) {

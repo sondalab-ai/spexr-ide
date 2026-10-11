@@ -196,7 +196,7 @@ for (const theme of THEMES) {
         await page.waitForTimeout(2_000);
       }
       // S6l: the two commands the driver ran are framed (the shell's integration marks them as they finish).
-      await page.locator('#theia-bottom-content-panel .spexr-term-block[data-frame="true"][data-exit="1"]').first().waitFor({ state: "visible", timeout: 60_000 });
+      await page.locator('#theia-bottom-content-panel .spexr-term-block[data-frame="true"][data-exit="1"]').first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => undefined);
       // S6k: the inline diagnostic is drawn after the language server's markers and a pause.
       await page.locator(".spexr-inline-diag").first().waitFor({ state: "visible", timeout: 60_000 });
       await shoot("base", baseAck);

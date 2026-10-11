@@ -747,6 +747,8 @@ export function checkInlineDiagnostics(state: InlineDiagState): string[] {
 
 /** The command blocks in the bottom panel's terminal, as drawn. */
 export interface TerminalBlocksState {
+  /** The marks each terminal met, from its `data-spexr-blocks` attribute: the diagnosis when there are no blocks. */
+  readonly stats: readonly string[];
   readonly blocks: ReadonlyArray<{
     readonly exit: string | null;
     readonly framed: boolean;
@@ -766,6 +768,7 @@ export async function probeTerminalBlocks(page: Page): Promise<TerminalBlocksSta
     const els = [...document.querySelectorAll<HTMLElement>("#theia-bottom-content-panel .spexr-term-block")].filter((e) => e.getBoundingClientRect().width > 0);
     const box = (r: DOMRect): { x: number; y: number; w: number; h: number } => ({ x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 });
     return {
+      stats: [...document.querySelectorAll<HTMLElement>("[data-spexr-blocks]")].map((e) => `${e.id || e.className.toString().slice(0, 40)}: ${e.getAttribute("data-spexr-blocks")}`),
       blocks: els.map((el) => {
         const chip = el.querySelector<HTMLElement>(".spexr-term-block__meta");
         return {
@@ -798,7 +801,7 @@ export function checkTerminalBlocks(state: TerminalBlocksState): string[] {
   const problems: string[] = [];
   const near = (a: number, b: number, tol: number): boolean => Math.abs(a - b) <= tol;
   const framed = state.blocks.filter((b) => b.framed);
-  if (framed.map((b) => b.exit).join() !== "0,1") return [`terminal blocks: framed blocks with exits [${framed.map((b) => b.exit).join(", ")}], want [0, 1] (pnpm test probe, pnpm sl-audit)`];
+  if (framed.map((b) => b.exit).join() !== "0,1") return [`terminal blocks: framed blocks with exits [${framed.map((b) => b.exit).join(", ")}], want [0, 1] (pnpm test probe, pnpm sl-audit); marks met per terminal: ${JSON.stringify(state.stats)}`];
   for (const [i, b] of framed.entries()) {
     const want = i === 0 ? "exit 0" : "exit 1";
     if (!/^\d{2}:\d{2}:\d{2}( [\d.]+ s| \d+ m \d{2} s)? exit [01]$/.test(b.chip) || !b.chip.endsWith(want)) problems.push(`terminal blocks: block ${i} chip ${JSON.stringify(b.chip)}, want "<time> <duration> ${want}"`);
