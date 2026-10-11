@@ -585,11 +585,26 @@ export interface AgentLogState {
   /** The log's tab in the bottom panel is the current one. */
   readonly current: boolean;
   readonly lines: ReadonlyArray<{ readonly kind: string; readonly time: string | null; readonly text: string }>;
+  /** The scroller's metrics: the log follows its end, so the last line is in view. */
+  readonly scroller: { readonly overflowY: string; readonly scrollTop: number; readonly scrollHeight: number; readonly clientHeight: number; readonly lastLineInView: boolean } | null;
 }
 
 /** Read the Agent log's lines. */
 export async function probeAgentLog(page: Page): Promise<AgentLogState> {
   return page.evaluate(() => ({
+    scroller: (() => {
+      const el = document.querySelector<HTMLElement>(".spexr-agent-log-widget");
+      if (!el) return null;
+      const box = el.getBoundingClientRect();
+      const last = [...el.querySelectorAll<HTMLElement>(".spexr-df-term__line")].pop()?.getBoundingClientRect();
+      return {
+        overflowY: getComputedStyle(el).overflowY,
+        scrollTop: Math.round(el.scrollTop),
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        lastLineInView: !!last && last.bottom <= box.bottom + 1 && last.top >= box.top - 1,
+      };
+    })(),
     current: !!document.querySelector(".spexr-agent-log") && document.querySelector<HTMLElement>(".spexr-agent-log-widget")?.classList.contains("lm-mod-hidden") === false,
     lines: [...document.querySelectorAll<HTMLElement>(".spexr-agent-log .spexr-df-term__line")].map((l) => ({
       kind: l.getAttribute("data-kind") ?? "",
@@ -617,6 +632,11 @@ export function checkAgentLog(state: AgentLogState, regions: Regions): string[] 
   if (!state.lines.some((l) => l.kind === "tool" && /pnpm sl-audit/.test(l.text))) problems.push("agent log: no call line for pnpm sl-audit");
   for (const kind of ["prompt", "assistant", "tool", "result"]) {
     if (!state.lines.some((l) => l.kind === kind)) problems.push(`agent log: no ${kind} line`);
+  }
+  if (!state.scroller) problems.push("agent log: no scroller");
+  else {
+    if (state.scroller.overflowY !== "auto") problems.push(`agent log: the scroller's overflow-y is ${state.scroller.overflowY}, want auto`);
+    if (!state.scroller.lastLineInView) problems.push(`agent log: the last line is not in view: ${JSON.stringify(state.scroller)} (the log follows its end)`);
   }
   const panel = regions["log.panel"]?.[0];
   const body = regions["log.body"]?.[0];

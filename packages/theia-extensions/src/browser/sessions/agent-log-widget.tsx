@@ -86,7 +86,10 @@ export class AgentLogWidget extends ReactWidget {
     super.onUpdateRequest(msg);
     // After React has committed and laid the new lines out: two frames on.
     const toEnd = (): void => {
-      if (this.stick) this.node.scrollTop = this.node.scrollHeight;
+      if (!this.stick) return;
+      this.node.scrollTop = this.node.scrollHeight;
+      // The scroller may not be the widget's node: bring the last line into view whichever box scrolls.
+      this.node.querySelector(".spexr-df-term__line:last-child")?.scrollIntoView({ block: "end" });
     };
     requestAnimationFrame(() => requestAnimationFrame(toEnd));
     setTimeout(toEnd, 100);
