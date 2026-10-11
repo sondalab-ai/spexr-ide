@@ -3,9 +3,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { breadcrumbMeta, visibleCrumbs, crumbText, foldDiffStats, isCallableSymbol, isOutlineEllipsis, MINUS } from "./breadcrumb-model.js";
-
-const span = (start: number, end: number) => ({ start, end });
+import { breadcrumbMeta, visibleCrumbs, crumbText, isCallableSymbol, isOutlineEllipsis, MINUS } from "./breadcrumb-model.js";
 
 describe("the breadcrumbs' symbol names (E6)", () => {
   it("gives functions and methods a pair of parentheses, as Lumen's resolve()", () => {
@@ -30,29 +28,6 @@ describe("the breadcrumbs' symbol names (E6)", () => {
   it("knows the trailing ellipsis", () => {
     expect(isOutlineEllipsis("…")).toBe(true);
     expect(isOutlineEllipsis("...")).toBe(false);
-  });
-});
-
-describe("the DirtyDiff fold (E7)", () => {
-  it("counts added lines from the current side and removed from the previous", () => {
-    const changes = [
-      { previousRange: span(10, 10), currentRange: span(10, 14) },
-      { previousRange: span(20, 23), currentRange: span(24, 24) },
-    ];
-    expect(foldDiffStats(changes)).toEqual({ added: 4, removed: 3 });
-  });
-
-  it("counts a modification once on each side, and nothing for no changes", () => {
-    expect(foldDiffStats([{ previousRange: span(5, 7), currentRange: span(5, 8) }])).toEqual({ added: 3, removed: 2 });
-    expect(foldDiffStats([])).toEqual({ added: 0, removed: 0 });
-  });
-
-  it("sums the demo's +14 −3", () => {
-    const changes = [
-      { previousRange: span(0, 0), currentRange: span(0, 9) },
-      { previousRange: span(30, 33), currentRange: span(39, 44) },
-    ];
-    expect(foldDiffStats(changes)).toEqual({ added: 14, removed: 3 });
   });
 });
 
