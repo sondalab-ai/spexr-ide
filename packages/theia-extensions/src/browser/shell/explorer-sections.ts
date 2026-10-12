@@ -1,10 +1,10 @@
 /**
  * Explorer sections hidden by default (S6b, D7): Lumen's Explorer is the
- * file tree, and Open Editors and NPM Scripts are not on its screen. They
- * stay re-showable from the section header's menu.
+ * file tree, and Open Editors is not on its screen. It
+ * stays re-showable from the section header's menu.
  *
  * The hiding is a migration, not a default: a layout restored from before
- * S6b has them showing, and Theia keeps a part's hidden flag in the layout,
+ * S6b has it showing, and Theia keeps a part's hidden flag in the layout,
  * so a default the layout can veto would never reach those users. Each
  * section is hidden once, the first time it is seen, and recorded; a section
  * the user shows again is never hidden again.
@@ -13,11 +13,8 @@
 /** Open Editors, the Explorer's first section (`OpenEditorsWidget.ID`). */
 export const OPEN_EDITORS_WIDGET_ID = "theia-open-editors-widget";
 
-/** NPM Scripts: the builtin npm extension's view `npm`, as a plugin view widget (`plugin-view:<view id>`). It attaches after the layout is initialised. */
-export const NPM_SCRIPTS_WIDGET_ID = "plugin-view:npm";
-
 /** The sections hidden by default. */
-export const HIDDEN_BY_DEFAULT_SECTIONS: readonly string[] = [OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID];
+export const HIDDEN_BY_DEFAULT_SECTIONS: readonly string[] = [OPEN_EDITORS_WIDGET_ID];
 
 /** The Smart Search move out of a stored Explorer (D6): decided once, in the same list as the sections. */
 export const SMART_SEARCH_EVICTION_ID = "smart-search-eviction";

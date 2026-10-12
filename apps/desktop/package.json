@@ -108,6 +108,7 @@
     "vscode.grunt",
     "vscode.gulp",
     "vscode.jake",
+    "vscode.npm",
     "vscode.tunnel-forwarding",
     "vscode.ipynb",
     "vscode.builtin-notebook-renderers",

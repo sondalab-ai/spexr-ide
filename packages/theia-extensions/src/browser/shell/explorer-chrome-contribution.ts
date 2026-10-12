@@ -9,10 +9,9 @@ import { SECTIONS_MIGRATION_KEY, hideSectionsOnce, type ExplorerSections } from 
 /**
  * The Explorer's own chrome (S6b), as Lumen's:
  *
- * - Open Editors and NPM Scripts are hidden once (explorer-sections.ts, D7).
- *   NPM Scripts is a plugin view that attaches after the layout is
- *   initialised, so the migration runs again whenever the container gains a
- *   part, until every section has been decided.
+ * - Open Editors is hidden once (explorer-sections.ts, D7). The migration
+ *   runs again whenever the container gains a part, until every section has
+ *   been decided.
  * - The container keeps the title "Explorer". With one section left Theia
  *   folds that section's name (the project folder) into the container's
  *   title, "Explorer: <folder>", and hides the section header; Lumen has the

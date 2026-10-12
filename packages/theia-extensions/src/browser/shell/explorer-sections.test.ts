@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   HIDDEN_BY_DEFAULT_SECTIONS,
-  NPM_SCRIPTS_WIDGET_ID,
   OPEN_EDITORS_WIDGET_ID,
   SMART_SEARCH_EVICTION_ID,
   clearMigrations,
@@ -43,46 +42,31 @@ function memoryStore(initial: unknown = undefined): MigrationStore & { value: un
 }
 
 describe("the Explorer's default-hidden sections", () => {
-  it("are Open Editors and NPM Scripts, by the widget ids Theia gives them", () => {
+  it("are Open Editors, by the widget id Theia gives it", () => {
     expect(OPEN_EDITORS_WIDGET_ID).toBe("theia-open-editors-widget");
-    expect(NPM_SCRIPTS_WIDGET_ID).toBe("plugin-view:npm");
-    expect(HIDDEN_BY_DEFAULT_SECTIONS).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
+    expect(HIDDEN_BY_DEFAULT_SECTIONS).toEqual([OPEN_EDITORS_WIDGET_ID]);
   });
 
-  it("are named as the installed Theia names them: Open Editors' widget id, and a plugin view's `plugin-view:<view id>`", () => {
+  it("are named as the installed Theia names them: Open Editors' widget id", () => {
     const openEditors = readFileSync(resolve("@theia/navigator/lib/browser/open-editors-widget/navigator-open-editors-widget.js"), "utf8");
     expect(openEditors).toContain("this.ID = 'theia-open-editors-widget'");
-    const registry = readFileSync(resolve("@theia/plugin-ext/lib/main/browser/view/plugin-view-registry.js"), "utf8");
-    expect(registry).toContain("exports.PLUGIN_VIEW_FACTORY_ID = 'plugin-view';");
-    expect(registry).toContain("return { id: exports.PLUGIN_VIEW_FACTORY_ID + ':' + viewId, viewId };");
   });
 
   it("hides each present section once and records it", async () => {
     const store = memoryStore();
-    const sections = explorer([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID, "files"]);
-    expect(await hideSectionsOnce(store, sections)).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
-    expect(sections.hidden).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
-    expect(store.value).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
+    const sections = explorer([OPEN_EDITORS_WIDGET_ID, "files"]);
+    expect(await hideSectionsOnce(store, sections)).toEqual([OPEN_EDITORS_WIDGET_ID]);
+    expect(sections.hidden).toEqual([OPEN_EDITORS_WIDGET_ID]);
+    expect(store.value).toEqual([OPEN_EDITORS_WIDGET_ID]);
   });
 
   it("is idempotent: a second run, and a later launch, hide nothing, so a section the user showed stays shown", async () => {
     const store = memoryStore();
-    const sections = explorer([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
+    const sections = explorer([OPEN_EDITORS_WIDGET_ID]);
     await hideSectionsOnce(store, sections);
     expect(await hideSectionsOnce(store, sections)).toEqual([]);
-    expect(await hideSectionsOnce(store, explorer([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]))).toEqual([]);
-    expect(sections.hidden).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
-  });
-
-  it("leaves a section that is not there yet for a later run: NPM Scripts attaches after the layout", async () => {
-    const store = memoryStore();
-    const sections = explorer([OPEN_EDITORS_WIDGET_ID]);
-    expect(await hideSectionsOnce(store, sections)).toEqual([OPEN_EDITORS_WIDGET_ID]);
-    expect(store.value).toEqual([OPEN_EDITORS_WIDGET_ID]);
-    sections.present.push(NPM_SCRIPTS_WIDGET_ID);
-    expect(await hideSectionsOnce(store, sections)).toEqual([NPM_SCRIPTS_WIDGET_ID]);
-    expect(store.value).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
-    expect(await hideSectionsOnce(store, sections)).toEqual([]);
+    expect(await hideSectionsOnce(store, explorer([OPEN_EDITORS_WIDGET_ID]))).toEqual([]);
+    expect(sections.hidden).toEqual([OPEN_EDITORS_WIDGET_ID]);
   });
 
   it("writes nothing when there is nothing to hide", async () => {
@@ -120,12 +104,12 @@ describe("the layout migrations' one done-list", () => {
 
   it("is emptied by Reset Layout: the Explorer the reset builds has its sections hidden again, and Smart Search is decided again", async () => {
     const store = memoryStore();
-    await hideSectionsOnce(store, explorer([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]));
+    await hideSectionsOnce(store, explorer([OPEN_EDITORS_WIDGET_ID]));
     await runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => undefined);
     await clearMigrations(store);
     expect(store.value).toEqual([]);
-    const rebuilt = explorer([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
-    expect(await hideSectionsOnce(store, rebuilt)).toEqual([OPEN_EDITORS_WIDGET_ID, NPM_SCRIPTS_WIDGET_ID]);
+    const rebuilt = explorer([OPEN_EDITORS_WIDGET_ID]);
+    expect(await hideSectionsOnce(store, rebuilt)).toEqual([OPEN_EDITORS_WIDGET_ID]);
     expect(await runMigrationOnce(store, SMART_SEARCH_EVICTION_ID, () => undefined)).toBe(true);
   });
 
