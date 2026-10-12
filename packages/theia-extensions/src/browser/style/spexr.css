@@ -1299,9 +1299,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* The activity bars are the kit's .sl-activitybar (workbench.css): borderless
    glyphs on the frame in the muted ink, hover a flat wash, the current view a
-   flat tile (lit and ringed, no cast) with the seam on its leading edge and
-   its glyph in the accent. The seam is the muted ink unless the bar holds the
-   focus, as on the kit's bar. Kit 0.34's geometry (S5c): a 52px bar, 36px
+   flat tile (lit and ringed, no cast) with its glyph in the accent, and no
+   seam (icon-only). Kit 0.34's geometry (S5c): a 52px bar, 36px
    tiles at r9 with a 20px glyph, 8px apart (Lumen's 44px pitch), the first
    4px from the top; Theia sizes each tab to its icon box, inline, so the box
    is the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
@@ -1348,14 +1347,6 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   padding-bottom: 8px;
 }
 
-:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides {
-  --spexr-seam-ink: var(--slc-text-muted);
-}
-
-:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides:focus-within {
-  --spexr-seam-ink: var(--slc-seam);
-}
-
 :root:not([data-sl-theme="high-contrast"]) .theia-app-sidebar-container {
   --theia-private-sidebar-icon-size: 20px;
 }
@@ -1394,17 +1385,13 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 /* Theia gives every vertical tab a transparent top and bottom border, the
    drag-over indicator (tabs.css, --theia-dragover-tab-border-width, 2px,
-   !important), and it stays. The tile paints under it, but a background
-   layer and an absolute child are placed in the padding box, 2px down: the
-   seam takes the border back to stay half the tile's height, and the badge
-   (below) to sit 3px above the tile's top. */
+   !important), and it stays. The tile paints under it, but an absolute
+   child is placed in the padding box, 2px down: the badge (below) takes the
+   border back to sit 3px above the tile's top. The current tile carries no
+   seam: an icon-only tile is already told by its fill and accent glyph. */
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {
   color: var(--slc-text);
   background-color: var(--slc-tile);
-  background-image: linear-gradient(var(--spexr-seam-ink), var(--spexr-seam-ink));
-  background-repeat: no-repeat;
-  background-size: 2px calc(50% + var(--theia-dragover-tab-border-width));
-  background-position: 3px 50%;
   box-shadow: var(--slc-depth-flat);
 }
 

@@ -223,19 +223,12 @@ describe("the activity bars", () => {
     expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon {`)).toMatch(/height:\s*2\.25rem/);
   });
 
-  it("raise the current view as a flat tile with the seam and its glyph in the accent", () => {
+  it("raise the current view as a flat tile with its glyph in the accent and no seam", () => {
     const current = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {`);
     expect(current).toMatch(/background-color:\s*var\(--slc-tile\)/);
-    expect(current).toMatch(/background-image:\s*linear-gradient\(var\(--spexr-seam-ink\), var\(--spexr-seam-ink\)\)/);
-    // Half the tile's height: the padding box is 2px short of it each way (Theia's drag-over border).
-    expect(current).toMatch(/background-size:\s*2px calc\(50% \+ var\(--theia-dragover-tab-border-width\)\)/);
+    expect(current).not.toMatch(/background-image|background-size/);
     expect(current).toMatch(/box-shadow:\s*var\(--slc-depth-flat\)/);
     expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current .lm-TabBar-tabIcon`)).toMatch(/color:\s*var\(--slc-accent-text\)/);
-  });
-
-  it("mute the seam unless the bar holds the focus", () => {
-    expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides {`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-text-muted\)/);
-    expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides:focus-within`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
   });
 
   it("draw the kit's count badge straddling the tile's top-right corner, clear of the glyph: mono 9px, a 16px badge at r6, ringed in the canvas", () => {

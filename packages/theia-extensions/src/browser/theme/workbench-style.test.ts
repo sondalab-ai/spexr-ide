@@ -140,8 +140,8 @@ describe("the shell's geometry in spexr.css", () => {
 });
 
 // Theia's vertical tabs carry a 2px transparent top and bottom border, the
-// drag-over indicator, at !important. It stays; the tile's seam and badge are
-// placed in the padding box, 2px down, so both take it back.
+// drag-over indicator, at !important. It stays; the badge is placed in the
+// padding box, 2px down, so it takes it back.
 describe("the activity tile against Theia's drag-over border", () => {
   it("is still Theia's border, which spexr keeps", () => {
     const tabs = readFileSync(resolve("@theia/core/src/browser/style/tabs.css"), "utf8");
@@ -157,10 +157,9 @@ describe("the activity tile against Theia's drag-over border", () => {
     expect(badge).toMatch(/right:\s*-6px;/);
   });
 
-  it("keeps the current tile's seam half the tile's height", () => {
+  it("draws no seam on the current icon-only tile", () => {
     const current = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {`);
-    expect(current).toMatch(/background-size:\s*2px calc\(50% \+ var\(--theia-dragover-tab-border-width\)\);/);
-    expect(current).toMatch(/background-position:\s*3px 50%;/);
+    expect(current).not.toMatch(/background-image|background-size|background-position/);
   });
 
   // High contrast keeps Theia's tab: the 36px tile and its seam are light and
