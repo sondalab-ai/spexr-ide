@@ -191,7 +191,7 @@ describe.each(THEMES)("the right island's views on %s", (theme) => {
     [".spexr-memory-list__filename", ["slc-raised"]],
     [".spexr-todo__folder", ["slc-raised"]],
     [".spexr-todo__empty", ["slc-raised", "slc-surface"]],
-    [".spexr-todo__title", ["slc-raised"]],
+    [".spexr-todo__text", ["slc-raised"]],
   ];
 
   it.each(TEXT)("reads %s at 4.5:1 on its grounds", (selector, grounds) => {

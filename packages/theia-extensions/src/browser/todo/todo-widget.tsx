@@ -8,8 +8,10 @@ import type URI from "@theia/core/lib/common/uri";
 import { WorkspaceService } from "@theia/workspace/lib/browser";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { EditorManager } from "@theia/editor/lib/browser";
+import { WindowService } from "@theia/core/lib/browser/window/window-service";
 import { TODO_VIEW_ID } from "./todo-view-contribution.js";
 import { appendTodo, parseTodo, toggleTodo, type TodoItem } from "./todo-list.js";
+import { isFoldable, renderBlock, renderInline, todoBody } from "./todo-markdown.js";
 import type { TodoHandoff } from "./todo-handoff.js";
 import { PanelHead } from "../views/panel-head.js";
 
@@ -39,9 +41,10 @@ export class SpexrTodoWidget extends ReactWidget {
   @inject(EditorManager) private readonly editors!: EditorManager;
   @inject(CommandService) private readonly commands!: CommandService;
   @inject(MessageService) private readonly messages!: MessageService;
+  @inject(WindowService) private readonly windowService!: WindowService;
 
   private files: readonly TodoFile[] = [];
-  /** Item keys whose details are unfolded. */
+  /** Item keys whose text is unfolded. */
   private readonly expanded = new Set<string>();
   /** Item keys being handed to the agent (the local model may take a while). */
   private readonly sending = new Set<string>();
@@ -197,6 +200,14 @@ export class SpexrTodoWidget extends ReactWidget {
     }
   }
 
+  /** A click on a rendered link opens it in the browser, never in this window. */
+  private openLink(e: React.MouseEvent): void {
+    const a = (e.target as HTMLElement).closest("a[href]");
+    if (!a) return;
+    e.preventDefault();
+    this.windowService.openNewWindow(a.getAttribute("href")!, { external: true });
+  }
+
   private toggleDetails(key: string): void {
     if (this.expanded.has(key)) this.expanded.delete(key);
     else this.expanded.add(key);
@@ -267,6 +278,8 @@ export class SpexrTodoWidget extends ReactWidget {
   private renderItem(file: TodoFile, item: TodoItem): React.ReactElement {
     const key = this.key(file, item);
     const open = this.expanded.has(key);
+    const body = todoBody(item);
+    const foldable = isFoldable(item);
     const sending = this.sending.has(key);
     return (
       <li key={key} className={`spexr-todo__item${item.done ? " spexr-todo__item--done" : ""}`}>
@@ -281,15 +294,21 @@ export class SpexrTodoWidget extends ReactWidget {
           <span className="sl-check__box" aria-hidden="true" />
         </label>
         <div className="spexr-todo__body">
-          <button className="spexr-todo__title" title="Open TODO.md at this item" onClick={() => this.open(file, item)}>
-            {item.title}
-          </button>
-          {item.details && (
-            <button type="button" className="sl-disclosure spexr-todo__more" aria-expanded={open} onClick={() => this.toggleDetails(key)}>
-              {open ? "Less" : "Details"}
+          <div
+            className={`spexr-todo__text${foldable && !open ? " spexr-todo__text--folded" : ""}`}
+            onClick={(e) => this.openLink(e)}
+            dangerouslySetInnerHTML={{ __html: open ? renderBlock(body) : renderInline(body) }}
+          />
+          <div className="spexr-todo__actions">
+            {foldable && (
+              <button type="button" className="sl-disclosure spexr-todo__more" aria-expanded={open} onClick={() => this.toggleDetails(key)}>
+                {open ? "Less" : "More"}
+              </button>
+            )}
+            <button type="button" className="sl-btn sl-btn--ghost sl-btn--sm spexr-todo__open" title="Open TODO.md at this item" onClick={() => this.open(file, item)}>
+              Open
             </button>
-          )}
-          {open && <pre className="spexr-todo__details">{item.details}</pre>}
+          </div>
         </div>
         {!item.done && (
           <button

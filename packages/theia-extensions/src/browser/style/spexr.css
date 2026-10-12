@@ -5995,22 +5995,32 @@ code {
 }
 .spexr-todo__check { margin-top: 3px; }
 .spexr-todo__body { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sl-space-1); }
-.spexr-todo__title {
-  padding: 0; border: none; background: none; text-align: left; cursor: pointer;
-  color: var(--sl-text-primary); font: inherit; font-size: var(--sl-text-sm); line-height: 1.45;
+.spexr-todo__text {
+  min-width: 0; width: 100%; color: var(--sl-text-primary); font-size: var(--sl-text-sm); line-height: 1.45;
   overflow-wrap: anywhere;
 }
-.spexr-todo__title:hover { color: var(--slc-accent-text); }
-.spexr-todo__item--done .spexr-todo__title { color: var(--sl-text-muted); text-decoration: line-through; }
+.spexr-todo__text--folded {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+}
+.spexr-todo__text > :first-child { margin-top: 0; }
+.spexr-todo__text > :last-child { margin-bottom: 0; }
+.spexr-todo__text p, .spexr-todo__text ul, .spexr-todo__text ol, .spexr-todo__text blockquote { margin: 0 0 var(--sl-space-2); }
+.spexr-todo__text ul, .spexr-todo__text ol { padding-inline-start: 1.25em; }
+.spexr-todo__text a { color: var(--slc-accent-text); }
+.spexr-todo__text code {
+  font-family: var(--sl-font-code); font-size: 0.92em; padding: 0 3px; border-radius: 4px;
+  background: color-mix(in srgb, var(--sl-text-primary) 8%, transparent);
+}
+.spexr-todo__text pre {
+  margin: 0 0 var(--sl-space-2); max-height: 14em; overflow: auto; padding: var(--sl-space-2);
+  border-radius: var(--sl-radius-sm, 6px); background: color-mix(in srgb, var(--sl-text-primary) 4%, transparent);
+}
+.spexr-todo__text pre code { padding: 0; background: none; font-size: var(--sl-text-xs); }
+.spexr-todo__item--done .spexr-todo__text { color: var(--sl-text-muted); text-decoration: line-through; }
+.spexr-todo__actions { display: flex; align-items: center; gap: var(--sl-space-3); }
 /* Disclosures are controls: the kit's sentence-case sans, smaller. */
 .spexr-todo__more, .spexr-todo__done-toggle {
   font-size: var(--sl-text-xs);
-}
-.spexr-todo__details {
-  margin: 0; max-height: 14em; overflow: auto; width: 100%; box-sizing: border-box;
-  padding: var(--sl-space-2); border-radius: var(--sl-radius-sm, 6px);
-  background: color-mix(in srgb, var(--sl-text-primary) 4%, transparent);
-  font-family: var(--sl-font-code); font-size: var(--sl-text-xs); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .spexr-todo__work { grid-column: 2; justify-self: start; }
 
