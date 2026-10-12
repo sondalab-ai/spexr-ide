@@ -38,6 +38,7 @@ describe("the sessions part, the agents pill and the agent log in spexr.css", ()
     expect(px(row, "min-height")).toBe(SESSIONS.rowHeight);
     expect(px(row, "padding-block")).toBe(SESSIONS.rowPaddingBlock);
     expect(px(row, "padding-inline")).toBe(SESSIONS.rowPaddingInline);
+    expect(px(row, "padding-inline-start")).toBe(SESSIONS.rowPaddingStart);
     expect(px(row, "border-radius")).toBe(SESSIONS.rowRadius);
     expect(px(row, "font-size")).toBe(SESSIONS.nameSize);
     expect(px(rules(".spexr-sessions__name"), "line-height")).toBe(SESSIONS.nameLine);

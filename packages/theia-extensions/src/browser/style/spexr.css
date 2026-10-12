@@ -1619,6 +1619,18 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   align-self: center;
 }
 
+/* A hairline over every visible section after the first (the Sessions part under
+   the tree), so the sections read as separate blocks. Drawn on the header, not
+   the part: Lumino lays parts out by absolute box, a part border would shift it. */
+:root:not([data-sl-theme="high-contrast"]) #theia-left-content-panel .part:not(.lm-mod-hidden) ~ .part:not(.lm-mod-hidden) > .theia-view-container-part-header::before {
+  content: "";
+  position: absolute;
+  inset: 0 8px auto;
+  height: 1px;
+  background: var(--slc-border);
+  pointer-events: none;
+}
+
 /* The Explorer's one section keeps its header. Theia hides it with an inline
    display:none and sets the body to 100% of the part, which would push the
    tree's foot under the part's edge by the header's height. With more than
@@ -6091,9 +6103,13 @@ code {
   min-height: 48px;
   padding-block: 4px;
   padding-inline: 8px;
+  padding-inline-start: 16px;
   border-radius: 6px;
   font-family: var(--sl-font-sans);
   font-size: 13px;
+  /* The kit's seam is 2px x 50% at 3px; the two-line label is 40px of the
+     48px row, so it takes the label's height and clears the text by 11px. */
+  --_sl-seam-size: 2px 80%;
 }
 
 .spexr-sessions__name {

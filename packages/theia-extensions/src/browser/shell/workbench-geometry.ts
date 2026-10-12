@@ -206,6 +206,8 @@ export const SESSIONS = {
   rowPaddingBlock: 4,
   /** A row's padding at the sides (Lumen 9.6). */
   rowPaddingInline: 8,
+  /** The leading side is wider: the selected row's seam sits 3px in, 2px wide, and needs to clear the text. */
+  rowPaddingStart: 16,
   /** The list's padding at the sides (Lumen 7.2). */
   listPaddingInline: 8,
   /** Between two rows: none, the rows are 48 apart as Lumen's are 48.37. */
