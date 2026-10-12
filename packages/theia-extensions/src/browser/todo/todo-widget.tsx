@@ -13,6 +13,7 @@ import { TODO_VIEW_ID } from "./todo-view-contribution.js";
 import { appendTodo, parseTodo, toggleTodo, type TodoItem } from "./todo-list.js";
 import { isFoldable, renderBlock, renderInline, todoBody } from "./todo-markdown.js";
 import type { TodoHandoff } from "./todo-handoff.js";
+import { TodoAddForm } from "./todo-add-form.js";
 import { PanelHead } from "../views/panel-head.js";
 
 /** The file the view reads, at the root of each workspace folder. */
@@ -49,7 +50,6 @@ export class SpexrTodoWidget extends ReactWidget {
   /** Item keys being handed to the agent (the local model may take a while). */
   private readonly sending = new Set<string>();
   private showDone = false;
-  private draft = "";
   /** Index in `files` of the folder new items go to. */
   private target = 0;
 
@@ -110,70 +110,24 @@ export class SpexrTodoWidget extends ReactWidget {
     await this.refresh();
   }
 
-  /** Appends the draft as an open item to the chosen folder's TODO.md, creating the file if it is missing. */
-  private async add(): Promise<void> {
+  /** Appends `text` as an open item to the chosen folder's TODO.md, creating the file if it is missing. Resolves true when written. */
+  private async add(text: string): Promise<boolean> {
     const file = this.files[Math.min(this.target, this.files.length - 1)];
-    if (!file) return;
+    if (!file) return false;
+    let added = false;
     try {
       const exists = file.items !== undefined;
       const current = exists ? (await this.fileService.read(file.uri)).value : "";
-      const next = appendTodo(current, this.draft);
-      if (next === undefined) return;
+      const next = appendTodo(current, text);
+      if (next === undefined) return false;
       if (exists) await this.fileService.write(file.uri, next);
       else await this.fileService.create(file.uri, next);
-      this.draft = "";
+      added = true;
     } catch (err) {
       this.messages.error(`Could not update ${TODO_FILE}: ${err instanceof Error ? err.message : String(err)}`);
     }
     await this.refresh();
-  }
-
-  private renderAdd(): React.ReactNode {
-    const target = Math.min(this.target, this.files.length - 1);
-    return (
-      <form
-        className="spexr-todo__add"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void this.add();
-        }}
-      >
-        {this.files.length > 1 && (
-          <span className="sl-select">
-            <select
-              className="sl-field__input"
-              value={target}
-              aria-label="Add to folder"
-              onChange={(e) => {
-                this.target = Number(e.target.value);
-                this.update();
-              }}
-            >
-              {this.files.map((f, i) => (
-                <option key={f.uri.toString()} value={i}>
-                  {f.root.path.base}
-                </option>
-              ))}
-            </select>
-          </span>
-        )}
-        <div className="spexr-todo__add-row">
-          <input
-            className="sl-field__input"
-            value={this.draft}
-            placeholder="Add a TODO"
-            aria-label="New TODO"
-            onChange={(e) => {
-              this.draft = e.target.value;
-              this.update();
-            }}
-          />
-          <button type="submit" className="sl-btn sl-btn--sm" disabled={!this.draft.trim()}>
-            Add
-          </button>
-        </div>
-      </form>
-    );
+    return added;
   }
 
   private open(file: TodoFile, item: TodoItem): void {
@@ -234,7 +188,15 @@ export class SpexrTodoWidget extends ReactWidget {
       <section className="spexr-todo" aria-label={title}>
         {head}
         <div className="spexr-panel-body">
-          {this.renderAdd()}
+          <TodoAddForm
+            folders={this.files.map((f) => f.root.path.base)}
+            target={Math.min(this.target, this.files.length - 1)}
+            onTarget={(i) => {
+              this.target = i;
+              this.update();
+            }}
+            onAdd={(text) => this.add(text)}
+          />
           {this.files.map((file) => (
             <div key={file.uri.toString()} className="spexr-todo__file">
               {multiRoot && <h3 className="spexr-todo__folder">{file.root.path.base}</h3>}
