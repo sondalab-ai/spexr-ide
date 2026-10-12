@@ -4963,9 +4963,6 @@ code {
 .spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message:hover:not(:focus) {
   border-color: var(--slc-edge-control-hover);
 }
-.spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message:focus {
-  border-color: var(--slc-focus);
-}
 .spexr-scm-input .spexr-scm-input__generate {
   position: absolute;
   top: 4px;
@@ -4990,6 +4987,31 @@ code {
   .glob-field-container .glob-field .glob-field-input:not(:focus-within)
 ) {
   border-color: var(--slc-edge-control);
+}
+
+/* The kit's focus (ring flush on the border, border in the ring's colour, the
+   halo outside it, the well's depth kept) for the sunken fields the kit cannot
+   style because Theia renders them: the commit box and the Search view's three
+   fields. Same recipe as .sl-field__input:focus, so every input lights alike.
+   The halo is the kit's own --_sl-halo, declared here since these are not kit
+   controls. */
+:root :is(
+  .spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message,
+  .t-siw-search-container .searchHeader .search-field-container,
+  .t-siw-search-container .searchHeader .glob-field-container .glob-field .glob-field-input
+) {
+  --_sl-halo: 0 0 0 calc(var(--sl-focus-ring-width, 2px) + var(--sl-focus-glow-width, 5px)) color-mix(in srgb, var(--slc-focus) calc(22% * min(1, var(--slc-glow) * 1000)), transparent);
+}
+
+:root :is(
+  .spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message:focus,
+  .t-siw-search-container .searchHeader .search-field-container:is(.focused, :focus-within),
+  .t-siw-search-container .searchHeader .glob-field-container .glob-field .glob-field-input:focus-within
+) {
+  border-color: var(--slc-focus);
+  outline: var(--sl-focus-ring-width, 2px) solid var(--slc-focus);
+  outline-offset: 0;
+  box-shadow: var(--slc-depth-sunk, 0 0 transparent), var(--_sl-halo);
 }
 
 /* Smart Search (the Search view) */
