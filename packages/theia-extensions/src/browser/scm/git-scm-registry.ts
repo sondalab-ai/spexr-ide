@@ -10,6 +10,7 @@ import { SpexrGitServiceProxySymbol } from "./git-service-proxy.js";
 import type { SpexrGitService } from "../../common/git-protocol.js";
 import type { SpexrGitScmProvider } from "./git-scm-provider.js";
 import { distinctRepoRoots, type RepoRootMapping } from "./git-repo-roots.js";
+import { repositoryRootFor } from "./repository-for-uri.js";
 import { SingleFlight } from "./single-flight.js";
 import { BACKGROUND_FETCH_INTERVAL_MS, shouldFetchNow } from "./background-fetch-policy.js";
 import { SPEXR_GIT_AUTOFETCH_PREFERENCE } from "../preferences/spexr-preferences.js";
@@ -102,6 +103,17 @@ export class SpexrGitScmRegistry implements FrontendApplicationContribution {
     const selected = this.scmService.selectedRepository;
     if (!selected) return undefined;
     return this.all.find((p) => p.rootUri === selected.provider.rootUri);
+  }
+
+  /**
+   * Show the repository that holds `uri` in the SCM panel, when it is not the
+   * one shown. A uri outside every repository leaves the selection alone.
+   */
+  selectRepositoryFor(uri: string): void {
+    const root = repositoryRootFor(this.all.map((p) => p.rootUri), uri);
+    if (root === undefined || this.active?.rootUri === root) return;
+    const repository = this.scmService.repositories.find((r) => r.provider.rootUri === root);
+    if (repository) this.scmService.selectedRepository = repository;
   }
 
   async onStart(): Promise<void> {

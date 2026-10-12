@@ -133,6 +133,7 @@ import { LabelProviderContribution } from "@theia/core/lib/browser/label-provide
 import { SpexrSplitToolbarContribution } from "./editor/split-toolbar-contribution.js";
 import { SpexrGitToolbarContribution } from "./scm/git-toolbar-contribution.js";
 import { GitStatusBarContribution } from "./scm/git-status-bar-contribution.js";
+import { ExplorerRepositoryFollow } from "./scm/explorer-repository-follow.js";
 import { GitOriginalResourceResolver } from "./scm/git-original-resource.js";
 import { ResourceResolver } from "@theia/core/lib/common/resource";
 import { SpexrGitBlameDecorator } from "./blame/blame-decorator.js";
@@ -420,6 +421,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
 
   bind(GitStatusBarContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(GitStatusBarContribution);
+  bind(ExplorerRepositoryFollow).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(ExplorerRepositoryFollow);
 
   // A changed file's colour is its letter's alone (S6b, L7).
   rebind(ProblemDecorationsProvider).to(SpexrProblemDecorationsProvider).inSingletonScope();
