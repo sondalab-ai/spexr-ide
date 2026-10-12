@@ -12,10 +12,8 @@ export interface AgentPaneViewProps {
   /** The tool card shows every row, not only the last few. */
   readonly expanded: boolean;
   readonly onToggleExpanded: () => void;
-  /** Bring the agent terminal forward: where permission prompts are answered. */
+  /** Continue the followed session in a terminal: the agent's own is brought forward, any other is opened by Dark Factory. */
   readonly onReveal: () => void;
-  /** The composer, pinned under the log. */
-  readonly composer?: React.ReactNode;
 }
 
 const noop = (): void => undefined;
@@ -69,18 +67,19 @@ const Prose: React.FC<{ readonly text: string }> = ({ text }) => (
 const titleOf = (s: AgentPaneSnapshot): string => s.title ?? nls.localize("spexr/agentPane/untitled", "New session");
 
 
-export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void; readonly composer?: React.ReactNode; readonly loading?: boolean | undefined }> = ({ onReveal, composer, loading }) => (
+/**
+ * Nothing to read: no session is selected. It points at the Sessions list
+ * rather than at the agent terminal (the left panel already is that), and has
+ * no footer, since there is no session to open.
+ */
+export const AgentPaneEmpty: React.FC<{ readonly loading?: boolean | undefined }> = ({ loading }) => (
   <section className="spexr-agent-pane spexr-agent-pane--empty" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
-    <PanelHead eyebrow={nls.localize("spexr/agentPane/eyebrow", "Agent")} title={loading ? nls.localize("spexr/agentPane/loadingTitle", "Loading session…") : nls.localize("spexr/agentPane/emptyTitle", "No session yet")} />
+    <PanelHead eyebrow={nls.localize("spexr/agentPane/eyebrow", "Agent")} title={loading ? nls.localize("spexr/agentPane/loadingTitle", "Loading session…") : nls.localize("spexr/agentPane/emptyTitle", "No session selected")} />
     <div className="spexr-panel-body spexr-agent-pane__empty">
       <p className="spexr-agent-pane__hint">
-        {nls.localize("spexr/agentPane/emptyHint", "The agent's turn shows here once it starts: what you asked, the tools it runs, the edits it makes and its plan.")}
+        {nls.localize("spexr/agentPane/emptyHint", "Select a session in the Sessions list to read its conversation: what was asked, the tools it ran, the edits it made and its plan.")}
       </p>
-      <button type="button" className="sl-btn sl-btn--sm" onClick={onReveal}>
-        {nls.localize("spexr/agentPane/openTerminal", "Open the agent terminal")}
-      </button>
     </div>
-    {composer}
   </section>
 );
 
@@ -91,9 +90,9 @@ export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void; readonly 
  * latest diff and the plan; a row asking the user to come to the terminal when
  * the agent waits for them. Nothing here animates in.
  */
-export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, loading, expanded, onToggleExpanded, onReveal, composer }) => {
+export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, loading, expanded, onToggleExpanded, onReveal }) => {
   const uid = React.useId();
-  if (!snapshot) return <AgentPaneEmpty onReveal={onReveal} composer={composer} loading={loading} />;
+  if (!snapshot) return <AgentPaneEmpty loading={loading} />;
   const turn = snapshot.turn;
   const family = modelFamily(snapshot.model);
   const prose = turn?.prose?.[turn.prose.length - 1];
@@ -182,7 +181,11 @@ export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, loading,
           </div>
         ) : null}
       </div>
-      {composer}
+      <footer className="spexr-agent-pane__footer">
+        <button type="button" className="sl-btn sl-btn--sm" onClick={onReveal}>
+          {nls.localize("spexr/agentPane/openInTerminal", "Open in terminal")}
+        </button>
+      </footer>
     </section>
   );
 };

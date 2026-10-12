@@ -315,4 +315,21 @@ describe("AgentPaneController.view", () => {
     await c.view(B, "/w/other");
     expect(service.follows).toEqual([{ sessionId: B, workspacePath: "/w/other", readOnly: true }]);
   });
+  it("announces loading only while a chosen session is looked up, never for the agent's own", async () => {
+    const { service, terminal, c } = make();
+    terminal.stored = A;
+    service.answer = async () => undefined;
+    await c.bind();
+    expect(c.followed).toBe(A);
+    expect(c.loading).toBe(false);
+
+    let release: (s: AgentPaneSnapshot) => void = () => undefined;
+    service.answer = () => new Promise((r) => (release = r));
+    const viewing = c.view(B);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(c.loading).toBe(true);
+    release({ sessionId: B });
+    await viewing;
+    expect(c.loading).toBe(false);
+  });
 });

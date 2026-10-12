@@ -11,18 +11,27 @@ const tools = (n: number): PaneTool[] => Array.from({ length: n }, (_, i) => ({ 
 const SESSION = "8f2a4c1e-3b7d-4e52-9a61-0c5d2e8b7f13";
 
 describe("AgentPaneView", () => {
-  it("shows an empty state, with a way to the terminal, when there is no snapshot", () => {
-    const html = render(undefined);
+  it("shows an empty state that points at the Sessions list, with no terminal button or footer, when there is no snapshot", () => {
+    const html = renderToStaticMarkup(React.createElement(AgentPaneView, { snapshot: undefined, expanded: false, onToggleExpanded: noop, onReveal: noop }));
     expect(html).toContain("spexr-agent-pane--empty");
-    expect(html).toContain("No session yet");
-    expect(html).toContain("Open the agent terminal");
+    expect(html).toContain("No session selected");
+    expect(html).toContain("Sessions list");
+    expect(html).not.toContain("Open the agent terminal");
+    expect(html).not.toContain("Open in terminal");
     expect(html).not.toContain("spexr-agent-tool");
   });
 
   it("says it is loading, not that there is no session, while a followed session has no snapshot", () => {
     const html = renderToStaticMarkup(React.createElement(AgentPaneView, { snapshot: undefined, loading: true, expanded: false, onToggleExpanded: noop, onReveal: noop }));
     expect(html).toContain("Loading session");
-    expect(html).not.toContain("No session yet");
+    expect(html).not.toContain("No session selected");
+  });
+
+  it("ends a session's view with one Open in terminal action and no input", () => {
+    const html = render({ sessionId: SESSION });
+    expect(html).toContain("spexr-agent-pane__footer");
+    expect(html).toContain("Open in terminal");
+    expect(html).not.toContain("<textarea");
   });
 
   it("shows the head from a snapshot with no turn at all: the id, the placeholder title, no tag", () => {

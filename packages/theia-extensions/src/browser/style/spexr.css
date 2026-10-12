@@ -2856,7 +2856,7 @@ body .theia-notifications-container.theia-notification-toasts {
   overflow: hidden;
 }
 
-/* The pane is a column: the head, the log that scrolls, and the composer
+/* The pane is a column: the head, the log that scrolls, and the footer
    pinned under it. */
 .spexr-agent-pane {
   display: flex;
@@ -3154,98 +3154,12 @@ body .theia-notifications-container.theia-notification-toasts {
   font-size: 13px;
 }
 
-/* The composer (S6i): Lumen's message box, r12 on the kit's control edge. Its
-   focus is the container's, one flush accent ring in place of the edge (the
-   field inside draws none). */
-.spexr-agent-composer {
+/* The one action under the log: continue this session in a terminal. */
+.spexr-agent-pane__footer {
   flex: none;
-  display: grid;
-  gap: 8px;
-  margin: 12px;
-  padding: 8px;
-  border-radius: 12px;
-  background: var(--slc-raised);
-  box-shadow: 0 0 0 1px var(--slc-edge-control);
-}
-
-.spexr-agent-composer:focus-within {
-  box-shadow: 0 0 0 var(--sl-focus-ring-width, 2px) var(--slc-focus);
-  /* Forced colours drop box-shadows: the transparent outline is what they draw, in the system's focus colour. */
-  outline: 2px solid transparent;
-  outline-offset: -1px;
-}
-
-.spexr-agent-composer__field {
-  display: block;
-}
-
-.spexr-agent-composer__input {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 2px 4px;
-  border: 0;
-  outline: none;
-  resize: none;
-  background: transparent;
-  color: var(--slc-text);
-  font: inherit;
-  font-size: 13.5px;
-  line-height: 1.55;
-}
-
-/* Theia's own `textarea:focus` outline would draw a second ring inside the
-   composer's: the field is never outlined, whatever focuses it. */
-.spexr-agent-composer .spexr-agent-composer__input:focus,
-.spexr-agent-composer .spexr-agent-composer__input:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-  border: 0;
-}
-
-.spexr-agent-composer__input::placeholder {
-  color: var(--slc-text-muted);
-  opacity: 1;
-}
-
-.spexr-agent-composer__note {
-  margin: 0;
-  padding-inline: 4px;
-  color: var(--slc-text-secondary);
-  font-size: var(--sl-text-xs);
-  line-height: 16px;
-}
-
-/* Auto-approve is on in the agent's footer (accept edits, auto, bypass): said in
-   words and the warning tone, on a wash of its own. */
-.spexr-agent-composer__warn {
-  margin: 0;
-  padding: 4px 8px;
-  border-radius: 6px;
-  color: var(--slc-warning-text, var(--slc-warning));
-  background: color-mix(in srgb, var(--slc-warning) 12%, transparent);
-  font-size: var(--sl-text-xs);
-  line-height: 16px;
-}
-
-.spexr-agent-composer__bar {
   display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.spexr-agent-composer__spacer {
-  flex: 1;
-}
-
-.spexr-agent-composer__chip {
-  border-radius: 6px;
-  text-transform: none;
-  max-width: 50%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  justify-content: flex-end;
+  padding: 8px 12px 12px;
 }
 
 /* A card of rows: Lumen's tool list, on the raised ground at r8. Its outline

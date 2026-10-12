@@ -38,6 +38,8 @@ export class AgentPaneController {
   snapshot: AgentPaneSnapshot | undefined;
   /** The session asked of the backend. */
   followed: string | undefined;
+  /** A session the user chose is being looked up: the only wait worth announcing, since the agent's own session may have no transcript yet. */
+  loading = false;
   /** The tool card shows every row. */
   expanded = false;
   /** A session the user chose to look at, when it is not the agent terminal's own. */
@@ -94,6 +96,7 @@ export class AgentPaneController {
     if (sessionId === this.followed) return;
     this.reset(sessionId);
     const session = this.session;
+    this.loading = this.viewing !== undefined;
     this.changed();
     try {
       const first = await this.service.follow({
@@ -105,9 +108,17 @@ export class AgentPaneController {
       });
       if (session !== this.session) return;
       if (first && !this.snapshot) this.accept(first);
+      else if (this.loading) {
+        this.loading = false;
+        this.changed();
+      }
     } catch (err) {
       // Forgotten, so the next bind follows it again.
-      if (session === this.session && this.followed === sessionId) this.followed = undefined;
+      if (session === this.session && this.followed === sessionId) {
+        this.followed = undefined;
+        this.loading = false;
+        this.changed();
+      }
       this.warn("the agent pane could not follow its session", err);
     }
   }
@@ -152,12 +163,14 @@ export class AgentPaneController {
     for (const d of this.pending) next = applyDelta(next, d);
     this.pending = [];
     this.snapshot = next;
+    this.loading = false;
     this.changed();
   }
 
   private reset(sessionId: string | undefined): void {
     this.session++;
     this.followed = sessionId;
+    this.loading = false;
     this.snapshot = undefined;
     this.pending = [];
     this.expanded = false;
