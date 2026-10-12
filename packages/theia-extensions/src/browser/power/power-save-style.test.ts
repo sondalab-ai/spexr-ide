@@ -57,8 +57,6 @@ describe("paused motion CSS", () => {
     expect(paused()).toEqual(
       expect.arrayContaining([
         ".spexr-welcome-bg__blob::before",
-        ".spexr-smart-search__map-cta",
-        ".spexr-smart-search__map-glyph",
       ]),
     );
   });

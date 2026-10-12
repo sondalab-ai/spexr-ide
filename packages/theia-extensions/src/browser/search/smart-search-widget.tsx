@@ -407,8 +407,8 @@ export class SmartSearchWidget extends ReactWidget {
     return (
       <div className="spexr-smart-search__map">
         <div className="spexr-smart-search__map-row">
-          <button className="spexr-smart-search__map-cta" onClick={onClick} title={title}>
-            <span className="spexr-smart-search__map-glyph" aria-hidden="true">✦</span>
+          <button className="sl-btn sl-btn--primary spexr-smart-search__map-cta sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={onClick} title={title}>
+            <span className="codicon codicon-sparkle" aria-hidden="true" />
             <span className="spexr-smart-search__map-label">{label}</span>
           </button>
         </div>

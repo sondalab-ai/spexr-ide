@@ -102,7 +102,7 @@ describe("an island's ring", () => {
     expect(ring).toMatch(/pointer-events:\s*none/);
     expect(ring).toMatch(/border-radius:\s*inherit/);
     // The ring on the outermost pixel, the lit line flush under it: no gap.
-    expect(ring).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--slc-border-subtle\), inset 0 2px 0 var\(--slc-lit\);/);
+    expect(ring).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--slc-border\), inset 0 2px 0 var\(--slc-lit\);/);
     expect(rule(".spexr-island.sl-pane,")).toMatch(/box-shadow:\s*none/);
   });
 
@@ -240,7 +240,7 @@ describe("the activity bars", () => {
 
   it("draw the kit's count badge straddling the tile's top-right corner, clear of the glyph: mono 9px, a 16px badge at r6, ringed in the canvas", () => {
     const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar`);
-    // 3px above the tile's top (past Theia's 2px drag-over border, workbench-style.test.ts) and 6px into the bar's free side.
+    // 3px above the tile's top (past Theia's 2px drag-over border, workbench-style.test.ts) and 6px into the bar's free side; the tab must not clip it.
     expect(badge).toMatch(/top:\s*calc\(-3px - var\(--theia-dragover-tab-border-width\)\)/);
     expect(badge).toMatch(/right:\s*-6px/);
     expect(badge).toMatch(/bottom:\s*auto/);
@@ -252,6 +252,10 @@ describe("the activity bars", () => {
     expect(badge).toMatch(/box-shadow:\s*0 0 0 2px var\(--slc-canvas\)/);
     // The fill and its label stay Theia's badge variables, which the theme layer sets to the kit's fill.
     expect(badge).not.toMatch(/background|(^|[^-])color:/);
+  });
+
+  it("let the side tab show what hangs outside its tile (Lumino's tab clips by default)", () => {
+    expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tab {`)).toMatch(/overflow:\s*visible/);
   });
 
   it("show git-branch on the Source Control tab, not Theia's source-control glyph", () => {
@@ -297,7 +301,23 @@ describe("input fields at rest", () => {
   });
 
   it("draw the Search view's resting edge in the control edge, not the fill", () => {
-    const field = rule(":root .t-siw-search-container .searchHeader :is(");
-    expect(field).toMatch(/border-color:\s*var\(--slc-edge-control\)/);
+    const css2 = css.slice(css.indexOf(":root .t-siw-search-container .searchHeader :is("));
+    const edge = css2.slice(css2.indexOf(":not(.focused, .tooManyResults)"));
+    expect(edge.slice(0, edge.indexOf("}"))).toMatch(/border-color:\s*var\(--slc-edge-control\)/);
+  });
+
+  it("keep the kit's radius while focused: it is on the field, not on its resting state", () => {
+    const radius = rule(":root .t-siw-search-container .searchHeader :is(");
+    expect(radius).toMatch(/border-radius:\s*var\(--sl-radius-md, 8px\)/);
+    expect(radius).not.toMatch(/border-color/);
+  });
+});
+
+// "Understand the codebase" is the kit's primary button, not a bespoke animated gradient.
+describe("the Smart Search action", () => {
+  it("is the kit's primary button and carries no loop of its own", () => {
+    const widget = readFileSync(fileURLToPath(new URL("../search/smart-search-widget.tsx", import.meta.url)), "utf8");
+    expect(widget).toMatch(/className="sl-btn sl-btn--primary spexr-smart-search__map-cta/);
+    expect(css).not.toMatch(/spexr-aurora-sweep|spexr-glyph-breathe|spexr-smart-search__map-glyph/);
   });
 });

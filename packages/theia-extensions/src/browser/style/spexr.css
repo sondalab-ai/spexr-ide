@@ -301,9 +301,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   animation-play-state: paused !important;
 }
 
-:root[data-spexr-power-save] .spexr-welcome-bg__blob::before,
-:root[data-spexr-power-save] .spexr-smart-search__map-cta,
-:root[data-spexr-power-save] .spexr-smart-search__map-glyph {
+:root[data-spexr-power-save] .spexr-welcome-bg__blob::before {
   animation: none;
 }
 
@@ -321,9 +319,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* An unfocused or idle window (motion-idle.ts): SPEXR's decorative loops
    freeze in place and resume where they were. The kit freezes its own under
    data-sl-fx-still, set alongside. Status animations keep running. */
-:root[data-spexr-motion="paused"] .spexr-welcome-bg__blob::before,
-:root[data-spexr-motion="paused"] .spexr-smart-search__map-cta,
-:root[data-spexr-motion="paused"] .spexr-smart-search__map-glyph {
+:root[data-spexr-motion="paused"] .spexr-welcome-bg__blob::before {
   animation-play-state: paused !important;
 }
 
@@ -1198,7 +1194,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 /* The island recipe, drawn inward (the kit's --slc-depth-island turned
-   in): the quieter ring on the outermost pixel and the lit line on the next,
+   in): the ring (the border step; the subtle one vanished) on the outermost pixel and the lit line on the next,
    flush under it. In high contrast the ring is the theme's line and there is
    no lit line, as the kit's HC island is.
    The islands give up the kit's aurora layer here. The kit keeps a pane's
@@ -1217,7 +1213,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   inset: 0;
   z-index: 4;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 1px var(--slc-border-subtle), inset 0 2px 0 var(--slc-lit);
+  box-shadow: inset 0 0 0 1px var(--slc-border), inset 0 2px 0 var(--slc-lit);
   pointer-events: none;
 }
 
@@ -1310,7 +1306,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    4px from the top; Theia sizes each tab to its icon box, inline, so the box
    is the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
    codicon does. The count badge is the kit's, straddling the tile's top-right
-   corner into the bar's free 8px, so it covers the glyph's empty corner only. The bar's foot (the settings and accounts menus) takes the same
+   corner into the bar's free 8px, so it covers the glyph's empty corner only. Lumino's
+   tab clips its overflow (tabbar.css), so the side tabs lift that. The bar's foot (the settings and accounts menus) takes the same
    tiles.
    The column is the bar and the 6px island gap to its island, padded on the
    island's side, so Theia's measure of a side (the handle's offset) holds
@@ -1371,6 +1368,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   padding: 0;
   border: 0;
   border-radius: 9px;
+  overflow: visible;
   color: var(--slc-text-muted);
   background-color: transparent;
   box-shadow: none;
@@ -4969,11 +4967,17 @@ code {
    colour, so a field at rest had no edge at all (invisible on the light theme);
    it takes the control edge instead, and keeps Theia's focus and warning borders. */
 :root .t-siw-search-container .searchHeader :is(
+  .search-field-container,
+  .glob-field-container .glob-field .glob-field-input
+) {
+  border-radius: var(--sl-radius-md, 8px);
+}
+
+:root .t-siw-search-container .searchHeader :is(
   .search-field-container:not(.focused, .tooManyResults),
   .glob-field-container .glob-field .glob-field-input:not(:focus-within)
 ) {
   border-color: var(--slc-edge-control);
-  border-radius: var(--sl-radius-md, 8px);
 }
 
 /* Smart Search (the Search view) */
@@ -5103,66 +5107,13 @@ code {
   align-items: center;
   gap: var(--sl-space-1);
 }
-/* Primary action: an "aurora" gradient border that slowly sweeps, on a flat surface
-   fill. Built with padding-box/border-box layered gradients so the border animates
-   without a pseudo-element. */
+/* The action is the kit's primary button; this only lets it fill the row. */
 .spexr-smart-search__map-cta {
   flex: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--sl-space-2);
   min-width: 0;
-  border: 1px solid transparent;
-  border-radius: var(--sl-radius-md);
-  padding: var(--sl-space-2) var(--sl-space-3);
-  color: var(--sl-text-primary);
-  font-size: var(--sl-text-xs);
-  cursor: pointer;
-  background:
-    linear-gradient(var(--sl-bg-surface), var(--sl-bg-surface)) padding-box,
-    linear-gradient(
-      100deg,
-      var(--sl-accent-subtle),
-      var(--sl-accent-default),
-      var(--sl-accent-hover),
-      var(--sl-accent-default),
-      var(--sl-accent-subtle)
-    ) border-box;
-  background-size: 100% 100%, 300% 100%;
-  background-position: 0 0, 0 0;
-  animation: spexr-aurora-sweep 6s linear infinite;
-  transition:
-    transform var(--sl-motion-fast) var(--sl-motion-ease),
-    box-shadow var(--sl-motion-mid) var(--sl-motion-ease);
-}
-.spexr-smart-search__map-cta:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--sl-accent-default) 22%, transparent);
-}
-.spexr-smart-search__map-cta:active {
-  transform: translateY(0);
-}
-@keyframes spexr-aurora-sweep {
-  0%   { background-position: 0 0, 0% 0; }
-  100% { background-position: 0 0, 300% 0; }
-}
-.spexr-smart-search__map-glyph {
-  flex-shrink: 0;
-  color: var(--sl-accent-default);
-  font-size: var(--sl-text-sm);
-  line-height: 1;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--sl-accent-default) 45%, transparent));
-  animation: spexr-glyph-breathe 2.4s ease-in-out infinite;
-}
-@keyframes spexr-glyph-breathe {
-  0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--sl-accent-default) 30%, transparent)); }
-  50%      { opacity: 1;    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--sl-accent-default) 70%, transparent)); }
 }
 .spexr-smart-search__map-label {
-  flex: 1;
   min-width: 0;
-  text-align: left;
-  letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5205,12 +5156,6 @@ code {
   margin-top: var(--sl-space-2);
   font-size: var(--sl-text-xs);
   color: var(--sl-status-danger);
-}
-@media (prefers-reduced-motion: reduce) {
-  .spexr-smart-search__map-cta,
-  .spexr-smart-search__map-glyph {
-    animation: none;
-  }
 }
 
 /* --- Darkfactory: agent monitoring wall --- */
