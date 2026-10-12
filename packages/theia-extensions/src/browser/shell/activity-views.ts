@@ -47,3 +47,30 @@ export function removeActivityViewsOnce(store: MigrationStore, views: ActivityVi
     for (const id of REMOVED_ACTIVITY_VIEWS) if (views.has(id)) await views.close(id);
   });
 }
+
+/** The Search view container's widget id (`SEARCH_VIEW_CONTAINER_ID`, @theia/search-in-workspace), which holds Smart Search. */
+export const SEARCH_VIEW_ID = "search-view-container";
+
+/** Theia's own rank for Search on the left bar, between Explorer (100) and Source Control (300). */
+export const SEARCH_LEFT_RANK = 200;
+
+/** The id the one-time opening of Search is recorded under, in the left island's migration list. */
+export const SEARCH_VIEW_MIGRATION_ID = "search-view-shown";
+
+/** What the opening reads and does: whether Search is on any dock, and putting it on the left bar. */
+export interface SearchViewHost {
+  isAttached(widgetId: string): boolean;
+  openLeft(widgetId: string, rank: number): Promise<void> | void;
+}
+
+/**
+ * Put the Search view on the left bar of a layout that lacks it (one stored
+ * with it closed), once per workspace, so Smart Search is in view by default.
+ * Returns whether it ran. A user who closes it afterwards keeps it closed: the
+ * id is recorded. Reset Layout clears the list, so it runs again.
+ */
+export function showSearchViewOnce(store: MigrationStore, host: SearchViewHost): Promise<boolean> {
+  return runMigrationOnce(store, SEARCH_VIEW_MIGRATION_ID, async () => {
+    if (!host.isAttached(SEARCH_VIEW_ID)) await host.openLeft(SEARCH_VIEW_ID, SEARCH_LEFT_RANK);
+  });
+}

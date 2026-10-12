@@ -181,7 +181,7 @@ body,
   /* Floating surfaces (menus, dropdowns, inputs, widgets) */
   --theia-menu-background: ${raised} !important;
   --theia-dropdown-background: ${raised} !important;
-  --theia-input-background: ${raised} !important;
+  --theia-input-background: var(--slc-sunken) !important;
   --theia-quickInput-background: ${raised} !important;
   --theia-editorWidget-background: ${raised} !important;
   --theia-notifications-background: ${raised} !important;
@@ -256,7 +256,7 @@ body,
   --theia-titleBar-border: ${line} !important;
   --theia-statusBar-border: ${line} !important;
   --theia-menu-border: ${line} !important;
-  --theia-input-border: ${line} !important;
+  --theia-input-border: var(--slc-edge-control) !important;
   --theia-editorWidget-border: ${line} !important;
   --theia-activityBar-border: ${line} !important;
 }`;

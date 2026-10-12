@@ -151,10 +151,10 @@ describe("the activity tile against Theia's drag-over border", () => {
     );
   });
 
-  it("puts the count badge 4px from the tile's top, past the border", () => {
+  it("puts the count badge 3px above the tile's top and 6px into the bar's free side, past the border", () => {
     const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar {`);
-    expect(badge).toMatch(/top:\s*calc\(4px - var\(--theia-dragover-tab-border-width\)\);/);
-    expect(badge).toMatch(/right:\s*4px;/);
+    expect(badge).toMatch(/top:\s*calc\(-3px - var\(--theia-dragover-tab-border-width\)\);/);
+    expect(badge).toMatch(/right:\s*-6px;/);
   });
 
   it("keeps the current tile's seam half the tile's height", () => {

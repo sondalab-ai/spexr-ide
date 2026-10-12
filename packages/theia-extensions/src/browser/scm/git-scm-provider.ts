@@ -7,6 +7,7 @@ import { DiffUris } from "@theia/core/lib/browser/diff-uris";
 import URI from "@theia/core/lib/common/uri";
 import { FileService } from "@theia/filesystem/lib/browser/file-service";
 import { ScmService } from "@theia/scm/lib/browser/scm-service";
+import { ScmInputIssueType } from "@theia/scm/lib/browser/scm-input";
 import type { ScmRepository } from "@theia/scm/lib/browser/scm-repository";
 import type {
   ScmProvider,
@@ -229,6 +230,28 @@ export class SpexrGitScmProvider implements ScmProvider {
     return true;
   }
 
+  /**
+   * Show `message` under the commit-message box, where the user is looking, as
+   * Theia's input validation line. False when there is no box. It goes when the
+   * user edits the box, and after a few seconds, so it never outlives its cause.
+   */
+  setInputNotice(message: string): boolean {
+    const input = this.repository?.input;
+    if (!input) return false;
+    const issue = { message, type: ScmInputIssueType.Information };
+    input.issue = issue;
+    clearTimeout(this.noticeTimer);
+    this.noticeTimer = setTimeout(() => this.clearInputNotice(), 8000);
+    return true;
+  }
+
+  private clearInputNotice(): void {
+    clearTimeout(this.noticeTimer);
+    if (this.repository?.input.issue?.type === ScmInputIssueType.Information) this.repository.input.issue = undefined;
+  }
+
+  private noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
   get groups(): ScmResourceGroup[] {
     return [...this.allGroups];
   }
@@ -255,6 +278,13 @@ export class SpexrGitScmProvider implements ScmProvider {
     const repository = this.scmService.registerScmProvider(this as unknown as ScmProvider);
     this.repository = repository;
     repository.input.placeholder = "Message (press Ctrl/Cmd+Enter to commit)";
+    let lastValue = repository.input.value;
+    this.toDispose.push(
+      repository.input.onDidChange(() => {
+        if (repository.input.value !== lastValue) this.clearInputNotice();
+        lastValue = repository.input.value;
+      }),
+    );
     this.toDispose.push(repository);
     this.toDispose.push(
       this.fileService.onDidFilesChange((event) => {

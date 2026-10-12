@@ -8,6 +8,10 @@ import {
   DEBUG_VIEW_ID,
   EXTENSIONS_VIEW_ID,
   removeActivityViewsOnce,
+  SEARCH_VIEW_ID,
+  SEARCH_VIEW_MIGRATION_ID,
+  SEARCH_LEFT_RANK,
+  showSearchViewOnce,
   type ActivityViews,
 } from "./activity-views.js";
 import type { MigrationStore } from "./explorer-sections.js";
@@ -129,5 +133,37 @@ describe("the one-time removal", () => {
     const layout = own("./spexr-shell-layout-contribution.ts");
     expect(layout).toMatch(/await this\.openSideViews\(\);\s*await this\.removeActivityViews\(\);/);
     expect(layout).toMatch(/await this\.applyDefaultLayout\(\);\s*await this\.removeActivityViews\(\);/);
+  });
+});
+
+describe("the one-time showing of Search", () => {
+  const search = (attached: boolean): { opened: Array<[string, number]>; host: Parameters<typeof showSearchViewOnce>[1] } => {
+    const opened: Array<[string, number]> = [];
+    return { opened, host: { isAttached: () => attached, openLeft: (id, rank) => void opened.push([id, rank]) } };
+  };
+
+  it("names the id Theia gives the Search view container and its rank", () => {
+    expect(theia("@theia/search-in-workspace/src/browser/search-in-workspace-factory.ts")).toContain(`SEARCH_VIEW_CONTAINER_ID = '${SEARCH_VIEW_ID}'`);
+    expect(rankOf(theia("@theia/search-in-workspace/src/browser/search-in-workspace-frontend-contribution.ts"), "widgetId: SearchInWorkspaceWidget.ID")).toBe(SEARCH_LEFT_RANK);
+  });
+
+  it("opens Search on the left where a layout lacks it, and records itself", async () => {
+    let list: string[] = [];
+    const store: MigrationStore = { load: async () => list, save: async (ids) => { list = [...ids]; } };
+    const s = search(false);
+    expect(await showSearchViewOnce(store, s.host)).toBe(true);
+    expect(s.opened).toEqual([[SEARCH_VIEW_ID, SEARCH_LEFT_RANK]]);
+    expect(list).toEqual([SEARCH_VIEW_MIGRATION_ID]);
+  });
+
+  it("leaves Search where it is when attached, and does not reopen one the user closed", async () => {
+    let list: string[] = [];
+    const store: MigrationStore = { load: async () => list, save: async (ids) => { list = [...ids]; } };
+    const attached = search(true);
+    await showSearchViewOnce(store, attached.host);
+    expect(attached.opened).toEqual([]);
+    const closed = search(false);
+    expect(await showSearchViewOnce(store, closed.host)).toBe(false);
+    expect(closed.opened).toEqual([]);
   });
 });

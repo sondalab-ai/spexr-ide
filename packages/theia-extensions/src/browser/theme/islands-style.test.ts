@@ -238,11 +238,11 @@ describe("the activity bars", () => {
     expect(rule(`${NOT_HC} .lm-TabBar.theia-app-sides:focus-within`)).toMatch(/--spexr-seam-ink:\s*var\(--slc-seam\)/);
   });
 
-  it("draw the kit's count badge 4px into the tile's corner, which clips: mono 9px, a 16px badge at r6, ringed in the canvas", () => {
+  it("draw the kit's count badge straddling the tile's top-right corner, clear of the glyph: mono 9px, a 16px badge at r6, ringed in the canvas", () => {
     const badge = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar`);
-    // 4px from the tile's top, past Theia's 2px drag-over border (workbench-style.test.ts).
-    expect(badge).toMatch(/top:\s*calc\(4px - var\(--theia-dragover-tab-border-width\)\)/);
-    expect(badge).toMatch(/right:\s*4px/);
+    // 3px above the tile's top (past Theia's 2px drag-over border, workbench-style.test.ts) and 6px into the bar's free side.
+    expect(badge).toMatch(/top:\s*calc\(-3px - var\(--theia-dragover-tab-border-width\)\)/);
+    expect(badge).toMatch(/right:\s*-6px/);
     expect(badge).toMatch(/bottom:\s*auto/);
     expect(badge).toMatch(/min-width:\s*20px/);
     expect(badge).toMatch(/height:\s*1rem/);
@@ -253,14 +253,51 @@ describe("the activity bars", () => {
     // The fill and its label stay Theia's badge variables, which the theme layer sets to the kit's fill.
     expect(badge).not.toMatch(/background|(^|[^-])color:/);
   });
+
+  it("show git-branch on the Source Control tab, not Theia's source-control glyph", () => {
+    const icon = rule(`${NOT_HC} .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon.codicon-source-control::before`);
+    expect(icon).toMatch(/content:\s*"\\ec6f"/);
+  });
 });
 
 // Theia's tree toward the kit's .sl-tree; its selected row is S2's tile.
+// Theia renders the commit box, so it takes the kit's field look from CSS; the generate action rides inside it.
+describe("the SCM commit box", () => {
+  const BOX = ".spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message";
+
+  it("is the kit's sunken field: well, control edge, r-md", () => {
+    const box = rule(`${BOX} {`);
+    expect(box).toMatch(/background:\s*var\(--slc-sunken\)/);
+    expect(box).toMatch(/border:\s*1px solid var\(--slc-edge-control\)/);
+    expect(box).toMatch(/border-radius:\s*var\(--sl-radius-md, 8px\)/);
+    expect(box).toMatch(/box-shadow:\s*var\(--slc-depth-sunk\)/);
+  });
+
+  it("keeps the generate action absolutely placed on the first line, with room reserved for it", () => {
+    expect(rule(`${BOX} {`)).toMatch(/padding:\s*0\.3125rem 2\.5rem 0\.3125rem 0\.75rem/);
+    expect(rule(".spexr-scm-input .spexr-scm-input__generate {")).toMatch(/position:\s*absolute/);
+  });
+});
+
 describe("the tree's twisty", () => {
   it("is the muted ink and turns on the kit's motion tokens, never while busy", () => {
     expect(rule(`${NOT_HC} .theia-Tree .theia-ExpansionToggle {`)).toMatch(/color:\s*var\(--slc-text-muted\)/);
     expect(rule(`${NOT_HC} .theia-Tree .theia-ExpansionToggle:not(.theia-mod-busy)`)).toMatch(
       /transition:\s*transform var\(--sl-motion-fast\) var\(--sl-motion-ease\)/,
     );
+  });
+});
+
+// Theia's inputs are the kit's sunken field; the Search view's resting edge was the fill's own colour.
+describe("input fields at rest", () => {
+  it("take the kit's sunken fill and control edge from the theme variables", () => {
+    const chrome = readFileSync(fileURLToPath(new URL("./theia-chrome-css.ts", import.meta.url)), "utf8");
+    expect(chrome).toContain("--theia-input-background: var(--slc-sunken) !important;");
+    expect(chrome).toContain("--theia-input-border: var(--slc-edge-control) !important;");
+  });
+
+  it("draw the Search view's resting edge in the control edge, not the fill", () => {
+    const field = rule(":root .t-siw-search-container .searchHeader :is(");
+    expect(field).toMatch(/border-color:\s*var\(--slc-edge-control\)/);
   });
 });

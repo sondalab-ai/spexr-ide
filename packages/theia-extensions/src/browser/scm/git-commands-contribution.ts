@@ -677,22 +677,27 @@ export class SpexrGitCommandsContribution implements CommandContribution, MenuCo
    * The single model worker is shared with the Darkfactory summaries, so this can
    * queue behind one and take a while.
    */
+  /** Say it under the commit box, where the click happened; a toast in the corner is easy to miss. Falls back to a toast when there is no box. */
+  private notice(provider: SpexrGitScmProvider, message: string): void {
+    if (!provider.setInputNotice(message)) this.messages.info(message);
+  }
+
   private async generateCommitMessage(): Promise<void> {
     const provider = this.provider;
     if (!provider) return;
     const staged = provider.lastStatus?.files.filter((f) => f.stagedState !== undefined) ?? [];
     if (staged.length === 0) {
-      this.messages.info("Nothing staged — stage the changes you want described first.");
+      this.notice(provider, "Nothing staged — stage the changes you want described first.");
       return;
     }
     if (provider.inputValue.trim().length > 0) {
-      this.messages.info("The commit message box already has text — clear it to generate a new message.");
+      this.notice(provider, "The commit message box already has text — clear it to generate a new message.");
       return;
     }
     await this.runGitOp("Generate commit message", async () => {
       const message = await provider.generateCommitMessage();
       if (!message) {
-        this.messages.info("The local model could not write a commit message.");
+        this.notice(provider, "The local model could not write a commit message.");
         return;
       }
       // Never drop a message the model spent real time on: if the box is gone,

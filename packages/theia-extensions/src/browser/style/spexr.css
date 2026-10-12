@@ -1309,8 +1309,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    tiles at r9 with a 20px glyph, 8px apart (Lumen's 44px pitch), the first
    4px from the top; Theia sizes each tab to its icon box, inline, so the box
    is the tile. A mask icon (a plugin's view) paints with the tab's ink, as a
-   codicon does. The count badge is the kit's, inside the tile's corner: the
-   tab clips. The bar's foot (the settings and accounts menus) takes the same
+   codicon does. The count badge is the kit's, straddling the tile's top-right
+   corner into the bar's free 8px, so it covers the glyph's empty corner only. The bar's foot (the settings and accounts menus) takes the same
    tiles.
    The column is the bar and the 6px island gap to its island, padded on the
    island's side, so Theia's measure of a side (the handle's offset) holds
@@ -1399,7 +1399,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    !important), and it stays. The tile paints under it, but a background
    layer and an absolute child are placed in the padding box, 2px down: the
    seam takes the border back to stay half the tile's height, and the badge
-   (below) to sit 4px from the tile's top. */
+   (below) to sit 3px above the tile's top. */
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tab.lm-mod-current {
   color: var(--slc-text);
   background-color: var(--slc-tile);
@@ -1415,8 +1415,8 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 :root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .theia-badge-decorator-sidebar {
-  top: calc(4px - var(--theia-dragover-tab-border-width));
-  right: 4px;
+  top: calc(-3px - var(--theia-dragover-tab-border-width));
+  right: -6px;
   bottom: auto;
   box-sizing: border-box;
   min-width: 20px;
@@ -1425,6 +1425,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
   font: 600 9px/1rem var(--sl-font-mono);
   border-radius: 6px;
   box-shadow: 0 0 0 2px var(--slc-canvas);
+}
+
+/* Source Control's tab shows git-branch (codicon \ec6f), not Theia's source-control glyph. */
+:root:not([data-sl-theme="high-contrast"]) .lm-TabBar.theia-app-sides .lm-TabBar-tabIcon.codicon-source-control::before {
+  content: "\ec6f";
 }
 
 /* The bar's foot: Theia's settings and accounts menus, as the bar's tiles. */
@@ -2878,8 +2883,12 @@ body .theia-notifications-container.theia-notification-toasts {
   text-transform: none;
 }
 
+/* One column that may shrink below its content (minmax(0, 1fr)): the implicit
+   auto column sized to the widest unbreakable child and pushed the cards out
+   under the activity bar. */
 .spexr-agent-pane__log {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   gap: 16px;
   align-content: start;
@@ -4918,15 +4927,53 @@ code {
   margin-top: 5px;
 }
 
-/* The generate-message action sits inside the commit box, so the message and the
-   way to ask for one are a single control. The textarea keeps room on its right
-   so a long message never runs under the button. */
+/* The commit box is the kit's sunken field (.sl-field__input: well, control edge,
+   r-md, 32px single row), restated here because Theia renders the textarea and
+   cannot take the class. The generate-message action sits inside it, at the end of
+   the first line, so the message and the way to ask for one are a single control;
+   the textarea keeps room on its right so a long message never runs under it. */
 .spexr-scm-input { position: relative; }
-.spexr-scm-input .theia-scm-input-message { padding-right: 26px; }
-.spexr-scm-input__generate {
-  position: absolute; top: 3px; right: 4px;
-  /* Small enough to sit inside a single-row textarea without overflowing it. */
-  width: 18px; height: 18px; border-radius: var(--sl-radius-sm);
+.spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message {
+  font-family: var(--sl-font-sans, system-ui, sans-serif);
+  font-size: var(--sl-text-sm, 0.875rem);
+  line-height: 1.25rem;
+  color: var(--slc-text);
+  background: var(--slc-sunken);
+  border: 1px solid var(--slc-edge-control);
+  border-radius: var(--sl-radius-md, 8px);
+  box-shadow: var(--slc-depth-sunk);
+  padding: 0.3125rem 2.5rem 0.3125rem 0.75rem;
+  transition:
+    border-color var(--sl-motion-fast) var(--sl-motion-ease),
+    box-shadow var(--sl-motion-fast) var(--sl-motion-ease);
+}
+.spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message::placeholder {
+  color: var(--slc-text-muted);
+}
+.spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message:hover:not(:focus) {
+  border-color: var(--slc-edge-control-hover);
+}
+.spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message:focus {
+  border-color: var(--slc-focus);
+}
+.spexr-scm-input .spexr-scm-input__generate {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+/* Inputs are the kit's sunken field (--theia-input-background / -border, set in
+   theia-chrome-css.ts). The Search view draws its resting border in the fill's own
+   colour, so a field at rest had no edge at all (invisible on the light theme);
+   it takes the control edge instead, and keeps Theia's focus and warning borders. */
+:root .t-siw-search-container .searchHeader :is(
+  .search-field-container:not(.focused, .tooManyResults),
+  .glob-field-container .glob-field .glob-field-input:not(:focus-within)
+) {
+  border-color: var(--slc-edge-control);
+  border-radius: var(--sl-radius-md, 8px);
 }
 
 /* Smart Search (the Search view) */

@@ -76,7 +76,7 @@ describe("icon-only buttons", () => {
     ".spexr-df-group__toggle",
     ".spexr-df-search__clear",
     ".spexr-smart-search__map-regen",
-    ".spexr-scm-input__generate",
+    ".spexr-scm-input .spexr-scm-input__generate",
   ])("%s leaves background, border and colour to the kit", (sel) => {
     expect(rule(sel)).not.toMatch(/(^|[\s;{])(background|border|color):/);
   });

@@ -1,5 +1,5 @@
 import { injectable, inject, multiInject, optional } from "@theia/core/shared/inversify";
-import { ApplicationShell } from "@theia/core/lib/browser";
+import { ApplicationShell, WidgetManager } from "@theia/core/lib/browser";
 import type {
   FrontendApplication,
   FrontendApplicationContribution,
@@ -25,7 +25,7 @@ import { SpexrRevealOnRestore, restoreOptions, type RevealOnRestoreView } from "
 import { SpexrDefaultLayoutContribution } from "./default-layout-contribution.js";
 import { StorageService } from "@theia/core/lib/browser/storage-service";
 import { SECTIONS_MIGRATION_KEY, clearMigrations, type MigrationStore } from "./explorer-sections.js";
-import { removeActivityViewsOnce } from "./activity-views.js";
+import { removeActivityViewsOnce, showSearchViewOnce } from "./activity-views.js";
 import { SpexrOutputAttach } from "./bottom-panel-contribution.js";
 
 /** IDs of tabs pinned to positions 0, 1, 2 in the main area. */
@@ -88,6 +88,9 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
 
   @inject(StorageService)
   private readonly storage!: StorageService;
+
+  @inject(WidgetManager)
+  private readonly widgetManager!: WidgetManager;
 
   @inject(SpexrOutputAttach)
   private readonly outputAttach!: SpexrOutputAttach;
@@ -218,7 +221,7 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
     }
   }
 
-  /** Debug and Extensions leave the left bar once per workspace (activity-views.ts); a failure is logged, and the next launch tries again. */
+  /** Debug and Extensions leave the left bar, and Search joins it, once per workspace (activity-views.ts); a failure is logged, and the next launch tries again. */
   private async removeActivityViews(): Promise<void> {
     const store: MigrationStore = { load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) };
     try {
@@ -230,6 +233,23 @@ export class SpexrShellLayoutContribution implements FrontendApplicationContribu
       });
     } catch (err) {
       console.warn("[spexr] Debug and Extensions could not be taken off the activity bar", err);
+    }
+    await this.showSearchView();
+  }
+
+  /** Search (with Smart Search) joins the left bar once per workspace (activity-views.ts); a failure is logged, and the next launch tries again. */
+  private async showSearchView(): Promise<void> {
+    const store: MigrationStore = { load: () => this.storage.getData(SECTIONS_MIGRATION_KEY), save: (ids) => this.storage.setData(SECTIONS_MIGRATION_KEY, ids) };
+    try {
+      await showSearchViewOnce(store, {
+        isAttached: (id) => this.widgetManager.tryGetWidget(id)?.isAttached ?? false,
+        openLeft: async (id, rank) => {
+          const widget = await this.widgetManager.getOrCreateWidget(id);
+          await this.shell.addWidget(widget, { area: "left", rank });
+        },
+      });
+    } catch (err) {
+      console.warn("[spexr] the Search view could not be shown", err);
     }
   }
 

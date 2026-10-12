@@ -41,6 +41,10 @@ describe("the agent pane in spexr.css", () => {
     expect(px(log, "gap")).toBe(AGENT_PANE.logGap);
   });
 
+  it("is one column that can shrink below its content, so a wide card never runs under the activity bar", () => {
+    expect(rules(".spexr-agent-pane__log")).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/);
+  });
+
   it("is the table's prompt: r8 with an r4 corner, 8px by 12px of padding, 13.5px on a 1.55 line, on the tile", () => {
     const prompt = rules(".spexr-agent-prompt");
     expect(prompt).toMatch(new RegExp(`border-radius:\\s*${AGENT_PANE.promptRadius}px ${AGENT_PANE.promptRadius}px ${AGENT_PANE.promptRadius}px ${AGENT_PANE.promptCorner}px`));

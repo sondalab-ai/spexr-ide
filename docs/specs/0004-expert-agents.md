@@ -1,11 +1,11 @@
 ---
 slug: 0004-expert-agents
 title: Expert agents — persona presets selectable per project
-status: shipped
+status: validated
 createdAt: 2026-05-23
 relatedSpecs: 
 workflowStep: ship
-updatedAt: 2026-07-15
+updatedAt: 2026-10-01
 forcedSteps: [ship]
 ---
 ## Goal
