@@ -61,3 +61,16 @@ export function toggleTodo(text: string, item: TodoItem): string | undefined {
   lines[item.line] = `${m[1]}${m[2] === " " ? "x" : " "}${m[3]}${m[4]}${cr}`;
   return lines.join("\n");
 }
+
+/**
+ * The file with `- [ ] <title>` appended after its last line, keeping the
+ * file's line endings and ending it with one. Undefined when the title is
+ * blank; pass "" for a file that does not exist yet.
+ */
+export function appendTodo(text: string, title: string): string | undefined {
+  const clean = title.replace(/\s+/g, " ").trim();
+  if (!clean) return undefined;
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const base = text === "" || text.endsWith("\n") ? text : text + eol;
+  return `${base}- [ ] ${clean}${eol}`;
+}

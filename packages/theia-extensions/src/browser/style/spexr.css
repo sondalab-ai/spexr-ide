@@ -5984,6 +5984,9 @@ code {
    above), so its text reads on a kit ground in both themes; an empty card
    was muted ink on a black wash, 4.0:1 on paper. The gap between projects
    outweighs the hairlines between items. */
+.spexr-todo__add { display: flex; flex-direction: column; gap: var(--sl-space-2); }
+.spexr-todo__add-row { display: flex; gap: var(--sl-space-2); }
+.spexr-todo__add-row .sl-field__input { flex: 1; min-width: 0; }
 .spexr-todo__file .spexr-todo__item { padding-inline: 12px; }
 .spexr-todo__file .spexr-todo__item:last-child { border-bottom: none; }
 .spexr-todo__file .spexr-todo__empty { padding: 8px 12px; }

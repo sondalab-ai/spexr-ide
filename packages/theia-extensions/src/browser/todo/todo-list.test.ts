@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTodo, toggleTodo } from "./todo-list.js";
+import { appendTodo, parseTodo, toggleTodo } from "./todo-list.js";
 
 const FILE = [
   "- [x] Rename sessions on the wall",
@@ -62,5 +62,25 @@ describe("toggleTodo", () => {
     const item = parseTodo(FILE)[1]!;
     const edited = "- [ ] a new first item\n" + FILE;
     expect(toggleTodo(edited, item)).toBeUndefined();
+  });
+});
+
+describe("appendTodo", () => {
+  it("adds an open item as the last line", () => {
+    expect(appendTodo("- [x] a\n", "b")).toBe("- [x] a\n- [ ] b\n");
+  });
+
+  it("starts a new file, and finishes a last line that has no newline", () => {
+    expect(appendTodo("", "b")).toBe("- [ ] b\n");
+    expect(appendTodo("- [ ] a", "b")).toBe("- [ ] a\n- [ ] b\n");
+  });
+
+  it("keeps CRLF files CRLF", () => {
+    expect(appendTodo("- [ ] a\r\n", "b")).toBe("- [ ] a\r\n- [ ] b\r\n");
+  });
+
+  it("flattens whitespace so the title stays one line, and refuses a blank one", () => {
+    expect(appendTodo("", "  a \n b ")).toBe("- [ ] a b\n");
+    expect(appendTodo("- [ ] a\n", "   ")).toBeUndefined();
   });
 });
