@@ -121,9 +121,10 @@ describe("follow switching", () => {
   const { rows } = sessionRows([refactor, prism, edge], ["/w/probe-engine"], NOW);
 
   it("points the pane at another session, and back at the agent's own with no override", () => {
-    expect(viewTarget("b", "a")).toBe("b");
-    expect(viewTarget("a", "a")).toBeUndefined();
-    expect(viewTarget("a", undefined)).toBe("a");
+    const row = (sessionId: string) => ({ sessionId, name: "", state: "done" as const, meta: "", harness: "claude" as const, projectPath: "/w/proj/sub" });
+    expect(viewTarget(row("b"), "a")).toEqual({ sessionId: "b", projectPath: "/w/proj/sub" });
+    expect(viewTarget(row("a"), "a")).toBeUndefined();
+    expect(viewTarget(row("a"), undefined)).toEqual({ sessionId: "a", projectPath: "/w/proj/sub" });
   });
 
   it("moves focus by arrow key, Home and End, stopping at the ends, and starts from the nearest end with no current row", () => {

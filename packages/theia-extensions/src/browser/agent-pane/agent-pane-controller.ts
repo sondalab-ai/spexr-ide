@@ -42,6 +42,8 @@ export class AgentPaneController {
   expanded = false;
   /** A session the user chose to look at, when it is not the agent terminal's own. */
   viewing: string | undefined;
+  /** The folder the viewed session ran in: its transcript is under that folder's project directory, not the workspace root's. */
+  private viewingPath: string | undefined;
 
   /** Orders the lookups of the session id: the latest bind's answer is the one acted on. */
   private lookup = 0;
@@ -61,9 +63,12 @@ export class AgentPaneController {
   /**
    * Follow `sessionId` read-only, or the agent's own session again with
    * undefined. Choosing the agent's own session is the same as undefined.
+   * `projectPath` is the folder the session ran in, which may be a subfolder
+   * of the workspace root.
    */
-  async view(sessionId: string | undefined): Promise<void> {
+  async view(sessionId: string | undefined, projectPath?: string): Promise<void> {
     this.viewing = sessionId;
+    this.viewingPath = sessionId === undefined ? undefined : projectPath;
     await this.bind();
   }
 
@@ -73,9 +78,13 @@ export class AgentPaneController {
     const running = this.terminal.currentSessionId();
     const own = running ?? (rootUri ? await this.terminal.storedSessionId(rootUri).catch(() => undefined) : undefined);
     if (lookup !== this.lookup) return;
-    if (this.viewing !== undefined && this.viewing === own) this.viewing = undefined;
+    if (this.viewing !== undefined && this.viewing === own) {
+      this.viewing = undefined;
+      this.viewingPath = undefined;
+    }
     const sessionId = this.viewing ?? own;
-    if (!rootUri || !sessionId) {
+    const workspacePath = this.viewing !== undefined && this.viewingPath ? this.viewingPath : rootUri ? this.toPath(rootUri) : undefined;
+    if (!workspacePath || !sessionId) {
       const had = this.followed !== undefined;
       this.reset(undefined);
       if (had) this.changed();
@@ -89,7 +98,7 @@ export class AgentPaneController {
     try {
       const first = await this.service.follow({
         sessionId,
-        workspacePath: this.toPath(rootUri),
+        workspacePath,
         // Another session is only looked at: it must not be left for a newer transcript, which is likelier the agent's own.
         // An id from storage may be a session that ended: the backend then adopts a newer transcript only while a Claude runs there.
         ...(this.viewing !== undefined ? { readOnly: true } : running ? {} : { fromStorage: true }),

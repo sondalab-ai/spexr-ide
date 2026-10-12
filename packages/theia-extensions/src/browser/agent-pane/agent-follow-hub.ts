@@ -2,6 +2,12 @@ import { injectable } from "@theia/core/shared/inversify";
 import { Emitter, type Event } from "@theia/core/lib/common/event";
 import type { AgentPaneSnapshot } from "../../common/agent-pane-protocol.js";
 
+/** A session to look at, and the folder Claude ran it in (where its transcript lives). */
+export interface ViewRequest {
+  readonly sessionId: string;
+  readonly projectPath: string;
+}
+
 /** What the agent pane follows right now, as the others read it. */
 export interface FollowState {
   /** The session the pane follows: the agent's own, or the one the Sessions part pointed it at. */
@@ -23,20 +29,20 @@ export interface FollowState {
 export class AgentFollowHub {
   private state: FollowState = { followed: undefined, viewing: false, snapshot: undefined };
   private readonly changed = new Emitter<FollowState>();
-  private readonly requests = new Emitter<string | undefined>();
+  private readonly requests = new Emitter<ViewRequest | undefined>();
   /** The last session asked for, kept for a pane that was not open when it was asked. */
-  private requested: string | undefined;
+  private requested: ViewRequest | undefined;
 
   readonly onDidChange: Event<FollowState> = this.changed.event;
   /** A request to follow a session read-only, or (undefined) to go back to the agent's own. */
-  readonly onViewRequest: Event<string | undefined> = this.requests.event;
+  readonly onViewRequest: Event<ViewRequest | undefined> = this.requests.event;
 
   get current(): FollowState {
     return this.state;
   }
 
   /** The session asked for and not yet taken back: what a pane that opens now should follow. */
-  get pendingView(): string | undefined {
+  get pendingView(): ViewRequest | undefined {
     return this.requested;
   }
 
@@ -51,9 +57,9 @@ export class AgentFollowHub {
     this.requested = undefined;
   }
 
-  /** Ask the pane to follow `sessionId` read-only, or its own session with undefined. */
-  requestView(sessionId: string | undefined): void {
-    this.requested = sessionId;
-    this.requests.fire(sessionId);
+  /** Ask the pane to follow a session read-only, or its own session with undefined. */
+  requestView(request: ViewRequest | undefined): void {
+    this.requested = request;
+    this.requests.fire(request);
   }
 }

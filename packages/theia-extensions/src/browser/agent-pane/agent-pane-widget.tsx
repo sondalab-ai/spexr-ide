@@ -91,7 +91,7 @@ export class AgentPaneWidget extends ReactWidget {
       },
       (message, error) => console.warn(`[spexr] ${message}`, error),
     );
-    this.toDispose.push(this.hub.onViewRequest((id) => void this.controller.view(id)));
+    this.toDispose.push(this.hub.onViewRequest((req) => void this.controller.view(req?.sessionId, req?.projectPath)));
     this.toDispose.push(this.client.onSnapshot$((s) => this.controller.snapshotPushed(s)));
     this.toDispose.push(this.client.onDelta$((d) => this.controller.deltaPushed(d)));
     this.toDispose.push(this.client.onSessionAdopted$(({ from, to }) => this.controller.adopted(from, to)));
@@ -125,7 +125,7 @@ export class AgentPaneWidget extends ReactWidget {
       },
     });
     // Opened by a click in the Sessions part: it follows that session from the start.
-    void this.controller.view(this.hub.pendingView);
+    void this.controller.view(this.hub.pendingView?.sessionId, this.hub.pendingView?.projectPath);
   }
 
   /** Say what the pane follows, for the Sessions part, the Agent log and the status bar. */
@@ -278,6 +278,7 @@ export class AgentPaneWidget extends ReactWidget {
     return (
       <AgentPaneView
         snapshot={shown}
+        loading={snapshot === undefined && this.controller.followed !== undefined}
         expanded={this.controller.expanded}
         onToggleExpanded={() => this.controller.toggleExpanded()}
         onReveal={() => void this.terminal.reveal()}

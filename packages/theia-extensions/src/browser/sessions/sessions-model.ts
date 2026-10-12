@@ -4,6 +4,7 @@ import type { HarnessId } from "../../common/harness/harness-types.js";
 import { STALE_MS } from "../../common/session-timing.js";
 import { defaultSessionName, sortTiles } from "../darkfactory/darkfactory-format.js";
 import { normalizeProjectPath } from "../project/project-switch-targets.js";
+import type { ViewRequest } from "../agent-pane/agent-follow-hub.js";
 import { modelFamily } from "../agent-pane/agent-pane-format.js";
 
 /** The most rows the Sessions part lists; it scrolls in a small window, and older sessions live on the wall. */
@@ -24,6 +25,8 @@ export interface SessionRow {
   readonly meta: string;
   /** Which agent CLI wrote it: only a Claude session can be followed in the pane. */
   readonly harness: HarnessId;
+  /** The folder the session ran in: a subfolder of a root has its transcript under its own project directory. */
+  readonly projectPath: string;
 }
 
 /** The rows shown, and how many more sessions of the workspace the cap left out. */
@@ -99,6 +102,7 @@ export function sessionRows(
     state: rowState(t),
     meta: rowMeta(t, now),
     harness: t.harness,
+    projectPath: t.projectPath,
   }));
   return { rows, more: sorted.length - shown.length };
 }
@@ -119,8 +123,8 @@ export function focusTarget(rows: readonly SessionRow[], current: string | undef
  * terminal's own session means "back to my agent" (undefined, no override);
  * any other is a read-only follow of it.
  */
-export function viewTarget(clicked: string, ownSessionId: string | undefined): string | undefined {
-  return clicked === ownSessionId ? undefined : clicked;
+export function viewTarget(clicked: SessionRow, ownSessionId: string | undefined): ViewRequest | undefined {
+  return clicked.sessionId === ownSessionId ? undefined : { sessionId: clicked.sessionId, projectPath: clicked.projectPath };
 }
 
 export interface AgentsPill {

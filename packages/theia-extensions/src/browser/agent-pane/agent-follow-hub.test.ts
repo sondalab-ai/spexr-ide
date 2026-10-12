@@ -18,19 +18,20 @@ describe("AgentFollowHub", () => {
 
   it("passes a view request on, and keeps it for a pane that opens later", () => {
     const hub = new AgentFollowHub();
-    const asked: Array<string | undefined> = [];
-    hub.onViewRequest((id) => asked.push(id));
-    hub.requestView("b");
-    expect(asked).toEqual(["b"]);
-    expect(hub.pendingView).toBe("b");
+    const asked: Array<unknown> = [];
+    hub.onViewRequest((req) => asked.push(req));
+    const b = { sessionId: "b", projectPath: "/w/sub" };
+    hub.requestView(b);
+    expect(asked).toEqual([b]);
+    expect(hub.pendingView).toBe(b);
     hub.requestView(undefined);
-    expect(asked).toEqual(["b", undefined]);
+    expect(asked).toEqual([b, undefined]);
     expect(hub.pendingView).toBeUndefined();
   });
 
   it("forgets a pending request when the pane that did not take it is gone", () => {
     const hub = new AgentFollowHub();
-    hub.requestView("b");
+    hub.requestView({ sessionId: "b", projectPath: "/w/sub" });
     hub.clearPending();
     expect(hub.pendingView).toBeUndefined();
   });

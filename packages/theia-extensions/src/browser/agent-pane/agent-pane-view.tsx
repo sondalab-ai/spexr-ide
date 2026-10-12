@@ -7,6 +7,8 @@ import type { AgentPaneSnapshot, PaneTool } from "../../common/agent-pane-protoc
 export interface AgentPaneViewProps {
   /** The followed session's snapshot; undefined while there is none (no agent running, or no transcript yet). */
   readonly snapshot: AgentPaneSnapshot | undefined;
+  /** A session is followed but its transcript has not been read yet. */
+  readonly loading?: boolean;
   /** The tool card shows every row, not only the last few. */
   readonly expanded: boolean;
   readonly onToggleExpanded: () => void;
@@ -67,9 +69,9 @@ const Prose: React.FC<{ readonly text: string }> = ({ text }) => (
 const titleOf = (s: AgentPaneSnapshot): string => s.title ?? nls.localize("spexr/agentPane/untitled", "New session");
 
 
-export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void; readonly composer?: React.ReactNode }> = ({ onReveal, composer }) => (
+export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void; readonly composer?: React.ReactNode; readonly loading?: boolean | undefined }> = ({ onReveal, composer, loading }) => (
   <section className="spexr-agent-pane spexr-agent-pane--empty" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
-    <PanelHead eyebrow={nls.localize("spexr/agentPane/eyebrow", "Agent")} title={nls.localize("spexr/agentPane/emptyTitle", "No session yet")} />
+    <PanelHead eyebrow={nls.localize("spexr/agentPane/eyebrow", "Agent")} title={loading ? nls.localize("spexr/agentPane/loadingTitle", "Loading session…") : nls.localize("spexr/agentPane/emptyTitle", "No session yet")} />
     <div className="spexr-panel-body spexr-agent-pane__empty">
       <p className="spexr-agent-pane__hint">
         {nls.localize("spexr/agentPane/emptyHint", "The agent's turn shows here once it starts: what you asked, the tools it runs, the edits it makes and its plan.")}
@@ -89,9 +91,9 @@ export const AgentPaneEmpty: React.FC<{ readonly onReveal: () => void; readonly 
  * latest diff and the plan; a row asking the user to come to the terminal when
  * the agent waits for them. Nothing here animates in.
  */
-export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, expanded, onToggleExpanded, onReveal, composer }) => {
+export const AgentPaneView: React.FC<AgentPaneViewProps> = ({ snapshot, loading, expanded, onToggleExpanded, onReveal, composer }) => {
   const uid = React.useId();
-  if (!snapshot) return <AgentPaneEmpty onReveal={onReveal} composer={composer} />;
+  if (!snapshot) return <AgentPaneEmpty onReveal={onReveal} composer={composer} loading={loading} />;
   const turn = snapshot.turn;
   const family = modelFamily(snapshot.model);
   const prose = turn?.prose?.[turn.prose.length - 1];

@@ -82,7 +82,7 @@ export class SessionsWidget extends ReactWidget {
       void this.commands.executeCommand(DARKFACTORY_OPEN_SESSION_COMMAND.id, row.sessionId);
       return;
     }
-    this.hub.requestView(viewTarget(row.sessionId, this.terminal.currentSessionId()));
+    this.hub.requestView(viewTarget(row, this.terminal.currentSessionId()));
     void this.paneView.openView({ activate: false, reveal: true });
   }
 

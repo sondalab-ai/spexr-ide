@@ -19,6 +19,12 @@ describe("AgentPaneView", () => {
     expect(html).not.toContain("spexr-agent-tool");
   });
 
+  it("says it is loading, not that there is no session, while a followed session has no snapshot", () => {
+    const html = renderToStaticMarkup(React.createElement(AgentPaneView, { snapshot: undefined, loading: true, expanded: false, onToggleExpanded: noop, onReveal: noop }));
+    expect(html).toContain("Loading session");
+    expect(html).not.toContain("No session yet");
+  });
+
   it("shows the head from a snapshot with no turn at all: the id, the placeholder title, no tag", () => {
     const html = render({ sessionId: SESSION });
     expect(html).toContain("Agent · 8f2a4c");

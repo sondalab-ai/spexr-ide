@@ -298,4 +298,21 @@ describe("AgentPaneController.view", () => {
     await c.view(undefined);
     expect(c.followed).toBeUndefined();
   });
+
+  it("follows a session of a subfolder in that folder, not the workspace root", async () => {
+    const { service, terminal, c } = make();
+    terminal.running = A;
+    await c.bind();
+    await c.view(B, "/w/proj/packages/sub");
+    expect(service.follows[1]).toEqual({ sessionId: B, workspacePath: "/w/proj/packages/sub", readOnly: true });
+    await c.view(undefined);
+    expect(service.follows[2]).toEqual({ sessionId: A, workspacePath: "/w/proj" });
+  });
+
+  it("can look at a session with no agent terminal root at all", async () => {
+    const { service, terminal, c } = make();
+    terminal.root = undefined;
+    await c.view(B, "/w/other");
+    expect(service.follows).toEqual([{ sessionId: B, workspacePath: "/w/other", readOnly: true }]);
+  });
 });
