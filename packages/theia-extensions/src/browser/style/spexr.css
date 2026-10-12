@@ -5382,8 +5382,19 @@ code {
   background: var(--sl-bg-surface); color: var(--sl-text-primary);
   border: 1px solid var(--sl-border-subtle); border-radius: var(--sl-radius-sm);
 }
-/* The input carries no border of its own, so the focus ring belongs to the box. */
-.spexr-df-search__box:focus-within { border-color: var(--sl-focus-ring); }
+/* The input carries no border of its own, so the focus ring belongs to the box.
+   Same recipe as .sl-field__input:focus (ring flush on the border, border in the
+   ring's colour, halo outside), with the halo declared here as in the fields
+   above since this box is not a kit control. */
+.spexr-df-search__box {
+  --_sl-halo: 0 0 0 calc(var(--sl-focus-ring-width, 2px) + var(--sl-focus-glow-width, 5px)) color-mix(in srgb, var(--slc-focus) calc(22% * min(1, var(--slc-glow) * 1000)), transparent);
+}
+.spexr-df-search__box:focus-within {
+  border-color: var(--slc-focus);
+  outline: var(--sl-focus-ring-width, 2px) solid var(--slc-focus);
+  outline-offset: 0;
+  box-shadow: var(--_sl-halo);
+}
 .spexr-df-search__icon { flex: none; color: var(--sl-text-muted); line-height: 1; }
 .spexr-df-search__input {
   flex: 1; min-width: 0;
