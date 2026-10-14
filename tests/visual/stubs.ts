@@ -40,7 +40,7 @@ function findSleep(): string {
  * stopped when the app closes. Each directory is a realpath, because lsof
  * reports the resolved one and the transcripts' `cwd` is compared to it.
  */
-export function startLiveStubs(run: PreparedRun, dirs: readonly string[]): LiveStubs {
+export function startLiveStubs(run: Pick<PreparedRun, "root">, dirs: readonly string[]): LiveStubs {
   const link = path.join(run.root, "stubs", "claude");
   fs.mkdirSync(path.dirname(link), { recursive: true });
   fs.rmSync(link, { force: true });

@@ -1,0 +1,89 @@
+{
+  "info": {
+    "id": "ses_7Hq2LkPz9Rw4ledger",
+    "title": "Fixture refresh",
+    "directory": "{{WS}}"
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Refresh the sample statements in test/fixtures from the two banks' newest export format."
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "I'll compare the old samples with the new column layout first."
+        },
+        {
+          "type": "tool",
+          "tool": "read",
+          "state": {
+            "input": {
+              "filePath": "{{WS}}/README.md"
+            },
+            "status": "completed"
+          }
+        },
+        {
+          "type": "tool",
+          "tool": "glob",
+          "state": {
+            "input": {
+              "pattern": "test/fixtures/*.csv"
+            },
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "tool",
+          "tool": "edit",
+          "state": {
+            "input": {
+              "filePath": "{{WS}}/test/fixtures/gb-2026-09.csv"
+            },
+            "status": "completed"
+          }
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "state": {
+            "input": {
+              "command": "node --test"
+            },
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Both samples now use the new header order, and the tests still pass."
+        }
+      ]
+    }
+  ]
+}

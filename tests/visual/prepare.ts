@@ -28,7 +28,7 @@ export type Os = "linux" | "mac";
 const FIXTURE = path.join(__dirname, "fixtures", "probe-engine");
 
 /** A fixed identity and clock, so every run builds byte-identical commits. */
-const AUTHOR = { name: "Mae Brook", email: "fixture@example.invalid" };
+export const AUTHOR = { name: "Mae Brook", email: "fixture@example.invalid" };
 
 /**
  * The fixture's history. `files` holds the content each commit gives a path,
@@ -156,7 +156,7 @@ function trackedFiles(): string[] {
   return out.filter((rel) => rel !== "src/probe/evidence.ts").sort();
 }
 
-function git(run: PreparedRun, cwd: string, date: string | null, args: string[]): void {
+export function git(run: Pick<PreparedRun, "home">, cwd: string, date: string | null, args: string[]): void {
   execFileSync("git", ["-c", "commit.gpgsign=false", ...args], {
     cwd,
     stdio: ["ignore", "ignore", "inherit"],
@@ -179,8 +179,7 @@ function git(run: PreparedRun, cwd: string, date: string | null, args: string[])
  * the rc file each one reads last, because macOS's /etc/zprofile reorders PATH
  * (path_helper) after anything inherited. The prompt is the demo's.
  */
-function writeHome(run: PreparedRun): void {
-  const prompt = "~/probe-engine on main › ";
+export function writeHome(run: Pick<PreparedRun, "home" | "bin">, prompt = "~/probe-engine on main › "): void {
   const posix = [
     `export PATH="${run.bin}:$PATH"`,
     "export HISTFILE=/dev/null",
@@ -213,7 +212,7 @@ function writeHome(run: PreparedRun): void {
 }
 
 /** A stand-in for the Claude CLI: prints one line and waits, so the agent terminal is still. */
-function writeClaudeStub(bin: string): void {
+export function writeClaudeStub(bin: string): void {
   const stub = path.join(bin, "claude");
   fs.copyFileSync(path.join(__dirname, "fixtures", "bin", "claude"), stub);
   fs.chmodSync(stub, 0o755);
@@ -238,7 +237,7 @@ function writeClaudeStub(bin: string): void {
  *   unseeded, so a regression in those preferences shows in the capture;
  * - the folders spexr writes into a workspace at runtime stay out of the tree.
  */
-function seedSettings(configDir: string, theme: Theme): void {
+export function seedSettings(configDir: string, theme: Theme, overrides: Record<string, unknown> = {}): void {
   const settings: Record<string, unknown> = {
     "workbench.colorTheme": theme,
     "security.workspace.trust.enabled": false,
@@ -259,6 +258,7 @@ function seedSettings(configDir: string, theme: Theme): void {
       docs: true,
     },
   };
+  Object.assign(settings, overrides);
   fs.writeFileSync(path.join(configDir, "settings.json"), JSON.stringify(settings, null, 2) + "\n");
 }
 

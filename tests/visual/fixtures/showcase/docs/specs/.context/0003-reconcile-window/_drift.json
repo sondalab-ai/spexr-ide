@@ -1,0 +1,22 @@
+{
+  "specSlug": "0003-reconcile-window",
+  "checkedAt": "2026-10-12T15:20:00Z",
+  "impliedFiles": [
+    "src/reconcile/match.ts",
+    "src/import/dates.ts"
+  ],
+  "findings": [
+    {
+      "criterionId": "AC-3",
+      "severity": "block",
+      "message": "match.ts takes the first candidate, not the closest date.",
+      "suggestion": "Sort candidates by absolute day distance before picking."
+    },
+    {
+      "criterionId": "AC-4",
+      "severity": "warn",
+      "message": "Unmatched rows are dropped without a reason.",
+      "suggestion": "Return them with a reason field and print it in the CLI."
+    }
+  ]
+}

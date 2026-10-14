@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ledgerline — reconcile report</title>
+<style>
+body{font:15px/1.5 system-ui,sans-serif;margin:32px;background:#fff;color:#1d2330}
+h1{font-size:20px;margin:0 0 4px} p{color:#5a6372;margin:0 0 20px}
+table{border-collapse:collapse;width:100%} th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e3e6ec}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#5a6372}
+.amt{text-align:right;font-variant-numeric:tabular-nums} .no{color:#b4232c} .ok{color:#1d7a46}
+</style></head><body>
+<h1>Reconcile report — September 2026</h1>
+<p>42 of 45 statement rows matched a ledger entry.</p>
+<table><thead><tr><th>Date</th><th>Description</th><th class="amt">Amount</th><th>Result</th></tr></thead><tbody>
+<tr><td>2026-09-01</td><td>Rent, September</td><td class="amt">−950.00</td><td class="ok">matched (0 days)</td></tr>
+<tr><td>2026-09-03</td><td>Coffee Lab</td><td class="amt">−3.20</td><td class="ok">matched (1 day)</td></tr>
+<tr><td>2026-09-12</td><td>Card refund</td><td class="amt">24.99</td><td class="no">no entry within 3 days</td></tr>
+<tr><td>2026-09-29</td><td>Utilities</td><td class="amt">−61.40</td><td class="ok">matched (2 days)</td></tr>
+<tr><td>2026-09-30</td><td>Transfer to savings</td><td class="amt">−200.00</td><td class="no">two rows fit one entry</td></tr>
+<tr><td>2026-09-30</td><td>Interest</td><td class="amt">0.83</td><td class="no">no entry in ledger</td></tr>
+</tbody></table></body></html>

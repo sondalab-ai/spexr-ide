@@ -1,0 +1,10 @@
+[
+  { "file": "reconcile-window.jsonl", "project": "ws", "sessionId": "3d6b0f2e-7a41-4c9e-8b52-1e0c9a7d4f30", "name": "Reconcile window", "ageMinutes": 0, "live": true, "harness": "claude" },
+  { "file": "date-locales.jsonl", "project": "ws", "sessionId": "9a1c5e38-2f07-4b6d-a3e9-5c8d0b2f7a16", "name": "Date locales", "ageMinutes": 95, "live": false, "harness": "claude" },
+  { "file": "csv-import.jsonl", "project": "ws", "sessionId": "c27e9b04-6d13-4f8a-9e75-0b4a3c1d8e62", "name": "CSV import", "ageMinutes": 1440, "live": false, "harness": "claude" },
+  { "file": "opencode-fixture-refresh.json", "project": "ws", "sessionId": "ses_7Hq2LkPz9Rw4ledger", "name": "Fixture refresh", "ageMinutes": 30, "live": false, "harness": "opencode" },
+  { "file": "atlas-rate-limits.jsonl", "project": "atlas", "sessionId": "5f8d2a71-0c94-4e3b-b6a8-7d1e4f9c2b05", "name": "Rate limits", "ageMinutes": 0, "live": true, "harness": "claude" },
+  { "file": "atlas-openapi.jsonl", "project": "atlas", "sessionId": "e04b7c19-3a52-4d86-8f1e-2c9b5a0d7e43", "name": "OpenAPI cleanup", "ageMinutes": 300, "live": false, "harness": "claude" },
+  { "file": "notes-search.jsonl", "project": "notes", "sessionId": "7c3e1a96-4b28-4f05-a9d7-6e2b8c0f1d54", "name": "Search index", "ageMinutes": 45, "live": false, "harness": "claude" },
+  { "file": "notes-tags.jsonl", "project": "notes", "sessionId": "b61f0d83-9e27-4a5c-8d3b-4f7a2e1c6b98", "name": "Tag editor", "ageMinutes": 2880, "live": false, "harness": "claude" }
+]

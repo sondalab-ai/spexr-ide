@@ -23,7 +23,7 @@
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const OUT = dirname(fileURLToPath(import.meta.url));
 const VERSION = "2.1.289";
@@ -153,107 +153,6 @@ function todos(items) {
   return items.map(([content, status]) => ({ content, status, activeForm: ACTIVE[content] }));
 }
 
-/* ── 1. Refactor the audit: live, 14 tools, the last one unresolved ─────────── */
-{
-  const WS = "{{WS}}";
-  const s = new Session({ id: "8f2a4c1e-3b7d-4e52-9a61-0c5d2e8b7f13", dir: WS, branch: "main", start: "2026-10-09T13:58:02.000Z", permissionMode: "auto" });
-  s.prompt("Make cache.write awaited and keep the p95 under 2 ms. Show me the evidence.");
-  const plan = (a, b, c) => todos([["Await the write", a], ["Re-run the probe suite", b], ["Fix the R finding", c]]);
-  let previous = [];
-  const todo = (list, ms) => {
-    const call = s.use("TodoWrite", { todos: list });
-    s.respond([call.block], { outputTokens: 150, gaps: [ms] });
-    s.result(call, "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress.", 40, { toolUseResult: { oldTodos: previous, newTodos: list } });
-    previous = list;
-  };
-
-  s.respond([{ type: "thinking", thinking: "", signature: "fixture" }], { outputTokens: 90, gaps: [900], stop: null });
-  s.respond([{ type: "text", text: "Found it: the write races the return. I'll await it and measure." }], { outputTokens: 40, gaps: [800], stop: "end_turn" });
-  todo(plan("in_progress", "pending", "pending"), 600);
-
-  const grep = s.use("Grep", { pattern: "cache\\.write", path: "{{WS}}/src", output_mode: "content", "-n": true });
-  s.respond([grep.block], { outputTokens: 120, gaps: [700] });
-  s.result(grep, "src/probe/resolve.ts:46:  cache.write(probe.key, answer);\nsrc/probe/cache.ts:26:  async write(key: string, answer: Answer): Promise<void> {", 180);
-
-  const readCache = s.use("Read", { file_path: `${WS}/src/probe/cache.ts` });
-  s.respond([readCache.block], { outputTokens: 110, gaps: [650] });
-  s.result(readCache, "     1\timport { Evidence } from \"./evidence\";\n     2\timport type { Answer } from \"./types\";\n     3\t\n     4\texport { Evidence };", 200, {
-    toolUseResult: { type: "text", file: { filePath: `${WS}/src/probe/cache.ts`, numLines: 33, startLine: 1, totalLines: 33 } },
-  });
-
-  const readResolve = s.use("Read", { file_path: `${WS}/src/probe/resolve.ts` });
-  s.respond([readResolve.block], { outputTokens: 105, gaps: [600] });
-  s.result(readResolve, "    36\timport { Cache, Evidence } from \"./cache\";\n    37\timport type { Probe, Answer } from \"./types\";", 150);
-
-  const readTest = s.use("Read", { file_path: `${WS}/src/probe/resolve.test.ts` });
-  s.respond([readTest.block], { outputTokens: 100, gaps: [600] });
-  s.result(readTest, "     1\timport { describe, expect, it } from \"vitest\";", 140);
-
-  const glob = s.use("Glob", { pattern: "src/**/*.ts", path: WS });
-  s.respond([glob.block], { outputTokens: 95, gaps: [550] });
-  s.result(glob, "src/probe/resolve.ts\nsrc/probe/cache.ts\nsrc/probe/evidence.ts\nsrc/probe/resolve.test.ts\nsrc/audit/index.ts\nsrc/tokens/index.ts", 90);
-
-  const rg = s.use("Bash", { command: "rg -n \"P95_BUDGET_MS\" src", description: "Find the budget constant" });
-  s.respond([rg.block], { outputTokens: 98, gaps: [620] });
-  s.result(rg, "/bin/sh: rg: command not found\n\nExit code 127", 120, { isError: true });
-
-  const cacheEdit = edit(s, `${WS}/src/probe/cache.ts`, "/** Where answers live, keyed by probe. Writes are fire-and-forget. */", "/** Where answers live, keyed by probe. Writes are awaited by the caller. */",
-    patch(11, [" ", "/**"], ["/** Where answers live, keyed by probe. Writes are fire-and-forget. */"], ["/** Where answers live, keyed by probe. Writes are awaited by the caller. */"], ["export class Cache {"]), 700);
-  s.respond([cacheEdit.call.block], { outputTokens: 260, gaps: [900] });
-  cacheEdit.finish();
-
-  const readEvidence = s.use("Read", { file_path: `${WS}/src/probe/evidence.ts` });
-  s.respond([readEvidence.block], { outputTokens: 102, gaps: [580] });
-  s.result(readEvidence, "     1\t/** One thing a probe saw while it ran, with the moment it saw it. */", 130);
-
-  const removed = ["  const answer = await probe.run({ evidence, timeout: 14_000 });", "  cache.write(probe.key, answer);", "  return answer;"];
-  const added = [
-    "  const answer = await probe.run({ evidence, timeout: 14_000 });",
-    "",
-    "  // The write is awaited: a second caller must never race the first into a",
-    "  // duplicate run, and the p95 budget counts the write.",
-    "  const started = performance.now();",
-    "  try {",
-    "    await cache.write(probe.key, answer);",
-    "  } finally {",
-    "    evidence.mark(\"write\", performance.now() - started);",
-    "  }",
-    "",
-    "  // Evidence is flushed with the answer so a cached hit carries it.",
-    "  evidence.seal();",
-    "  return answer;",
-  ];
-  if (added.length !== 14 || removed.length !== 3) throw new Error("the Edit patch must be +14 -3");
-  const resolveEdit = edit(s, `${WS}/src/probe/resolve.ts`, removed.join("\n"), added.join("\n"),
-    patch(43, ["  const evidence = new Evidence(probe.id);"], removed, added, ["}", "", "export const P95_BUDGET_MS = 2; // measured: 1.8"]), 1100);
-  s.respond([
-    { type: "text", text: "The write is awaited now, and the evidence is sealed with the answer. Running the probe suite." },
-    resolveEdit.call.block,
-  ], { outputTokens: 640, gaps: [700, 40] });
-  resolveEdit.finish();
-  todo(plan("completed", "in_progress", "pending"), 500);
-
-  const test = s.use("Bash", { command: "pnpm test probe", description: "Run the probe tests" });
-  s.respond([test.block], { outputTokens: 118, gaps: [520] });
-  s.result(test, "✓ resolve › returns the cached answer (3 ms)\n✓ resolve › re-runs a stale probe and keeps evidence (41 ms)\n✓ cache › write is awaited before return (2 ms)\nTests  14 passed, 14 total", 2400, {
-    toolUseResult: { stdout: "Tests  14 passed, 14 total", stderr: "", interrupted: false, isImage: false, noOutputExpected: false },
-  });
-  todo(plan("completed", "completed", "in_progress"), 450);
-
-  // The last response: prose, then the audit, which has not answered yet. Its
-  // 90 output tokens over the 1.05 s since the previous result make ~86 tok/s,
-  // a rate a model really has (the demo's 1.2k is not one; the pane reports
-  // what the transcript says).
-  const audit = s.use("Bash", { command: "pnpm sl-audit", description: "Run the audit" });
-  s.respond([
-    { type: "text", text: "All 14 tests pass and the p95 holds. Running the audit for the last finding." },
-    audit.block,
-  ], { outputTokens: 90, gaps: [1020, 30] });
-
-  if (s.tools !== 14) throw new Error(`refactor: ${s.tools} tools, want 14`);
-  s.write("refactor-the-audit.jsonl");
-}
-
 /* ── 2/3/4. Finished and long-running sessions, built from a recipe ─────────── */
 
 /** A tool-call recipe: what a session of this kind reads, searches, edits and runs. */
@@ -304,32 +203,139 @@ function longSession(opts, tools, openTail) {
   return s;
 }
 
-const probeFiles = ["{{WS}}/sondalab.tokens.json", "{{WS}}/src/tokens/index.ts", "{{WS}}/src/audit/index.ts", "{{WS}}/src/probe/cache.ts", "{{WS}}/src/probe/evidence.ts"];
-const siteFiles = ["{{SITE}}/src/styles/tokens.css", "{{SITE}}/src/styles/prism.css", "{{SITE}}/src/components/hero.tsx", "{{SITE}}/src/components/nav.tsx", "{{SITE}}/src/pages/index.tsx", "{{SITE}}/src/pages/pricing.tsx"];
+/** Writes the four parity transcripts; runs only when this file is executed, not imported. */
+function main() {
+  /* ── 1. Refactor the audit: live, 14 tools, the last one unresolved ─────────── */
+  {
+    const WS = "{{WS}}";
+    const s = new Session({ id: "8f2a4c1e-3b7d-4e52-9a61-0c5d2e8b7f13", dir: WS, branch: "main", start: "2026-10-09T13:58:02.000Z", permissionMode: "auto" });
+    s.prompt("Make cache.write awaited and keep the p95 under 2 ms. Show me the evidence.");
+    const plan = (a, b, c) => todos([["Await the write", a], ["Re-run the probe suite", b], ["Fix the R finding", c]]);
+    let previous = [];
+    const todo = (list, ms) => {
+      const call = s.use("TodoWrite", { todos: list });
+      s.respond([call.block], { outputTokens: 150, gaps: [ms] });
+      s.result(call, "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress.", 40, { toolUseResult: { oldTodos: previous, newTodos: list } });
+      previous = list;
+    };
 
-longSession({
-  id: "c41d9e07-52aa-4b18-8e3f-7d60b2a14c95", dir: "{{WS}}", branch: "main", start: "2026-10-09T12:05:10.000Z", permissionMode: "default",
-  title: "Prism light theme", prompt: "Give the prism palette a light theme that holds the contrast floor.",
-  opening: "I'll derive the light roles from the dark ones and check each pair against the floor.",
-  notes: ["The dark roles map cleanly; the edge needs a darker step.", "Surface and canvas now differ by one step.", "Two pairs fall under 4.5:1, adjusting them.", "The audit agrees with the measured ratios."],
-  closing: "The light theme is in sondalab.tokens.json and every text pair clears 4.5:1; the edge clears 3:1.",
-  files: probeFiles, commands: ["pnpm sl-audit", "pnpm test probe", "git diff --stat"],
-}, 212, false).write("prism-light-theme.jsonl");
+    s.respond([{ type: "thinking", thinking: "", signature: "fixture" }], { outputTokens: 90, gaps: [900], stop: null });
+    s.respond([{ type: "text", text: "Found it: the write races the return. I'll await it and measure." }], { outputTokens: 40, gaps: [800], stop: "end_turn" });
+    todo(plan("in_progress", "pending", "pending"), 600);
 
-longSession({
-  id: "e7b3a2f9-1d46-4c80-b5a7-93e1c0d82f64", dir: "{{WS}}", branch: "main", start: "2026-10-09T10:20:40.000Z", permissionMode: "default",
-  title: "Edge in shade", prompt: "The edge colour disappears in shade; find out why and fix it.",
-  opening: "I'll read the edge role in both themes and measure it against the surface.",
-  notes: ["The edge is 2.1:1 against the surface in shade.", "Raising the edge one step fixes the shade case.", "Checking the light theme did not regress."],
-  closing: "The edge now clears 3:1 in shade and in light.",
-  files: probeFiles, commands: ["pnpm sl-audit", "pnpm test probe"],
-}, 58, false).write("edge-in-shade.jsonl");
+    const grep = s.use("Grep", { pattern: "cache\\.write", path: "{{WS}}/src", output_mode: "content", "-n": true });
+    s.respond([grep.block], { outputTokens: 120, gaps: [700] });
+    s.result(grep, "src/probe/resolve.ts:46:  cache.write(probe.key, answer);\nsrc/probe/cache.ts:26:  async write(key: string, answer: Answer): Promise<void> {", 180);
 
-longSession({
-  id: "5a90f6d2-8c3e-4f17-a2b4-61d7e3c9b058", dir: "{{SITE}}", branch: "main", start: "2026-10-09T11:40:00.000Z", permissionMode: "auto",
-  title: "Marketing site rebuild", prompt: "Rebuild the marketing site on the prism tokens, page by page, starting with the home page.",
-  opening: "I'll start with the tokens the pages share, then work through the home page and pricing.",
-  notes: ["Tokens first: every page reads them.", "The hero uses raw colours; moving it to roles.", "Nav next, it shares the surface role.", "Pricing has the same pattern."],
-  closing: "",
-  files: siteFiles, commands: ["pnpm build", "pnpm lint", "pnpm test"],
-}, 198, true).write("prism-site-rebuild.jsonl");
+    const readCache = s.use("Read", { file_path: `${WS}/src/probe/cache.ts` });
+    s.respond([readCache.block], { outputTokens: 110, gaps: [650] });
+    s.result(readCache, "     1\timport { Evidence } from \"./evidence\";\n     2\timport type { Answer } from \"./types\";\n     3\t\n     4\texport { Evidence };", 200, {
+      toolUseResult: { type: "text", file: { filePath: `${WS}/src/probe/cache.ts`, numLines: 33, startLine: 1, totalLines: 33 } },
+    });
+
+    const readResolve = s.use("Read", { file_path: `${WS}/src/probe/resolve.ts` });
+    s.respond([readResolve.block], { outputTokens: 105, gaps: [600] });
+    s.result(readResolve, "    36\timport { Cache, Evidence } from \"./cache\";\n    37\timport type { Probe, Answer } from \"./types\";", 150);
+
+    const readTest = s.use("Read", { file_path: `${WS}/src/probe/resolve.test.ts` });
+    s.respond([readTest.block], { outputTokens: 100, gaps: [600] });
+    s.result(readTest, "     1\timport { describe, expect, it } from \"vitest\";", 140);
+
+    const glob = s.use("Glob", { pattern: "src/**/*.ts", path: WS });
+    s.respond([glob.block], { outputTokens: 95, gaps: [550] });
+    s.result(glob, "src/probe/resolve.ts\nsrc/probe/cache.ts\nsrc/probe/evidence.ts\nsrc/probe/resolve.test.ts\nsrc/audit/index.ts\nsrc/tokens/index.ts", 90);
+
+    const rg = s.use("Bash", { command: "rg -n \"P95_BUDGET_MS\" src", description: "Find the budget constant" });
+    s.respond([rg.block], { outputTokens: 98, gaps: [620] });
+    s.result(rg, "/bin/sh: rg: command not found\n\nExit code 127", 120, { isError: true });
+
+    const cacheEdit = edit(s, `${WS}/src/probe/cache.ts`, "/** Where answers live, keyed by probe. Writes are fire-and-forget. */", "/** Where answers live, keyed by probe. Writes are awaited by the caller. */",
+      patch(11, [" ", "/**"], ["/** Where answers live, keyed by probe. Writes are fire-and-forget. */"], ["/** Where answers live, keyed by probe. Writes are awaited by the caller. */"], ["export class Cache {"]), 700);
+    s.respond([cacheEdit.call.block], { outputTokens: 260, gaps: [900] });
+    cacheEdit.finish();
+
+    const readEvidence = s.use("Read", { file_path: `${WS}/src/probe/evidence.ts` });
+    s.respond([readEvidence.block], { outputTokens: 102, gaps: [580] });
+    s.result(readEvidence, "     1\t/** One thing a probe saw while it ran, with the moment it saw it. */", 130);
+
+    const removed = ["  const answer = await probe.run({ evidence, timeout: 14_000 });", "  cache.write(probe.key, answer);", "  return answer;"];
+    const added = [
+      "  const answer = await probe.run({ evidence, timeout: 14_000 });",
+      "",
+      "  // The write is awaited: a second caller must never race the first into a",
+      "  // duplicate run, and the p95 budget counts the write.",
+      "  const started = performance.now();",
+      "  try {",
+      "    await cache.write(probe.key, answer);",
+      "  } finally {",
+      "    evidence.mark(\"write\", performance.now() - started);",
+      "  }",
+      "",
+      "  // Evidence is flushed with the answer so a cached hit carries it.",
+      "  evidence.seal();",
+      "  return answer;",
+    ];
+    if (added.length !== 14 || removed.length !== 3) throw new Error("the Edit patch must be +14 -3");
+    const resolveEdit = edit(s, `${WS}/src/probe/resolve.ts`, removed.join("\n"), added.join("\n"),
+      patch(43, ["  const evidence = new Evidence(probe.id);"], removed, added, ["}", "", "export const P95_BUDGET_MS = 2; // measured: 1.8"]), 1100);
+    s.respond([
+      { type: "text", text: "The write is awaited now, and the evidence is sealed with the answer. Running the probe suite." },
+      resolveEdit.call.block,
+    ], { outputTokens: 640, gaps: [700, 40] });
+    resolveEdit.finish();
+    todo(plan("completed", "in_progress", "pending"), 500);
+
+    const test = s.use("Bash", { command: "pnpm test probe", description: "Run the probe tests" });
+    s.respond([test.block], { outputTokens: 118, gaps: [520] });
+    s.result(test, "✓ resolve › returns the cached answer (3 ms)\n✓ resolve › re-runs a stale probe and keeps evidence (41 ms)\n✓ cache › write is awaited before return (2 ms)\nTests  14 passed, 14 total", 2400, {
+      toolUseResult: { stdout: "Tests  14 passed, 14 total", stderr: "", interrupted: false, isImage: false, noOutputExpected: false },
+    });
+    todo(plan("completed", "completed", "in_progress"), 450);
+
+    // The last response: prose, then the audit, which has not answered yet. Its
+    // 90 output tokens over the 1.05 s since the previous result make ~86 tok/s,
+    // a rate a model really has (the demo's 1.2k is not one; the pane reports
+    // what the transcript says).
+    const audit = s.use("Bash", { command: "pnpm sl-audit", description: "Run the audit" });
+    s.respond([
+      { type: "text", text: "All 14 tests pass and the p95 holds. Running the audit for the last finding." },
+      audit.block,
+    ], { outputTokens: 90, gaps: [1020, 30] });
+
+    if (s.tools !== 14) throw new Error(`refactor: ${s.tools} tools, want 14`);
+    s.write("refactor-the-audit.jsonl");
+  }
+
+  const probeFiles = ["{{WS}}/sondalab.tokens.json", "{{WS}}/src/tokens/index.ts", "{{WS}}/src/audit/index.ts", "{{WS}}/src/probe/cache.ts", "{{WS}}/src/probe/evidence.ts"];
+  const siteFiles = ["{{SITE}}/src/styles/tokens.css", "{{SITE}}/src/styles/prism.css", "{{SITE}}/src/components/hero.tsx", "{{SITE}}/src/components/nav.tsx", "{{SITE}}/src/pages/index.tsx", "{{SITE}}/src/pages/pricing.tsx"];
+
+  longSession({
+    id: "c41d9e07-52aa-4b18-8e3f-7d60b2a14c95", dir: "{{WS}}", branch: "main", start: "2026-10-09T12:05:10.000Z", permissionMode: "default",
+    title: "Prism light theme", prompt: "Give the prism palette a light theme that holds the contrast floor.",
+    opening: "I'll derive the light roles from the dark ones and check each pair against the floor.",
+    notes: ["The dark roles map cleanly; the edge needs a darker step.", "Surface and canvas now differ by one step.", "Two pairs fall under 4.5:1, adjusting them.", "The audit agrees with the measured ratios."],
+    closing: "The light theme is in sondalab.tokens.json and every text pair clears 4.5:1; the edge clears 3:1.",
+    files: probeFiles, commands: ["pnpm sl-audit", "pnpm test probe", "git diff --stat"],
+  }, 212, false).write("prism-light-theme.jsonl");
+
+  longSession({
+    id: "e7b3a2f9-1d46-4c80-b5a7-93e1c0d82f64", dir: "{{WS}}", branch: "main", start: "2026-10-09T10:20:40.000Z", permissionMode: "default",
+    title: "Edge in shade", prompt: "The edge colour disappears in shade; find out why and fix it.",
+    opening: "I'll read the edge role in both themes and measure it against the surface.",
+    notes: ["The edge is 2.1:1 against the surface in shade.", "Raising the edge one step fixes the shade case.", "Checking the light theme did not regress."],
+    closing: "The edge now clears 3:1 in shade and in light.",
+    files: probeFiles, commands: ["pnpm sl-audit", "pnpm test probe"],
+  }, 58, false).write("edge-in-shade.jsonl");
+
+  longSession({
+    id: "5a90f6d2-8c3e-4f17-a2b4-61d7e3c9b058", dir: "{{SITE}}", branch: "main", start: "2026-10-09T11:40:00.000Z", permissionMode: "auto",
+    title: "Marketing site rebuild", prompt: "Rebuild the marketing site on the prism tokens, page by page, starting with the home page.",
+    opening: "I'll start with the tokens the pages share, then work through the home page and pricing.",
+    notes: ["Tokens first: every page reads them.", "The hero uses raw colours; moving it to roles.", "Nav next, it shares the surface role.", "Pricing has the same pattern."],
+    closing: "",
+    files: siteFiles, commands: ["pnpm build", "pnpm lint", "pnpm test"],
+  }, 198, true).write("prism-site-rebuild.jsonl");
+}
+
+export { Session, patch, edit, uuid };
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

@@ -1,0 +1,107 @@
+name: Marketing shots
+
+# Dark-theme, 2x screenshots of SPEXR for sondalab.ai/spexr. Not a test:
+# nothing is compared. It launches the built app on a runner (spexr is never
+# launched on a workstation), opens the showcase fixture
+# (tests/visual/fixtures/showcase) and uploads one PNG per scene plus
+# meta.json, which says what each scene waited for.
+#
+# The AI text in the shots (Darkfactory summaries, search descriptions, the
+# commit message) is real output of the local models, which this job fetches
+# and caches; no other job fetches them.
+#
+# How to run it: label a PR `marketing-shots` (every push to it captures
+# again), or Actions → Marketing shots → Run workflow once this file is on
+# the default branch.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Marketing shots (Linux, dark, 2x)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'marketing-shots') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'marketing-shots'))
+    runs-on: ubuntu-24.04
+    # Install and build take 15-25 minutes; the Capture step has its own 55.
+    timeout-minutes: 90
+    concurrency:
+      group: marketing-shots-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "node=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libx11-dev libxkbfile-dev \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libgbm1 libasound2t64 \
+            xvfb lsof
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rebuild native modules for Electron
+        run: pnpm --filter @spexr/desktop run rebuild
+
+      # MiniLM, Qwen2.5-Coder-1.5B and the decision model, about 1.8 GB.
+      - name: Cache local models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: packages/theia-extensions/resources/models
+          key: spexr-models-${{ hashFiles('packages/theia-extensions/scripts/fetch-search-model.mjs') }}
+
+      # The script downloads every file again; it runs only on a cache miss.
+      - name: Fetch local models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: pnpm --filter @spexr/theia-extensions fetch-model
+
+      - name: Build (dev)
+        run: pnpm build:dev
+
+      # At 2x the 1440x900 window is 2880x1800 device px; the screen must be larger.
+      # Below the job's limit, so a stuck capture still reaches the Upload step.
+      - name: Capture
+        timeout-minutes: 55
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 3200x2000x24" \
+            pnpm --filter @spexr/visual capture:marketing
+        env:
+          VISUAL_DPR: "2"
+
+      - name: Upload
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketing-shots-${{ github.run_attempt }}
+          path: tests/visual/out/marketing/
+          if-no-files-found: warn
+          retention-days: 30
