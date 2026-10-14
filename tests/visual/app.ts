@@ -13,11 +13,15 @@ const FIXTURE_PLUGINS = path.join(__dirname, "fixtures", "plugins");
 export const CONTENT = { width: 1440, height: 900 } as const;
 
 export interface LaunchOptions {
-  readonly run: PreparedRun;
+  readonly run: Pick<PreparedRun, "workspace" | "home" | "bin" | "configDir" | "userData" | "ackDir">;
   /** Add `--use-angle=swiftshader --enable-unsafe-swiftshader`, for a host with no GL. */
   readonly swiftshader: boolean;
   /** The backend's stdout and stderr are appended here, for the plugin deployer's lines. */
   readonly logFile: string;
+  /** `--force-device-scale-factor`; the parity capture keeps 1, the marketing capture uses 2. */
+  readonly dpr?: number;
+  /** Merged over the launch environment last, e.g. SPEXR_MODELS_DIR for the marketing capture. */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export interface Launched {
@@ -33,7 +37,7 @@ export interface Launched {
  * first on PATH and loads the fixture extension, none of which the e2e suite
  * wants.
  */
-export async function launch({ run, swiftshader, logFile }: LaunchOptions): Promise<Launched> {
+export async function launch({ run, swiftshader, logFile, dpr = 1, env: extraEnv = {} }: LaunchOptions): Promise<Launched> {
   // Second layer behind playwright.config.ts: nothing starts spexr off a runner.
   if (process.env.GITHUB_ACTIONS !== "true") {
     throw new Error("tests/visual launches spexr and runs only on a GitHub Actions runner.");
@@ -58,6 +62,7 @@ export async function launch({ run, swiftshader, logFile }: LaunchOptions): Prom
     // macOS's /bin/bash otherwise opens every terminal with a notice about zsh.
     BASH_SILENCE_DEPRECATION_WARNING: "1",
   });
+  Object.assign(env, extraEnv);
 
   // The workspace comes right after the entry point and every flag after it:
   // yargs reads a bare flag followed by a path as that flag's value, which
@@ -66,7 +71,7 @@ export async function launch({ run, swiftshader, logFile }: LaunchOptions): Prom
     ENTRY,
     run.workspace,
     `--electronUserData=${run.userData}`,
-    "--force-device-scale-factor=1",
+    `--force-device-scale-factor=${dpr}`,
     ...(swiftshader ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : []),
   ];
   const app = await electron.launch({ cwd: DESKTOP_DIR, args, env, timeout: 120_000 });

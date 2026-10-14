@@ -167,7 +167,14 @@ async function diffShots(page: Page, a: Buffer, b: Buffer): Promise<PixelDiff> {
       };
       const [da, db] = await Promise.all([decode(a64), decode(b64)]);
       if (da.width !== db.width || da.height !== db.height) return { changed: -1, box: "size changed" };
-      const masks = volatile.flatMap((sel) => [...document.querySelectorAll(sel)].map((el) => el.getBoundingClientRect()));
+      // The masks are CSS px; the PNG is device px.
+      const dpr = window.devicePixelRatio || 1;
+      const masks = volatile.flatMap((sel) =>
+        [...document.querySelectorAll(sel)].map((el) => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left * dpr, right: r.right * dpr, top: r.top * dpr, bottom: r.bottom * dpr };
+        }),
+      );
       const masked = (x: number, y: number): boolean => masks.some((r) => x >= r.left && x < r.right && y >= r.top && y < r.bottom);
       let changed = 0;
       let x0 = Infinity;
