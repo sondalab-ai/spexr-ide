@@ -1,0 +1,12 @@
+#!/bin/sh
+# tests/visual fixture: not opencode. Answers the two calls spexr's opencode
+# harness makes (packages/theia-extensions/src/common/harness/opencode-harness.ts:
+# `opencode db --format json "<SELECT ... FROM session ...>"` expects a JSON array
+# of session rows; `opencode export <id>` expects {"messages":[...]}). The data is
+# written by tests/visual/showcase.ts into the fixture HOME.
+data="$HOME/.local/share/opencode-fixture"
+case "$1" in
+  db) cat "$data/sessions.json" ;;
+  export) cat "$data/$2.json" ;;
+  *) printf 'opencode (visual fixture stub)\n'; while :; do sleep 3600; done ;;
+esac
