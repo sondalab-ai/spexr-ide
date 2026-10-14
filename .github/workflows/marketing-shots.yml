@@ -29,7 +29,8 @@ jobs:
       (github.event.action == 'labeled' && github.event.label.name == 'marketing-shots') ||
       (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'marketing-shots'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    # Install and build take 15-25 minutes; the Capture step has its own 55.
+    timeout-minutes: 90
     concurrency:
       group: marketing-shots-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -87,7 +88,9 @@ jobs:
         run: pnpm build:dev
 
       # At 2x the 1440x900 window is 2880x1800 device px; the screen must be larger.
+      # Below the job's limit, so a stuck capture still reaches the Upload step.
       - name: Capture
+        timeout-minutes: 55
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 3200x2000x24" \
             pnpm --filter @spexr/visual capture:marketing

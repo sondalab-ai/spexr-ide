@@ -79,7 +79,10 @@ export function prepareShowcase(root: string): ShowcaseRun {
   writeClaudeStub(run.bin);
   // A pinned card resumes the session in a terminal, which would print the stub's banner into the picture.
   const stub = path.join(run.bin, "claude");
-  fs.writeFileSync(stub, fs.readFileSync(stub, "utf8").replace("printf 'claude (visual fixture stub)\\n'\n", ""));
+  const banner = "printf 'claude (visual fixture stub)\\n'\n";
+  const text = fs.readFileSync(stub, "utf8");
+  if (!text.includes(banner)) throw new Error("showcase: fixtures/bin/claude no longer prints the banner this run removes");
+  fs.writeFileSync(stub, text.replace(banner, ""));
   fs.copyFileSync(path.join(FIXTURES, "bin", "opencode"), path.join(run.bin, "opencode"));
   fs.chmodSync(path.join(run.bin, "opencode"), 0o755);
 
@@ -91,6 +94,7 @@ export function prepareShowcase(root: string): ShowcaseRun {
   // The active expert is a folder-scoped preference; `.spexr/` is git-ignored in this repo, so it is written here.
   fs.mkdirSync(path.join(run.workspace, ".spexr"), { recursive: true });
   fs.writeFileSync(path.join(run.workspace, ".spexr", "settings.json"), JSON.stringify({ "spexr.experts.activeId": "software-engineering" }, null, 2) + "\n");
+  // `files.exclude` replaces the parity list whole: this run shows docs/, where the specs and memory live.
   seedSettings(run.configDir, "dark", {
     "spexr.search.aiDescriptions.enabled": true,
     "files.exclude": { "**/.git": true, "**/.DS_Store": true, ".spexr": true },

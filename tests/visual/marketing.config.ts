@@ -21,5 +21,7 @@ export default defineConfig({
   timeout: 60 * 60_000,
   retries: 0,
   workers: 1,
+  // A click or fill on an element that never shows must fail, not wait out the test.
+  use: { actionTimeout: 30_000 },
   reporter: [["list"]],
 });

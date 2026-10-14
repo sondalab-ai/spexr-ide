@@ -22,8 +22,14 @@ const MODELS_DIR = path.resolve(__dirname, "../../packages/theia-extensions/reso
 const RUN_ROOT = path.join(process.env.RUNNER_TEMP ?? path.join(__dirname, ".run"), "spexr-marketing");
 /** The card browser follows the newest localhost link in the session, http://localhost:4317/report. */
 const WWW_PORT = 4317;
-/** The local models run on the runner's CPU. */
-const SLOW = 15 * 60_000;
+/** Whether the workflow fetched the local models; without them no model scene can finish, so none waits long. */
+const MODELS_ON_DISK = fs.existsSync(MODELS_DIR) && fs.readdirSync(MODELS_DIR).some((f) => !f.startsWith("."));
+/**
+ * The local models run on the runner's CPU. Four scenes may each wait this
+ * long; with the rest that stays under the Capture step's 55 minutes and the
+ * test's 60.
+ */
+const SLOW = MODELS_ON_DISK ? 8 * 60_000 : 60_000;
 
 /** Selectors, from the widgets' own markup. */
 const SEL = {
@@ -100,9 +106,11 @@ test("marketing dark", async () => {
   test.setTimeout(60 * 60_000);
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
-  const meta: { dpr: number; shots: Shot[]; modelsMissing?: boolean; window?: string } = { dpr: DPR, shots: [] };
+  const meta: { dpr: number; shots: Shot[]; modelsOnDisk?: boolean; window?: string } = { dpr: DPR, shots: [] };
   const save = (): void => fs.writeFileSync(path.join(OUT, "meta.json"), JSON.stringify(meta, null, 2));
 
+  meta.modelsOnDisk = MODELS_ON_DISK;
+  save();
   const run = prepareShowcase(RUN_ROOT);
   const www = http
     .createServer((_req, res) => {
@@ -111,13 +119,21 @@ test("marketing dark", async () => {
     })
     .listen(WWW_PORT);
   const stubs = startLiveStubs(run, showcaseLiveDirs(run));
-  const { app, page } = await launch({
-    run,
-    swiftshader: false,
-    logFile: path.join(OUT, "backend.log"),
-    dpr: DPR,
-    env: { SPEXR_MODELS_DIR: MODELS_DIR },
-  });
+  let launched: Awaited<ReturnType<typeof launch>>;
+  try {
+    launched = await launch({
+      run,
+      swiftshader: false,
+      logFile: path.join(OUT, "backend.log"),
+      dpr: DPR,
+      env: { SPEXR_MODELS_DIR: MODELS_DIR },
+    });
+  } catch (err) {
+    stubs.stop();
+    www.close();
+    throw err;
+  }
+  const { app, page } = launched;
   try {
     await sizeWindow(app);
     await waitForReady(page);
@@ -165,7 +181,7 @@ test("marketing dark", async () => {
       await layout(page, { left: true, right: true, bottom: false });
     });
 
-    // Smart search first: indexing and the file descriptions run while the other scenes are set up.
+    // Smart search before the other model scenes: the wait covers indexing and the first descriptions.
     await shoot(
       "mk-search",
       async () => {
@@ -198,7 +214,9 @@ test("marketing dark", async () => {
     });
 
     touchShowcase(run);
-    const wall = await shoot(
+    // Not touched again later: the summary cache is keyed on the transcript's mtime
+    // (spexr-darkfactory-backend-service.ts:563), so a touch would restart every summary.
+    await shoot(
       "mk-darkfactory",
       async () => {
         await reveal(page, "View: Toggle Darkfactory", SEL.wall);
@@ -213,15 +231,11 @@ test("marketing dark", async () => {
       },
       SLOW,
     );
-    // No overview line on any card means the generation model never answered.
-    if (wall.note) meta.modelsMissing = true;
-    save();
-
     // ledgerline's group holds the Claude sessions and the opencode one.
     {
       const t0 = Date.now();
       const group = page.locator(SEL.group, { has: page.locator(SEL.groupName, { hasText: "ledgerline" }) }).first();
-      const box = await group.boundingBox();
+      const box = await group.boundingBox({ timeout: 10_000 }).catch(() => null);
       const file = path.join(OUT, "mk-harness.png");
       if (box) {
         await parkPointer(page);
@@ -243,7 +257,7 @@ test("marketing dark", async () => {
       },
       SLOW,
     );
-    await page.locator(SEL.dfSearch).fill("");
+    await page.locator(SEL.dfSearch).fill("", { timeout: 10_000 }).catch(() => undefined);
     await page.keyboard.press("Escape");
 
     await shoot(
