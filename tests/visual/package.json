@@ -5,6 +5,7 @@
   "description": "Screenshots of spexr for Lumen parity, taken in CI only; plus a local measurement of the kit demo.",
   "scripts": {
     "capture": "node run.mjs",
+    "capture:marketing": "VISUAL_SET=marketing node run.mjs",
     "measure-demo": "node measure-demo.mjs",
     "lint": "eslint \"*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"

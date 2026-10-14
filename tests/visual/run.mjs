@@ -33,8 +33,10 @@ if (process.env.GITHUB_ACTIONS !== "true") {
   process.exit(1);
 }
 
+// VISUAL_SET=marketing runs the marketing capture (marketing.visual.ts) instead of the parity one.
+const config = process.env.VISUAL_SET === "marketing" ? "marketing.config.ts" : "playwright.config.ts";
 const cli = createRequire(import.meta.url).resolve("@playwright/test/cli");
-const result = spawnSync(process.execPath, [cli, "test", "--config", path.join(HERE, "playwright.config.ts")], {
+const result = spawnSync(process.execPath, [cli, "test", "--config", path.join(HERE, config)], {
   cwd: HERE,
   stdio: "inherit",
 });
