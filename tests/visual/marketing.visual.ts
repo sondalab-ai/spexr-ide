@@ -68,6 +68,42 @@ async function reveal(page: Page, label: string, selector: string): Promise<void
   await page.locator(selector).first().waitFor({ state: "visible", timeout: 30_000 });
 }
 
+/**
+ * Bring a main-area or bottom tab to the front by its label, the way
+ * tests/e2e/fixtures/app.ts activateTab does: Lumino hit-tests the pointer
+ * position, so the event carries the tab's real centre.
+ */
+async function activateTab(page: Page, label: string): Promise<void> {
+  await page.evaluate((wanted) => {
+    const tab = [...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel")].find((el) => el.textContent?.trim() === wanted)?.closest("li");
+    if (!tab) throw new Error(`no tab "${wanted}"`);
+    const r = tab.getBoundingClientRect();
+    tab.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerId: 1, isPrimary: true }));
+  }, label);
+}
+
+type Side = "left" | "right" | "bottom";
+const PANEL: Record<Side, { id: string; toggle: string }> = {
+  left: { id: "theia-left-content-panel", toggle: "View: Toggle Left Panel" },
+  right: { id: "theia-right-content-panel", toggle: "View: Toggle Right Panel" },
+  bottom: { id: "theia-bottom-content-panel", toggle: "View: Toggle Bottom Panel" },
+};
+
+/**
+ * Show or hide the side and bottom panels, so each scene gives its view the
+ * room it needs. Theia only has toggles, so each panel's state is read first.
+ */
+async function layout(page: Page, want: Record<Side, boolean>): Promise<void> {
+  for (const side of ["left", "right", "bottom"] as const) {
+    const open = await page.evaluate((id) => {
+      const r = document.getElementById(id)?.getBoundingClientRect();
+      return !!r && r.width > 40 && r.height > 40;
+    }, PANEL[side].id);
+    if (open !== want[side]) await runCommand(page, PANEL[side].toggle);
+  }
+  await page.waitForTimeout(600);
+}
+
 /** Resolve once `count` elements match, or throw after `timeout`. */
 async function atLeast(page: Page, selector: string, count: number, timeout: number): Promise<void> {
   await page.waitForFunction(({ s, n }) => document.querySelectorAll(s).length >= n, { s: selector, n: count }, { timeout, polling: 500 });
@@ -120,6 +156,10 @@ test("marketing dark", async () => {
         note = String(err instanceof Error ? err.message : err);
       });
       if (timer) clearTimeout(timer);
+      // Focusing a field can scroll the whole document by a few px; the shell never scrolls on its own.
+      await page.evaluate(() => {
+        for (const el of [document.scrollingElement, document.body, document.getElementById("theia-app-shell")]) if (el) el.scrollTop = 0;
+      });
       await parkPointer(page);
       const file = path.join(OUT, `${scene}.png`);
       const r = await captureStable(page, file);
@@ -134,6 +174,10 @@ test("marketing dark", async () => {
       "mk-search",
       async () => {
         await reveal(page, "View: Toggle Search", SEL.search);
+        await layout(page, { left: true, right: false, bottom: false });
+        // The plain-text Search part shares the container; collapse it so smart search gets the height.
+        const textSearch = page.locator(".theia-view-container-part-title", { hasText: /^\s*Search\s*$/ }).first();
+        if ((await textSearch.getAttribute("aria-expanded").catch(() => null)) === "true") await textSearch.click();
         await page.waitForFunction((s) => !document.querySelector(s), SEL.searchBusy, { timeout: SLOW, polling: 1000 });
         await page.locator(SEL.searchInput).fill("where do bank dates get parsed");
         await page.keyboard.press("Enter");
@@ -144,20 +188,30 @@ test("marketing dark", async () => {
 
     await shoot("mk-specs", async () => {
       await reveal(page, "View: Toggle Active Spec", ".spexr-spec-panel");
+      await layout(page, { left: false, right: false, bottom: false });
       await atLeast(page, SEL.specList, 6, 30_000);
     });
 
     await shoot("mk-spec-detail", async () => {
       await page.locator(SEL.specList, { hasText: "Reconcile within a date window" }).locator('button[aria-label^="Open"]').click();
-      await reveal(page, "View: Toggle Active Spec", ".spexr-spec-panel");
+      // Opening a spec puts its editor in front; the Spec view (stepper, plan) is the picture, with Spec validation below.
+      await page.waitForTimeout(1500);
+      await activateTab(page, "Spec");
+      await page.locator(".spexr-spec-panel").waitFor({ state: "visible", timeout: 30_000 });
+      await layout(page, { left: false, right: false, bottom: true });
+      await activateTab(page, "Spec validation");
+      await page.locator(SEL.planItem).first().waitFor({ state: "visible", timeout: 30_000 });
       await atLeast(page, SEL.planItem, 5, 30_000);
     });
 
+    // The spec scenes leave an editor and a preview split in the main area; the wall gets it whole.
+    await runCommand(page, "View: Close All Tabs");
     touchShowcase(run);
     const wall = await shoot(
       "mk-darkfactory",
       async () => {
         await reveal(page, "View: Toggle Darkfactory", SEL.wall);
+        await layout(page, { left: false, right: false, bottom: false });
         await atLeast(page, SEL.card, 5, 60_000);
         await page.locator(SEL.needsYou).first().waitFor({ state: "visible", timeout: 60_000 });
         await page.locator(SEL.cardOverview).first().waitFor({ state: "visible", timeout: SLOW });
@@ -215,11 +269,13 @@ test("marketing dark", async () => {
 
     await shoot("mk-experts", async () => {
       await reveal(page, "View: Toggle Experts", SEL.experts);
+      await layout(page, { left: false, right: true, bottom: false });
       await page.locator(SEL.expertActive).first().waitFor({ state: "visible", timeout: 30_000 });
     });
 
     await shoot("mk-memory", async () => {
       await reveal(page, "View: Toggle Memory", SEL.memory);
+      await layout(page, { left: false, right: true, bottom: false });
       await atLeast(page, SEL.memoryItem, 5, 30_000);
     });
 
@@ -227,6 +283,7 @@ test("marketing dark", async () => {
       "mk-git",
       async () => {
         await reveal(page, "View: Toggle Source Control", ".spexr-scm-input");
+        await layout(page, { left: true, right: false, bottom: false });
         await page.locator(SEL.generate).click();
         await page.waitForFunction((s) => ((document.querySelector(s) as HTMLTextAreaElement | null)?.value ?? "").trim().length > 0, SEL.commitBox, { timeout: SLOW, polling: 1000 });
       },
