@@ -156,6 +156,15 @@ test("marketing dark", async () => {
       return shot;
     };
 
+    // The hero: spexr's Welcome page, bare and with the side panels.
+    await shoot("mk-welcome", async () => {
+      await reveal(page, "View: Toggle Welcome", ".spexr-welcome-widget");
+      await layout(page, { left: false, right: false, bottom: false });
+    });
+    await shoot("mk-welcome-ide", async () => {
+      await layout(page, { left: true, right: true, bottom: false });
+    });
+
     // Smart search first: indexing and the file descriptions run while the other scenes are set up.
     await shoot(
       "mk-search",

@@ -77,6 +77,9 @@ export function prepareShowcase(root: string): ShowcaseRun {
   }
   writeHome(run, "~/ledgerline on reconcile-window › ");
   writeClaudeStub(run.bin);
+  // A pinned card resumes the session in a terminal, which would print the stub's banner into the picture.
+  const stub = path.join(run.bin, "claude");
+  fs.writeFileSync(stub, fs.readFileSync(stub, "utf8").replace("printf 'claude (visual fixture stub)\\n'\n", ""));
   fs.copyFileSync(path.join(FIXTURES, "bin", "opencode"), path.join(run.bin, "opencode"));
   fs.chmodSync(path.join(run.bin, "opencode"), 0o755);
 
