@@ -68,25 +68,11 @@ async function reveal(page: Page, label: string, selector: string): Promise<void
   await page.locator(selector).first().waitFor({ state: "visible", timeout: 30_000 });
 }
 
-/**
- * Bring a main-area or bottom tab to the front by its label, the way
- * tests/e2e/fixtures/app.ts activateTab does: Lumino hit-tests the pointer
- * position, so the event carries the tab's real centre.
- */
-async function activateTab(page: Page, label: string): Promise<void> {
-  await page.evaluate((wanted) => {
-    const tab = [...document.querySelectorAll<HTMLElement>(".lm-TabBar-tabLabel")].find((el) => el.textContent?.trim() === wanted)?.closest("li");
-    if (!tab) throw new Error(`no tab "${wanted}"`);
-    const r = tab.getBoundingClientRect();
-    tab.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerId: 1, isPrimary: true }));
-  }, label);
-}
-
 type Side = "left" | "right" | "bottom";
-const PANEL: Record<Side, { id: string; toggle: string }> = {
-  left: { id: "theia-left-content-panel", toggle: "View: Toggle Left Panel" },
-  right: { id: "theia-right-content-panel", toggle: "View: Toggle Right Panel" },
-  bottom: { id: "theia-bottom-content-panel", toggle: "View: Toggle Bottom Panel" },
+const TOGGLE: Record<Side, string> = {
+  left: "View: Toggle Left Panel",
+  right: "View: Toggle Right Panel",
+  bottom: "View: Toggle Bottom Panel",
 };
 
 /**
@@ -95,11 +81,12 @@ const PANEL: Record<Side, { id: string; toggle: string }> = {
  */
 async function layout(page: Page, want: Record<Side, boolean>): Promise<void> {
   for (const side of ["left", "right", "bottom"] as const) {
-    const open = await page.evaluate((id) => {
-      const r = document.getElementById(id)?.getBoundingClientRect();
+    // spexr's shell wraps each area in an island (shell/islands.ts; tests/e2e/tests/islands.spec.ts).
+    const open = await page.evaluate((area) => {
+      const r = document.querySelector(`.spexr-island[data-island="${area}"]`)?.getBoundingClientRect();
       return !!r && r.width > 40 && r.height > 40;
-    }, PANEL[side].id);
-    if (open !== want[side]) await runCommand(page, PANEL[side].toggle);
+    }, side);
+    if (open !== want[side]) await runCommand(page, TOGGLE[side]);
   }
   await page.waitForTimeout(600);
 }
@@ -176,8 +163,8 @@ test("marketing dark", async () => {
         await reveal(page, "View: Toggle Search", SEL.search);
         await layout(page, { left: true, right: false, bottom: false });
         // The plain-text Search part shares the container; collapse it so smart search gets the height.
-        const textSearch = page.locator(".theia-view-container-part-title", { hasText: /^\s*Search\s*$/ }).first();
-        if ((await textSearch.getAttribute("aria-expanded").catch(() => null)) === "true") await textSearch.click();
+        const textSearch = page.locator(".theia-view-container-part-header", { has: page.locator(".theia-view-container-part-title", { hasText: /^\s*Search\s*$/i }) }).first();
+        if ((await textSearch.getAttribute("aria-expanded").catch(() => null)) !== "false") await textSearch.click().catch(() => undefined);
         await page.waitForFunction((s) => !document.querySelector(s), SEL.searchBusy, { timeout: SLOW, polling: 1000 });
         await page.locator(SEL.searchInput).fill("where do bank dates get parsed");
         await page.keyboard.press("Enter");
@@ -193,19 +180,12 @@ test("marketing dark", async () => {
     });
 
     await shoot("mk-spec-detail", async () => {
-      await page.locator(SEL.specList, { hasText: "Reconcile within a date window" }).locator('button[aria-label^="Open"]').click();
-      // Opening a spec puts its editor in front; the Spec view (stepper, plan) is the picture, with Spec validation below.
-      await page.waitForTimeout(1500);
-      await activateTab(page, "Spec");
-      await page.locator(".spexr-spec-panel").waitFor({ state: "visible", timeout: 30_000 });
-      await layout(page, { left: false, right: false, bottom: true });
-      await activateTab(page, "Spec validation");
-      await page.locator(SEL.planItem).first().waitFor({ state: "visible", timeout: 30_000 });
+      // The list shows a spec's plan under its stepper; opening the spec would put an editor and a preview in front.
+      const row = page.locator(SEL.specList, { hasText: "Reconcile within a date window" }).first();
+      await row.evaluate((el) => el.scrollIntoView({ block: "start" }));
       await atLeast(page, SEL.planItem, 5, 30_000);
     });
 
-    // The spec scenes leave an editor and a preview split in the main area; the wall gets it whole.
-    await runCommand(page, "View: Close All Tabs");
     touchShowcase(run);
     const wall = await shoot(
       "mk-darkfactory",
