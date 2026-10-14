@@ -163,8 +163,10 @@ test("marketing dark", async () => {
         await reveal(page, "View: Toggle Search", SEL.search);
         await layout(page, { left: true, right: false, bottom: false });
         // The plain-text Search part shares the container; collapse it so smart search gets the height.
-        const textSearch = page.locator(".theia-view-container-part-header", { has: page.locator(".theia-view-container-part-title", { hasText: /^\s*Search\s*$/i }) }).first();
-        if ((await textSearch.getAttribute("aria-expanded").catch(() => null)) !== "false") await textSearch.click().catch(() => undefined);
+        // Theia's view-container part (`.part`) holding the text search widget (#search-in-workspace); its header toggles it.
+        const textSearch = page.locator(".theia-view-container .part", { has: page.locator("#search-in-workspace") }).first();
+        if (!(await textSearch.locator(".theia-mod-collapsed").count())) await textSearch.locator(".theia-view-container-part-header").first().click();
+        await page.waitForTimeout(600);
         await page.waitForFunction((s) => !document.querySelector(s), SEL.searchBusy, { timeout: SLOW, polling: 1000 });
         await page.locator(SEL.searchInput).fill("where do bank dates get parsed");
         await page.keyboard.press("Enter");
@@ -192,6 +194,9 @@ test("marketing dark", async () => {
       async () => {
         await reveal(page, "View: Toggle Darkfactory", SEL.wall);
         await layout(page, { left: false, right: false, bottom: false });
+        // The plant schedule takes a third of the wall; the wall shot gives the cards the room (schedule-sidebar.tsx:313).
+        const closeSchedule = page.locator('[aria-label="Close the schedule"]').first();
+        if (await closeSchedule.isVisible().catch(() => false)) await closeSchedule.click();
         await atLeast(page, SEL.card, 5, 60_000);
         await page.locator(SEL.needsYou).first().waitFor({ state: "visible", timeout: 60_000 });
         await page.locator(SEL.cardOverview).first().waitFor({ state: "visible", timeout: SLOW });
@@ -220,6 +225,9 @@ test("marketing dark", async () => {
     await shoot(
       "mk-df-search",
       async () => {
+        // The schedule comes back for this shot (darkfactory-wall-widget.tsx:1656).
+        const openSchedule = page.locator('[aria-label="Open the plant schedule"]').first();
+        if (await openSchedule.isVisible().catch(() => false)) await openSchedule.click();
         await page.locator(SEL.dfSearch).fill("the one about month-end dates");
         await page.keyboard.press("Enter");
         await page.waitForFunction((s) => /^[1-9]\d* found$/.test(document.querySelector(s)?.textContent?.trim() ?? ""), SEL.dfSearchCount, { timeout: SLOW, polling: 500 });
