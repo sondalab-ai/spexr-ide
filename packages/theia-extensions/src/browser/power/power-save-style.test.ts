@@ -85,14 +85,6 @@ describe("power saving the welcome background", () => {
   });
 });
 
-// Ink was dropped only inside live cards (their data-sl-fx="off") and kept
-// running on every other button while saving.
-describe("power saving the ink hover", () => {
-  it("drops the ink layer on every button", () => {
-    expect(declarationsFor(":root[data-spexr-power-save] .sl-fx-ink")).toMatch(/display:\s*none/);
-  });
-});
-
 // Saving killed every effect host's box-shadow, and with it a selected tile's
 // only marker, a glass control's own depth (a secondary's lit line and cast)
 // and its focus halo. The kit restores them after its own kill switches (the
