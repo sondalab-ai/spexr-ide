@@ -223,7 +223,7 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
         className="spexr-welcome__actions"
         aria-label="Get started"
       >
-        {cards.map((card) => (
+        {cards.map((card, cardIndex) => (
           <button
             key={card.id}
             type="button"
@@ -249,9 +249,10 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
                 ))}
               </span>
             ) : null}
-            {/* The kit's corner art paints on ::after, which the card's glass
-                already owns, so it rides on a child of its own. */}
-            <span className="sl-art-corner spexr-welcome-card__corner" aria-hidden />
+            {/* The kit's corner art, on the first card only (one piece beside the
+                weave). It paints on ::after, which the card's glass already
+                owns, so it rides on a child of its own. */}
+            {cardIndex === 0 ? <span className="sl-art-corner spexr-welcome-card__corner" aria-hidden /> : null}
           </button>
         ))}
       </section>

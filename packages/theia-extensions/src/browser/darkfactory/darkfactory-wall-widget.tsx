@@ -1581,7 +1581,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
             */}
             {this.search.active ? (
               visibleHits.length === 0 ? (
-                <div className="spexr-df-empty sl-empty--void">
+                <div className="spexr-df-empty">
                   {this.search.pending
                     ? "Searching…"
                     : this.indexProgress
@@ -1599,7 +1599,7 @@ export class SpexrDarkfactoryWidget extends ReactWidget {
                 </div>
               )
             ) : tiles.length === 0 ? (
-              <div className="spexr-df-empty sl-empty--void">
+              <div className="spexr-df-empty">
                 {discarded.length > 0
                   ? "Every session on the wall is in the trash."
                   : "No agent sessions found yet. Start one above, or run Claude or opencode elsewhere to see it here."}
