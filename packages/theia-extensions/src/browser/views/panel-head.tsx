@@ -11,14 +11,14 @@ export const PanelHead: React.FC<{ readonly eyebrow: string; readonly title?: st
   aside ? (
     <header className="spexr-panel-head spexr-panel-head--aside">
       <div className="spexr-panel-head__text">
-        <p className="sl-eyebrow spexr-panel-head__eyebrow">{eyebrow}</p>
+        <p className="sl-eyebrow sl-eyebrow--mark spexr-panel-head__eyebrow">{eyebrow}</p>
         {title && <h2 className="spexr-panel-head__title">{title}</h2>}
       </div>
       {aside}
     </header>
   ) : (
     <header className="spexr-panel-head">
-      <p className="sl-eyebrow spexr-panel-head__eyebrow">{eyebrow}</p>
+      <p className="sl-eyebrow sl-eyebrow--mark spexr-panel-head__eyebrow">{eyebrow}</p>
       {title && <h2 className="spexr-panel-head__title">{title}</h2>}
     </header>
   );

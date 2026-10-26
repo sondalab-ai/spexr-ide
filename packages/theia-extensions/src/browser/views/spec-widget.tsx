@@ -453,7 +453,7 @@ const SpecPanel: React.FC<SpecPanelProps> = ({
     </div>
 
     {hasWorkspace && specs.length === 0 ? (
-      <div className="sl-empty spexr-spec-panel__empty">
+      <div className="sl-empty sl-empty--shapes spexr-spec-panel__empty">
         <p className="sl-empty__body">
           No specs yet. Create one to populate <code>docs/specs/</code>.
         </p>

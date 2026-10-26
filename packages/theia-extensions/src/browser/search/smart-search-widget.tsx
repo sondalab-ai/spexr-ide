@@ -352,7 +352,7 @@ export class SmartSearchWidget extends ReactWidget {
 
   private renderResults(): React.ReactNode {
     if (this.hits.length === 0) {
-      return <ul className="spexr-smart-search__results"><li className="spexr-smart-search__empty">No results</li></ul>;
+      return <ul className="spexr-smart-search__results"><li className="spexr-smart-search__empty sl-empty--shapes">No results</li></ul>;
     }
     const displayed = this.activeFilters.size > 0
       ? this.hits.filter((h) => this.activeFilters.has(h.category))

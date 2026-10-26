@@ -249,9 +249,14 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
                 ))}
               </span>
             ) : null}
+            {/* The kit's corner art paints on ::after, which the card's glass
+                already owns, so it rides on a child of its own. */}
+            <span className="sl-art-corner spexr-welcome-card__corner" aria-hidden />
           </button>
         ))}
       </section>
+
+      <hr className="sl-rule sl-rule--weave spexr-welcome__weave" aria-hidden />
 
       <section className="spexr-welcome__workflow" aria-labelledby="spexr-welcome-workflow-title">
         <header className="spexr-welcome__section-head">

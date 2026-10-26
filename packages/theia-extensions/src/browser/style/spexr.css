@@ -2896,6 +2896,13 @@ body .theia-notifications-container.theia-notification-toasts {
   justify-items: start;
 }
 
+/* The kit's void art centres its message in the erased zone; this grid's own
+   start alignment would hold the hint over the strokes. */
+.spexr-agent-pane__empty.sl-empty--void {
+  align-content: center;
+  justify-items: center;
+}
+
 .spexr-agent-pane__hint {
   margin: 0;
   color: var(--slc-text-secondary);
@@ -3862,6 +3869,17 @@ code {
   );
 }
 
+/* The kit's corner art, on a child: the card's glass owns its ::before and
+   ::after. At -1 it lands after the glass's prepended layers (backdrop -3,
+   tint -2, shine -1) and under the card's text. */
+.spexr-welcome-card__corner {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
 .spexr-welcome-card__title {
   font-size: var(--sl-text-md);
   font-weight: 600;
@@ -3909,6 +3927,13 @@ code {
   color: var(--sl-text-secondary);
   font-size: var(--sl-text-sm);
   line-height: var(--sl-line-relaxed);
+}
+
+/* The kit's weave between the cards and the workflow. The welcome column
+   puts a gap before and after it; the margins take both gaps and the 1px rule
+   back, so the workflow section stays where it was. */
+.spexr-welcome__weave {
+  margin: calc(var(--sl-space-6) / -2) 0 calc(var(--sl-space-6) / -2 - 1px);
 }
 
 .spexr-welcome__workflow {
