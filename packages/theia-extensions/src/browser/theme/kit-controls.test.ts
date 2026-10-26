@@ -75,9 +75,10 @@ describe("the compact switch", () => {
   };
   const HELD = ".spexr-df-switch.sl-switch:active:not(:has(:disabled))";
   const EDGE = 1;
-  const INSET = 2; // the kit's knob sits 2px in from the left
+  const INSET = 2; // pinned by the compact rule; the kit's knob sits 3px in since 0.39
 
   it("keeps the knob 2px in from every side of the border-box track, off and on", () => {
+    expect(px(".spexr-df-switch .sl-switch__track::after", /left:\s*(\d+)px/)).toBe(INSET);
     const width = px(".spexr-df-switch .sl-switch__track", /width:\s*(\d+)px/);
     const height = px(".spexr-df-switch .sl-switch__track", /height:\s*(\d+)px/);
     const knob = px(".spexr-df-switch .sl-switch__track::after", /width:\s*(\d+)px/);

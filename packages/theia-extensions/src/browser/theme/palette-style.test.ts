@@ -143,11 +143,11 @@ describe("the palette's head and field", () => {
     expect(head).toMatch(/border-bottom:\s*1px solid var\(--slc-border-subtle\)/);
   });
 
-  it("is the kit's field: 32px, r8, transparent, in the one control edge, its ring flush over the border", () => {
+  it("is the kit's field: 32px, r8, transparent, resting on the hairline (kit 0.39), its ring flush over the border", () => {
     const box = rule(`${NOT_HC} .quick-input-widget .quick-input-box .monaco-inputbox {`);
     expect(px(box, "height")).toBe(PALETTE.field);
     expect(box).toMatch(/background-color:\s*transparent !important/);
-    expect(box).toMatch(/border:\s*1px solid var\(--slc-edge-control\) !important/);
+    expect(box).toMatch(/border:\s*1px solid var\(--slc-edge-hairline\) !important/);
     expect(box).toMatch(/border-radius:\s*var\(--sl-radius-md\)/);
     const focus = rule(`${NOT_HC} .quick-input-widget .quick-input-box .monaco-inputbox:focus-within {`);
     expect(focus).toMatch(/border-color:\s*var\(--slc-focus\) !important/);

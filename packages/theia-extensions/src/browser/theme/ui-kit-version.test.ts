@@ -10,6 +10,13 @@ function installedKitVersion(): string {
 }
 
 describe("@sondalab/ui-kit", () => {
+  // 0.40.0 adds the terminal role spans on .sl-term-block. 0.39.0 removes
+  // ink and .sl-fx-liquid (spexr's power-save mirror drops them with the
+  // kit's kill-switch lists), rests every control on --slc-edge-hairline
+  // (spexr's own fields and icon buttons follow), draws the switch knob 3px
+  // in and moves it from JS while it animates (the compact switch pins and
+  // scales both), and greys out a disabled control with a checkerboard mask
+  // (the schedule's aria-disabled check mirrors it).
   // 0.36.x is Lumen parity for the controls: a text button sinks to 97% on
   // the press knob --slfx-pane-swell (1 stands it down: a button group, and
   // the What's New card's dismiss, set it), tags, badges and chips are r6,
@@ -35,8 +42,8 @@ describe("@sondalab/ui-kit", () => {
   // data-sl-product attribute select. 0.25.0 gives every control its press,
   // 0.24.0 carries accent text in --slc-accent-text, 0.23 shipped the list,
   // disclosure and resizer, and 0.22 the segmented aria-pressed paint.
-  it("is at least 0.36.2", () => {
+  it("is at least 0.40.0", () => {
     const [major, minor, patch] = installedKitVersion().split(".").map(Number) as [number, number, number];
-    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(36_002);
+    expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(40_000);
   });
 });

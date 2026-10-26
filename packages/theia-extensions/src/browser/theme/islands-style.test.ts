@@ -262,10 +262,10 @@ describe("the activity bars", () => {
 describe("the SCM commit box", () => {
   const BOX = ".spexr-scm-input .theia-scm-input-message-container textarea.theia-scm-input-message";
 
-  it("is the kit's sunken field: well, control edge, r-md", () => {
+  it("is the kit's sunken field: well, hairline edge, r-md", () => {
     const box = rule(`${BOX} {`);
     expect(box).toMatch(/background:\s*var\(--slc-sunken\)/);
-    expect(box).toMatch(/border:\s*1px solid var\(--slc-edge-control\)/);
+    expect(box).toMatch(/border:\s*1px solid var\(--slc-edge-hairline\)/);
     expect(box).toMatch(/border-radius:\s*var\(--sl-radius-md, 8px\)/);
     expect(box).toMatch(/box-shadow:\s*var\(--slc-depth-sunk\)/);
   });
@@ -287,16 +287,16 @@ describe("the tree's twisty", () => {
 
 // Theia's inputs are the kit's sunken field; the Search view's resting edge was the fill's own colour.
 describe("input fields at rest", () => {
-  it("take the kit's sunken fill and control edge from the theme variables", () => {
+  it("take the kit's sunken fill and resting hairline from the theme variables", () => {
     const chrome = readFileSync(fileURLToPath(new URL("./theia-chrome-css.ts", import.meta.url)), "utf8");
     expect(chrome).toContain("--theia-input-background: var(--slc-sunken) !important;");
-    expect(chrome).toContain("--theia-input-border: var(--slc-edge-control) !important;");
+    expect(chrome).toContain("--theia-input-border: var(--slc-edge-hairline) !important;");
   });
 
-  it("draw the Search view's resting edge in the control edge, not the fill", () => {
+  it("draw the Search view's resting edge in the hairline, not the fill", () => {
     const css2 = css.slice(css.indexOf(":root .t-siw-search-container .searchHeader :is("));
     const edge = css2.slice(css2.indexOf(":not(.focused, .tooManyResults)"));
-    expect(edge.slice(0, edge.indexOf("}"))).toMatch(/border-color:\s*var\(--slc-edge-control\)/);
+    expect(edge.slice(0, edge.indexOf("}"))).toMatch(/border-color:\s*var\(--slc-edge-hairline\)/);
   });
 
   it("keep the kit's radius while focused: it is on the field, not on its resting state", () => {

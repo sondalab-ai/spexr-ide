@@ -205,7 +205,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    The kit's effects are stilled with its own kill-switch list (effects.css)
    keyed on our flag instead of its data-sl-fx="off", which would stop it
    dressing content that mounts while saving. */
-:root[data-spexr-power-save] :is(.sl-fx-glass, .sl-fx-glass__lit, .sl-fx-press, .sl-fx-aurora, .sl-fx-aurora__glow, .sl-fx-liquid, .sl-fx-liquid__skin, .sl-fx-goo, .sl-fx-goo__field, .sl-fx-glitch, .sl-fx-glitch__text, .sl-fx-glitch__shards, .sl-fx-glitch__shard) {
+:root[data-spexr-power-save] :is(.sl-fx-glass, .sl-fx-glass__lit, .sl-fx-press, .sl-fx-aurora, .sl-fx-aurora__glow, .sl-fx-goo, .sl-fx-goo__field, .sl-fx-glitch, .sl-fx-glitch__text, .sl-fx-glitch__shards, .sl-fx-glitch__shard) {
   animation: none !important;
   box-shadow: none !important;
   text-shadow: none !important;
@@ -221,11 +221,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    current tile tab that also wears an effect lost its only marker while
    saving (in high contrast its accent ring). At (0,6,0), with the kit's own
    lists. */
-:root[data-spexr-power-save] :is(.sl-pagination__item[aria-current]:not([aria-current="false"]), .sl-segmented__item:is([aria-selected="true"], [aria-pressed="true"]), .sl-nav__item[aria-current]:not([aria-current="false"]), .sl-list__row:is([aria-selected="true"], [aria-current]:not([aria-current="false"]))):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+:root[data-spexr-power-save] :is(.sl-pagination__item[aria-current]:not([aria-current="false"]), .sl-segmented__item:is([aria-selected="true"], [aria-pressed="true"]), .sl-nav__item[aria-current]:not([aria-current="false"]), .sl-list__row:is([aria-selected="true"], [aria-current]:not([aria-current="false"]))):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-glitch) {
   box-shadow: var(--slc-depth-tile) !important;
 }
 
-:root[data-spexr-power-save] :is(.sl-tabs--tile .sl-tabs__tab[aria-selected="true"]):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+:root[data-spexr-power-save] :is(.sl-tabs--tile .sl-tabs__tab[aria-selected="true"]):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-glitch) {
   box-shadow: var(--slc-depth-flat) !important;
 }
 
@@ -238,11 +238,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    weighs (0,3,0), so these outrank it at (0,4,0) and (0,5,0), with the
    kit's own lists. The halo stays off in high contrast, where --slc-glow
    is 0. */
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-check__box, .sl-radio__box, .sl-switch__track, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-glitch) {
   box-shadow: var(--_sl-depth, 0 0 transparent) !important;
 }
 
-:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch):focus-visible {
+:root[data-spexr-power-save] :is(.sl-btn, .sl-icon-btn, .sl-segmented__item, .sl-pagination__item, .sl-nav__item, .sl-list__row, .sl-tabs__tab, .sl-activitybar__item, .sl-tree__row, .sl-statusbar__item, .sl-titlebar__cmd):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-glitch):focus-visible {
   box-shadow: var(--_sl-depth, 0 0 transparent), var(--_sl-halo, 0 0 transparent) !important;
 }
 
@@ -254,11 +254,11 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
    ring is theirs, so that is what comes back for them. No spexr surface
    wears an effect today (the shell's islands draw their recipe on ::after,
    THE WORKBENCH); the mirror keeps power saving in step with the kit. */
-:root[data-spexr-power-save] :is(.sl-pane, .sl-term-block):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+:root[data-spexr-power-save] :is(.sl-pane, .sl-term-block):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-glitch) {
   box-shadow: var(--slc-depth-island) !important;
 }
 
-:root[data-spexr-power-save] :is(.sl-toast, .sl-palette):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-liquid, .sl-fx-glitch) {
+:root[data-spexr-power-save] :is(.sl-toast, .sl-palette):is(.sl-fx-glass, .sl-fx-press, .sl-fx-aurora, .sl-fx-glitch) {
   box-shadow: var(--slc-depth-cast) !important;
 }
 
@@ -276,14 +276,6 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 
 :root[data-spexr-power-save] .sl-fx-goo__member {
   animation: none !important;
-}
-
-/* The kit's ink (since 0.36.6, a pool of light trailing the pointer on every
-   button, its rim torn by a moving noise filter) goes everywhere while saving. Without this it was off
-   only on buttons inside the live cards switched to data-sl-fx="off" above,
-   and still running on every other button. */
-:root[data-spexr-power-save] .sl-fx-ink {
-  display: none;
 }
 
 /* The sweeps, the orbit and the curtains run on pseudo-elements, which the
@@ -1856,8 +1848,9 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 /* The avatar is an icon button in the avatar's box: the kit's ring, halo
    and hover, its initials in the mono. .sl-avatar comes later in the kit
    and draws its box in --slc-border, a step dimmer than the icon buttons
-   beside it, so its edge at rest is pinned to theirs; hover and focus keep
-   the icon button's own edge, so the flush ring still joins the border. */
+   beside it, so its edge at rest is pinned to theirs (the translucent
+   hairline since kit 0.39); hover and focus keep the icon button's own edge,
+   so the flush ring still joins the border. */
 .spexr-titlebar-host .spexr-titlebar__avatar {
   font-family: var(--sl-font-mono);
   font-size: 0.625rem;
@@ -1866,7 +1859,7 @@ html .theia-select-component:focus:where(:not(:focus-visible)) {
 }
 
 .spexr-titlebar-host .spexr-titlebar__avatar:not(:hover, :focus-visible) {
-  border-color: var(--slc-edge-control);
+  border-color: var(--slc-edge-hairline);
 }
 
 :is(.lm-Menu, .quick-input-widget, .context-view, .monaco-hover, .theia-hover, .dialogOverlay) {
@@ -2280,8 +2273,9 @@ body .theia-notifications-container.theia-notification-toasts {
 }
 
 /* The expand and clear glyphs, and the center's own: the kit's icon button
-   (32px, r8), transparent in the one control edge, the glyph in the
-   secondary ink, hover bringing the surface rung up under it. */
+   (32px, r8), transparent on the kit's resting hairline (0.39), the glyph in
+   the secondary ink, hover bringing the surface rung and the 3:1 control
+   edge up under it. */
 :root:not([data-sl-theme="high-contrast"]) .theia-notification-actions {
   align-items: center;
   gap: var(--sl-space-1);
@@ -2296,7 +2290,7 @@ body .theia-notifications-container.theia-notification-toasts {
   margin: 0;
   padding: 0;
   color: var(--slc-text-secondary);
-  border: 1px solid var(--slc-edge-control);
+  border: 1px solid var(--slc-edge-hairline);
   border-radius: var(--sl-radius-md);
   transition:
     color var(--sl-motion-fast) var(--sl-motion-ease),
@@ -2502,7 +2496,7 @@ body .theia-notifications-container.theia-notification-toasts {
   box-sizing: border-box;
   height: 32px;
   background-color: transparent !important;
-  border: 1px solid var(--slc-edge-control) !important;
+  border: 1px solid var(--slc-edge-hairline) !important;
   border-radius: var(--sl-radius-md);
 }
 
@@ -4838,7 +4832,7 @@ code {
   margin-top: 5px;
 }
 
-/* The commit box is the kit's sunken field (.sl-field__input: well, control edge,
+/* The commit box is the kit's sunken field (.sl-field__input: well, hairline edge,
    r-md, 32px single row), restated here because Theia renders the textarea and
    cannot take the class. The generate-message action sits inside it, at the end of
    the first line, so the message and the way to ask for one are a single control;
@@ -4850,7 +4844,7 @@ code {
   line-height: 1.25rem;
   color: var(--slc-text);
   background: var(--slc-sunken);
-  border: 1px solid var(--slc-edge-control);
+  border: 1px solid var(--slc-edge-hairline);
   border-radius: var(--sl-radius-md, 8px);
   box-shadow: var(--slc-depth-sunk);
   padding: 0.3125rem 2.5rem 0.3125rem 0.75rem;
@@ -4875,7 +4869,8 @@ code {
 /* Inputs are the kit's sunken field (--theia-input-background / -border, set in
    theia-chrome-css.ts). The Search view draws its resting border in the fill's own
    colour, so a field at rest had no edge at all (invisible on the light theme);
-   it takes the control edge instead, and keeps Theia's focus and warning borders. */
+   it takes the kit's resting field edge (the hairline since 0.39) instead, and keeps
+   Theia's focus and warning borders. */
 :root .t-siw-search-container .searchHeader :is(
   .search-field-container,
   .glob-field-container .glob-field .glob-field-input
@@ -4887,7 +4882,7 @@ code {
   .search-field-container:not(.focused, .tooManyResults),
   .glob-field-container .glob-field .glob-field-input:not(:focus-within)
 ) {
-  border-color: var(--slc-edge-control);
+  border-color: var(--slc-edge-hairline);
 }
 
 /* The kit's focus (ring flush on the border, border in the ring's colour, the
@@ -5198,8 +5193,21 @@ code {
 .spexr-sched__needs { display: flex; flex-direction: column; gap: var(--sl-space-2); margin: 0; padding: 0; border: 0; }
 .spexr-sched__needs > legend { padding: 0; margin-bottom: var(--sl-space-1); }
 .spexr-sched__need { display: flex; flex-direction: column; gap: var(--sl-space-1); }
-/* A blocked choice is aria-disabled, not disabled, so it stays in the tab order (AC-17); the kit only dims :disabled. */
+/* A blocked choice is aria-disabled, not disabled, so it stays in the tab order (AC-17); the kit only greys out :disabled.
+   Half opacity is the fallback (high contrast, forced colours, and while focused, so the ring is not cut); elsewhere
+   it takes the kit's disabled checkerboard (components.css, 0.39). */
 .spexr-sched__need .sl-check:has([aria-disabled="true"]) { opacity: 0.5; cursor: not-allowed; }
+@media not (forced-colors: active) {
+  :root:not([data-sl-theme="high-contrast"]) .spexr-sched__need .sl-check:has([aria-disabled="true"]):not(:has(:focus-visible)) {
+    opacity: 1;
+    -webkit-mask-image: repeating-conic-gradient(#000 0 25%, transparent 0 50%);
+    -webkit-mask-size: 2px 2px;
+    -webkit-mask-position: 0 0;
+    mask-image: repeating-conic-gradient(#000 0 25%, transparent 0 50%);
+    mask-size: 2px 2px;
+    mask-position: 0 0;
+  }
+}
 /* Hand-offs insert at the caret; one button each, its token in the title. */
 .spexr-sched__handoff { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sl-space-1); }
 /* Auto-approving permission modes: flagged where the summary is collapsed, and again next to the field.
@@ -5573,13 +5581,19 @@ code {
    tenth toward where it will go, as the kit's does. The kit's held rules
    weigh (0,4,1) and (0,6,1), so they are repeated here under the switch's own
    class, or the held knob would grow to the kit's 0.935rem and run past the
-   track. */
+   track. The kit's knob sits 3px in since 0.39 (its 3px lattice); here it is
+   pinned 2px in, or it would sit 1px off-centre and 1px from the right when on. */
 .spexr-df-switch { gap: var(--sl-space-2); }
 .spexr-df-switch .sl-switch__track { width: 28px; height: 16px; }
-.spexr-df-switch .sl-switch__track::after { width: 10px; height: 10px; }
+.spexr-df-switch .sl-switch__track::after { left: 2px; width: 10px; height: 10px; }
 .spexr-df-switch .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(12px); }
 .spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__track::after { width: 11px; }
 .spexr-df-switch.sl-switch:active:not(:has(:disabled)) .sl-switch__input:checked + .sl-switch__track::after { transform: translateY(-50%) translateX(11px); }
+/* While the kit's toggle animates (0.39, effects.js), it writes the knob's
+   offset as --slfx-knob-x in whole 3px cells, 0 to 15px for its 35px track,
+   at !important (0,3,1). Scaled to this track's 12px travel, or the knob runs
+   past the end until the transition ends. */
+.spexr-df-switch .sl-switch__track:has(> .sl-fx-pixel.is-live)::after { transform: translateY(-50%) translateX(calc(var(--slfx-knob-x, 0px) * 12 / 15)) !important; }
 .spexr-df-switch .sl-switch__label { display: inline-flex; align-items: center; gap: var(--sl-space-1); color: var(--sl-text-secondary); }
 
 /*

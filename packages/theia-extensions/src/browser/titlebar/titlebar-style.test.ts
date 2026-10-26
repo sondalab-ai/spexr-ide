@@ -98,9 +98,9 @@ describe("the title bar's frame", () => {
     expect(widget).toContain('this.menuButton === undefined ? " spexr-titlebar__menu--pending" : ""');
   });
 
-  // .sl-avatar comes after .sl-icon-btn in the kit and would draw the dimmer --slc-border.
+  // .sl-avatar comes after .sl-icon-btn in the kit and would draw --slc-border; since 0.39 the icon buttons rest on the hairline.
   it("draws the avatar's edge at rest in the icon buttons' edge, leaving hover and focus theirs", () => {
-    expect(rule(".spexr-titlebar-host .spexr-titlebar__avatar:not(:hover, :focus-visible)")).toMatch(/border-color:\s*var\(--slc-edge-control\)/);
+    expect(rule(".spexr-titlebar-host .spexr-titlebar__avatar:not(:hover, :focus-visible)")).toMatch(/border-color:\s*var\(--slc-edge-hairline\)/);
     expect(rule(".spexr-titlebar-host .spexr-titlebar__avatar")).not.toMatch(/border/);
   });
 

@@ -256,7 +256,7 @@ body,
   --theia-titleBar-border: ${line} !important;
   --theia-statusBar-border: ${line} !important;
   --theia-menu-border: ${line} !important;
-  --theia-input-border: var(--slc-edge-control) !important;
+  --theia-input-border: var(--slc-edge-hairline) !important;
   --theia-editorWidget-border: ${line} !important;
   --theia-activityBar-border: ${line} !important;
 }`;

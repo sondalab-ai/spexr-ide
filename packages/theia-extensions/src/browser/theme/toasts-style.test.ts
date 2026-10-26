@@ -127,11 +127,11 @@ describe("a toast", () => {
     expect(theia("@theia/messages/src/browser/style/notifications.css")).toMatch(/\n\.theia-notification-item-progressbar\.indeterminate\s*\{/);
   });
 
-  it("makes the expand and clear glyphs the kit's icon buttons, 32px at r8, in the one control edge", () => {
+  it("makes the expand and clear glyphs the kit's icon buttons, 32px at r8, resting on the hairline (kit 0.39)", () => {
     const button = rule(`${NOT_HC} .theia-notification-actions > li {`);
     expect(px(button, "width")).toBe(TOAST.dismiss);
     expect(px(button, "height")).toBe(TOAST.dismiss);
-    expect(button).toMatch(/border:\s*1px solid var\(--slc-edge-control\)/);
+    expect(button).toMatch(/border:\s*1px solid var\(--slc-edge-hairline\)/);
     expect(button).toMatch(/border-radius:\s*var\(--sl-radius-md\)/);
     expect(button).toMatch(/color:\s*var\(--slc-text-secondary\)/);
     expect(rule(`${NOT_HC} .theia-notification-actions > li:hover`)).toMatch(/border-color:\s*var\(--slc-edge-control-hover\)/);
