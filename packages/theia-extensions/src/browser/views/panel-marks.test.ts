@@ -42,6 +42,7 @@ describe("the right island's eyebrow glyphs", () => {
   // A view with two heads (loading and live, or empty and listed) keeps one glyph across its states.
   it.each(Object.entries(SOURCES))("%s passes its own key on every head", (key, file) => {
     const src = read(file);
+    // Assumes no prop value of a head contains "/>": the first one ends the head.
     const heads = src.match(/<PanelHead\b[\s\S]*?\/>/g) ?? [];
     expect(heads.length, key).toBe(src.split("<PanelHead").length - 1);
     expect(heads.length, key).toBeGreaterThan(0);
