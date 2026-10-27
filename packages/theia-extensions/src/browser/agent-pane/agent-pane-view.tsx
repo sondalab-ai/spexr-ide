@@ -75,7 +75,7 @@ const titleOf = (s: AgentPaneSnapshot): string => s.title ?? nls.localize("spexr
 export const AgentPaneEmpty: React.FC<{ readonly loading?: boolean | undefined }> = ({ loading }) => (
   <section className="spexr-agent-pane spexr-agent-pane--empty" aria-label={nls.localize("spexr/agentPane/title", "Agent")}>
     <PanelHead eyebrow={nls.localize("spexr/agentPane/eyebrow", "Agent")} title={loading ? nls.localize("spexr/agentPane/loadingTitle", "Loading session…") : nls.localize("spexr/agentPane/emptyTitle", "No session selected")} />
-    <div className="spexr-panel-body spexr-agent-pane__empty">
+    <div className="spexr-panel-body spexr-agent-pane__empty sl-empty--void">
       <p className="spexr-agent-pane__hint">
         {nls.localize("spexr/agentPane/emptyHint", "Select a session in the Sessions list to read its conversation: what was asked, the tools it ran, the edits it made and its plan.")}
       </p>

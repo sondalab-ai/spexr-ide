@@ -317,7 +317,7 @@ export function ScheduleSidebar(p: ScheduleSidebarProps): React.ReactElement {
         </button>
       </header>
       {!schedule ? (
-        <div className="sl-empty">
+        <div className="sl-empty sl-empty--shapes">
           <p>Lay out agent sessions, say which waits for which, and run them.</p>
           <button ref={newScheduleBtnRef} className="sl-btn sl-fx-glass sl-fx-glass--pane sl-fx-press" onClick={addSchedule}>
             New schedule

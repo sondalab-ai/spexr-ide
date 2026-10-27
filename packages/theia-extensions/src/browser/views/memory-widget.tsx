@@ -323,7 +323,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
       ) : null}
 
       {hasWorkspace && entries.length === 0 ? (
-        <div className="sl-empty spexr-memory-panel__empty">
+        <div className="sl-empty sl-empty--shapes spexr-memory-panel__empty">
           <p className="sl-empty__body">
             No project memories yet. Use <strong>+ New memory</strong> to add one.
           </p>

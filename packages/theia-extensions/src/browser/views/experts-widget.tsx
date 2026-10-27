@@ -225,7 +225,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
       <section className="spexr-experts-panel" aria-label="Expert agents">
         <PanelHead eyebrow={eyebrow} title={title} />
         <div className="spexr-panel-body">
-          <div className="sl-empty spexr-experts-panel__empty">
+          <div className="sl-empty sl-empty--shapes spexr-experts-panel__empty">
             <p className="sl-empty__body">Open a workspace to manage expert agents.</p>
           </div>
         </div>
