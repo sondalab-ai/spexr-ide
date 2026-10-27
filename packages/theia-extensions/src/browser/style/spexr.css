@@ -3803,12 +3803,44 @@ code {
   gap: var(--sl-space-6);
 }
 
+/* The head is the intro beside the kit's poster. A named size container, so
+   the poster leaves when the editor group is too narrow for both columns. */
 .spexr-welcome__header {
+  container: spexr-welcome-head / inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sl-space-6);
+  margin-bottom: var(--sl-space-3);
+}
+
+.spexr-welcome__intro {
   display: flex;
   flex-direction: column;
   gap: var(--sl-space-2);
-  margin-bottom: var(--sl-space-3);
+}
 
+/* 192px is 48 cells of 4px: a whole-cell poster, crisp. */
+.spexr-welcome__poster {
+  width: 192px;
+}
+
+@container spexr-welcome-head (max-width: 600px) {
+  .spexr-welcome__poster {
+    display: none;
+  }
+}
+
+/* The kit paints no art in high contrast or forced colours but keeps the
+   box; drop the box so the intro takes the row. */
+:root[data-sl-theme="high-contrast"] .spexr-welcome__poster {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .spexr-welcome__poster {
+    display: none;
+  }
 }
 
 .spexr-welcome__eyebrow {

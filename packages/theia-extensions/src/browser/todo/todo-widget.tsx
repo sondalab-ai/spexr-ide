@@ -171,7 +171,7 @@ export class SpexrTodoWidget extends ReactWidget {
   protected render(): React.ReactNode {
     const title = nls.localize("spexr/todo/title", "TODO");
     const eyebrow = nls.localize("spexr/todo/eyebrow", "Project · TODO");
-    const head = <PanelHead eyebrow={eyebrow} />;
+    const head = <PanelHead eyebrow={eyebrow} mark="todo" />;
     if (this.files.length === 0) {
       return (
         <section className="spexr-todo" aria-label={title}>
