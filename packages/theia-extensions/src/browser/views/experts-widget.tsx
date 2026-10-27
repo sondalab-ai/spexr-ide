@@ -223,7 +223,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
   if (!hasWorkspace) {
     return (
       <section className="spexr-experts-panel" aria-label="Expert agents">
-        <PanelHead eyebrow={eyebrow} title={title} />
+        <PanelHead eyebrow={eyebrow} title={title} mark="experts" />
         <div className="spexr-panel-body">
           <div className="sl-empty sl-empty--shapes spexr-experts-panel__empty">
             <p className="sl-empty__body">Open a workspace to manage expert agents.</p>
@@ -235,7 +235,7 @@ const ExpertsPanel: React.FC<ExpertsPanelProps> = ({
 
   return (
     <section className="spexr-experts-panel" aria-label="Expert agents">
-      <PanelHead eyebrow={eyebrow} title={title} />
+      <PanelHead eyebrow={eyebrow} title={title} mark="experts" />
       <div className="spexr-panel-body">
         <p className="spexr-experts-panel__hint">
           Add an expert persona to the project, then start a Claude session as that expert.

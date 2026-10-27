@@ -208,12 +208,17 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
   return (
     <div className="spexr-welcome">
       <header className="spexr-welcome__header">
-        <p className="sl-eyebrow sl-eyebrow--accent spexr-welcome__eyebrow">SPEXR</p>
-        <h1 className="spexr-welcome__title">Spec-based development, agent-first.</h1>
-        <p className="spexr-welcome__subtitle">
-          Author a spec, let the agent draft a plan, review the diff, ship the PR. Memory persists
-          across sessions — your context, your conventions, always loaded.
-        </p>
+        <div className="spexr-welcome__intro">
+          <p className="sl-eyebrow sl-eyebrow--accent spexr-welcome__eyebrow">SPEXR</p>
+          <h1 className="spexr-welcome__title">Spec-based development, agent-first.</h1>
+          <p className="spexr-welcome__subtitle">
+            Author a spec, let the agent draft a plan, review the diff, ship the PR. Memory persists
+            across sessions — your context, your conventions, always loaded.
+          </p>
+        </div>
+        {/* The kit's page-head poster, the stair (the site's SPEXR page wears
+            the same), in a column beside the text: the screen's one poster. */}
+        <div className="sl-art-poster sl-art-poster--stair spexr-welcome__poster" aria-hidden />
       </header>
 
       {/* Keyed on the card set: the kit dresses glass and columns only when a

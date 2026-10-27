@@ -1,24 +1,33 @@
 import * as React from "react";
+import { panelMarkClass, type PanelMarkKey } from "./panel-marks.js";
 
 /**
  * The head of a right-island view, as the Lumen agent pane's: a micro-label
  * above a 16px/600 title, over a hairline, with an optional `aside` (the agent
  * pane's model tag) at the end of the row. A view whose eyebrow already names
  * it (TODO) leaves the title out. The view's own heading replaces Theia's
- * title row (panel-title-contribution.ts hides that row).
+ * title row (panel-title-contribution.ts hides that row). `mark` names the
+ * view, which picks its eyebrow glyph (panel-marks.ts).
  */
-export const PanelHead: React.FC<{ readonly eyebrow: string; readonly title?: string; readonly aside?: React.ReactNode }> = ({ eyebrow, title, aside }) =>
-  aside ? (
+export const PanelHead: React.FC<{
+  readonly eyebrow: string;
+  readonly mark: PanelMarkKey;
+  readonly title?: string;
+  readonly aside?: React.ReactNode;
+}> = ({ eyebrow, mark, title, aside }) => {
+  const eyebrowClass = `${panelMarkClass(mark)} spexr-panel-head__eyebrow`;
+  return aside ? (
     <header className="spexr-panel-head spexr-panel-head--aside">
       <div className="spexr-panel-head__text">
-        <p className="sl-eyebrow sl-eyebrow--mark spexr-panel-head__eyebrow">{eyebrow}</p>
+        <p className={eyebrowClass}>{eyebrow}</p>
         {title && <h2 className="spexr-panel-head__title">{title}</h2>}
       </div>
       {aside}
     </header>
   ) : (
     <header className="spexr-panel-head">
-      <p className="sl-eyebrow sl-eyebrow--mark spexr-panel-head__eyebrow">{eyebrow}</p>
+      <p className={eyebrowClass}>{eyebrow}</p>
       {title && <h2 className="spexr-panel-head__title">{title}</h2>}
     </header>
   );
+};

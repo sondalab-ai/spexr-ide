@@ -254,7 +254,7 @@ const MemoryPanel: React.FC<MemoryPanelProps> = ({
   const title = nls.localize("spexr/memory/title", "Memory");
   return (
   <section className="spexr-memory-panel" aria-label="Memory manager">
-    <PanelHead eyebrow={eyebrow} title={title} />
+    <PanelHead eyebrow={eyebrow} title={title} mark="memory" />
     <div className="spexr-panel-body">
       <p className="spexr-memory-panel__hint">
         Persistent notes the agent loads on every session so it remembers what matters without
