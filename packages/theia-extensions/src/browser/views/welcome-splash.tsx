@@ -216,9 +216,6 @@ export const WelcomeSplash: React.FC<WelcomeSplashProps> = ({
             across sessions — your context, your conventions, always loaded.
           </p>
         </div>
-        {/* The kit's page-head poster, the stair (the site's SPEXR page wears
-            the same), in a column beside the text: the screen's one poster. */}
-        <div className="sl-art-poster sl-art-poster--stair spexr-welcome__poster" aria-hidden />
       </header>
 
       {/* Keyed on the card set: the kit dresses glass and columns only when a
